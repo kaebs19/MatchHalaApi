@@ -57,7 +57,7 @@ const sendToDevice = async (token, notification, data = {}) => {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'halachat_channel'
+                    channelId: 'matchhala_channel'
                 }
             }
         };
@@ -108,7 +108,7 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'halachat_channel'
+                    channelId: 'matchhala_channel'
                 }
             },
             tokens
@@ -168,7 +168,7 @@ const sendToTopic = async (topic, notification, data = {}) => {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'halachat_channel'
+                    channelId: 'matchhala_channel'
                 }
             }
         };
