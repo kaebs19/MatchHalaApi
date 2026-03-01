@@ -17,8 +17,6 @@ const connectDB = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const User = require('./models/User');
 const Conversation = require('./models/Conversation');
-const ChatRoom = require('./models/ChatRoom');
-const BannedWord = require('./models/BannedWord');
 
 // الاتصال بقاعدة البيانات
 connectDB();
@@ -179,13 +177,11 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/chat-rooms', require('./routes/chatRooms'));
-app.use('/api/activity-logs', require('./routes/activityLogs'));
-app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/mobile', require('./routes/mobile'));
 app.use('/api/privacy', require('./routes/privacy'));
-app.use('/api/categories', require('./routes/categories'));
 app.use('/api/verifications', require('./routes/verifications'));
+app.use('/api/swipes', require('./routes/swipes'));
+app.use('/api/matches', require('./routes/matches'));
 
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler
@@ -255,56 +251,6 @@ io.on('connection', async (socket) => {
         }
     });
 
-    // عند الانضمام لغرفة محادثة
-    socket.on('join-room', async (roomId) => {
-        try {
-            const chatRoom = await ChatRoom.findById(roomId);
-
-            if (!chatRoom) {
-                return socket.emit('error', { message: 'الغرفة غير موجودة' });
-            }
-
-            if (!chatRoom.isActive) {
-                return socket.emit('error', { message: 'الغرفة غير نشطة' });
-            }
-
-            // التحقق من صلاحية الدخول للغرف الخاصة
-            if (chatRoom.accessType === 'private') {
-                const isMember = chatRoom.members.some(
-                    m => m.toString() === socket.userId
-                );
-                const isAdmin = socket.user.role === 'admin';
-
-                if (!isMember && !isAdmin) {
-                    return socket.emit('error', { message: 'ليس لديك صلاحية للدخول لهذه الغرفة' });
-                }
-            }
-
-            socket.join(`room-${roomId}`);
-            console.log(`🏠 ${socket.user.name} انضم للغرفة ${roomId}`);
-
-            const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
-            const onlineCount = room ? room.size : 0;
-
-            // إرسال عدد المتصلين (للتوافق)
-            io.to(`room-${roomId}`).emit('users-online', { count: onlineCount });
-
-            // إشعار دخول عضو جديد
-            io.to(`room-${roomId}`).emit('room-member-joined', {
-                roomId: roomId,
-                user: {
-                    _id: socket.userId,
-                    name: socket.user.name,
-                    profileImage: getFullUrl(socket.user.profileImage)
-                },
-                onlineCount: onlineCount
-            });
-        } catch (error) {
-            console.error('خطأ في join-room:', error);
-            socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للغرفة' });
-        }
-    });
-
     // عند مغادرة محادثة
     socket.on('leave-conversation', (conversationId) => {
         socket.leave(`conversation-${conversationId}`);
@@ -315,27 +261,6 @@ io.on('connection', async (socket) => {
             const room = io.sockets.adapter.rooms.get(`conversation-${conversationId}`);
             const onlineCount = room ? room.size : 0;
             io.to(`conversation-${conversationId}`).emit('users-online', { count: onlineCount });
-        }, 100);
-    });
-
-    // عند مغادرة غرفة
-    socket.on('leave-room', (roomId) => {
-        socket.leave(`room-${roomId}`);
-        console.log(`🚪 ${socket.user.name} غادر الغرفة ${roomId}`);
-
-        setTimeout(() => {
-            const room = io.sockets.adapter.rooms.get(`room-${roomId}`);
-            const onlineCount = room ? room.size : 0;
-
-            // إرسال عدد المتصلين (للتوافق)
-            io.to(`room-${roomId}`).emit('users-online', { count: onlineCount });
-
-            // إشعار خروج عضو
-            io.to(`room-${roomId}`).emit('room-member-left', {
-                roomId: roomId,
-                userId: socket.userId,
-                onlineCount: onlineCount
-            });
         }, 100);
     });
 
@@ -355,109 +280,6 @@ io.on('connection', async (socket) => {
             conversationId,
             userName: null,
             isTyping: false
-        });
-    });
-
-    // ==========================================
-    // Socket Events للغرف الجماعية
-    // ==========================================
-
-    // إرسال رسالة في الغرفة
-    socket.on('room-message', async ({ roomId, content, type = 'text' }) => {
-        try {
-            const ChatRoom = require('./models/ChatRoom');
-            const Message = require('./models/Message');
-
-            // التحقق من وجود الغرفة
-            const chatRoom = await ChatRoom.findById(roomId);
-            if (!chatRoom || !chatRoom.isActive) {
-                return socket.emit('error', { message: 'الغرفة غير موجودة أو غير نشطة' });
-            }
-
-            // التحقق من قفل الغرفة
-            if (chatRoom.isLocked) {
-                return socket.emit('error', { message: 'الغرفة مقفلة' });
-            }
-
-            // فحص الكلمات المحظورة
-            let bannedWordResult = { isClean: true, foundWords: [] };
-            if (type === 'text' && content) {
-                try {
-                    bannedWordResult = await BannedWord.checkText(content, 'word');
-                } catch (bwError) {
-                    console.error('خطأ في فحص الكلمات المحظورة:', bwError);
-                }
-            }
-
-            // إنشاء الرسالة
-            const message = new Message({
-                chatType: 'room',
-                room: roomId,
-                sender: socket.userId,
-                content: content,
-                type: type,
-                hasBannedWords: !bannedWordResult.isClean,
-                bannedWordsFound: bannedWordResult.foundWords.map(w => ({
-                    word: w.word,
-                    severity: w.severity,
-                    action: w.action
-                })),
-                bannedWordSeverity: bannedWordResult.highestSeverity || null
-            });
-            await message.save();
-
-            // تنبيه الأدمن بالكلمات المحظورة
-            if (!bannedWordResult.isClean) {
-                io.emit('banned-word-alert', {
-                    messageId: message._id,
-                    roomId: roomId,
-                    roomName: chatRoom.name,
-                    senderId: socket.userId,
-                    senderName: socket.user.name,
-                    content: content.substring(0, 100),
-                    wordsFound: bannedWordResult.foundWords.map(w => w.word),
-                    severity: bannedWordResult.highestSeverity,
-                    chatType: 'room',
-                    timestamp: new Date()
-                });
-            }
-
-            // تحديث آخر رسالة في الغرفة
-            chatRoom.lastMessage = {
-                content: content?.substring(0, 50),
-                sender: socket.userId,
-                sentAt: new Date()
-            };
-            chatRoom.messageCount = (chatRoom.messageCount || 0) + 1;
-            await chatRoom.save();
-
-            // إرسال للجميع في الغرفة
-            io.to(`room-${roomId}`).emit('new-room-message', {
-                _id: message._id,
-                roomId: roomId,
-                sender: {
-                    _id: socket.userId,
-                    name: socket.user.name,
-                    profileImage: getFullUrl(socket.user.profileImage)
-                },
-                content: content,
-                type: type,
-                createdAt: message.createdAt
-            });
-
-            console.log(`💬 رسالة جديدة في الغرفة ${roomId} من ${socket.user.name}`);
-        } catch (error) {
-            console.error('خطأ في room-message:', error);
-            socket.emit('error', { message: 'فشل في إرسال الرسالة' });
-        }
-    });
-
-    // الكتابة في الغرفة
-    socket.on('room-typing', ({ roomId, userName, isTyping }) => {
-        socket.to(`room-${roomId}`).emit('room-user-typing', {
-            roomId,
-            userName,
-            isTyping
         });
     });
 

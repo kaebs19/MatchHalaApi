@@ -12,7 +12,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, type, isActive, hasFlaggedMessages } = req.query;
+        const { page = 1, limit = 20, type, isActive } = req.query;
 
         // بناء الفلتر
         const filter = {};
@@ -26,32 +26,12 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        // إضافة عدد الرسائل المُخالفة لكل محادثة
-        const conversationsWithFlags = await Promise.all(
-            conversations.map(async (conv) => {
-                const flaggedCount = await Message.countDocuments({
-                    chatType: 'conversation',
-                    conversation: conv._id,
-                    hasBannedWords: true
-                });
-                const convObj = conv.toObject();
-                convObj.flaggedMessagesCount = flaggedCount;
-                return convObj;
-            })
-        );
-
-        // فلترة المحادثات المُبلّغة فقط (إذا طُلب)
-        let finalConversations = conversationsWithFlags;
-        if (hasFlaggedMessages === 'true') {
-            finalConversations = conversationsWithFlags.filter(c => c.flaggedMessagesCount > 0);
-        }
-
         const count = await Conversation.countDocuments(filter);
 
         res.status(200).json({
             success: true,
             data: {
-                conversations: finalConversations,
+                conversations,
                 totalPages: Math.ceil(count / limit),
                 currentPage: page,
                 total: count

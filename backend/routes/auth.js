@@ -7,7 +7,6 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const User = require('../models/User');
-const ActivityLog = require('../models/ActivityLog');
 const generateToken = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
 const { protect } = require('../middleware/auth');
@@ -57,24 +56,6 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             name,
             email,
             password
-        });
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'user_register',
-            description: `تسجيل مستخدم جديد: ${name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
         });
 
         // إرجاع البيانات مع Token
@@ -149,24 +130,6 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         // تحديث آخر تسجيل دخول
         user.lastLogin = new Date();
         await user.save();
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'user_login',
-            description: `تسجيل دخول: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
-        });
 
         // إرجاع البيانات مع Token
         res.status(200).json({
@@ -263,24 +226,6 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         }
 
         await user.save();
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'profile_update',
-            description: `تحديث الملف الشخصي: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
-        });
 
         res.status(200).json({
             success: true,
@@ -470,24 +415,6 @@ router.post('/reset-password', async (req, res) => {
         user.resetPasswordExpire = undefined;
         await user.save();
 
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'password_reset',
-            description: `إعادة تعيين كلمة المرور: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'medium',
-            status: 'success'
-        });
-
         res.status(200).json({
             success: true,
             message: 'تم إعادة تعيين كلمة المرور بنجاح'
@@ -538,24 +465,6 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
         const imagePath = '/uploads/profile-images/' + req.file.filename;
         user.profileImage = imagePath;
         await user.save();
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'profile_image_upload',
-            description: `رفع صورة الملف الشخصي: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
-        });
 
         res.status(200).json({
             success: true,
@@ -620,24 +529,6 @@ router.delete('/delete-account', protect, async (req, res) => {
                 fs.unlinkSync(imagePath);
             }
         }
-
-        // تسجيل النشاط قبل الحذف
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: 'account_deleted',
-            description: `حذف الحساب: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'high',
-            status: 'success'
-        });
 
         // حذف المستخدم
         await user.deleteOne();
@@ -728,24 +619,6 @@ router.post('/google', async (req, res) => {
         user.lastLogin = new Date();
 
         await user.save();
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: isNewUser ? 'user_register_google' : 'user_login_google',
-            description: isNewUser ? `تسجيل مستخدم جديد عبر Google: ${name}` : `تسجيل دخول عبر Google: ${name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
-        });
 
         res.status(200).json({
             success: true,
@@ -850,24 +723,6 @@ router.post('/apple', async (req, res) => {
         user.lastLogin = new Date();
 
         await user.save();
-
-        // تسجيل النشاط
-        await ActivityLog.logActivity({
-            user: user._id,
-            action: isNewUser ? 'user_register_apple' : 'user_login_apple',
-            description: isNewUser ? `تسجيل مستخدم جديد عبر Apple: ${user.name}` : `تسجيل دخول عبر Apple: ${user.name}`,
-            targetType: 'User',
-            targetId: user._id,
-            targetName: user.name,
-            requestInfo: {
-                ipAddress: req.ip || req.connection.remoteAddress,
-                userAgent: req.get('user-agent'),
-                method: req.method,
-                url: req.originalUrl
-            },
-            severity: 'low',
-            status: 'success'
-        });
 
         res.status(200).json({
             success: true,

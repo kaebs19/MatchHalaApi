@@ -142,18 +142,6 @@ const userSchema = new mongoose.Schema({
             default: null // null = مكتوم للأبد
         }
     }],
-    // قائمة الغرف المكتومة
-    mutedRooms: [{
-        roomId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'ChatRoom'
-        },
-        mutedAt: {
-            type: Date,
-            default: Date.now
-        }
-    }],
-
     // ============ Premium Features ============
 
     // الاشتراك المميز

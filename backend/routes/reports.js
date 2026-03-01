@@ -36,7 +36,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('reportedConversation', 'title type')
             .populate({
                 path: 'reportedMessage',
-                select: 'content type mediaUrl sender createdAt hasBannedWords bannedWordsFound bannedWordSeverity',
+                select: 'content type mediaUrl sender createdAt',
                 populate: { path: 'sender', select: 'name' }
             })
             .populate('assignedTo', 'name')

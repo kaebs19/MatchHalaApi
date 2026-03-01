@@ -26,7 +26,6 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
 
         // بناء الفلتر
         const filter = {
-            chatType: 'conversation',
             conversation: conversationId
         };
 
@@ -173,7 +172,6 @@ router.post('/send', protect, adminOnly, async (req, res) => {
 
         // إنشاء الرسالة
         const message = await Message.create({
-            chatType: 'conversation',
             conversation: conversationId,
             sender: req.user._id,
             content,
@@ -214,12 +212,13 @@ router.get('/stats/:conversationId', protect, adminOnly, async (req, res) => {
     try {
         const { conversationId } = req.params;
 
+        const mongoose = require('mongoose');
         const stats = {
-            totalMessages: await Message.countDocuments({ chatType: 'conversation', conversation: conversationId }),
-            deletedMessages: await Message.countDocuments({ chatType: 'conversation', conversation: conversationId, isDeleted: true }),
-            activeMessages: await Message.countDocuments({ chatType: 'conversation', conversation: conversationId, isDeleted: false }),
+            totalMessages: await Message.countDocuments({ conversation: conversationId }),
+            deletedMessages: await Message.countDocuments({ conversation: conversationId, isDeleted: true }),
+            activeMessages: await Message.countDocuments({ conversation: conversationId, isDeleted: false }),
             messagesByType: await Message.aggregate([
-                { $match: { chatType: 'conversation', conversation: mongoose.Types.ObjectId(conversationId) } },
+                { $match: { conversation: new mongoose.Types.ObjectId(conversationId) } },
                 { $group: { _id: '$type', count: { $sum: 1 } } }
             ])
         };

@@ -7,6 +7,8 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const SuperLike = require('../models/SuperLike');
+const Swipe = require('../models/Swipe');
+const Match = require('../models/Match');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL } = require('../utils/cache');
 
@@ -61,16 +63,22 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
         // ============ إحصائيات Stealth Mode ============
         const stealthModeUsers = await User.countDocuments({ stealthMode: true, isPremium: true });
 
-        // ============ إحصائيات الرسائل المُبلّغة ============
-        const flaggedLast24h = await Message.countDocuments({ hasBannedWords: true, createdAt: { $gte: oneDayAgo } });
-        const flaggedLast7Days = await Message.countDocuments({ hasBannedWords: true, createdAt: { $gte: sevenDaysAgo } });
-        const flaggedLast30Days = await Message.countDocuments({ hasBannedWords: true, createdAt: { $gte: thirtyDaysAgo } });
-        const flaggedTotal = await Message.countDocuments({ hasBannedWords: true });
-
         // ============ إحصائيات المحادثات ============
         const totalConversations = await Conversation.countDocuments();
         const activeConversations = await Conversation.countDocuments({ isActive: true });
         const totalMessages = await Message.countDocuments({ isDeleted: false });
+
+        // ============ إحصائيات Swipes ============
+        const totalSwipes = await Swipe.countDocuments();
+        const swipesLast7Days = await Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+        const totalLikes = await Swipe.countDocuments({ type: 'like' });
+        const totalDislikes = await Swipe.countDocuments({ type: 'dislike' });
+        const totalSwipeSuperLikes = await Swipe.countDocuments({ type: 'superlike' });
+
+        // ============ إحصائيات Matches ============
+        const totalMatches = await Match.countDocuments();
+        const activeMatches = await Match.countDocuments({ isActive: true });
+        const matchesLast7Days = await Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
 
         const responseData = {
             success: true,
@@ -96,14 +104,20 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
                     total: totalSuperLikes,
                     last7Days: superLikesLast7Days
                 },
+                swipes: {
+                    total: totalSwipes,
+                    last7Days: swipesLast7Days,
+                    likes: totalLikes,
+                    dislikes: totalDislikes,
+                    superLikes: totalSwipeSuperLikes
+                },
+                matches: {
+                    total: totalMatches,
+                    active: activeMatches,
+                    last7Days: matchesLast7Days
+                },
                 stealthMode: {
                     activeUsers: stealthModeUsers
-                },
-                flaggedMessages: {
-                    last24h: flaggedLast24h,
-                    last7Days: flaggedLast7Days,
-                    last30Days: flaggedLast30Days,
-                    total: flaggedTotal
                 },
                 conversations: {
                     total: totalConversations,
@@ -216,59 +230,6 @@ router.get('/super-likes', protect, adminOnly, async (req, res) => {
     } catch (error) {
         console.error('خطأ في جلب Super Likes:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب Super Likes' });
-    }
-});
-
-// @route   GET /api/stats/flagged-messages
-// @desc    قائمة الرسائل المُبلّغة (التي تحتوي كلمات محظورة)
-// @access  Private/Admin
-router.get('/flagged-messages', protect, adminOnly, async (req, res) => {
-    try {
-        const { page = 1, limit = 20, severity, chatType } = req.query;
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-
-        // بناء الفلتر
-        const filter = { hasBannedWords: true };
-        if (severity && ['low', 'medium', 'high'].includes(severity)) {
-            filter.bannedWordSeverity = severity;
-        }
-        if (chatType && ['conversation', 'room'].includes(chatType)) {
-            filter.chatType = chatType;
-        }
-
-        // جلب الرسائل
-        const messages = await Message.find(filter)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified')
-            .populate('conversation', 'title type participants status')
-            .populate('room', 'name category')
-            .sort({ createdAt: -1 })
-            .limit(limitNum)
-            .skip((pageNum - 1) * limitNum);
-
-        const total = await Message.countDocuments(filter);
-
-        // إحصائيات حسب الخطورة
-        const stats = {
-            total: await Message.countDocuments({ hasBannedWords: true }),
-            high: await Message.countDocuments({ hasBannedWords: true, bannedWordSeverity: 'high' }),
-            medium: await Message.countDocuments({ hasBannedWords: true, bannedWordSeverity: 'medium' }),
-            low: await Message.countDocuments({ hasBannedWords: true, bannedWordSeverity: 'low' })
-        };
-
-        res.json({
-            success: true,
-            data: {
-                messages,
-                stats,
-                page: pageNum,
-                totalPages: Math.ceil(total / limitNum),
-                total
-            }
-        });
-    } catch (error) {
-        console.error('خطأ في جلب الرسائل المُبلّغة:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب الرسائل المُبلّغة' });
     }
 });
 
