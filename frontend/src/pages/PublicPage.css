@@ -1,0 +1,122 @@
+/* Public Page Styles */
+
+.public-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%);
+}
+
+.public-page-header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding-bottom: 30px;
+    border-bottom: 3px solid #7c3aed;
+}
+
+.public-page-header h1 {
+    font-size: 2.5rem;
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.last-updated {
+    color: #666;
+    font-size: 0.95rem;
+    font-style: italic;
+}
+
+.public-page-content {
+    background: white;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    margin-bottom: 40px;
+}
+
+.markdown-content {
+    line-height: 1.8;
+    color: #333;
+}
+
+.markdown-content h1 {
+    font-size: 2rem;
+    color: #7c3aed;
+    margin: 30px 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.markdown-content h2 {
+    font-size: 1.6rem;
+    color: #5b21b6;
+    margin: 25px 0 15px 0;
+}
+
+.markdown-content h3 {
+    font-size: 1.3rem;
+    color: #6d28d9;
+    margin: 20px 0 12px 0;
+}
+
+.markdown-content p {
+    margin-bottom: 15px;
+    font-size: 1.05rem;
+    text-align: justify;
+}
+
+.markdown-content li {
+    margin-bottom: 10px;
+    font-size: 1.05rem;
+    margin-right: 30px;
+}
+
+.markdown-content br {
+    content: "";
+    display: block;
+    margin: 8px 0;
+}
+
+.public-page-footer {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-size: 0.95rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .public-page {
+        padding: 20px 15px;
+    }
+
+    .public-page-header h1 {
+        font-size: 2rem;
+    }
+
+    .public-page-content {
+        padding: 25px;
+    }
+
+    .markdown-content h1 {
+        font-size: 1.6rem;
+    }
+
+    .markdown-content h2 {
+        font-size: 1.3rem;
+    }
+
+    .markdown-content h3 {
+        font-size: 1.1rem;
+    }
+
+    .markdown-content p,
+    .markdown-content li {
+        font-size: 1rem;
+    }
+}
+
+.public-page-content {
+    animation: fadeIn 0.5s ease-in;
+}

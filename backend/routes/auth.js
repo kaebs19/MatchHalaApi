@@ -1,0 +1,942 @@
+// HalaChat Dashboard - Auth Routes
+// المسارات الخاصة بالتسجيل وتسجيل الدخول
+
+const express = require('express');
+const router = express.Router();
+const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
+const User = require('../models/User');
+const ActivityLog = require('../models/ActivityLog');
+const generateToken = require('../utils/generateToken');
+const sendEmail = require('../utils/sendEmail');
+const { protect } = require('../middleware/auth');
+const { validate } = require('../middleware/validation');
+const upload = require('../config/multer');
+const { optimizeImage } = require('../middleware/imageOptimizer');
+const {
+    registerValidation,
+    loginValidation,
+    updateProfileValidation,
+    changePasswordValidation
+} = require('../validators/user.validator');
+
+// Google Auth
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// Apple Auth
+const appleSignin = require('apple-signin-auth');
+
+// @route   POST /api/auth/register
+// @desc    تسجيل مستخدم جديد
+// @access  Public
+router.post('/register', registerValidation, validate, async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+
+        // التحقق من البيانات
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'جميع الحقول مطلوبة'
+            });
+        }
+
+        // التحقق من أن البريد غير مستخدم
+        const userExists = await User.findOne({ email });
+        if (userExists) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني مستخدم بالفعل'
+            });
+        }
+
+        // إنشاء المستخدم
+        const user = await User.create({
+            name,
+            email,
+            password
+        });
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'user_register',
+            description: `تسجيل مستخدم جديد: ${name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        // إرجاع البيانات مع Token
+        res.status(201).json({
+            success: true,
+            message: 'تم التسجيل بنجاح',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: user.profileImage || null
+                },
+                token: generateToken(user._id)
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في التسجيل:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/login
+// @desc    تسجيل الدخول
+// @access  Public
+router.post('/login', loginValidation, validate, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // التحقق من البيانات
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني وكلمة المرور مطلوبة'
+            });
+        }
+
+        // البحث عن المستخدم (مع كلمة المرور)
+        const user = await User.findOne({ email }).select('+password');
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'البريد الإلكتروني أو كلمة المرور خاطئة'
+            });
+        }
+
+        // التحقق من كلمة المرور
+        const isPasswordMatch = await user.comparePassword(password);
+
+        if (!isPasswordMatch) {
+            return res.status(401).json({
+                success: false,
+                message: 'البريد الإلكتروني أو كلمة المرور خاطئة'
+            });
+        }
+
+        // التحقق من أن الحساب مفعل
+        if (!user.isActive) {
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير مفعل، تواصل مع الإدارة'
+            });
+        }
+
+        // تحديث آخر تسجيل دخول
+        user.lastLogin = new Date();
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'user_login',
+            description: `تسجيل دخول: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        // إرجاع البيانات مع Token
+        res.status(200).json({
+            success: true,
+            message: 'تم تسجيل الدخول بنجاح',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: user.profileImage,
+                    lastLogin: user.lastLogin
+                },
+                token: generateToken(user._id)
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تسجيل الدخول:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   GET /api/auth/me
+// @desc    الحصول على بيانات المستخدم الحالي
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+    try {
+        res.status(200).json({
+            success: true,
+            data: {
+                user: req.user
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب البيانات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
+        });
+    }
+});
+
+// @route   PUT /api/auth/update-profile
+// @desc    تحديث الملف الشخصي
+// @access  Private
+router.put('/update-profile', protect, updateProfileValidation, validate, async (req, res) => {
+    try {
+        const { name, email, profileImage, birthDate, gender, country, bio, defaultAvatar } = req.body;
+
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير موجود'
+            });
+        }
+
+        // التحقق من عدم تكرار البريد الإلكتروني
+        if (email && email !== user.email) {
+            const emailExists = await User.findOne({ email });
+            if (emailExists) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'البريد الإلكتروني مستخدم بالفعل'
+                });
+            }
+        }
+
+        // تحديث الحقول الأساسية
+        if (name) user.name = name;
+        if (email) user.email = email;
+
+        // تحديث حقول الملف الشخصي الجديدة
+        if (profileImage !== undefined) user.profileImage = profileImage;
+        if (birthDate !== undefined) user.birthDate = birthDate;
+        if (gender !== undefined) user.gender = gender;
+        if (country !== undefined) user.country = country;
+        if (bio !== undefined) user.bio = bio;
+
+        // دعم الصور الافتراضية (avatar_1 إلى avatar_13)
+        if (defaultAvatar) {
+            // التحقق من صحة اسم الصورة الافتراضية
+            const validAvatars = Array.from({ length: 13 }, (_, i) => `avatar_${i + 1}`);
+            if (validAvatars.includes(defaultAvatar)) {
+                user.profileImage = `/uploads/defaults/${defaultAvatar}.jpg`;
+            }
+        }
+
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'profile_update',
+            description: `تحديث الملف الشخصي: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تحديث البيانات بنجاح',
+            data: {
+                user
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في التحديث:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/auth/change-password
+// @desc    تغيير كلمة المرور
+// @access  Private
+router.put('/change-password', protect, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        // التحقق من البيانات
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'كلمة المرور الحالية والجديدة مطلوبة'
+            });
+        }
+
+        // التحقق من طول كلمة المرور الجديدة
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
+            });
+        }
+
+        const user = await User.findById(req.user.id).select('+password');
+
+        // التحقق من كلمة المرور الحالية
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(400).json({
+                success: false,
+                message: 'كلمة المرور الحالية غير صحيحة'
+            });
+        }
+
+        // تحديث كلمة المرور
+        user.password = newPassword;
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تغيير كلمة المرور بنجاح'
+        });
+
+    } catch (error) {
+        console.error('خطأ في تغيير كلمة المرور:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/forgot-password
+// @desc    طلب إعادة تعيين كلمة المرور (إرسال رمز التحقق)
+// @access  Public
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // التحقق من البيانات
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني مطلوب'
+            });
+        }
+
+        // البحث عن المستخدم
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'لا يوجد مستخدم بهذا البريد الإلكتروني'
+            });
+        }
+
+        // توليد رمز إعادة التعيين
+        const resetToken = user.generateResetToken();
+        await user.save();
+
+        // إرسال البريد الإلكتروني
+        const message = `
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333; text-align: center;">إعادة تعيين كلمة المرور</h2>
+                    <p style="color: #666; font-size: 16px;">مرحباً ${user.name},</p>
+                    <p style="color: #666; font-size: 16px;">لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.</p>
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
+                        <p style="color: #666; margin-bottom: 10px;">رمز التحقق الخاص بك:</p>
+                        <h1 style="color: #007bff; font-size: 36px; letter-spacing: 5px; margin: 10px 0;">${resetToken}</h1>
+                    </div>
+                    <p style="color: #666; font-size: 14px;">هذا الرمز صالح لمدة 10 دقائق فقط.</p>
+                    <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">إذا لم تطلب إعادة تعيين كلمة المرور، يرجى تجاهل هذه الرسالة.</p>
+                </div>
+            </div>
+        `;
+
+        await sendEmail({
+            email: user.email,
+            subject: 'إعادة تعيين كلمة المرور - HalaChat',
+            message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
+            html: message
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'تم إرسال رمز إعادة تعيين كلمة المرور إلى بريدك الإلكتروني'
+        });
+
+    } catch (error) {
+        console.error('خطأ في طلب إعادة تعيين كلمة المرور:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في إرسال البريد الإلكتروني',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/reset-password
+// @desc    إعادة تعيين كلمة المرور باستخدام الرمز
+// @access  Public
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { email, resetToken, newPassword } = req.body;
+
+        // التحقق من البيانات
+        if (!email || !resetToken || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'جميع الحقول مطلوبة'
+            });
+        }
+
+        // التحقق من طول كلمة المرور
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'
+            });
+        }
+
+        // تشفير الرمز للمقارنة
+        const hashedToken = crypto
+            .createHash('sha256')
+            .update(resetToken)
+            .digest('hex');
+
+        // البحث عن المستخدم بالبريد والرمز والتأكد من صلاحية الرمز
+        const user = await User.findOne({
+            email,
+            resetPasswordToken: hashedToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        }).select('+resetPasswordToken +resetPasswordExpire');
+
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: 'رمز التحقق غير صحيح أو منتهي الصلاحية'
+            });
+        }
+
+        // تحديث كلمة المرور
+        user.password = newPassword;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'password_reset',
+            description: `إعادة تعيين كلمة المرور: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'medium',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'تم إعادة تعيين كلمة المرور بنجاح'
+        });
+
+    } catch (error) {
+        console.error('خطأ في إعادة تعيين كلمة المرور:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/auth/upload-profile-image
+// @desc    رفع صورة الملف الشخصي
+// @access  Private
+router.put('/upload-profile-image', protect, upload.single('profileImage'), optimizeImage({ maxWidth: 800, maxHeight: 800, quality: 85 }), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'لم يتم رفع أي صورة'
+            });
+        }
+
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            // حذف الملف المرفوع إذا لم يتم إيجاد المستخدم
+            fs.unlinkSync(req.file.path);
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير موجود'
+            });
+        }
+
+        // حذف الصورة القديمة إذا كانت موجودة
+        if (user.profileImage) {
+            const oldImagePath = path.join(__dirname, '..', user.profileImage);
+            if (fs.existsSync(oldImagePath)) {
+                fs.unlinkSync(oldImagePath);
+            }
+        }
+
+        // تحديث مسار الصورة
+        const imagePath = '/uploads/profile-images/' + req.file.filename;
+        user.profileImage = imagePath;
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'profile_image_upload',
+            description: `رفع صورة الملف الشخصي: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'تم رفع الصورة بنجاح',
+            data: {
+                profileImage: imagePath,
+                user
+            }
+        });
+
+    } catch (error) {
+        // حذف الملف في حالة حدوث خطأ
+        if (req.file) {
+            fs.unlinkSync(req.file.path);
+        }
+
+        console.error('خطأ في رفع الصورة:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'خطأ في السيرفر'
+        });
+    }
+});
+
+// @route   DELETE /api/auth/delete-account
+// @desc    حذف حساب المستخدم
+// @access  Private
+router.delete('/delete-account', protect, async (req, res) => {
+    try {
+        const { password } = req.body;
+
+        // التحقق من كلمة المرور
+        if (!password) {
+            return res.status(400).json({
+                success: false,
+                message: 'كلمة المرور مطلوبة لتأكيد حذف الحساب'
+            });
+        }
+
+        const user = await User.findById(req.user.id).select('+password');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير موجود'
+            });
+        }
+
+        // التحقق من كلمة المرور
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: 'كلمة المرور غير صحيحة'
+            });
+        }
+
+        // حذف صورة الملف الشخصي إذا كانت موجودة
+        if (user.profileImage) {
+            const imagePath = path.join(__dirname, '..', user.profileImage);
+            if (fs.existsSync(imagePath)) {
+                fs.unlinkSync(imagePath);
+            }
+        }
+
+        // تسجيل النشاط قبل الحذف
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: 'account_deleted',
+            description: `حذف الحساب: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'high',
+            status: 'success'
+        });
+
+        // حذف المستخدم
+        await user.deleteOne();
+
+        res.status(200).json({
+            success: true,
+            message: 'تم حذف الحساب بنجاح'
+        });
+
+    } catch (error) {
+        console.error('خطأ في حذف الحساب:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/google
+// @desc    تسجيل/دخول عبر Google
+// @access  Public
+router.post('/google', async (req, res) => {
+    try {
+        const { idToken, deviceToken, deviceInfo } = req.body;
+
+        if (!idToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Google ID Token مطلوب'
+            });
+        }
+
+        // التحقق من Google ID Token
+        let payload;
+        try {
+            const ticket = await googleClient.verifyIdToken({
+                idToken,
+                audience: process.env.GOOGLE_CLIENT_ID
+            });
+            payload = ticket.getPayload();
+        } catch (error) {
+            console.error('خطأ في التحقق من Google Token:', error);
+            return res.status(401).json({
+                success: false,
+                message: 'Google Token غير صالح'
+            });
+        }
+
+        const { sub: googleId, email, name, picture } = payload;
+
+        // البحث عن المستخدم أو إنشاؤه
+        let user = await User.findOne({
+            $or: [
+                { googleId },
+                { email }
+            ]
+        });
+
+        let isNewUser = false;
+
+        if (user) {
+            // تحديث معلومات Google إذا لم تكن موجودة
+            if (!user.googleId) {
+                user.googleId = googleId;
+                user.authProvider = 'google';
+            }
+            // تحديث الصورة إذا لم تكن موجودة
+            if (!user.profileImage && picture) {
+                user.profileImage = picture;
+            }
+        } else {
+            // إنشاء مستخدم جديد
+            isNewUser = true;
+            user = new User({
+                name,
+                email,
+                googleId,
+                authProvider: 'google',
+                profileImage: picture || null,
+                isActive: true
+            });
+        }
+
+        // تحديث Device Token و معلومات الجهاز
+        if (deviceToken) user.deviceToken = deviceToken;
+        if (deviceInfo) user.deviceInfo = deviceInfo;
+        user.lastLogin = new Date();
+
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: isNewUser ? 'user_register_google' : 'user_login_google',
+            description: isNewUser ? `تسجيل مستخدم جديد عبر Google: ${name}` : `تسجيل دخول عبر Google: ${name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: isNewUser ? 'تم التسجيل بنجاح عبر Google' : 'تم تسجيل الدخول بنجاح عبر Google',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: user.profileImage,
+                    authProvider: user.authProvider,
+                    lastLogin: user.lastLogin
+                },
+                token: generateToken(user._id),
+                isNewUser
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تسجيل الدخول عبر Google:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/apple
+// @desc    تسجيل/دخول عبر Apple
+// @access  Public
+router.post('/apple', async (req, res) => {
+    try {
+        const { identityToken, authorizationCode, fullName, email: appleEmail, deviceToken, deviceInfo } = req.body;
+
+        if (!identityToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Apple Identity Token مطلوب'
+            });
+        }
+
+        // التحقق من Apple Identity Token
+        let applePayload;
+        try {
+            applePayload = await appleSignin.verifyIdToken(identityToken, {
+                audience: process.env.APPLE_CLIENT_ID || 'com.alsaplel.octadevtn.HalaChat',
+                ignoreExpiration: false
+            });
+        } catch (error) {
+            console.error('خطأ في التحقق من Apple Token:', error);
+            return res.status(401).json({
+                success: false,
+                message: 'Apple Token غير صالح'
+            });
+        }
+
+        const appleId = applePayload.sub;
+        const email = appleEmail || applePayload.email;
+
+        // البحث عن المستخدم
+        let user = await User.findOne({
+            $or: [
+                { appleId },
+                ...(email ? [{ email }] : [])
+            ]
+        });
+
+        let isNewUser = false;
+
+        if (user) {
+            // تحديث معلومات Apple إذا لم تكن موجودة
+            if (!user.appleId) {
+                user.appleId = appleId;
+                user.authProvider = 'apple';
+            }
+        } else {
+            // إنشاء مستخدم جديد
+            isNewUser = true;
+
+            // تحديد الاسم
+            let name = 'مستخدم Apple';
+            if (fullName) {
+                const firstName = fullName.givenName || '';
+                const lastName = fullName.familyName || '';
+                name = `${firstName} ${lastName}`.trim() || 'مستخدم Apple';
+            }
+
+            user = new User({
+                name,
+                email: email || `apple_${appleId}@private.appleid.com`,
+                appleId,
+                authProvider: 'apple',
+                isActive: true
+            });
+        }
+
+        // تحديث Device Token و معلومات الجهاز
+        if (deviceToken) user.deviceToken = deviceToken;
+        if (deviceInfo) user.deviceInfo = deviceInfo;
+        user.lastLogin = new Date();
+
+        await user.save();
+
+        // تسجيل النشاط
+        await ActivityLog.logActivity({
+            user: user._id,
+            action: isNewUser ? 'user_register_apple' : 'user_login_apple',
+            description: isNewUser ? `تسجيل مستخدم جديد عبر Apple: ${user.name}` : `تسجيل دخول عبر Apple: ${user.name}`,
+            targetType: 'User',
+            targetId: user._id,
+            targetName: user.name,
+            requestInfo: {
+                ipAddress: req.ip || req.connection.remoteAddress,
+                userAgent: req.get('user-agent'),
+                method: req.method,
+                url: req.originalUrl
+            },
+            severity: 'low',
+            status: 'success'
+        });
+
+        res.status(200).json({
+            success: true,
+            message: isNewUser ? 'تم التسجيل بنجاح عبر Apple' : 'تم تسجيل الدخول بنجاح عبر Apple',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: user.profileImage,
+                    authProvider: user.authProvider,
+                    lastLogin: user.lastLogin
+                },
+                token: generateToken(user._id),
+                isNewUser
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تسجيل الدخول عبر Apple:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/auth/device-token
+// @desc    تحديث Device Token للإشعارات
+// @access  Private
+router.put('/device-token', protect, async (req, res) => {
+    try {
+        const { deviceToken, deviceInfo } = req.body;
+
+        if (!deviceToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Device Token مطلوب'
+            });
+        }
+
+        const user = await User.findById(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'المستخدم غير موجود'
+            });
+        }
+
+        user.deviceToken = deviceToken;
+        if (deviceInfo) user.deviceInfo = deviceInfo;
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تحديث Device Token بنجاح'
+        });
+
+    } catch (error) {
+        console.error('خطأ في تحديث Device Token:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+module.exports = router;

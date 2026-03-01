@@ -1,0 +1,120 @@
+/* ===== Shared Table Styles ===== */
+
+.data-table-container {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.data-table-header {
+    padding: 20px 25px;
+    border-bottom: 1px solid #eee;
+}
+
+.data-table-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.data-table-wrapper {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    padding: 14px 18px;
+    text-align: right;
+    background: #f9fafb;
+    color: #666;
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+}
+
+.data-table tr:hover {
+    background: #fafafa;
+}
+
+/* Gradient Header Variant */
+.data-table--gradient thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.data-table--gradient th {
+    color: white;
+    background: transparent;
+    padding: 18px 15px;
+    font-size: 14px;
+    border-bottom: none;
+}
+
+.data-table--gradient tbody tr {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+}
+
+.data-table--gradient td {
+    padding: 15px;
+    text-align: right;
+    font-size: 14px;
+    color: #333;
+}
+
+/* User Cell */
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar-small {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+img.user-avatar-small {
+    background: #f0f0f0;
+}
+
+.email-cell {
+    color: #666;
+    text-align: left !important;
+}
+
+/* Actions Cell */
+.actions-cell {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+@media (max-width: 768px) {
+    .data-table th,
+    .data-table td {
+        padding: 10px 12px;
+        font-size: 12px;
+    }
+}
