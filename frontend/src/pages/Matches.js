@@ -103,6 +103,15 @@ function Matches() {
 
     return (
         <div className="matches-page">
+            {/* بانر رأس الصفحة */}
+            <div className="page-header-banner">
+                <span className="banner-icon">💕</span>
+                <div>
+                    <h2>سجل التطابقات</h2>
+                    <p>متابعة جميع التطابقات بين المستخدمين</p>
+                </div>
+            </div>
+
             {/* بطاقات الإحصائيات */}
             <div className="stats-grid">
                 <StatCard icon="💕" value={stats.totalMatches} label="إجمالي التطابقات" color="pink" />
@@ -114,13 +123,15 @@ function Matches() {
             </div>
 
             {/* فلتر الحالة */}
-            <div className="filter-bar">
-                <label>تصفية حسب الحالة:</label>
-                <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}>
-                    <option value="">الكل</option>
-                    <option value="active">نشط</option>
-                    <option value="unmatched">ملغي</option>
-                </select>
+            <div className="filters-bar">
+                <div className="filter-group">
+                    <label>تصفية حسب الحالة:</label>
+                    <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}>
+                        <option value="">الكل</option>
+                        <option value="active">نشط</option>
+                        <option value="unmatched">ملغي</option>
+                    </select>
+                </div>
             </div>
 
             {/* الجدول */}

@@ -109,6 +109,15 @@ function Swipes() {
 
     return (
         <div className="swipes-page">
+            {/* بانر رأس الصفحة */}
+            <div className="page-header-banner">
+                <span className="banner-icon">👆</span>
+                <div>
+                    <h2>سجل Swipes</h2>
+                    <p>متابعة جميع حركات الإعجاب والتمرير</p>
+                </div>
+            </div>
+
             {/* بطاقات الإحصائيات */}
             <div className="stats-grid">
                 <StatCard icon="👆" value={stats.totalSwipes} label="إجمالي Swipes" color="purple" />
@@ -120,14 +129,16 @@ function Swipes() {
             </div>
 
             {/* فلتر النوع */}
-            <div className="filter-bar">
-                <label>تصفية حسب النوع:</label>
-                <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setPage(1); }}>
-                    <option value="">الكل</option>
-                    <option value="like">إعجاب</option>
-                    <option value="dislike">تمرير</option>
-                    <option value="superlike">Super Like</option>
-                </select>
+            <div className="filters-bar">
+                <div className="filter-group">
+                    <label>تصفية حسب النوع:</label>
+                    <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setPage(1); }}>
+                        <option value="">الكل</option>
+                        <option value="like">إعجاب</option>
+                        <option value="dislike">تمرير</option>
+                        <option value="superlike">Super Like</option>
+                    </select>
+                </div>
             </div>
 
             {/* الجدول */}

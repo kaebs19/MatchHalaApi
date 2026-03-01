@@ -7,7 +7,8 @@
 
 /* Stats Section Wrapper */
 .stats-section {
-    margin-bottom: 10px;
+    margin-bottom: 25px;
+    animation: fadeInUp 0.5s ease-out;
 }
 
 /* Quick Actions Section */
@@ -66,6 +67,8 @@
 .quick-action-btn.users { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
 .quick-action-btn.conversations { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
 .quick-action-btn.rooms { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; }
+.quick-action-btn.swipes { background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); color: white; }
+.quick-action-btn.matches { background: linear-gradient(135deg, #e91e63 0%, #9333ea 100%); color: white; }
 .quick-action-btn.reports { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%); color: white; }
 .quick-action-btn.settings { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; }
 .quick-action-btn.notification { background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); color: white; }
@@ -102,6 +105,8 @@
     border-radius: 15px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     animation: fadeInUp 0.5s ease-out;
+    border-top: 3px solid transparent;
+    border-image: linear-gradient(135deg, #e91e63, #9333ea) 1;
 }
 
 .chart-card h4 {

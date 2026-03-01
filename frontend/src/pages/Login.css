@@ -3,7 +3,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background: linear-gradient(135deg, #ec4899 0%, #9333ea 50%, #4f46e5 100%);
     background-size: 200% 200%;
     animation: gradientShift 15s ease infinite;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -38,7 +38,7 @@
     backdrop-filter: blur(20px);
     padding: 50px 40px;
     border-radius: 24px;
-    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25), 0 0 60px rgba(233, 30, 99, 0.15);
     width: 100%;
     max-width: 420px;
     text-align: center;
@@ -48,10 +48,10 @@
 }
 
 .logo-image {
-    width: 90px;
-    height: 90px;
+    width: 110px;
+    height: 110px;
     margin-bottom: 20px;
-    filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.3));
+    filter: drop-shadow(0 4px 12px rgba(233, 30, 99, 0.4));
     animation: float 3s ease-in-out infinite;
 }
 
@@ -61,7 +61,7 @@
 }
 
 .logo h1 {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #e91e63 0%, #9333ea 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -104,8 +104,8 @@
 
 .login-box .form-group input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
+    border-color: #e91e63;
+    box-shadow: 0 0 0 4px rgba(233, 30, 99, 0.15);
     background: white;
 }
 
@@ -146,7 +146,7 @@
 button[type="submit"] {
     width: 100%;
     padding: 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #e91e63 0%, #9333ea 100%);
     color: white;
     border: none;
     border-radius: 12px;
@@ -155,12 +155,12 @@ button[type="submit"] {
     cursor: pointer;
     transition: all 0.3s ease;
     margin-top: 15px;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 15px rgba(233, 30, 99, 0.4);
 }
 
 button[type="submit"]:hover:not(:disabled) {
     transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+    box-shadow: 0 8px 25px rgba(233, 30, 99, 0.5);
 }
 
 button[type="submit"]:active:not(:disabled) {
@@ -193,8 +193,8 @@ button[type="submit"]:disabled {
     }
 
     .logo-image {
-        width: 70px;
-        height: 70px;
+        width: 85px;
+        height: 85px;
     }
 
     .logo h1 {
