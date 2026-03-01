@@ -87,7 +87,7 @@ function PublicPage({ type }) {
             </div>
 
             <div className="public-page-footer">
-                <p>© 2026 HalaChat. جميع الحقوق محفوظة.</p>
+                <p>© 2026 MatchHala. جميع الحقوق محفوظة.</p>
             </div>
         </div>
     );

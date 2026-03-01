@@ -49,8 +49,8 @@ function Login({ onLogin }) {
         <div className="login-container">
             <div className="login-box">
                 <div className="logo">
-                    <img src="/favicon.svg" alt="شات هلا" className="logo-image" />
-                    <h1>شات هلا</h1>
+                    <img src="/favicon.svg" alt="ماتش هلا" className="logo-image" />
+                    <h1>ماتش هلا</h1>
                     <p>لوحة التحكم</p>
                 </div>
 
@@ -61,7 +61,7 @@ function Login({ onLogin }) {
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            placeholder="admin@halachat.com"
+                            placeholder="admin@matchhala.com"
                             required
                             dir="ltr"
                         />

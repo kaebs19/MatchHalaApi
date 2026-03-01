@@ -3,7 +3,8 @@ import Sidebar from '../components/Sidebar';
 import Dashboard from '../pages/Dashboard';
 import UsersManagement from '../pages/UsersManagement';
 import Conversations from '../pages/Conversations';
-import ChatRoomsManagement from '../pages/ChatRoomsManagement';
+import Swipes from '../pages/Swipes';
+import Matches from '../pages/Matches';
 import UserDetail from '../pages/UserDetail';
 import ReportsManagement from '../pages/ReportsManagement';
 import ConversationMessages from '../pages/ConversationMessages';
@@ -11,7 +12,6 @@ import Stats from '../pages/Stats';
 import Settings from '../pages/Settings';
 import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
-import BannedWords from '../pages/BannedWords';
 import VerificationRequests from '../pages/VerificationRequests';
 import SuperLikes from '../pages/SuperLikes';
 import { getReportsStats, getNotifications } from '../services/api';
@@ -151,14 +151,12 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="premium" />;
             case 'conversations':
                 return <Conversations />;
-            case 'chat-rooms':
-                return <ChatRoomsManagement initialTab="rooms" />;
-            case 'categories':
-                return <ChatRoomsManagement initialTab="categories" />;
+            case 'swipes':
+                return <Swipes />;
+            case 'matches':
+                return <Matches />;
             case 'reports':
                 return <ReportsManagement initialTab="reports" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
-            case 'flagged-messages':
-                return <ReportsManagement initialTab="flagged" onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'report-conversation':
                 return <ConversationMessages conversationId={viewingConversationFromReport} onBack={handleBackFromReportConversation} onViewUser={handleViewUserDetail} />;
             case 'stats':
@@ -169,8 +167,6 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Profile user={user} onUserUpdate={handleUserUpdate} />;
             case 'notifications':
                 return <Notifications onNotificationRead={fetchNotificationsCount} />;
-            case 'banned-words':
-                return <BannedWords />;
             case 'verification-requests':
                 return <VerificationRequests />;
             case 'super-likes':
@@ -197,13 +193,13 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'dashboard' && '📊 لوحة التحكم'}
                         {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}
                         {currentPage === 'conversations' && '💬 المحادثات'}
-                        {(currentPage === 'chat-rooms' || currentPage === 'categories') && '🏠 غرف المحادثة'}
-                        {(currentPage === 'reports' || currentPage === 'flagged-messages') && '⚠️ البلاغات والمخالفات'}
+                        {currentPage === 'swipes' && '👆 Swipes'}
+                        {currentPage === 'matches' && '💕 التطابقات'}
+                        {currentPage === 'reports' && '⚠️ البلاغات'}
                         {currentPage === 'stats' && '📈 الإحصائيات'}
                         {currentPage === 'settings' && '⚙️ الإعدادات'}
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
-                        {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
                         {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
                         {currentPage === 'super-likes' && '⚡ Super Likes'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}

@@ -64,7 +64,7 @@ function Settings() {
                 if (response.success) {
                     const settings = response.data;
                     setAppSettings({
-                        appName: settings.appName || 'HalaChat',
+                        appName: settings.appName || 'MatchHala',
                         appVersion: settings.appVersion || '1.0.0',
                         contactEmail: settings.contactEmail || '',
                         contactPhone: settings.contactPhone || '',
@@ -82,7 +82,7 @@ function Settings() {
                 console.log('استخدام القيم الافتراضية للإعدادات');
                 // استخدام قيم افتراضية
                 setAppSettings({
-                    appName: 'HalaChat',
+                    appName: 'MatchHala',
                     appVersion: '1.0.0',
                     contactEmail: '',
                     contactPhone: '',
@@ -458,7 +458,7 @@ function Settings() {
                                     type="text"
                                     value={appSettings.appName}
                                     onChange={(e) => setAppSettings({ ...appSettings, appName: e.target.value })}
-                                    placeholder="مثال: HalaChat"
+                                    placeholder="مثال: MatchHala"
                                 />
                             </div>
                             <div className="form-group">
@@ -476,7 +476,7 @@ function Settings() {
                                     type="email"
                                     value={appSettings.contactEmail}
                                     onChange={(e) => setAppSettings({ ...appSettings, contactEmail: e.target.value })}
-                                    placeholder="مثال: support@halachat.com"
+                                    placeholder="مثال: support@matchhala.com"
                                 />
                             </div>
                             <div className="form-group">
@@ -494,7 +494,7 @@ function Settings() {
                                     type="url"
                                     value={appSettings.websiteUrl}
                                     onChange={(e) => setAppSettings({ ...appSettings, websiteUrl: e.target.value })}
-                                    placeholder="مثال: https://halachat.com"
+                                    placeholder="مثال: https://matchhala.com"
                                 />
                             </div>
                             <button type="submit" className="btn-save" disabled={saving}>

@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardStats, getConversationsStats, getReportsStats, getAllChatRooms } from '../services/api';
+import { getDashboardStats, getConversationsStats, getReportsStats, getSwipesStats, getMatchesStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatCard from '../components/StatCard';
 import { formatDateLong } from '../utils/formatters';
-import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
 import './Dashboard.css';
 
@@ -28,9 +27,20 @@ function Dashboard({ user, onPageChange }) {
         reviewed: 0,
         resolved: 0
     });
-    const [roomsStats, setRoomsStats] = useState({
-        total: 0,
-        active: 0
+    const [swipesStats, setSwipesStats] = useState({
+        totalSwipes: 0,
+        totalLikes: 0,
+        totalDislikes: 0,
+        totalSuperlikes: 0,
+        swipesLast7Days: 0,
+        likeRate: 0
+    });
+    const [matchesStatsData, setMatchesStatsData] = useState({
+        totalMatches: 0,
+        activeMatches: 0,
+        unmatchedCount: 0,
+        matchesLast7Days: 0,
+        matchRate: 0
     });
     const [premiumStats, setPremiumStats] = useState({
         total: 0,
@@ -44,12 +54,6 @@ function Dashboard({ user, onPageChange }) {
         last7Days: 0
     });
     const [stealthStats, setStealthStats] = useState({ activeUsers: 0 });
-    const [flaggedStats, setFlaggedStats] = useState({
-        last24h: 0,
-        last7Days: 0,
-        last30Days: 0,
-        total: 0
-    });
     const [latestUsers, setLatestUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -67,29 +71,6 @@ function Dashboard({ user, onPageChange }) {
         fetchDashboardData();
     }, []);
 
-    // Real-time: الاستماع لتنبيهات الكلمات المحظورة
-    useEffect(() => {
-        if (!socketService.isConnected()) {
-            socketService.connect();
-        }
-
-        socketService.onBannedWordAlert((data) => {
-            const chatLabel = data.chatType === 'room' ? `غرفة: ${data.roomName || ''}` : 'محادثة خاصة';
-            showToast(
-                `⚠️ كلمة محظورة من ${data.senderName} (${chatLabel}): ${data.wordsFound?.join(', ')}`,
-                'warning'
-            );
-            setFlaggedStats(prev => ({
-                ...prev,
-                last24h: prev.last24h + 1,
-                total: prev.total + 1
-            }));
-        });
-
-        return () => {
-            socketService.offBannedWordAlert();
-        };
-    }, []);
 
     const fetchDashboardData = async () => {
         try {
@@ -103,7 +84,6 @@ function Dashboard({ user, onPageChange }) {
                 if (userStatsResponse.data.premium) setPremiumStats(userStatsResponse.data.premium);
                 if (userStatsResponse.data.superLikes) setSuperLikeStats(userStatsResponse.data.superLikes);
                 if (userStatsResponse.data.stealthMode) setStealthStats(userStatsResponse.data.stealthMode);
-                if (userStatsResponse.data.flaggedMessages) setFlaggedStats(userStatsResponse.data.flaggedMessages);
                 if (userStatsResponse.data.conversations) {
                     setConversationStats(prev => ({
                         ...prev,
@@ -134,17 +114,24 @@ function Dashboard({ user, onPageChange }) {
                 console.log('تخطي إحصائيات البلاغات');
             }
 
-            // جلب إحصائيات الغرف
+            // جلب إحصائيات Swipes
             try {
-                const roomsResponse = await getAllChatRooms(1, 1);
-                if (roomsResponse.success) {
-                    setRoomsStats({
-                        total: roomsResponse.data.pagination?.total || 0,
-                        active: roomsResponse.data.rooms?.filter(r => r.isActive).length || 0
-                    });
+                const swipesResponse = await getSwipesStats();
+                if (swipesResponse.success) {
+                    setSwipesStats(swipesResponse.data);
                 }
-            } catch (roomsErr) {
-                console.log('تخطي إحصائيات الغرف');
+            } catch (swipesErr) {
+                console.log('تخطي إحصائيات Swipes');
+            }
+
+            // جلب إحصائيات Matches
+            try {
+                const matchesResponse = await getMatchesStats();
+                if (matchesResponse.success) {
+                    setMatchesStatsData(matchesResponse.data);
+                }
+            } catch (matchesErr) {
+                console.log('تخطي إحصائيات Matches');
             }
         } catch (err) {
             console.error('خطأ في جلب البيانات:', err);
@@ -222,9 +209,13 @@ function Dashboard({ user, onPageChange }) {
                             <span className="action-icon">💬</span>
                             <span className="action-text">المحادثات</span>
                         </button>
-                        <button className="quick-action-btn rooms" onClick={() => onPageChange && onPageChange('chat-rooms')}>
-                            <span className="action-icon">🏠</span>
-                            <span className="action-text">غرف المحادثة</span>
+                        <button className="quick-action-btn swipes" onClick={() => onPageChange && onPageChange('swipes')}>
+                            <span className="action-icon">👆</span>
+                            <span className="action-text">Swipes</span>
+                        </button>
+                        <button className="quick-action-btn matches" onClick={() => onPageChange && onPageChange('matches')}>
+                            <span className="action-icon">💕</span>
+                            <span className="action-text">التطابقات</span>
                         </button>
                         <button className="quick-action-btn reports" onClick={() => onPageChange && onPageChange('reports')}>
                             <span className="action-icon">⚠️</span>
@@ -254,8 +245,8 @@ function Dashboard({ user, onPageChange }) {
                         <div className="stats-grid">
                             <StatCard icon="👥" value={stats.totalUsers} label="إجمالي المستخدمين" color="purple" onClick={() => onPageChange && onPageChange('users')} />
                             <StatCard icon="✅" value={stats.activeUsers} label="مستخدمين نشطين" color="blue" onClick={() => onPageChange && onPageChange('users')} />
-                            <StatCard icon="💬" value={conversationStats.totalConversations} label="إجمالي المحادثات" color="cyan" onClick={() => onPageChange && onPageChange('conversations')} />
-                            <StatCard icon="📨" value={conversationStats.totalMessages} label="إجمالي الرسائل" color="pink" onClick={() => onPageChange && onPageChange('conversations')} />
+                            <StatCard icon="👆" value={swipesStats.totalSwipes} label="إجمالي Swipes" color="cyan" onClick={() => onPageChange && onPageChange('swipes')} />
+                            <StatCard icon="💕" value={matchesStatsData.totalMatches} label="إجمالي التطابقات" color="pink" onClick={() => onPageChange && onPageChange('matches')} />
                         </div>
                     </div>
 
@@ -272,27 +263,32 @@ function Dashboard({ user, onPageChange }) {
                         </div>
                     )}
 
-                    {/* ===== القسم 3: الإشراف والبلاغات ===== */}
+                    {/* ===== القسم 3: Swipes & Matches ===== */}
+                    {isAdmin && (
+                        <div className="stats-section">
+                            <h3 className="section-title">💕 Swipes والتطابقات</h3>
+                            <div className="stats-grid">
+                                <StatCard icon="❤️" value={swipesStats.totalLikes} label="إعجابات" color="pink" onClick={() => onPageChange && onPageChange('swipes')} />
+                                <StatCard icon="✖️" value={swipesStats.totalDislikes} label="تمريرات" color="gray" onClick={() => onPageChange && onPageChange('swipes')} />
+                                <StatCard icon="✅" value={matchesStatsData.activeMatches} label="تطابقات نشطة" color="green" onClick={() => onPageChange && onPageChange('matches')} />
+                                <StatCard icon="📊" value={`${matchesStatsData.matchRate || 0}%`} label="نسبة التطابق" color="deep-purple" onClick={() => onPageChange && onPageChange('matches')} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== القسم 4: الإشراف والبلاغات ===== */}
                     {isAdmin && (
                         <div className="stats-section">
                             <h3 className="section-title">🛡️ الإشراف والبلاغات</h3>
                             <div className="stats-grid">
                                 <StatCard icon="⏳" value={reportsStats.pending || 0} label="بلاغات معلقة" color="yellow" onClick={() => onPageChange && onPageChange('reports')} />
                                 <StatCard icon="✅" value={reportsStats.resolved || 0} label="بلاغات تم حلها" color="light-green" onClick={() => onPageChange && onPageChange('reports')} />
-                                <StatCard
-                                    icon={flaggedStats.last24h > 0 ? '🚨' : '✅'}
-                                    value={flaggedStats.last24h}
-                                    label="رسائل مُبلّغة (24 ساعة)"
-                                    color={flaggedStats.last24h > 0 ? 'danger' : 'light-green'}
-                                    onClick={() => onPageChange && onPageChange('flagged-messages')}
-                                />
-                                <StatCard icon="🏠" value={roomsStats.total || 0} label="غرف المحادثة" color="deep-purple" onClick={() => onPageChange && onPageChange('chat-rooms')} />
                             </div>
                         </div>
                     )}
 
-                    {/* ===== القسم 4: التوزيع البياني ===== */}
-                    {isAdmin && conversationStats.totalConversations > 0 && (
+                    {/* ===== القسم 5: التوزيع البياني ===== */}
+                    {isAdmin && swipesStats.totalSwipes > 0 && (
                         <div className="charts-section">
                             <h3 className="section-title">📊 التوزيع البياني</h3>
                             <div className="charts-grid">
@@ -327,29 +323,34 @@ function Dashboard({ user, onPageChange }) {
                                     </div>
                                 </div>
 
-                                {/* Pie Chart (CSS) */}
+                                {/* Pie Chart - Swipes */}
                                 <div className="chart-card">
-                                    <h4>نوع المحادثات</h4>
+                                    <h4>توزيع Swipes</h4>
                                     <div className="pie-chart-container">
                                         <div className="pie-chart" style={{
                                             background: `conic-gradient(
-                                                #6366f1 0deg ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg,
-                                                #f59e0b ${(conversationStats.privateConversations / conversationStats.totalConversations * 360) || 0}deg 360deg
+                                                #e91e63 0deg ${(swipesStats.totalLikes / swipesStats.totalSwipes * 360) || 0}deg,
+                                                #7c3aed ${(swipesStats.totalLikes / swipesStats.totalSwipes * 360) || 0}deg ${((swipesStats.totalLikes + swipesStats.totalSuperlikes) / swipesStats.totalSwipes * 360) || 0}deg,
+                                                #9e9e9e ${((swipesStats.totalLikes + swipesStats.totalSuperlikes) / swipesStats.totalSwipes * 360) || 0}deg 360deg
                                             )`
                                         }}>
                                             <div className="pie-center">
-                                                <span>{conversationStats.totalConversations}</span>
-                                                <small>محادثة</small>
+                                                <span>{swipesStats.totalSwipes}</span>
+                                                <small>swipe</small>
                                             </div>
                                         </div>
                                         <div className="pie-legend">
                                             <div className="legend-item">
-                                                <span className="legend-color indigo"></span>
-                                                <span>خاصة ({conversationStats.privateConversations})</span>
+                                                <span className="legend-color" style={{background: '#e91e63'}}></span>
+                                                <span>إعجاب ({swipesStats.totalLikes})</span>
                                             </div>
                                             <div className="legend-item">
-                                                <span className="legend-color amber"></span>
-                                                <span>جماعية ({conversationStats.groupConversations})</span>
+                                                <span className="legend-color" style={{background: '#7c3aed'}}></span>
+                                                <span>Super Like ({swipesStats.totalSuperlikes})</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <span className="legend-color" style={{background: '#9e9e9e'}}></span>
+                                                <span>تمرير ({swipesStats.totalDislikes})</span>
                                             </div>
                                         </div>
                                     </div>

@@ -1,0 +1,100 @@
+.swipes-page {
+    padding: 20px;
+}
+
+.swipes-page .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.swipes-page .filter-bar label {
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.swipes-page .filter-bar select {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+}
+
+/* User Cell */
+.swipe-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.swipe-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.swipe-name {
+    display: block;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.swipe-email {
+    display: block;
+    color: #999;
+    font-size: 12px;
+    direction: ltr;
+    text-align: right;
+}
+
+.swipe-arrow {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.swipe-date {
+    color: #666;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* Type Badges */
+.type-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.type-badge.like {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.type-badge.dislike {
+    background: #f5f5f5;
+    color: #757575;
+}
+
+.type-badge.superlike {
+    background: #ede7f6;
+    color: #7c3aed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .swipe-arrow {
+        font-size: 14px;
+    }
+}

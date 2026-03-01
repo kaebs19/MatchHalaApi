@@ -23,9 +23,15 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
-            id: 'chat-rooms',
-            name: 'غرف المحادثة',
-            icon: '🏠',
+            id: 'swipes',
+            name: 'Swipes',
+            icon: '👆',
+            adminOnly: true
+        },
+        {
+            id: 'matches',
+            name: 'التطابقات',
+            icon: '💕',
             adminOnly: true
         },
         {
@@ -44,12 +50,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             id: 'verification-requests',
             name: 'طلبات التوثيق',
             icon: '✅',
-            adminOnly: true
-        },
-        {
-            id: 'banned-words',
-            name: 'الكلمات المحظورة',
-            icon: '🚫',
             adminOnly: true
         },
         {
@@ -72,16 +72,14 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
     const isActive = (itemId) => {
         if (currentPage === itemId) return true;
         if (itemId === 'users' && currentPage === 'premium-users') return true;
-        if (itemId === 'chat-rooms' && currentPage === 'categories') return true;
-        if (itemId === 'reports' && currentPage === 'flagged-messages') return true;
         return false;
     };
 
     return (
         <div className="sidebar">
             <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
-                <img src="/favicon.svg" alt="شات هلا" className="sidebar-logo" />
-                <h2>شات هلا</h2>
+                <img src="/favicon.svg" alt="ماتش هلا" className="sidebar-logo" />
+                <h2>ماتش هلا</h2>
                 <p>لوحة التحكم</p>
             </div>
 

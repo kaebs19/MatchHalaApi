@@ -43,7 +43,7 @@ class NotificationService {
             icon: '/logo192.png',
             badge: '/logo192.png',
             vibrate: [200, 100, 200],
-            tag: 'halachat-message',
+            tag: 'matchhala-message',
             requireInteraction: false,
             ...options
         };

@@ -82,6 +82,48 @@ router.get('/', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/matches/admin/list
+// @desc    قائمة جميع التطابقات (أدمن)
+// @access  Admin
+router.get('/admin/list', protect, adminOnly, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, status } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        const filter = {};
+        if (status === 'active') filter.isActive = true;
+        if (status === 'unmatched') filter.isActive = false;
+
+        const matches = await Match.find(filter)
+            .populate('users', 'name email profileImage isPremium verification.isVerified')
+            .populate('conversation', '_id')
+            .sort({ createdAt: -1 })
+            .limit(limitNum)
+            .skip((pageNum - 1) * limitNum);
+
+        const total = await Match.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: {
+                matches,
+                total,
+                currentPage: pageNum,
+                totalPages: Math.ceil(total / limitNum)
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في جلب قائمة التطابقات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   GET /api/matches/:id
 // @desc    جلب تطابق محدد
 // @access  Protected

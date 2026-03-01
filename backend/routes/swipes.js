@@ -493,6 +493,49 @@ router.get('/my-likes', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/swipes/admin/list
+// @desc    قائمة جميع السوايبات (أدمن)
+// @access  Admin
+router.get('/admin/list', protect, adminOnly, async (req, res) => {
+    try {
+        const { page = 1, limit = 20, type } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+
+        const filter = {};
+        if (type && ['like', 'dislike', 'superlike'].includes(type)) {
+            filter.type = type;
+        }
+
+        const swipes = await Swipe.find(filter)
+            .populate('swiper', 'name email profileImage isPremium verification.isVerified')
+            .populate('swiped', 'name email profileImage isPremium verification.isVerified')
+            .sort({ createdAt: -1 })
+            .limit(limitNum)
+            .skip((pageNum - 1) * limitNum);
+
+        const total = await Swipe.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: {
+                swipes,
+                total,
+                currentPage: pageNum,
+                totalPages: Math.ceil(total / limitNum)
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في جلب قائمة السوايبات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   GET /api/swipes/stats
 // @desc    إحصائيات السوايب (أدمن)
 // @access  Admin

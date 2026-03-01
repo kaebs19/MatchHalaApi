@@ -1,4 +1,4 @@
-// HalaChat Dashboard - API Configuration
+// MatchHala Dashboard - API Configuration
 // ملف الاتصال بالـ Backend API
 
 import axios from 'axios';
@@ -320,99 +320,39 @@ export const uploadProfileImage = async (file) => {
     return response.data;
 };
 
-// ============ Chat Rooms APIs ============
+// ============ Swipes APIs (Admin) ============
 
-// الحصول على جميع غرف المحادثة (Admin)
-export const getAllChatRooms = async (page = 1, limit = 20, filters = {}) => {
-    const params = new URLSearchParams({ page, limit, ...filters });
-    const response = await api.get(`/chat-rooms?${params}`);
+// إحصائيات Swipes
+export const getSwipesStats = async () => {
+    const response = await api.get('/swipes/stats');
     return response.data;
 };
 
-// الحصول على الغرف العامة (للمستخدمين)
-export const getPublicChatRooms = async () => {
-    const response = await api.get('/chat-rooms/public');
+// قائمة Swipes
+export const getSwipesList = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.type) queryParams.append('type', params.type);
+    const response = await api.get(`/swipes/admin/list?${queryParams}`);
     return response.data;
 };
 
-// الحصول على غرفة واحدة
-export const getChatRoom = async (roomId) => {
-    const response = await api.get(`/chat-rooms/${roomId}`);
+// ============ Matches APIs (Admin) ============
+
+// إحصائيات Matches
+export const getMatchesStats = async () => {
+    const response = await api.get('/matches/admin/stats');
     return response.data;
 };
 
-// إنشاء غرفة جديدة
-export const createChatRoom = async (roomData) => {
-    const response = await api.post('/chat-rooms', roomData);
-    return response.data;
-};
-
-// تحديث غرفة
-export const updateChatRoom = async (roomId, roomData) => {
-    const response = await api.put(`/chat-rooms/${roomId}`, roomData);
-    return response.data;
-};
-
-// حذف غرفة
-export const deleteChatRoom = async (roomId) => {
-    const response = await api.delete(`/chat-rooms/${roomId}`);
-    return response.data;
-};
-
-// حذف جميع رسائل الغرفة
-export const deleteRoomMessages = async (roomId) => {
-    const response = await api.delete(`/chat-rooms/${roomId}/messages`);
-    return response.data;
-};
-
-// تفعيل/إلغاء تفعيل غرفة
-export const toggleChatRoomActive = async (roomId) => {
-    const response = await api.put(`/chat-rooms/${roomId}/toggle-active`);
-    return response.data;
-};
-
-// قفل/فتح غرفة
-export const toggleChatRoomLock = async (roomId) => {
-    const response = await api.put(`/chat-rooms/${roomId}/toggle-lock`);
-    return response.data;
-};
-
-// إحصائيات الغرفة
-export const getChatRoomStats = async (roomId) => {
-    const response = await api.get(`/chat-rooms/${roomId}/stats`);
-    return response.data;
-};
-
-// رفع صورة الغرفة
-export const uploadRoomImage = async (roomId, file) => {
-    const formData = new FormData();
-    formData.append('roomImage', file);
-
-    const response = await api.post(`/chat-rooms/${roomId}/upload-image`, formData, {
-        headers: {
-            'Content-Type': 'multipart/form-data'
-        }
-    });
-    return response.data;
-};
-
-// جلب رسائل الغرفة
-export const getRoomMessages = async (roomId, page = 1, limit = 50, search = '') => {
-    const params = new URLSearchParams({ page, limit });
-    if (search) params.append('search', search);
-    const response = await api.get(`/chat-rooms/${roomId}/messages?${params}`);
-    return response.data;
-};
-
-// جلب بلاغات الغرفة
-export const getRoomReports = async (roomId) => {
-    const response = await api.get(`/chat-rooms/${roomId}/reports`);
-    return response.data;
-};
-
-// تثبيت إعلان في الغرفة
-export const pinRoomMessage = async (roomId, content) => {
-    const response = await api.put(`/chat-rooms/${roomId}/pin`, { content });
+// قائمة Matches
+export const getMatchesList = async (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', params.page);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.status) queryParams.append('status', params.status);
+    const response = await api.get(`/matches/admin/list?${queryParams}`);
     return response.data;
 };
 
@@ -446,60 +386,6 @@ export const deleteNotification = async (notificationId) => {
     return response.data;
 };
 
-// ============ Banned Words APIs ============
-
-// الحصول على جميع الكلمات المحظورة
-export const getBannedWords = async (params = {}) => {
-    const queryParams = new URLSearchParams();
-    if (params.page) queryParams.append('page', params.page);
-    if (params.limit) queryParams.append('limit', params.limit);
-    if (params.type) queryParams.append('type', params.type);
-    if (params.isActive !== undefined) queryParams.append('isActive', params.isActive);
-    const response = await api.get(`/banned-words?${queryParams}`);
-    return response.data;
-};
-
-// إضافة كلمة محظورة
-export const addBannedWord = async (wordData) => {
-    const response = await api.post('/banned-words', wordData);
-    return response.data;
-};
-
-// إضافة كلمات محظورة بالجملة
-export const addBannedWordsBulk = async (words) => {
-    const response = await api.post('/banned-words/bulk', { words });
-    return response.data;
-};
-
-// تحديث كلمة محظورة
-export const updateBannedWord = async (wordId, wordData) => {
-    const response = await api.put(`/banned-words/${wordId}`, wordData);
-    return response.data;
-};
-
-// حذف كلمة محظورة
-export const deleteBannedWord = async (wordId) => {
-    const response = await api.delete(`/banned-words/${wordId}`);
-    return response.data;
-};
-
-// تفعيل/إلغاء تفعيل كلمة محظورة
-export const toggleBannedWordActive = async (wordId) => {
-    const response = await api.put(`/banned-words/${wordId}/toggle`);
-    return response.data;
-};
-
-// فحص نص
-export const checkBannedWords = async (text) => {
-    const response = await api.post('/banned-words/check', { text });
-    return response.data;
-};
-
-// إحصائيات الكلمات المحظورة
-export const getBannedWordsStats = async () => {
-    const response = await api.get('/banned-words/stats');
-    return response.data;
-};
 
 // ============ طلبات التوثيق (Admin) ============
 
@@ -543,18 +429,6 @@ export const getSuperLikes = async (params = {}) => {
     if (params.startDate) queryParams.append('startDate', params.startDate);
     if (params.endDate) queryParams.append('endDate', params.endDate);
     const response = await api.get(`/stats/super-likes?${queryParams}`);
-    return response.data;
-};
-
-// ============ Flagged Messages (Admin) ============
-
-export const getFlaggedMessages = async (params = {}) => {
-    const queryParams = new URLSearchParams();
-    if (params.page) queryParams.append('page', params.page);
-    if (params.limit) queryParams.append('limit', params.limit);
-    if (params.severity) queryParams.append('severity', params.severity);
-    if (params.chatType) queryParams.append('chatType', params.chatType);
-    const response = await api.get(`/stats/flagged-messages?${queryParams}`);
     return response.data;
 };
 
