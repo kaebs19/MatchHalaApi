@@ -2267,8 +2267,8 @@ router.put('/notifications/read-all', protect, async (req, res) => {
         await Notification.updateMany(
             {
                 $or: [
-                    { recipients: req.user._id },
-                    { recipientType: 'all' }
+                    { targetUsers: req.user._id },
+                    { recipients: 'all' }
                 ],
                 readBy: { $ne: req.user._id }
             },
