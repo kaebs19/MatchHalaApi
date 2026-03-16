@@ -317,6 +317,76 @@ router.get('/users/search', protect, async (req, res) => {
 });
 
 // ==========================================
+// عرض بروفايل مستخدم
+// ==========================================
+
+// @route   GET /api/mobile/users/:id/profile
+// @desc    جلب بيانات بروفايل مستخدم بالـ ID
+// @access  Protected
+router.get('/users/:id/profile', protect, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'معرف المستخدم غير صالح' });
+        }
+
+        const user = await User.findById(id).select(
+            'name profileImage birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive'
+        );
+
+        if (!user || !user.isActive) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // تحقق إذا الطالب محظور
+        if (user.blockedUsers && user.blockedUsers.some(blockedId => blockedId.toString() === req.user._id.toString())) {
+            return res.status(403).json({ success: false, message: 'لا يمكنك عرض هذا البروفايل' });
+        }
+
+        // حساب المسافة إذا كلا المستخدمين لديهم موقع
+        let distance = null;
+        if (
+            req.user.location && req.user.location.coordinates &&
+            user.location && user.location.coordinates
+        ) {
+            const [lng1, lat1] = req.user.location.coordinates;
+            const [lng2, lat2] = user.location.coordinates;
+            const R = 6371; // نصف قطر الأرض بالكيلومتر
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) ** 2;
+            distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+        }
+
+        const profileData = {
+            _id: user._id,
+            name: user.name,
+            profileImage: user.profileImage,
+            birthDate: user.birthDate,
+            gender: user.gender,
+            country: user.country,
+            bio: user.bio,
+            isOnline: user.isOnline,
+            lastLogin: user.lastLogin,
+            isPremium: user.isPremium,
+            verification: {
+                isVerified: user.verification?.isVerified || false,
+                status: user.verification?.status || 'none'
+            },
+            distance
+        };
+
+        res.json({ success: true, data: { user: profileData } });
+    } catch (err) {
+        console.error('خطأ في جلب البروفايل:', err);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ==========================================
 // نظام زيارات البروفايل
 // ==========================================
 
