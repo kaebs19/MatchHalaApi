@@ -2273,10 +2273,22 @@ router.get('/notifications', protect, async (req, res) => {
             'readBy._id': { $ne: req.user._id }
         });
 
+        // تحويل صور المرسلين إلى روابط كاملة
+        const formattedNotifications = notifications.map(n => {
+            const notif = n.toObject();
+            if (notif.sender && notif.sender.profileImage) {
+                notif.sender.profileImage = getFullUrl(notif.sender.profileImage);
+            }
+            if (notif.image) {
+                notif.image = getFullUrl(notif.image);
+            }
+            return notif;
+        });
+
         res.status(200).json({
             success: true,
             data: {
-                notifications,
+                notifications: formattedNotifications,
                 total,
                 unreadCount,
                 currentPage: parseInt(page),
