@@ -2320,9 +2320,13 @@ router.put('/notifications/:id/read', protect, async (req, res) => {
             });
         }
 
-        // إضافة المستخدم لقائمة القراء
-        if (!notification.readBy.includes(req.user._id)) {
-            notification.readBy.push(req.user._id);
+        // إضافة المستخدم لقائمة القراء (بنفس format الموجود في DB)
+        const alreadyRead = notification.readBy.some(r =>
+            (r._id && r._id.toString() === req.user._id.toString()) ||
+            (r.toString() === req.user._id.toString())
+        );
+        if (!alreadyRead) {
+            notification.readBy.push({ _id: req.user._id, readAt: new Date() });
             await notification.save();
         }
 
@@ -2352,10 +2356,10 @@ router.put('/notifications/read-all', protect, async (req, res) => {
                     { targetUsers: req.user._id },
                     { recipients: 'all' }
                 ],
-                readBy: { $ne: req.user._id }
+                'readBy._id': { $ne: req.user._id }
             },
             {
-                $addToSet: { readBy: req.user._id }
+                $addToSet: { readBy: { _id: req.user._id, readAt: new Date() } }
             }
         );
 
