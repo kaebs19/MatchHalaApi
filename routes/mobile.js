@@ -364,7 +364,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         const profileData = {
             _id: user._id,
             name: user.name,
-            profileImage: user.profileImage,
+            profileImage: getFullUrl(user.profileImage),
             birthDate: user.birthDate,
             gender: user.gender,
             country: user.country,
