@@ -1660,7 +1660,7 @@ router.put('/conversations/:id/mute', protect, async (req, res) => {
 // @access  Private
 router.post('/messages/send', protect, async (req, res) => {
     try {
-        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata } = req.body;
+        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
         if (!conversationId || !content) {
             return res.status(400).json({
@@ -1711,7 +1711,7 @@ router.post('/messages/send', protect, async (req, res) => {
         }
 
         // إنشاء الرسالة
-        const message = await Message.create({
+        const messageData = {
             conversation: conversationId,
             sender: req.user._id,
             content,
@@ -1719,7 +1719,10 @@ router.post('/messages/send', protect, async (req, res) => {
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
             status: 'sent'
-        });
+        };
+        if (replyTo) messageData.replyTo = replyTo;
+
+        const message = await Message.create(messageData);
 
         // تحديث آخر رسالة + عداد الرسائل
         conversation.lastMessage = message._id;
@@ -1727,20 +1730,20 @@ router.post('/messages/send', protect, async (req, res) => {
         conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
         await conversation.save();
 
-        // جلب الرسالة مع بيانات المرسل
+        // جلب الرسالة مع بيانات المرسل + الرد
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium verification.isVerified');
+            .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl',
+                populate: { path: 'sender', select: 'name' }
+            });
 
         // إرسال عبر Socket.IO
-        console.log('🔥 About to emit new-message to room:', `conversation-${conversationId}`);
-        console.log('🔥 global.io exists:', !!global.io);
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: populatedMessage
             });
-            console.log('🔥 Emitted!');
-        } else {
-            console.log('❌ global.io is undefined!');
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
@@ -1782,6 +1785,132 @@ router.post('/messages/send', protect, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/messages/send-image
+// @desc    إرسال صورة — يستقبل conversationId من body (للتوافق مع تطبيق iOS)
+// @access  Private
+router.post('/messages/send-image', protect, uploadMessageImage.single('image'), async (req, res) => {
+    // أعد التوجيه لنفس المنطق مع أخذ conversationId من body
+    req.params.conversationId = req.body.conversationId;
+
+    if (!req.params.conversationId) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+            success: false,
+            message: 'conversationId مطلوب'
+        });
+    }
+
+    // أكمل مع نفس handler الموجود
+    try {
+        const { conversationId } = req.params;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'لم يتم رفع صورة'
+            });
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email fcmToken');
+
+        if (!conversation) {
+            fs.unlinkSync(req.file.path);
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة'
+            });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === senderId.toString()
+        );
+
+        if (!isParticipant) {
+            fs.unlinkSync(req.file.path);
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+        const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
+
+        const message = await Message.create({
+            conversation: conversationId,
+            sender: senderId,
+            type: 'image',
+            mediaUrl: mediaUrl,
+            content: req.body.caption || '',
+            status: 'sent'
+        });
+
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified');
+
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: populatedMessage
+            });
+        }
+
+        const recipients = conversation.participants.filter(
+            p => p._id.toString() !== senderId.toString()
+        );
+
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+
+            if (!isOnline && recipient.fcmToken) {
+                try {
+                    await pushNotificationService.sendNewMessageNotification(
+                        recipient,
+                        req.user,
+                        { type: 'image', content: '📷 صورة' },
+                        conversationId
+                    );
+                } catch (pushErr) {
+                    console.error('Push error:', pushErr.message);
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                message: {
+                    _id: populatedMessage._id,
+                    conversationId: conversationId,
+                    sender: populatedMessage.sender?._id || senderId,
+                    senderUser: populatedMessage.sender,
+                    content: populatedMessage.content,
+                    type: populatedMessage.type,
+                    mediaUrl: populatedMessage.mediaUrl,
+                    isRead: false,
+                    createdAt: populatedMessage.createdAt,
+                    updatedAt: populatedMessage.updatedAt
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Send image error:', error);
+        if (req.file) {
+            try { fs.unlinkSync(req.file.path); } catch(e) {}
+        }
+        res.status(500).json({
+            success: false,
+            message: 'حدث خطأ في إرسال الصورة',
             error: error.message
         });
     }
@@ -2037,17 +2166,20 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
         }
 
         const messages = await Message.find({
-            conversation: conversationId,
-            isDeleted: false
+            conversation: conversationId
         })
             .populate('sender', 'name email profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl',
+                populate: { path: 'sender', select: 'name' }
+            })
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
         const total = await Message.countDocuments({
-            conversation: conversationId,
-            isDeleted: false
+            conversation: conversationId
         });
 
         res.status(200).json({
@@ -2487,6 +2619,256 @@ router.put('/device/update-token', protect, async (req, res) => {
 
     } catch (error) {
         console.error('خطأ في تحديث Token:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// ==========================================
+// ردود الفعل على الرسائل | Message Reactions
+// ==========================================
+
+// @route   POST /api/mobile/messages/:messageId/react
+// @desc    إضافة/إزالة ردة فعل (toggle)
+// @access  Private
+router.post('/messages/:messageId/react', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        const userId = req.user._id;
+
+        if (!emoji) {
+            return res.status(400).json({
+                success: false,
+                message: 'الإيموجي مطلوب'
+            });
+        }
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({
+                success: false,
+                message: 'الرسالة غير موجودة'
+            });
+        }
+
+        // التحقق من صلاحية المستخدم
+        const conversation = await Conversation.findById(message.conversation);
+        const isParticipant = conversation && conversation.participants.some(
+            p => p.toString() === userId.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية'
+            });
+        }
+
+        // Toggle: إذا نفس الإيموجي من نفس المستخدم → أزله، وإلا أضفه
+        const existingIndex = message.reactions.findIndex(
+            r => r.user.toString() === userId.toString() && r.emoji === emoji
+        );
+
+        if (existingIndex > -1) {
+            message.reactions.splice(existingIndex, 1);
+        } else {
+            // أزل أي reaction قديم من نفس المستخدم (واحد فقط لكل مستخدم)
+            message.reactions = message.reactions.filter(
+                r => r.user.toString() !== userId.toString()
+            );
+            message.reactions.push({ user: userId, emoji, createdAt: new Date() });
+        }
+
+        await message.save();
+
+        // بث الحدث عبر Socket
+        if (global.io) {
+            global.io.to(`conversation-${message.conversation}`).emit('message-reaction', {
+                messageId: message._id,
+                reactions: message.reactions,
+                userId: userId.toString(),
+                emoji
+            });
+        }
+
+        res.json({
+            success: true,
+            message: existingIndex > -1 ? 'تم إزالة ردة الفعل' : 'تم إضافة ردة الفعل',
+            data: { reactions: message.reactions }
+        });
+
+    } catch (error) {
+        console.error('خطأ في ردة الفعل:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// ==========================================
+// حذف رسالة | Delete Message
+// ==========================================
+
+// @route   DELETE /api/mobile/messages/:messageId
+// @desc    حذف ناعم لرسالة (المرسل فقط)
+// @access  Private
+router.delete('/messages/:messageId', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user._id;
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({
+                success: false,
+                message: 'الرسالة غير موجودة'
+            });
+        }
+
+        // فقط المرسل يمكنه الحذف
+        if (message.sender.toString() !== userId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكنك حذف رسالة شخص آخر'
+            });
+        }
+
+        // حذف ناعم
+        message.isDeleted = true;
+        message.deletedAt = new Date();
+        message.content = '';
+        message.mediaUrl = '';
+        await message.save();
+
+        // بث الحدث عبر Socket
+        if (global.io) {
+            global.io.to(`conversation-${message.conversation}`).emit('message-deleted', {
+                messageId: message._id,
+                conversationId: message.conversation
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'تم حذف الرسالة'
+        });
+
+    } catch (error) {
+        console.error('خطأ في حذف الرسالة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// ==========================================
+// إعادة توجيه رسالة | Forward Message
+// ==========================================
+
+// @route   POST /api/mobile/messages/forward
+// @desc    إعادة توجيه رسالة لمحادثة أخرى
+// @access  Private
+router.post('/messages/forward', protect, async (req, res) => {
+    try {
+        const { messageId, targetConversationId } = req.body;
+        const userId = req.user._id;
+
+        if (!messageId || !targetConversationId) {
+            return res.status(400).json({
+                success: false,
+                message: 'معرف الرسالة والمحادثة المستهدفة مطلوبان'
+            });
+        }
+
+        // جلب الرسالة الأصلية
+        const originalMessage = await Message.findById(messageId);
+        if (!originalMessage || originalMessage.isDeleted) {
+            return res.status(404).json({
+                success: false,
+                message: 'الرسالة غير موجودة'
+            });
+        }
+
+        // التحقق من المحادثة المستهدفة
+        const targetConversation = await Conversation.findById(targetConversationId)
+            .populate('participants', 'name email fcmToken');
+
+        if (!targetConversation) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة المستهدفة غير موجودة'
+            });
+        }
+
+        const isParticipant = targetConversation.participants.some(
+            p => p._id.toString() === userId.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({
+                success: false,
+                message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // إنشاء الرسالة المُعاد توجيهها
+        const forwardedMessage = await Message.create({
+            conversation: targetConversationId,
+            sender: userId,
+            content: originalMessage.content || '',
+            type: originalMessage.type,
+            mediaUrl: originalMessage.mediaUrl || null,
+            status: 'sent'
+        });
+
+        // تحديث آخر رسالة
+        targetConversation.lastMessage = forwardedMessage._id;
+        await targetConversation.save();
+
+        const populatedMessage = await Message.findById(forwardedMessage._id)
+            .populate('sender', 'name email profileImage isPremium verification.isVerified');
+
+        // بث عبر Socket
+        if (global.io) {
+            global.io.to(`conversation-${targetConversationId}`).emit('new-message', {
+                message: populatedMessage
+            });
+        }
+
+        // إشعارات
+        const recipients = targetConversation.participants.filter(
+            p => p._id.toString() !== userId.toString()
+        );
+        for (const recipient of recipients) {
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipient._id.toString());
+            if (!isOnline) {
+                try {
+                    await pushNotificationService.sendNewMessageNotification(
+                        recipient._id,
+                        req.user.name,
+                        originalMessage.type === 'image' ? '📷 صورة' : (originalMessage.content || ''),
+                        targetConversationId
+                    );
+                } catch (pushErr) {
+                    console.error('Push error:', pushErr.message);
+                }
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إعادة توجيه الرسالة',
+            data: { message: populatedMessage }
+        });
+
+    } catch (error) {
+        console.error('خطأ في إعادة التوجيه:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',

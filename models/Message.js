@@ -42,6 +42,17 @@ const messageSchema = new mongoose.Schema({
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         readAt: { type: Date, default: Date.now }
     }],
+    // الرد على رسالة
+    replyTo: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Message'
+    },
+    // ردود الفعل (Reactions)
+    reactions: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        emoji: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now }
+    }],
     isDeleted: {
         type: Boolean,
         default: false
