@@ -185,6 +185,14 @@ const userSchema = new mongoose.Schema({
     superLikes: {
         daily: { type: Number, default: 0 },
         lastReset: { type: Date, default: Date.now }
+    },
+
+    // مخالفات الكلمات المحظورة
+    bannedWords: {
+        violations: { type: Number, default: 0 },
+        isBanned: { type: Boolean, default: false },
+        bannedAt: { type: Date, default: null },
+        banReason: { type: String, default: null }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً

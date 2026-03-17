@@ -220,11 +220,17 @@ router.post('/seed', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.get('/stats', protect, adminOnly, async (req, res) => {
     try {
-        const [totalWords, activeWords, flaggedPending, flaggedTotal] = await Promise.all([
+        const now = new Date();
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+        const [totalWords, activeWords, flaggedPending, flaggedTotal, flagged7d, flagged30d] = await Promise.all([
             BannedWord.countDocuments(),
             BannedWord.countDocuments({ isActive: true }),
             FlaggedMessage.countDocuments({ status: 'pending' }),
-            FlaggedMessage.countDocuments()
+            FlaggedMessage.countDocuments(),
+            FlaggedMessage.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+            FlaggedMessage.countDocuments({ createdAt: { $gte: thirtyDaysAgo } })
         ]);
 
         const byLanguage = await BannedWord.aggregate([
@@ -235,14 +241,39 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             { $group: { _id: '$category', count: { $sum: 1 } } }
         ]);
 
+        // أكثر المخالفين
+        const topViolators = await User.find(
+            { 'bannedWords.violations': { $gt: 0 } },
+            'name email bannedWords.violations bannedWords.isBanned'
+        ).sort({ 'bannedWords.violations': -1 }).limit(10);
+
+        // أكثر الكلمات المطابقة
+        const topMatchedWords = await FlaggedMessage.aggregate([
+            { $unwind: '$matchedWords' },
+            { $group: { _id: '$matchedWords', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+        ]);
+
+        // المستخدمين المحظورين تلقائياً
+        const autoBannedCount = await User.countDocuments({ 'bannedWords.isBanned': true });
+
         res.json({
             success: true,
             data: {
                 totalWords,
                 activeWords,
-                flaggedMessages: { pending: flaggedPending, total: flaggedTotal },
+                flaggedMessages: {
+                    pending: flaggedPending,
+                    total: flaggedTotal,
+                    last7Days: flagged7d,
+                    last30Days: flagged30d
+                },
                 byLanguage,
-                byCategory
+                byCategory,
+                topViolators,
+                topMatchedWords,
+                autoBannedCount
             }
         });
     } catch (error) {

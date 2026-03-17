@@ -47,7 +47,7 @@ const messageStorage = multer.diskStorage({
 
 const uploadMessageImage = multer({
     storage: messageStorage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+    limits: { fileSize: 1 * 1024 * 1024 }, // 1MB max — التطبيق يجب أن يضغط الصورة قبل الإرسال
     fileFilter: (req, file, cb) => {
         const allowedTypes = /jpeg|jpg|png|gif|webp/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -1664,6 +1664,15 @@ router.post('/messages/send', protect, async (req, res) => {
     try {
         const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
+        // فحص حظر الكلمات المحظورة
+        if (req.user.bannedWords?.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة',
+                code: 'USER_BANNED'
+            });
+        }
+
         if (!conversationId || !content) {
             return res.status(400).json({
                 success: false,
@@ -1736,7 +1745,8 @@ router.post('/messages/send', protect, async (req, res) => {
 
         const message = await Message.create(messageData);
 
-        // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة
+        // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة + تنبيه أدمن + حظر تلقائي
+        let userViolations = 0;
         if (bannedResult.hasBannedWords) {
             await FlaggedMessage.create({
                 message: message._id,
@@ -1745,6 +1755,46 @@ router.post('/messages/send', protect, async (req, res) => {
                 originalContent: content,
                 matchedWords: bannedResult.matchedWords
             });
+
+            // زيادة عدد المخالفات
+            const updatedUser = await User.findByIdAndUpdate(req.user._id,
+                { $inc: { 'bannedWords.violations': 1 } }, { new: true }
+            );
+            userViolations = updatedUser.bannedWords?.violations || 1;
+
+            // حظر تلقائي عند 3 مخالفات
+            if (userViolations >= 3) {
+                await User.findByIdAndUpdate(req.user._id, {
+                    'bannedWords.isBanned': true,
+                    'bannedWords.bannedAt': new Date(),
+                    'bannedWords.banReason': 'حظر تلقائي - 3 مخالفات كلمات محظورة',
+                    isActive: false
+                });
+            }
+
+            // تنبيه جميع الأدمن
+            try {
+                const admins = await User.find({ role: 'admin' }, '_id');
+                const banText = userViolations >= 3 ? ' (تم حظر الحساب تلقائياً!)' : ` (مخالفة ${userViolations}/3)`;
+                for (const admin of admins) {
+                    await pushNotificationService.sendNotificationToUser(admin._id, {
+                        title: '⚠️ رسالة محظورة',
+                        body: `${req.user.name} أرسل كلمات محظورة: ${bannedResult.matchedWords.join(', ')}${banText}`
+                    }, { type: 'flagged_message', conversationId, senderId: req.user._id.toString() });
+                }
+                // Socket event للـ admin dashboard
+                if (global.io) {
+                    global.io.emit('admin-flagged-message', {
+                        sender: req.user.name,
+                        senderId: req.user._id,
+                        matchedWords: bannedResult.matchedWords,
+                        violations: userViolations,
+                        autoBanned: userViolations >= 3
+                    });
+                }
+            } catch (notifErr) {
+                console.error('خطأ في إرسال تنبيه الأدمن:', notifErr.message);
+            }
         }
 
         // تحديث آخر رسالة + عداد الرسائل
@@ -1797,11 +1847,23 @@ router.post('/messages/send', protect, async (req, res) => {
             }
         }
 
-        res.status(201).json({
+        const response = {
             success: true,
             message: 'تم إرسال الرسالة',
             data: { message: populatedMessage }
-        });
+        };
+
+        // تحذير المرسل عند اكتشاف كلمات محظورة
+        if (bannedResult.hasBannedWords) {
+            response.warning = {
+                message: 'تم اكتشاف كلمات غير لائقة في رسالتك',
+                violations: userViolations,
+                maxViolations: 3,
+                banned: userViolations >= 3
+            };
+        }
+
+        res.status(201).json(response);
 
     } catch (error) {
         console.error('خطأ في إرسال الرسالة:', error);
@@ -1838,6 +1900,26 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                 success: false,
                 message: 'لم يتم رفع صورة'
             });
+        }
+
+        // فحص حد الصور اليومي (2 للعادي، لا حد للبريميوم)
+        if (!req.user.isPremium) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const imageCount = await Message.countDocuments({
+                sender: senderId,
+                type: 'image',
+                createdAt: { $gte: today }
+            });
+            if (imageCount >= 2) {
+                if (req.file) fs.unlinkSync(req.file.path);
+                return res.status(429).json({
+                    success: false,
+                    message: 'وصلت للحد اليومي (2 صور). اشترك في Premium لإرسال بلا حدود',
+                    code: 'IMAGE_LIMIT_REACHED',
+                    data: { dailyLimit: 2, sent: imageCount }
+                });
+            }
         }
 
         const conversation = await Conversation.findById(conversationId)
@@ -1952,6 +2034,26 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                 success: false,
                 message: 'لم يتم رفع صورة'
             });
+        }
+
+        // فحص حد الصور اليومي (2 للعادي، لا حد للبريميوم)
+        if (!req.user.isPremium) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const imageCount = await Message.countDocuments({
+                sender: senderId,
+                type: 'image',
+                createdAt: { $gte: today }
+            });
+            if (imageCount >= 2) {
+                if (req.file) fs.unlinkSync(req.file.path);
+                return res.status(429).json({
+                    success: false,
+                    message: 'وصلت للحد اليومي (2 صور). اشترك في Premium لإرسال بلا حدود',
+                    code: 'IMAGE_LIMIT_REACHED',
+                    data: { dailyLimit: 2, sent: imageCount }
+                });
+            }
         }
 
         // التحقق من المحادثة

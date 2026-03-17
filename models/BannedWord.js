@@ -33,7 +33,6 @@ const bannedWordSchema = new mongoose.Schema({
     timestamps: true
 });
 
-bannedWordSchema.index({ word: 1 });
 bannedWordSchema.index({ isActive: 1 });
 
 const BannedWord = mongoose.model('BannedWord', bannedWordSchema);
