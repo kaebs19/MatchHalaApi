@@ -18,6 +18,8 @@ const notificationService = require('../services/notificationService');
 const pushNotificationService = require('../services/pushNotificationService');
 const ProfileView = require('../models/ProfileView');
 const SuperLike = require('../models/SuperLike');
+const FlaggedMessage = require('../models/FlaggedMessage');
+const { checkBannedWords } = require('./bannedWords');
 
 // Helper: تحويل المسار النسبي إلى URL كامل
 const getFullUrl = (path) => {
@@ -1710,11 +1712,21 @@ router.post('/messages/send', protect, async (req, res) => {
             }
         }
 
-        // إنشاء الرسالة
+        // فحص الكلمات المحظورة
+        let censoredContent = content;
+        let bannedResult = { hasBannedWords: false, matchedWords: [] };
+        if (type === 'text' && content) {
+            bannedResult = await checkBannedWords(content);
+            if (bannedResult.hasBannedWords) {
+                censoredContent = bannedResult.censoredText;
+            }
+        }
+
+        // إنشاء الرسالة (بالمحتوى المفلتر)
         const messageData = {
             conversation: conversationId,
             sender: req.user._id,
-            content,
+            content: censoredContent,
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
@@ -1723,6 +1735,17 @@ router.post('/messages/send', protect, async (req, res) => {
         if (replyTo) messageData.replyTo = replyTo;
 
         const message = await Message.create(messageData);
+
+        // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة
+        if (bannedResult.hasBannedWords) {
+            await FlaggedMessage.create({
+                message: message._id,
+                conversation: conversationId,
+                sender: req.user._id,
+                originalContent: content,
+                matchedWords: bannedResult.matchedWords
+            });
+        }
 
         // تحديث آخر رسالة + عداد الرسائل
         conversation.lastMessage = message._id;
