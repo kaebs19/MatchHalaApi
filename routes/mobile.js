@@ -1407,7 +1407,7 @@ router.post('/conversations/request', protect, async (req, res) => {
 router.put('/conversations/:id/accept', protect, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -1446,7 +1446,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
             p => p._id.toString() === conversation.creator.toString()
         );
 
-        if (creator && creator.fcmToken) {
+        if (creator && creator.deviceToken) {
             await pushNotificationService.sendNotificationToUser(
                 creator._id,
                 {
@@ -1491,7 +1491,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
 router.put('/conversations/:id/reject', protect, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -1529,7 +1529,7 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
             p => p._id.toString() === conversation.creator.toString()
         );
 
-        if (creator && creator.fcmToken) {
+        if (creator && creator.deviceToken) {
             await pushNotificationService.sendNotificationToUser(
                 creator._id,
                 {
@@ -2130,7 +2130,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
         }
 
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!conversation) {
             fs.unlinkSync(req.file.path);
@@ -2184,7 +2184,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             const recipientId = recipient._id.toString();
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
 
-            if (!isOnline && recipient.fcmToken) {
+            if (!isOnline && recipient.deviceToken) {
                 try {
                     await pushNotificationService.sendNewMessageNotification(
                         recipient._id || recipient,
@@ -2266,7 +2266,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!conversation) {
             // حذف الصورة المرفوعة
@@ -2376,7 +2376,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email deviceToken fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!conversation) {
             return res.status(404).json({
@@ -2855,32 +2855,25 @@ router.put('/notifications/read-all', protect, async (req, res) => {
 router.post('/device/register-token', protect, async (req, res) => {
     try {
         const { fcmToken, deviceToken, platform, osVersion, appVersion } = req.body;
+        const token = deviceToken || fcmToken;
 
-        if (!fcmToken && !deviceToken) {
+        if (!token) {
             return res.status(400).json({
                 success: false,
-                message: 'FCM Token أو Device Token مطلوب'
+                message: 'Device Token مطلوب'
             });
         }
 
-        // تحديث بيانات المستخدم
+        // تحديث بيانات المستخدم — حفظ في كلا الحقلين للتوافق
         const updateData = {
+            deviceToken: token,
+            fcmToken: token,
             deviceInfo: {
-                platform: platform || null,
+                platform: platform || 'ios',
                 osVersion: osVersion || null,
                 appVersion: appVersion || null
             }
         };
-
-        // إضافة FCM Token (Firebase)
-        if (fcmToken) {
-            updateData.fcmToken = fcmToken;
-        }
-
-        // إضافة Device Token (APNs)
-        if (deviceToken) {
-            updateData.deviceToken = deviceToken;
-        }
 
         await User.findByIdAndUpdate(req.user._id, updateData);
 
@@ -2933,17 +2926,20 @@ router.delete('/device/unregister-token', protect, async (req, res) => {
 router.put('/device/update-token', protect, async (req, res) => {
     try {
         const { fcmToken, deviceToken } = req.body;
+        const token = deviceToken || fcmToken;
 
-        if (!fcmToken && !deviceToken) {
+        if (!token) {
             return res.status(400).json({
                 success: false,
-                message: 'FCM Token أو Device Token مطلوب'
+                message: 'Device Token مطلوب'
             });
         }
 
-        const updateData = {};
-        if (fcmToken) updateData.fcmToken = fcmToken;
-        if (deviceToken) updateData.deviceToken = deviceToken;
+        // حفظ في كلا الحقلين للتوافق
+        const updateData = {
+            deviceToken: token,
+            fcmToken: token
+        };
 
         await User.findByIdAndUpdate(req.user._id, updateData);
 
@@ -2954,6 +2950,47 @@ router.put('/device/update-token', protect, async (req, res) => {
 
     } catch (error) {
         console.error('خطأ في تحديث Token:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   PUT /api/mobile/device-token
+// @desc    تحديث/تسجيل Device Token (الـ endpoint الموحّد)
+// @access  Private
+router.put('/device-token', protect, async (req, res) => {
+    try {
+        const { deviceToken, platform, osVersion, appVersion } = req.body;
+
+        if (!deviceToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Device Token مطلوب'
+            });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            deviceToken: deviceToken,
+            fcmToken: deviceToken,
+            deviceInfo: {
+                platform: platform || 'ios',
+                osVersion: osVersion || null,
+                appVersion: appVersion || null
+            }
+        });
+
+        console.log(`📱 Device Token updated for ${req.user.name}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تحديث Device Token بنجاح'
+        });
+
+    } catch (error) {
+        console.error('خطأ في تحديث Device Token:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
@@ -3133,7 +3170,7 @@ router.post('/messages/forward', protect, async (req, res) => {
 
         // التحقق من المحادثة المستهدفة
         const targetConversation = await Conversation.findById(targetConversationId)
-            .populate('participants', 'name email fcmToken');
+            .populate('participants', 'name email deviceToken');
 
         if (!targetConversation) {
             return res.status(404).json({

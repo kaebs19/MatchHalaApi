@@ -17,20 +17,20 @@ async function testPush() {
         if (targetEmail) {
             user = await User.findOne({ email: targetEmail });
         } else {
-            user = await User.findOne({ fcmToken: { $ne: null } });
+            user = await User.findOne({ deviceToken: { $ne: null } });
         }
 
         if (!user) {
-            console.log('❌ لا يوجد مستخدم لديه FCM Token');
+            console.log('❌ لا يوجد مستخدم لديه Device Token');
             process.exit(1);
         }
 
         console.log('\n📱 إرسال إشعار تجريبي لـ:', user.name);
         console.log('Email:', user.email);
-        console.log('Token:', user.fcmToken.substring(0, 50) + '...');
+        console.log('Token:', user.deviceToken.substring(0, 50) + '...');
 
         const result = await sendToDevice(
-            user.fcmToken,
+            user.deviceToken,
             {
                 title: '🧪 اختبار Push',
                 body: 'هذا إشعار تجريبي من السيرفر - ' + new Date().toLocaleTimeString('ar-SA')

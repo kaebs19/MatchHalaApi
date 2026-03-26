@@ -21,7 +21,6 @@ async function createIndexes() {
     // مفقود:
     await db.collection('users').createIndex({ isActive: 1, gender: 1 });
     await db.collection('users').createIndex({ deviceToken: 1 }, { sparse: true });
-    await db.collection('users').createIndex({ fcmToken: 1 }, { sparse: true });
     await db.collection('users').createIndex({ 'bannedWords.isBanned': 1 });
     console.log('✅ Users indexes');
 

@@ -280,7 +280,7 @@ router.post('/batch', protect, async (req, res) => {
         const targetUsers = await User.find({
             _id: { $in: targetIds },
             isActive: true
-        }).select('name profileImage fcmToken deviceToken');
+        }).select('name profileImage deviceToken');
         const targetUsersMap = new Map(targetUsers.map(u => [u._id.toString(), u]));
 
         const results = [];
