@@ -368,9 +368,11 @@ router.get('/users/search', protect, async (req, res) => {
         let users, totalUsers;
 
         // إذا فيه إحداثيات → استخدام $geoNear
-        if (latitude && longitude) {
+        if (latitude && longitude && parseFloat(latitude) !== 0 && parseFloat(longitude) !== 0) {
             const lat = parseFloat(latitude);
             const lng = parseFloat(longitude);
+            // استبعاد المستخدمين بموقع [0,0]
+            filter['location.coordinates'] = { $ne: [0, 0] };
             const maxDist = parseFloat(maxDistance) * 1000; // تحويل كم إلى متر
 
             const pipeline = [
@@ -500,11 +502,13 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             return res.status(403).json({ success: false, message: 'لا يمكنك عرض هذا البروفايل' });
         }
 
-        // حساب المسافة إذا كلا المستخدمين لديهم موقع
+        // حساب المسافة إذا كلا المستخدمين لديهم موقع حقيقي (مو [0,0])
         let distance = null;
         if (
             req.user.location && req.user.location.coordinates &&
-            user.location && user.location.coordinates
+            user.location && user.location.coordinates &&
+            (req.user.location.coordinates[0] !== 0 || req.user.location.coordinates[1] !== 0) &&
+            (user.location.coordinates[0] !== 0 || user.location.coordinates[1] !== 0)
         ) {
             const [lng1, lat1] = req.user.location.coordinates;
             const [lng2, lat2] = user.location.coordinates;
