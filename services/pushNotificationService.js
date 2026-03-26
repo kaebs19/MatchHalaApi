@@ -201,7 +201,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
  */
-const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId) => {
+const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null) => {
     try {
         // التحقق من كتم المحادثة
         const user = await User.findById(recipientId);
@@ -234,10 +234,19 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview
         };
 
+        // تحويل صورة المرسل لـ URL كامل
+        let fullSenderImage = senderImage || '';
+        if (fullSenderImage && !fullSenderImage.startsWith('http')) {
+            const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+            fullSenderImage = `${baseUrl}${fullSenderImage}`;
+        }
+
         const data = {
-            type: 'message',  // يجب أن يكون 'message' حسب الـ enum في Notification model
+            type: 'message',
             conversationId: conversationId.toString(),
-            senderName
+            senderName,
+            senderImage: fullSenderImage,
+            threadId: conversationId.toString()
         };
 
         return sendNotificationToUser(recipientId, notification, data, true);

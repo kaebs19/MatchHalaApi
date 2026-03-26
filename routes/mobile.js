@@ -2047,7 +2047,8 @@ router.post('/messages/send', protect, async (req, res) => {
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
-                    conversationId
+                    conversationId,
+                    req.user.profileImage || null
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -2186,10 +2187,11 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             if (!isOnline && recipient.fcmToken) {
                 try {
                     await pushNotificationService.sendNewMessageNotification(
-                        recipient,
-                        req.user,
-                        { type: 'image', content: '📷 صورة' },
-                        conversationId
+                        recipient._id || recipient,
+                        req.user.name || req.user,
+                        '📷 صورة',
+                        conversationId,
+                        req.user.profileImage || null
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
@@ -2331,7 +2333,8 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     recipient._id,
                     req.user.name,
                     '📷 أرسل صورة',
-                    conversationId
+                    conversationId,
+                    req.user.profileImage || null
                 );
             }
         }
@@ -2444,7 +2447,8 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
-                    conversationId
+                    conversationId,
+                    req.user.profileImage || null
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -3184,7 +3188,8 @@ router.post('/messages/forward', protect, async (req, res) => {
                         recipient._id,
                         req.user.name,
                         originalMessage.type === 'image' ? '📷 صورة' : (originalMessage.content || ''),
-                        targetConversationId
+                        targetConversationId,
+                        req.user.profileImage || null
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
