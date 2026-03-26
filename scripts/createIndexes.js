@@ -44,7 +44,7 @@ async function createIndexes() {
     // موجود: { sender:1, createdAt:-1 }, { recipients:1, status:1 }, { targetUsers:1 }, { type:1 }
     // مفقود:
     await db.collection('notifications').createIndex({ targetUsers: 1, createdAt: -1 });
-    await db.collection('notifications').createIndex({ targetUsers: 1, 'readBy.user': 1 });
+    await db.collection('notifications').createIndex({ 'readBy.user': 1 });
     await db.collection('notifications').createIndex({ isActive: 1, createdAt: -1 });
     console.log('✅ Notifications indexes');
 
