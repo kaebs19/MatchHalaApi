@@ -55,6 +55,13 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // صور بأحجام متعددة (thumbnail, medium, original)
+    photos: [{
+        original: { type: String },
+        medium: { type: String },
+        thumbnail: { type: String },
+        order: { type: Number, default: 0 }
+    }],
     birthDate: {
         type: Date,
         default: null

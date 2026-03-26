@@ -246,6 +246,177 @@ router.post('/', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/swipes/batch
+// @desc    إرسال مجموعة سوايبات دفعة واحدة
+// @access  Protected
+router.post('/batch', protect, async (req, res) => {
+    try {
+        const { swipes } = req.body;
+        const swiperId = req.user._id;
+
+        if (!swipes || !Array.isArray(swipes) || swipes.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'مصفوفة السوايبات مطلوبة'
+            });
+        }
+
+        if (swipes.length > 20) {
+            return res.status(400).json({
+                success: false,
+                message: 'الحد الأقصى 20 سوايب في الطلب الواحد'
+            });
+        }
+
+        // جلب السوايبات السابقة مرة واحدة
+        const targetIds = swipes.map(s => s.targetUserId).filter(Boolean);
+        const existingSwipes = await Swipe.find({
+            swiper: swiperId,
+            swiped: { $in: targetIds }
+        }).distinct('swiped');
+        const existingSet = new Set(existingSwipes.map(id => id.toString()));
+
+        // جلب المستخدمين المستهدفين مرة واحدة
+        const targetUsers = await User.find({
+            _id: { $in: targetIds },
+            isActive: true
+        }).select('name profileImage fcmToken deviceToken');
+        const targetUsersMap = new Map(targetUsers.map(u => [u._id.toString(), u]));
+
+        const results = [];
+
+        for (const swipeData of swipes) {
+            const { targetUserId, direction } = swipeData;
+
+            // تحويل direction إلى type
+            const type = direction === 'right' ? 'like' : direction === 'left' ? 'dislike' : direction;
+
+            if (!targetUserId || !['like', 'dislike', 'superlike'].includes(type)) {
+                results.push({ targetUserId, success: false, message: 'بيانات غير صالحة' });
+                continue;
+            }
+
+            if (targetUserId === swiperId.toString()) {
+                results.push({ targetUserId, success: false, message: 'لا يمكنك السوايب على نفسك' });
+                continue;
+            }
+
+            if (existingSet.has(targetUserId)) {
+                results.push({ targetUserId, success: false, message: 'تم السوايب مسبقاً' });
+                continue;
+            }
+
+            const targetUser = targetUsersMap.get(targetUserId);
+            if (!targetUser) {
+                results.push({ targetUserId, success: false, message: 'المستخدم غير موجود' });
+                continue;
+            }
+
+            try {
+                // إنشاء السوايب
+                const swipe = await Swipe.create({
+                    swiper: swiperId,
+                    swiped: targetUserId,
+                    type
+                });
+                existingSet.add(targetUserId);
+
+                let matchData = null;
+
+                // التحقق من التطابق
+                if (type === 'like' || type === 'superlike') {
+                    const reverseSwipe = await Swipe.findOne({
+                        swiper: targetUserId,
+                        swiped: swiperId,
+                        type: { $in: ['like', 'superlike'] }
+                    });
+
+                    if (reverseSwipe) {
+                        const conversation = await Conversation.create({
+                            type: 'private',
+                            participants: [swiperId, targetUserId],
+                            status: 'accepted'
+                        });
+
+                        const match = await Match.create({
+                            users: [swiperId, targetUserId],
+                            conversation: conversation._id
+                        });
+
+                        matchData = {
+                            matchId: match._id,
+                            conversationId: conversation._id,
+                            user: {
+                                _id: targetUser._id,
+                                name: targetUser.name,
+                                profileImage: getFullUrl(targetUser.profileImage)
+                            }
+                        };
+
+                        // إشعار Socket.IO
+                        if (global.io) {
+                            global.io.to(`user:${swiperId}`).emit('new-match', { match: matchData });
+                            global.io.to(`user:${targetUserId}`).emit('new-match', {
+                                match: {
+                                    matchId: match._id,
+                                    conversationId: conversation._id,
+                                    user: {
+                                        _id: swiperId,
+                                        name: req.user.name,
+                                        profileImage: getFullUrl(req.user.profileImage)
+                                    }
+                                }
+                            });
+                        }
+
+                        // Push notification
+                        try {
+                            await sendNotificationToUser(
+                                targetUserId,
+                                { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
+                                { type: 'new_match', matchId: match._id.toString() }
+                            );
+                        } catch (pushErr) {
+                            console.error('خطأ في إشعار التطابق:', pushErr);
+                        }
+                    }
+                }
+
+                results.push({
+                    targetUserId,
+                    success: true,
+                    type,
+                    match: matchData
+                });
+
+            } catch (swipeErr) {
+                results.push({
+                    targetUserId,
+                    success: false,
+                    message: swipeErr.code === 11000 ? 'تم السوايب مسبقاً' : swipeErr.message
+                });
+            }
+        }
+
+        const matchesFound = results.filter(r => r.match).length;
+
+        res.status(201).json({
+            success: true,
+            message: `تمت معالجة ${results.filter(r => r.success).length}/${swipes.length} سوايبات` +
+                (matchesFound > 0 ? ` (${matchesFound} تطابق جديد!)` : ''),
+            data: { results }
+        });
+
+    } catch (error) {
+        console.error('خطأ في batch swipes:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   GET /api/swipes/cards
 // @desc    جلب بطاقات للسوايب (مستخدمين لم يتم السوايب عليهم)
 // @access  Protected
@@ -310,7 +481,7 @@ router.get('/cards', protect, async (req, res) => {
                 },
                 {
                     $project: {
-                        name: 1, profileImage: 1, birthDate: 1,
+                        name: 1, profileImage: 1, photos: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1,
                         isPremium: 1, distance: 1,
                         isVerified: '$verification.isVerified'
@@ -321,11 +492,20 @@ router.get('/cards', protect, async (req, res) => {
             ];
 
             users = await User.aggregate(pipeline);
-            users = users.map(u => ({
-                ...u,
-                profileImage: getFullUrl(u.profileImage),
-                distance: Math.round(u.distance / 1000) // بالكيلومتر
-            }));
+            users = users.map(u => {
+                // استخدم thumbnail من photos إذا متوفر، وإلا profileImage
+                const mainPhoto = u.photos && u.photos.length > 0
+                    ? (u.photos.find(p => p.order === 0) || u.photos[0])
+                    : null;
+                return {
+                    ...u,
+                    profileImage: mainPhoto && mainPhoto.thumbnail
+                        ? getFullUrl(mainPhoto.thumbnail)
+                        : getFullUrl(u.profileImage),
+                    photos: undefined, // لا ترسل المصفوفة الكاملة
+                    distance: Math.round(u.distance / 1000)
+                };
+            });
 
             const countPipeline = [
                 {
@@ -344,7 +524,7 @@ router.get('/cards', protect, async (req, res) => {
         } else {
             // بدون موقع - ترتيب عشوائي
             users = await User.find(filter)
-                .select('name profileImage birthDate gender country bio isOnline isPremium verification.isVerified')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified')
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum);
 
@@ -352,9 +532,16 @@ router.get('/cards', protect, async (req, res) => {
 
             users = users.map(u => {
                 const userObj = u.toObject();
-                userObj.profileImage = getFullUrl(userObj.profileImage);
+                // استخدم thumbnail من photos إذا متوفر
+                const mainPhoto = userObj.photos && userObj.photos.length > 0
+                    ? (userObj.photos.find(p => p.order === 0) || userObj.photos[0])
+                    : null;
+                userObj.profileImage = mainPhoto && mainPhoto.thumbnail
+                    ? getFullUrl(mainPhoto.thumbnail)
+                    : getFullUrl(userObj.profileImage);
                 userObj.isVerified = userObj.verification?.isVerified || false;
                 delete userObj.verification;
+                delete userObj.photos;
                 userObj.distance = null;
                 return userObj;
             });

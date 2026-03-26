@@ -29,6 +29,20 @@ const getFullUrl = (path) => {
     return `${baseUrl}${path}`;
 };
 
+// Helper: جلب صورة المستخدم بالحجم المناسب
+// size: 'thumbnail' | 'medium' | 'original'
+const getUserImage = (user, size = 'original') => {
+    // إذا المستخدم عنده photos بأحجام متعددة
+    if (user.photos && user.photos.length > 0) {
+        const mainPhoto = user.photos.find(p => p.order === 0) || user.photos[0];
+        if (mainPhoto && mainPhoto[size]) {
+            return getFullUrl(mainPhoto[size]);
+        }
+    }
+    // fallback للحقل القديم
+    return getFullUrl(user.profileImage);
+};
+
 // إعداد multer لرفع صور الرسائل
 const messagesUploadDir = path.join(__dirname, '..', 'uploads', 'messages');
 if (!fs.existsSync(messagesUploadDir)) {
@@ -88,6 +102,146 @@ const uploadVerificationSelfie = multer({
         } else {
             cb(new Error('فقط الصور مسموحة (JPEG, PNG)'));
         }
+    }
+});
+
+// ==========================================
+// Batch Home Endpoint - طلب واحد لكل بيانات الصفحة الرئيسية
+// ==========================================
+
+// @route   GET /api/mobile/home
+// @desc    جلب كل البيانات المطلوبة عند فتح التطبيق في طلب واحد
+// @access  Protected
+router.get('/home', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const [profile, matches, notifications, conversations] = await Promise.all([
+            // 1. بروفايل المستخدم
+            User.findById(userId)
+                .select('-password')
+                .lean(),
+
+            // 2. آخر التطابقات (limit 10)
+            (async () => {
+                const Match = require('../models/Match');
+                const matchDocs = await Match.find({ users: userId, isActive: true })
+                    .populate('users', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified lastLogin')
+                    .populate('conversation', '_id lastMessage')
+                    .sort({ createdAt: -1 })
+                    .limit(10)
+                    .lean();
+
+                return matchDocs.map(match => {
+                    const otherUser = match.users.find(u => u._id.toString() !== userId.toString());
+                    return {
+                        _id: match._id,
+                        conversationId: match.conversation?._id,
+                        createdAt: match.createdAt,
+                        user: otherUser ? {
+                            _id: otherUser._id,
+                            name: otherUser.name,
+                            profileImage: getFullUrl(otherUser.profileImage),
+                            birthDate: otherUser.birthDate,
+                            gender: otherUser.gender,
+                            country: otherUser.country,
+                            bio: otherUser.bio,
+                            isOnline: otherUser.isOnline,
+                            isPremium: otherUser.isPremium,
+                            isVerified: otherUser.verification?.isVerified || false
+                        } : null
+                    };
+                });
+            })(),
+
+            // 3. الإشعارات غير المقروءة (limit 20)
+            (async () => {
+                const notifQuery = {
+                    $or: [
+                        { targetUsers: userId },
+                        { recipients: 'all' }
+                    ],
+                    isActive: true,
+                    'readBy._id': { $ne: userId }
+                };
+
+                const notifs = await Notification.find(notifQuery)
+                    .populate('sender', 'name profileImage isPremium verification.isVerified')
+                    .sort({ createdAt: -1 })
+                    .limit(20)
+                    .lean();
+
+                return notifs.map(n => {
+                    if (n.sender && n.sender.profileImage) {
+                        n.sender.profileImage = getFullUrl(n.sender.profileImage);
+                    }
+                    if (n.image) {
+                        n.image = getFullUrl(n.image);
+                    }
+                    return n;
+                });
+            })(),
+
+            // 4. آخر المحادثات (limit 10)
+            (async () => {
+                const convs = await Conversation.find({
+                    participants: userId,
+                    status: { $in: ['accepted', 'pending'] },
+                    isActive: true
+                })
+                    .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
+                    .populate('lastMessage')
+                    .sort({ updatedAt: -1 })
+                    .limit(10)
+                    .lean();
+
+                // حساب الرسائل غير المقروءة لكل محادثة
+                const convsWithUnread = await Promise.all(
+                    convs.map(async (conv) => {
+                        const unreadCount = await Message.countDocuments({
+                            conversation: conv._id,
+                            sender: { $ne: userId },
+                            'readBy.user': { $ne: userId }
+                        });
+                        return { ...conv, unreadCount };
+                    })
+                );
+
+                return convsWithUnread;
+            })()
+        ]);
+
+        // تحويل صورة البروفايل
+        if (profile && profile.profileImage) {
+            profile.profileImage = getFullUrl(profile.profileImage);
+        }
+
+        // إجمالي الرسائل غير المقروءة
+        const totalUnread = conversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
+
+        res.json({
+            success: true,
+            data: {
+                profile,
+                matches,
+                notifications: {
+                    items: notifications,
+                    unreadCount: notifications.length
+                },
+                conversations: {
+                    items: conversations,
+                    totalUnread
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في جلب بيانات الصفحة الرئيسية:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
     }
 });
 
@@ -334,7 +488,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive'
         );
 
         if (!user || !user.isActive) {
@@ -366,7 +520,15 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         const profileData = {
             _id: user._id,
             name: user.name,
-            profileImage: getFullUrl(user.profileImage),
+            profileImage: getUserImage(user, 'original'),
+            photos: user.photos && user.photos.length > 0
+                ? user.photos.map(p => ({
+                    original: getFullUrl(p.original),
+                    medium: getFullUrl(p.medium),
+                    thumbnail: getFullUrl(p.thumbnail),
+                    order: p.order
+                }))
+                : [{ original: getFullUrl(user.profileImage), medium: getFullUrl(user.profileImage), thumbnail: getFullUrl(user.profileImage), order: 0 }],
             birthDate: user.birthDate,
             gender: user.gender,
             country: user.country,
@@ -1451,13 +1613,22 @@ router.put('/conversations/:id/read', protect, async (req, res) => {
             }
         );
 
-        // إرسال Socket event للطرف الآخر (اختياري)
+        // إرسال Socket event للطرف الآخر
         if (global.io && result.modifiedCount > 0) {
-            global.io.to(`conversation-${conversationId}`).emit('messages-read', {
+            const readPayload = {
                 conversationId,
                 readBy: userId,
                 count: result.modifiedCount
-            });
+            };
+            // بث لغرفة المحادثة
+            global.io.to(`conversation-${conversationId}`).emit('messages-read', readPayload);
+            // بث لغرفة المستخدمين الآخرين (حتى لو لم ينضموا لغرفة المحادثة)
+            const otherParticipants = conversation.participants.filter(
+                p => p.toString() !== userId.toString()
+            );
+            for (const participantId of otherParticipants) {
+                global.io.to(`user:${participantId}`).emit('messages-read', readPayload);
+            }
         }
 
         res.status(200).json({
@@ -1530,24 +1701,52 @@ router.get('/conversations/pending', protect, async (req, res) => {
 });
 
 // @route   GET /api/mobile/conversations
-// @desc    الحصول على محادثات المستخدم النشطة مع عدد الرسائل غير المقروءة
+// @desc    الحصول على محادثات المستخدم النشطة مع عدد الرسائل غير المقروءة (مع دعم Last-Modified/304)
 // @access  Private
 router.get('/conversations', protect, async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
         const userId = req.user._id;
 
-        const conversations = await Conversation.find({
+        const convFilter = {
             participants: userId,
             status: { $in: ['accepted', 'pending'] },
             isActive: true
-        })
-            .populate('participants', 'name email profileImage lastLogin isOnline isPremium verification.isVerified')
+        };
+
+        // ETag: التحقق من آخر تعديل
+        const lastConv = await Conversation.findOne(convFilter).sort({ updatedAt: -1 }).select('updatedAt').lean();
+        const lastModified = lastConv ? lastConv.updatedAt : new Date(0);
+        const ifModifiedSince = req.headers['if-modified-since'];
+
+        if (ifModifiedSince && lastModified <= new Date(ifModifiedSince)) {
+            return res.status(304).end();
+        }
+
+        res.set('Last-Modified', lastModified.toUTCString());
+
+        const conversations = await Conversation.find(convFilter)
+            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified')
             .populate('lastMessage')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit)
             .lean(); // استخدام lean للتعديل على النتائج
+
+        // تحويل صور المشاركين إلى thumbnails
+        for (const conv of conversations) {
+            if (conv.participants) {
+                for (const p of conv.participants) {
+                    const mainPhoto = p.photos && p.photos.length > 0
+                        ? (p.photos.find(ph => ph.order === 0) || p.photos[0])
+                        : null;
+                    p.profileImage = mainPhoto && mainPhoto.thumbnail
+                        ? getFullUrl(mainPhoto.thumbnail)
+                        : getFullUrl(p.profileImage);
+                    delete p.photos;
+                }
+            }
+        }
 
         // حساب عدد الرسائل غير المقروءة لكل محادثة
         const conversationsWithUnread = await Promise.all(
@@ -1561,11 +1760,7 @@ router.get('/conversations', protect, async (req, res) => {
             })
         );
 
-        const total = await Conversation.countDocuments({
-            participants: userId,
-            status: { $in: ['accepted', 'pending'] },
-            isActive: true
-        });
+        const total = await Conversation.countDocuments(convFilter);
 
         // حساب إجمالي الرسائل غير المقروءة
         const totalUnread = conversationsWithUnread.reduce((sum, conv) => sum + conv.unreadCount, 0);
@@ -1814,9 +2009,20 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // إرسال عبر Socket.IO
         if (global.io) {
+            // بث للمتصلين بغرفة المحادثة
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
                 message: populatedMessage
             });
+
+            // بث أيضاً لغرفة المستخدم الخاصة (حتى لو لم ينضم لغرفة المحادثة)
+            const otherParticipants = conversation.participants.filter(
+                p => p._id.toString() !== req.user._id.toString()
+            );
+            for (const participant of otherParticipants) {
+                global.io.to(`user:${participant._id}`).emit('new-message', {
+                    message: populatedMessage
+                });
+            }
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM

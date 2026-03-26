@@ -17,7 +17,7 @@ const getFullUrl = (imgPath) => {
 };
 
 // @route   GET /api/matches
-// @desc    جلب جميع التطابقات
+// @desc    جلب جميع التطابقات (مع دعم Last-Modified/304)
 // @access  Protected
 router.get('/', protect, async (req, res) => {
     try {
@@ -30,6 +30,17 @@ router.get('/', protect, async (req, res) => {
             users: userId,
             isActive: true
         };
+
+        // ETag: التحقق من آخر تعديل
+        const lastMatch = await Match.findOne(filter).sort({ updatedAt: -1 }).select('updatedAt').lean();
+        const lastModified = lastMatch ? lastMatch.updatedAt : new Date(0);
+        const ifModifiedSince = req.headers['if-modified-since'];
+
+        if (ifModifiedSince && lastModified <= new Date(ifModifiedSince)) {
+            return res.status(304).end();
+        }
+
+        res.set('Last-Modified', lastModified.toUTCString());
 
         const matches = await Match.find(filter)
             .populate('users', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified lastLogin')

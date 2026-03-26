@@ -13,6 +13,7 @@ const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const upload = require('../config/multer');
 const { optimizeImage } = require('../middleware/imageOptimizer');
+const { processImage } = require('../utils/imageProcessor');
 const {
     registerValidation,
     loginValidation,
@@ -433,7 +434,7 @@ router.post('/reset-password', async (req, res) => {
 // @route   PUT /api/auth/upload-profile-image
 // @desc    رفع صورة الملف الشخصي
 // @access  Private
-router.put('/upload-profile-image', protect, upload.single('profileImage'), optimizeImage({ maxWidth: 800, maxHeight: 800, quality: 85 }), async (req, res) => {
+router.put('/upload-profile-image', protect, upload.single('profileImage'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -445,7 +446,6 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
         const user = await User.findById(req.user.id);
 
         if (!user) {
-            // حذف الملف المرفوع إذا لم يتم إيجاد المستخدم
             fs.unlinkSync(req.file.path);
             return res.status(404).json({
                 success: false,
@@ -453,31 +453,64 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), opti
             });
         }
 
-        // حذف الصورة القديمة إذا كانت موجودة
-        if (user.profileImage) {
-            const oldImagePath = path.join(__dirname, '..', user.profileImage);
-            if (fs.existsSync(oldImagePath)) {
-                fs.unlinkSync(oldImagePath);
+        // معالجة الصورة بأحجام متعددة (thumb, medium, original)
+        const processed = await processImage(req.file.path, { prefix: 'profile' });
+
+        // حذف النسخ القديمة (thumb/medium/original)
+        if (user.photos && user.photos.length > 0) {
+            const mainPhoto = user.photos.find(p => p.order === 0);
+            if (mainPhoto) {
+                for (const size of ['thumbnail', 'medium', 'original']) {
+                    if (mainPhoto[size]) {
+                        const oldPath = path.join(__dirname, '..', mainPhoto[size]);
+                        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+                    }
+                }
             }
         }
+        // حذف profileImage القديمة
+        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
+            const oldImagePath = path.join(__dirname, '..', user.profileImage);
+            if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+        }
 
-        // تحديث مسار الصورة
-        const imagePath = '/uploads/profile-images/' + req.file.filename;
-        user.profileImage = imagePath;
+        // تحديث profileImage (التوافق مع الكود الحالي) + photos
+        user.profileImage = processed.original;
+
+        // تحديث أو إضافة الصورة الرئيسية في photos
+        const existingMainIndex = user.photos ? user.photos.findIndex(p => p.order === 0) : -1;
+        const photoEntry = {
+            original: processed.original,
+            medium: processed.medium,
+            thumbnail: processed.thumbnail,
+            order: 0
+        };
+
+        if (existingMainIndex >= 0) {
+            user.photos[existingMainIndex] = photoEntry;
+        } else {
+            if (!user.photos) user.photos = [];
+            user.photos.push(photoEntry);
+        }
+
         await user.save();
 
         res.status(200).json({
             success: true,
             message: 'تم رفع الصورة بنجاح',
             data: {
-                profileImage: imagePath,
+                profileImage: processed.original,
+                photos: {
+                    thumbnail: processed.thumbnail,
+                    medium: processed.medium,
+                    original: processed.original
+                },
                 user
             }
         });
 
     } catch (error) {
-        // حذف الملف في حالة حدوث خطأ
-        if (req.file) {
+        if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
 

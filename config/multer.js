@@ -47,4 +47,10 @@ const upload = multer({
     fileFilter: fileFilter
 });
 
+// معالجة الصورة بأحجام متعددة بعد رفعها
+const { processImageMiddleware } = require('../utils/imageProcessor');
+
+// تصدير upload + middleware المعالجة
 module.exports = upload;
+module.exports.processProfileImage = processImageMiddleware({ prefix: 'profile' });
+module.exports.processMessageImage = processImageMiddleware({ prefix: 'msg' });
