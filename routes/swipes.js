@@ -554,17 +554,41 @@ router.get('/cards', protect, async (req, res) => {
         const fetchMultiplier = 5;
         const fetchLimit = limitNum * fetchMultiplier;
 
-        // إذا المستخدم الحالي لديه موقع، رتب حسب القرب + النقاط
+        // Helper: تحويل مستخدم إلى كرت
+        const mapUserToCard = (u, distanceKm) => {
+            const mainPhoto = u.photos && u.photos.length > 0
+                ? (u.photos.find(p => p.order === 0) || u.photos[0])
+                : null;
+            const activityScore = calculateActivityScore(u);
+            const distScore = distanceKm !== null ? calculateDistanceScore(distanceKm) : 0;
+            return {
+                _id: u._id,
+                name: u.name,
+                profileImage: mainPhoto && mainPhoto.thumbnail
+                    ? getFullUrl(mainPhoto.thumbnail)
+                    : getFullUrl(u.profileImage),
+                birthDate: u.birthDate,
+                gender: u.gender,
+                country: u.country,
+                bio: u.bio,
+                isOnline: u.isOnline,
+                isPremium: u.isPremium,
+                isVerified: u.verification?.isVerified || false,
+                distance: distanceKm,
+                _score: activityScore + distScore
+            };
+        };
+
+        // إذا المستخدم الحالي لديه موقع
         const hasValidLocation = currentUser.location && currentUser.location.coordinates[0] !== 0 && currentUser.location.coordinates[1] !== 0;
 
         if (hasValidLocation) {
-            // محاولة أولى: البحث ضمن 100 كم
-            const pipeline = [
+            // 1) جلب المستخدمين القريبين (لديهم موقع) بـ geoNear بدون حد مسافة
+            const geoUsers = await User.aggregate([
                 {
                     $geoNear: {
                         near: currentUser.location,
                         distanceField: 'distance',
-                        maxDistance: 100000, // 100 كم
                         query: filter,
                         spherical: true
                     }
@@ -578,53 +602,40 @@ router.get('/cards', protect, async (req, res) => {
                     }
                 },
                 { $limit: fetchLimit }
-            ];
+            ]);
 
-            users = await User.aggregate(pipeline);
+            const geoUserIds = geoUsers.map(u => u._id);
 
-            // إذا ما لقينا أحد قريب، نوسع البحث لكل العالم (بدون حد مسافة)
-            if (users.length === 0) {
-                pipeline[0].$geoNear.maxDistance = 20000000; // 20,000 كم (كل العالم)
-                users = await User.aggregate(pipeline);
-            }
+            // 2) جلب المستخدمين الذين لم يظهروا في geoNear (بدون موقع أو موقع [0,0])
+            const noGeoFilter = { ...filter };
+            noGeoFilter._id = {
+                $ne: userId,
+                $nin: [...swipedIds, ...blockedIds, ...geoUserIds]
+            };
 
-            // حساب النقاط الذكية
-            users = users.map(u => {
+            const noLocationUsers = await User.find(noGeoFilter)
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt')
+                .limit(Math.max(0, fetchLimit - geoUsers.length));
+
+            // 3) دمج النتائج
+            const geoCards = geoUsers.map(u => {
                 const distanceKm = Math.round(u.distance / 1000);
-                const activityScore = calculateActivityScore(u);
-                const distanceScore = calculateDistanceScore(distanceKm);
-                const totalScore = activityScore + distanceScore;
-
-                const mainPhoto = u.photos && u.photos.length > 0
-                    ? (u.photos.find(p => p.order === 0) || u.photos[0])
-                    : null;
-                return {
-                    _id: u._id,
-                    name: u.name,
-                    profileImage: mainPhoto && mainPhoto.thumbnail
-                        ? getFullUrl(mainPhoto.thumbnail)
-                        : getFullUrl(u.profileImage),
-                    birthDate: u.birthDate,
-                    gender: u.gender,
-                    country: u.country,
-                    bio: u.bio,
-                    isOnline: u.isOnline,
-                    isPremium: u.isPremium,
-                    isVerified: u.verification?.isVerified || false,
-                    distance: distanceKm,
-                    _score: totalScore
-                };
+                return mapUserToCard(u, distanceKm);
             });
+
+            const noGeoCards = noLocationUsers.map(u => {
+                const userObj = u.toObject();
+                return mapUserToCard(userObj, null);
+            });
+
+            users = [...geoCards, ...noGeoCards];
 
             // ترتيب حسب النقاط (الأعلى أولاً)
             users.sort((a, b) => b._score - a._score);
 
-            // Pagination
             totalUsers = users.length;
             const startIdx = (pageNum - 1) * limitNum;
             users = users.slice(startIdx, startIdx + limitNum);
-
-            // حذف _score من الاستجابة
             users = users.map(u => { delete u._score; return u; });
 
         } else {
@@ -633,38 +644,13 @@ router.get('/cards', protect, async (req, res) => {
                 .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt')
                 .limit(fetchLimit);
 
-            users = rawUsers.map(u => {
-                const userObj = u.toObject();
-                const activityScore = calculateActivityScore(userObj);
+            users = rawUsers.map(u => mapUserToCard(u.toObject(), null));
 
-                const mainPhoto = userObj.photos && userObj.photos.length > 0
-                    ? (userObj.photos.find(p => p.order === 0) || userObj.photos[0])
-                    : null;
-                return {
-                    _id: userObj._id,
-                    name: userObj.name,
-                    profileImage: mainPhoto && mainPhoto.thumbnail
-                        ? getFullUrl(mainPhoto.thumbnail)
-                        : getFullUrl(userObj.profileImage),
-                    birthDate: userObj.birthDate,
-                    gender: userObj.gender,
-                    country: userObj.country,
-                    bio: userObj.bio,
-                    isOnline: userObj.isOnline,
-                    isPremium: userObj.isPremium,
-                    isVerified: userObj.verification?.isVerified || false,
-                    distance: null,
-                    _score: activityScore
-                };
-            });
-
-            // ترتيب حسب النقاط
             users.sort((a, b) => b._score - a._score);
 
             totalUsers = await User.countDocuments(filter);
             const startIdx = (pageNum - 1) * limitNum;
             users = users.slice(startIdx, startIdx + limitNum);
-
             users = users.map(u => { delete u._score; return u; });
         }
 
