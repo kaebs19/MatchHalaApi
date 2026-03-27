@@ -17,6 +17,7 @@ const connectDB = require('./config/database');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const User = require('./models/User');
 const Conversation = require('./models/Conversation');
+const Message = require('./models/Message');
 
 // الاتصال بقاعدة البيانات
 connectDB();
@@ -288,6 +289,29 @@ io.on('connection', async (socket) => {
             userName: null,
             isTyping: false
         });
+    });
+
+    // عند استلام الرسالة من الطرف الآخر (message-delivered)
+    socket.on('message-delivered', async ({ messageId, conversationId }) => {
+        try {
+            if (!messageId) return;
+
+            // تحديث حالة الرسالة إلى delivered (فقط إذا كانت sent)
+            const result = await Message.updateOne(
+                { _id: messageId, status: 'sent' },
+                { $set: { status: 'delivered' } }
+            );
+
+            if (result.modifiedCount > 0) {
+                // إبلاغ المرسل الأصلي إن رسالته وصلت
+                socket.to(`conversation-${conversationId}`).emit('message-delivered', {
+                    messageId,
+                    conversationId
+                });
+            }
+        } catch (error) {
+            console.error('خطأ في message-delivered:', error);
+        }
     });
 
     // عند قراءة الرسائل (mark-read)

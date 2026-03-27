@@ -1761,17 +1761,18 @@ router.get('/conversations', protect, async (req, res) => {
                     'readBy.user': { $ne: userId }
                 });
 
-                // إضافة isRead لآخر رسالة
+                // إضافة isRead + isDelivered لآخر رسالة
                 if (conv.lastMessage && conv.lastMessage.sender) {
                     const senderId = conv.lastMessage.sender.toString();
                     if (senderId === userId.toString()) {
-                        // رسالتي — هل الطرف الآخر قرأها؟
                         conv.lastMessage.isRead = conv.lastMessage.status === 'read' ||
                             (conv.lastMessage.readBy && conv.lastMessage.readBy.some(
                                 r => r.user && r.user.toString() !== userId.toString()
                             ));
+                        conv.lastMessage.isDelivered = conv.lastMessage.isRead || conv.lastMessage.status === 'delivered';
                     } else {
                         conv.lastMessage.isRead = true;
+                        conv.lastMessage.isDelivered = true;
                     }
                 }
 
@@ -2536,18 +2537,19 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             conversation: conversationId
         });
 
-        // إضافة isRead لكل رسالة بناءً على readBy
+        // إضافة isRead + isDelivered لكل رسالة
         const userId = req.user._id.toString();
         const messagesWithReadStatus = messages.reverse().map(msg => {
             const msgObj = msg.toObject();
-            // الرسالة مقروءة إذا: أنا المرسل والطرف الآخر قرأها، أو status === 'read'
             if (msgObj.sender && msgObj.sender._id && msgObj.sender._id.toString() === userId) {
-                // رسالتي أنا — هل الطرف الآخر قرأها؟
+                // رسالتي أنا
                 msgObj.isRead = msgObj.status === 'read' ||
                     (msgObj.readBy && msgObj.readBy.some(r => r.user && r.user.toString() !== userId));
+                msgObj.isDelivered = msgObj.isRead || msgObj.status === 'delivered';
             } else {
-                // رسالة الطرف الآخر — دائماً أنا قرأتها (أنا فاتح المحادثة)
+                // رسالة الطرف الآخر
                 msgObj.isRead = true;
+                msgObj.isDelivered = true;
             }
             return msgObj;
         });
