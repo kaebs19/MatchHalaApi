@@ -417,12 +417,70 @@ router.post('/batch', protect, async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// دالة حساب نقاط النشاط والعقوبات
+// ═══════════════════════════════════════════════════════════════
+function calculateActivityScore(user) {
+    const now = new Date();
+    let score = 0;
+
+    // --- 1. نقاط الاتصال (Online) ---
+    if (user.isOnline) score += 50;
+
+    // --- 2. نقاط النشاط / العقوبات (Activity & Penalty) ---
+    const lastLogin = user.lastLogin || user.updatedAt;
+    if (lastLogin) {
+        const hoursSince = (now - new Date(lastLogin)) / (1000 * 60 * 60);
+        if (hoursSince < 1) score += 20;
+        else if (hoursSince < 6) score += 15;
+        else if (hoursSince < 24) score += 10;
+        else if (hoursSince < 168) score += 3;          // 1-7 أيام
+        else if (hoursSince < 336) score -= 20;          // 1-2 أسبوع
+        else if (hoursSince < 672) score -= 40;          // 2-4 أسابيع
+        else if (hoursSince < 2160) score -= 70;         // 1-3 أشهر
+        // +3 أشهر: يُفلتر تماماً قبل الوصول هنا
+    } else {
+        score -= 100; // بدون lastLogin = شبح
+    }
+
+    // --- 3. نقاط التوثيق ---
+    if (user.verification?.isVerified || user.isVerified) score += 10;
+
+    // --- 4. نقاط المستخدم الجديد (أقل من 7 أيام) ---
+    const createdAt = user.createdAt ? new Date(user.createdAt) : null;
+    if (createdAt) {
+        const daysSinceCreation = (now - createdAt) / (1000 * 60 * 60 * 24);
+        if (daysSinceCreation <= 7) score += 15;
+    }
+
+    // --- 5. نقاط البريميوم ---
+    if (user.isPremium) score += 10;
+
+    // --- 6. مكافأة البروفايل الكامل ---
+    if (user.profileImage && user.profileImage !== '' && user.profileImage !== 'default.png') score += 10;
+    if (user.bio && user.bio.trim().length > 0) score += 5;
+
+    return score;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// دالة حساب نقاط المسافة
+// ═══════════════════════════════════════════════════════════════
+function calculateDistanceScore(distanceKm) {
+    if (distanceKm <= 5) return 30;
+    if (distanceKm <= 15) return 25;
+    if (distanceKm <= 30) return 20;
+    if (distanceKm <= 50) return 10;
+    if (distanceKm <= 100) return 5;
+    return 0;
+}
+
 // @route   GET /api/swipes/cards
-// @desc    جلب بطاقات للسوايب (مستخدمين لم يتم السوايب عليهم)
+// @desc    جلب بطاقات للسوايب مع خوارزمية ذكية (نشاط + عقوبات + مسافة + بروفايل)
 // @access  Protected
 router.get('/cards', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 10, gender, minAge, maxAge } = req.query;
+        const { page = 1, limit = 10, gender, minAge, maxAge, lastActiveWithin } = req.query;
         const userId = req.user._id;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
@@ -434,15 +492,36 @@ router.get('/cards', protect, async (req, res) => {
         const currentUser = await User.findById(userId);
         const blockedIds = currentUser.blockedUsers || [];
 
-        // بناء الفلتر
+        // --- فلتر الأشباح: حذف المستخدمين الخاملين +3 أشهر ---
+        const ghostCutoff = new Date();
+        ghostCutoff.setMonth(ghostCutoff.getMonth() - 3);
+
+        // بناء الفلتر الأساسي
         const filter = {
             _id: {
                 $ne: userId,
                 $nin: [...swipedIds, ...blockedIds]
             },
             isActive: true,
-            'privacySettings.profileVisibility': { $ne: 'private' }
+            'privacySettings.profileVisibility': { $ne: 'private' },
+            // فلتر الأشباح: لازم يكون آخر دخول خلال 3 أشهر
+            lastLogin: { $exists: true, $gte: ghostCutoff }
         };
+
+        // فلتر نشاط مخصص (اختياري) مثل ?lastActiveWithin=30d
+        if (lastActiveWithin) {
+            const match = lastActiveWithin.match(/^(\d+)(h|d|w|m)$/);
+            if (match) {
+                const val = parseInt(match[1]);
+                const unit = match[2];
+                const activeCutoff = new Date();
+                if (unit === 'h') activeCutoff.setHours(activeCutoff.getHours() - val);
+                else if (unit === 'd') activeCutoff.setDate(activeCutoff.getDate() - val);
+                else if (unit === 'w') activeCutoff.setDate(activeCutoff.getDate() - val * 7);
+                else if (unit === 'm') activeCutoff.setMonth(activeCutoff.getMonth() - val);
+                filter.lastLogin.$gte = activeCutoff;
+            }
+        }
 
         // فلتر الجنس
         if (gender && ['male', 'female'].includes(gender)) {
@@ -467,7 +546,11 @@ router.get('/cards', protect, async (req, res) => {
         let users;
         let totalUsers;
 
-        // إذا المستخدم الحالي لديه موقع، رتب حسب القرب
+        // نجلب عدد أكبر من المطلوب عشان نعمل scoring ثم نقص
+        const fetchMultiplier = 5;
+        const fetchLimit = limitNum * fetchMultiplier;
+
+        // إذا المستخدم الحالي لديه موقع، رتب حسب القرب + النقاط
         if (currentUser.location && currentUser.location.coordinates[0] !== 0 && currentUser.location.coordinates[1] !== 0) {
             const pipeline = [
                 {
@@ -483,68 +566,93 @@ router.get('/cards', protect, async (req, res) => {
                     $project: {
                         name: 1, profileImage: 1, photos: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1,
-                        isPremium: 1, distance: 1,
-                        isVerified: '$verification.isVerified'
+                        isPremium: 1, distance: 1, lastLogin: 1,
+                        createdAt: 1, updatedAt: 1, verification: 1
                     }
                 },
-                { $skip: (pageNum - 1) * limitNum },
-                { $limit: limitNum }
+                { $limit: fetchLimit }
             ];
 
             users = await User.aggregate(pipeline);
+
+            // حساب النقاط الذكية
             users = users.map(u => {
-                // استخدم thumbnail من photos إذا متوفر، وإلا profileImage
+                const distanceKm = Math.round(u.distance / 1000);
+                const activityScore = calculateActivityScore(u);
+                const distanceScore = calculateDistanceScore(distanceKm);
+                const totalScore = activityScore + distanceScore;
+
                 const mainPhoto = u.photos && u.photos.length > 0
                     ? (u.photos.find(p => p.order === 0) || u.photos[0])
                     : null;
                 return {
-                    ...u,
+                    _id: u._id,
+                    name: u.name,
                     profileImage: mainPhoto && mainPhoto.thumbnail
                         ? getFullUrl(mainPhoto.thumbnail)
                         : getFullUrl(u.profileImage),
-                    photos: undefined, // لا ترسل المصفوفة الكاملة
-                    distance: Math.round(u.distance / 1000)
+                    birthDate: u.birthDate,
+                    gender: u.gender,
+                    country: u.country,
+                    bio: u.bio,
+                    isOnline: u.isOnline,
+                    isPremium: u.isPremium,
+                    isVerified: u.verification?.isVerified || false,
+                    distance: distanceKm,
+                    _score: totalScore
                 };
             });
 
-            const countPipeline = [
-                {
-                    $geoNear: {
-                        near: currentUser.location,
-                        distanceField: 'distance',
-                        maxDistance: 100000,
-                        query: filter,
-                        spherical: true
-                    }
-                },
-                { $count: 'total' }
-            ];
-            const countResult = await User.aggregate(countPipeline);
-            totalUsers = countResult.length > 0 ? countResult[0].total : 0;
+            // ترتيب حسب النقاط (الأعلى أولاً)
+            users.sort((a, b) => b._score - a._score);
+
+            // Pagination
+            totalUsers = users.length;
+            const startIdx = (pageNum - 1) * limitNum;
+            users = users.slice(startIdx, startIdx + limitNum);
+
+            // حذف _score من الاستجابة
+            users = users.map(u => { delete u._score; return u; });
+
         } else {
-            // بدون موقع - ترتيب عشوائي
-            users = await User.find(filter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified')
-                .limit(limitNum)
-                .skip((pageNum - 1) * limitNum);
+            // بدون موقع - ترتيب بالنقاط فقط
+            const rawUsers = await User.find(filter)
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt')
+                .limit(fetchLimit);
 
-            totalUsers = await User.countDocuments(filter);
-
-            users = users.map(u => {
+            users = rawUsers.map(u => {
                 const userObj = u.toObject();
-                // استخدم thumbnail من photos إذا متوفر
+                const activityScore = calculateActivityScore(userObj);
+
                 const mainPhoto = userObj.photos && userObj.photos.length > 0
                     ? (userObj.photos.find(p => p.order === 0) || userObj.photos[0])
                     : null;
-                userObj.profileImage = mainPhoto && mainPhoto.thumbnail
-                    ? getFullUrl(mainPhoto.thumbnail)
-                    : getFullUrl(userObj.profileImage);
-                userObj.isVerified = userObj.verification?.isVerified || false;
-                delete userObj.verification;
-                delete userObj.photos;
-                userObj.distance = null;
-                return userObj;
+                return {
+                    _id: userObj._id,
+                    name: userObj.name,
+                    profileImage: mainPhoto && mainPhoto.thumbnail
+                        ? getFullUrl(mainPhoto.thumbnail)
+                        : getFullUrl(userObj.profileImage),
+                    birthDate: userObj.birthDate,
+                    gender: userObj.gender,
+                    country: userObj.country,
+                    bio: userObj.bio,
+                    isOnline: userObj.isOnline,
+                    isPremium: userObj.isPremium,
+                    isVerified: userObj.verification?.isVerified || false,
+                    distance: null,
+                    _score: activityScore
+                };
             });
+
+            // ترتيب حسب النقاط
+            users.sort((a, b) => b._score - a._score);
+
+            totalUsers = await User.countDocuments(filter);
+            const startIdx = (pageNum - 1) * limitNum;
+            users = users.slice(startIdx, startIdx + limitNum);
+
+            users = users.map(u => { delete u._score; return u; });
         }
 
         res.json({
