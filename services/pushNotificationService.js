@@ -237,7 +237,7 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
         // تحويل صورة المرسل لـ URL كامل
         let fullSenderImage = senderImage || '';
         if (fullSenderImage && !fullSenderImage.startsWith('http')) {
-            const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+            const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
             fullSenderImage = `${baseUrl}${fullSenderImage}`;
         }
 

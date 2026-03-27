@@ -25,7 +25,7 @@ const { checkBannedWords } = require('./bannedWords');
 const getFullUrl = (path) => {
     if (!path) return null;
     if (path.startsWith('http')) return path;
-    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
     return `${baseUrl}${path}`;
 };
 
@@ -2295,7 +2295,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         }
 
         // رابط الصورة
-        const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة

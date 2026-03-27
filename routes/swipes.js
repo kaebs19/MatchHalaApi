@@ -16,7 +16,7 @@ const { sendNotificationToUser } = require('../services/pushNotificationService'
 const getFullUrl = (imgPath) => {
     if (!imgPath) return null;
     if (imgPath.startsWith('http')) return imgPath;
-    const baseUrl = process.env.BASE_URL || 'https://halachat.khalafiati.io';
+    const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
     return `${baseUrl}${imgPath}`;
 };
 
