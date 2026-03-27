@@ -1387,6 +1387,13 @@ router.post('/conversations/request', protect, async (req, res) => {
                     conversationId: conversation._id.toString(),
                     senderId: req.user._id.toString(),
                     senderName: req.user.name,
+                    senderImage: (() => {
+                        const img = getBestUserImage(req.user);
+                        if (!img) return '';
+                        if (img.startsWith('http')) return img;
+                        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+                        return baseUrl + img;
+                    })(),
                     isSuperLike: superLikeCreated ? 'true' : 'false'
                 }
             );
@@ -2077,7 +2084,8 @@ router.post('/messages/send', protect, async (req, res) => {
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
-                    getBestUserImage(req.user)
+                    getBestUserImage(req.user),
+                    req.user._id
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -2220,7 +2228,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                         req.user.name || req.user,
                         '📷 صورة',
                         conversationId,
-                        getBestUserImage(req.user)
+                        getBestUserImage(req.user),
+                        req.user._id
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
@@ -2363,7 +2372,8 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     req.user.name,
                     '📷 أرسل صورة',
                     conversationId,
-                    getBestUserImage(req.user)
+                    getBestUserImage(req.user),
+                    req.user._id
                 );
             }
         }
@@ -2477,7 +2487,8 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
-                    getBestUserImage(req.user)
+                    getBestUserImage(req.user),
+                    req.user._id
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -3272,7 +3283,8 @@ router.post('/messages/forward', protect, async (req, res) => {
                         req.user.name,
                         originalMessage.type === 'image' ? '📷 صورة' : (originalMessage.content || ''),
                         targetConversationId,
-                        getBestUserImage(req.user)
+                        getBestUserImage(req.user),
+                        req.user._id
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);

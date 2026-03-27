@@ -201,7 +201,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
  */
-const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null) => {
+const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null, senderId = null) => {
     try {
         // التحقق من كتم المحادثة
         const user = await User.findById(recipientId);
@@ -246,6 +246,7 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             conversationId: conversationId.toString(),
             senderName,
             senderImage: fullSenderImage,
+            senderId: senderId ? senderId.toString() : '',
             threadId: conversationId.toString()
         };
 
