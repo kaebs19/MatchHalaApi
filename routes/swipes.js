@@ -480,7 +480,7 @@ function calculateDistanceScore(distanceKm) {
 // @access  Protected
 router.get('/cards', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 10, gender, minAge, maxAge, lastActiveWithin } = req.query;
+        const { page = 1, limit = 10, gender, minAge, maxAge, lastActiveWithin, latitude, longitude } = req.query;
         const userId = req.user._id;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
@@ -491,6 +491,16 @@ router.get('/cards', protect, async (req, res) => {
         // جلب IDs المستخدمين المحظورين
         const currentUser = await User.findById(userId);
         const blockedIds = currentUser.blockedUsers || [];
+
+        // استخدام الموقع من الطلب (أحدث) بدل المحفوظ في DB
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        if (lat && lng && lat !== 0 && lng !== 0) {
+            currentUser.location = {
+                type: 'Point',
+                coordinates: [lng, lat]
+            };
+        }
 
         // --- فلتر الأشباح: حذف المستخدمين الخاملين +30 يوم ---
         const ghostCutoff = new Date();
