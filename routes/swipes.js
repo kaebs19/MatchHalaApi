@@ -574,6 +574,7 @@ router.get('/cards', protect, async (req, res) => {
                 isOnline: u.isOnline,
                 isPremium: u.isPremium,
                 isVerified: u.verification?.isVerified || false,
+                lastLogin: u.lastLogin,
                 distance: distanceKm,
                 _score: activityScore + distScore
             };
