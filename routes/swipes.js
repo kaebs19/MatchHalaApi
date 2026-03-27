@@ -490,9 +490,9 @@ router.get('/cards', protect, async (req, res) => {
         const currentUser = await User.findById(userId);
         const blockedIds = currentUser.blockedUsers || [];
 
-        // --- فلتر الأشباح: حذف المستخدمين الخاملين +7 أيام ---
+        // --- فلتر الأشباح: حذف المستخدمين الخاملين +30 يوم ---
         const ghostCutoff = new Date();
-        ghostCutoff.setDate(ghostCutoff.getDate() - 7);
+        ghostCutoff.setDate(ghostCutoff.getDate() - 30);
 
         // بناء الفلتر الأساسي
         const filter = {
