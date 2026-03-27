@@ -1752,14 +1752,29 @@ router.get('/conversations', protect, async (req, res) => {
             }
         }
 
-        // حساب عدد الرسائل غير المقروءة لكل محادثة
+        // حساب عدد الرسائل غير المقروءة + حالة قراءة آخر رسالة
         const conversationsWithUnread = await Promise.all(
             conversations.map(async (conv) => {
                 const unreadCount = await Message.countDocuments({
                     conversation: conv._id,
-                    sender: { $ne: userId }, // رسائل الآخرين فقط
-                    'readBy.user': { $ne: userId } // لم يقرأها هذا المستخدم
+                    sender: { $ne: userId },
+                    'readBy.user': { $ne: userId }
                 });
+
+                // إضافة isRead لآخر رسالة
+                if (conv.lastMessage && conv.lastMessage.sender) {
+                    const senderId = conv.lastMessage.sender.toString();
+                    if (senderId === userId.toString()) {
+                        // رسالتي — هل الطرف الآخر قرأها؟
+                        conv.lastMessage.isRead = conv.lastMessage.status === 'read' ||
+                            (conv.lastMessage.readBy && conv.lastMessage.readBy.some(
+                                r => r.user && r.user.toString() !== userId.toString()
+                            ));
+                    } else {
+                        conv.lastMessage.isRead = true;
+                    }
+                }
+
                 return { ...conv, unreadCount };
             })
         );
@@ -2521,10 +2536,26 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             conversation: conversationId
         });
 
+        // إضافة isRead لكل رسالة بناءً على readBy
+        const userId = req.user._id.toString();
+        const messagesWithReadStatus = messages.reverse().map(msg => {
+            const msgObj = msg.toObject();
+            // الرسالة مقروءة إذا: أنا المرسل والطرف الآخر قرأها، أو status === 'read'
+            if (msgObj.sender && msgObj.sender._id && msgObj.sender._id.toString() === userId) {
+                // رسالتي أنا — هل الطرف الآخر قرأها؟
+                msgObj.isRead = msgObj.status === 'read' ||
+                    (msgObj.readBy && msgObj.readBy.some(r => r.user && r.user.toString() !== userId));
+            } else {
+                // رسالة الطرف الآخر — دائماً أنا قرأتها (أنا فاتح المحادثة)
+                msgObj.isRead = true;
+            }
+            return msgObj;
+        });
+
         res.status(200).json({
             success: true,
             data: {
-                messages: messages.reverse(), // عكس الترتيب للعرض
+                messages: messagesWithReadStatus,
                 total,
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit)

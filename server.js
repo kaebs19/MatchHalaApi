@@ -290,6 +290,37 @@ io.on('connection', async (socket) => {
         });
     });
 
+    // عند قراءة الرسائل (mark-read)
+    socket.on('mark-read', async ({ conversationId }) => {
+        try {
+            if (!conversationId) return;
+
+            // تحديث كل الرسائل غير المقروءة من الطرف الآخر
+            const result = await Message.updateMany(
+                {
+                    conversation: conversationId,
+                    sender: { $ne: socket.userId },
+                    'readBy.user': { $ne: socket.userId }
+                },
+                {
+                    $addToSet: { readBy: { user: socket.userId, readAt: new Date() } },
+                    $set: { status: 'read' }
+                }
+            );
+
+            if (result.modifiedCount > 0) {
+                // إبلاغ المرسل الأصلي إن رسائله قُرأت
+                socket.to(`conversation-${conversationId}`).emit('messages-read', {
+                    conversationId,
+                    readBy: socket.userId
+                });
+                console.log(`📖 ${socket.user.name} قرأ ${result.modifiedCount} رسالة في ${conversationId}`);
+            }
+        } catch (error) {
+            console.error('خطأ في mark-read:', error);
+        }
+    });
+
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
         console.log(`👋 ${socket.user.name} قطع الاتصال (${socket.id})`);
