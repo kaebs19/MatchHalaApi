@@ -184,6 +184,12 @@ app.use('/api/swipes', require('./routes/swipes'));
 app.use('/api/matches', require('./routes/matches'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
 
+// 9. React Admin Panel - لوحة التحكم
+app.use('/admin', express.static(path.join(__dirname, 'react-admin/build')));
+app.get('/admin/*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'react-admin/build', 'index.html'));
+});
+
 // Error Handlers - يجب أن تكون في النهاية
 app.use(notFound); // 404 Handler
 app.use(errorHandler); // Error Handler
