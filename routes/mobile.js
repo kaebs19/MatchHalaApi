@@ -29,6 +29,15 @@ const getFullUrl = (path) => {
     return `${baseUrl}${path}`;
 };
 
+// Helper: جلب أفضل صورة متاحة للمستخدم (photos أولاً، ثم profileImage)
+const getBestUserImage = (user) => {
+    if (user.photos && user.photos.length > 0) {
+        const photo = user.photos.sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+        return photo.thumbnail || photo.medium || photo.original || user.profileImage;
+    }
+    return user.profileImage || null;
+};
+
 // Helper: جلب صورة المستخدم بالحجم المناسب
 // size: 'thumbnail' | 'medium' | 'original'
 const getUserImage = (user, size = 'original') => {
@@ -2068,7 +2077,7 @@ router.post('/messages/send', protect, async (req, res) => {
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
-                    req.user.profileImage || null
+                    getBestUserImage(req.user)
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -2211,7 +2220,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                         req.user.name || req.user,
                         '📷 صورة',
                         conversationId,
-                        req.user.profileImage || null
+                        getBestUserImage(req.user)
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
@@ -2354,7 +2363,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     req.user.name,
                     '📷 أرسل صورة',
                     conversationId,
-                    req.user.profileImage || null
+                    getBestUserImage(req.user)
                 );
             }
         }
@@ -2468,7 +2477,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
-                    req.user.profileImage || null
+                    getBestUserImage(req.user)
                 );
                 console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
@@ -3263,7 +3272,7 @@ router.post('/messages/forward', protect, async (req, res) => {
                         req.user.name,
                         originalMessage.type === 'image' ? '📷 صورة' : (originalMessage.content || ''),
                         targetConversationId,
-                        req.user.profileImage || null
+                        getBestUserImage(req.user)
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
