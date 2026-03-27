@@ -39,8 +39,11 @@ const sendToDevice = async (token, notification, data = {}) => {
                         'content-available': 1,
                         'mutable-content': 1,
                         'thread-id': collapseId
-                    }
-                }
+                    },
+                    // تمرير senderImage مباشرة في APNs payload للـ Notification Service Extension
+                    senderImage: data.senderImage || ''
+                },
+                fcm_options: data.senderImage ? { image: data.senderImage } : undefined
             },
             android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } }
         };
