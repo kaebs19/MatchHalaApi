@@ -174,6 +174,10 @@ router.get('/me', protect, async (req, res) => {
     try {
         const userObj = req.user.toObject ? req.user.toObject() : { ...req.user };
 
+        // 🔍 DEBUG: شوف القيمة قبل وبعد
+        console.log('🔍 /me profileImage BEFORE:', userObj.profileImage);
+        console.log('🔍 /me photos BEFORE:', JSON.stringify(userObj.photos?.slice(0, 2)));
+
         // ✅ تحويل profileImage إلى URL كامل
         if (userObj.profileImage) {
             userObj.profileImage = getFullUrl(userObj.profileImage);
@@ -192,6 +196,9 @@ router.get('/me', protect, async (req, res) => {
                 return getFullUrl(imgPath);
             }).filter(Boolean);
         }
+
+        console.log('🔍 /me profileImage AFTER:', userObj.profileImage);
+        console.log('🔍 /me photos AFTER:', JSON.stringify(userObj.photos?.slice(0, 2)));
 
         res.status(200).json({
             success: true,
