@@ -175,14 +175,14 @@ router.get('/home', protect, async (req, res) => {
                 };
 
                 const notifs = await Notification.find(notifQuery)
-                    .populate('sender', 'name profileImage isPremium verification.isVerified')
+                    .populate('sender', 'name profileImage photos isPremium verification.isVerified')
                     .sort({ createdAt: -1 })
                     .limit(20)
                     .lean();
 
                 return notifs.map(n => {
-                    if (n.sender && n.sender.profileImage) {
-                        n.sender.profileImage = getFullUrl(n.sender.profileImage);
+                    if (n.sender) {
+                        n.sender.profileImage = getFullUrl(getBestUserImage(n.sender));
                     }
                     if (n.image) {
                         n.image = getFullUrl(n.image);
@@ -2773,7 +2773,7 @@ router.get('/notifications', protect, async (req, res) => {
         };
 
         const notifications = await Notification.find(query)
-            .populate('sender', 'name profileImage isPremium verification.isVerified')
+            .populate('sender', 'name profileImage photos isPremium verification.isVerified')
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit);
@@ -2786,11 +2786,11 @@ router.get('/notifications', protect, async (req, res) => {
             'readBy._id': { $ne: req.user._id }
         });
 
-        // تحويل صور المرسلين إلى روابط كاملة
+        // تحويل صور المرسلين إلى روابط كاملة (أفضل صورة متاحة)
         const formattedNotifications = notifications.map(n => {
             const notif = n.toObject();
-            if (notif.sender && notif.sender.profileImage) {
-                notif.sender.profileImage = getFullUrl(notif.sender.profileImage);
+            if (notif.sender) {
+                notif.sender.profileImage = getFullUrl(getBestUserImage(notif.sender));
             }
             if (notif.image) {
                 notif.image = getFullUrl(notif.image);
