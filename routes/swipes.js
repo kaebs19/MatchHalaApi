@@ -418,45 +418,43 @@ router.post('/batch', protect, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// دالة حساب نقاط النشاط والعقوبات
+// دالة حساب نقاط النشاط (v2 — بالدقائق، بدون عقوبات)
 // ═══════════════════════════════════════════════════════════════
 function calculateActivityScore(user) {
     const now = new Date();
     let score = 0;
 
-    // --- 1. نقاط الاتصال (Online) ---
-    if (user.isOnline) score += 50;
+    // --- 1. متصل الآن (أعلى أولوية: 60 نقطة) ---
+    if (user.isOnline) score += 60;
 
-    // --- 2. نقاط النشاط / العقوبات (Activity & Penalty) ---
+    // --- 2. نقاط النشاط الحديث (40 نقطة كحد أقصى) ---
     const lastLogin = user.lastLogin || user.updatedAt;
     if (lastLogin) {
-        const hoursSince = (now - new Date(lastLogin)) / (1000 * 60 * 60);
-        if (hoursSince < 1) score += 20;
-        else if (hoursSince < 6) score += 15;
-        else if (hoursSince < 24) score += 10;
-        else if (hoursSince < 168) score += 3;          // 1-7 أيام
-        else if (hoursSince < 336) score -= 20;          // 1-2 أسبوع
-        else if (hoursSince < 672) score -= 40;          // 2-4 أسابيع
-        else if (hoursSince < 2160) score -= 70;         // 1-3 أشهر
-        // +3 أشهر: يُفلتر تماماً قبل الوصول هنا
-    } else {
-        score -= 100; // بدون lastLogin = شبح
+        const minsSince = (now - new Date(lastLogin)) / (1000 * 60);
+        if (minsSince < 10) score += 40;            // يستخدم التطبيق الآن
+        else if (minsSince < 60) score += 35;        // نشط جداً
+        else if (minsSince < 180) score += 28;       // 1-3 ساعات
+        else if (minsSince < 360) score += 20;       // 3-6 ساعات
+        else if (minsSince < 720) score += 14;       // 6-12 ساعة
+        else if (minsSince < 1440) score += 8;       // 12-24 ساعة
+        else if (minsSince < 4320) score += 4;       // 1-3 أيام
+        else score += 1;                              // 3-7 أيام (على الحد)
     }
 
-    // --- 3. نقاط التوثيق ---
+    // --- 3. نقاط البريميوم (30 نقطة) ---
+    if (user.isPremium) score += 30;
+
+    // --- 4. نقاط التوثيق (10 نقاط) ---
     if (user.verification?.isVerified || user.isVerified) score += 10;
 
-    // --- 4. نقاط المستخدم الجديد (أقل من 7 أيام) ---
+    // --- 5. نقاط المستخدم الجديد (أقل من 7 أيام: 15 نقطة) ---
     const createdAt = user.createdAt ? new Date(user.createdAt) : null;
     if (createdAt) {
         const daysSinceCreation = (now - createdAt) / (1000 * 60 * 60 * 24);
         if (daysSinceCreation <= 7) score += 15;
     }
 
-    // --- 5. نقاط البريميوم ---
-    if (user.isPremium) score += 10;
-
-    // --- 6. مكافأة البروفايل الكامل ---
+    // --- 6. مكافأة البروفايل الكامل (15 نقطة) ---
     if (user.profileImage && user.profileImage !== '' && user.profileImage !== 'default.png') score += 10;
     if (user.bio && user.bio.trim().length > 0) score += 5;
 
@@ -464,12 +462,12 @@ function calculateActivityScore(user) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// دالة حساب نقاط المسافة
+// دالة حساب نقاط المسافة (25 نقطة كحد أقصى)
 // ═══════════════════════════════════════════════════════════════
 function calculateDistanceScore(distanceKm) {
-    if (distanceKm <= 5) return 30;
-    if (distanceKm <= 15) return 25;
-    if (distanceKm <= 30) return 20;
+    if (distanceKm <= 5) return 25;
+    if (distanceKm <= 15) return 20;
+    if (distanceKm <= 30) return 15;
     if (distanceKm <= 50) return 10;
     if (distanceKm <= 100) return 5;
     return 0;
@@ -492,9 +490,9 @@ router.get('/cards', protect, async (req, res) => {
         const currentUser = await User.findById(userId);
         const blockedIds = currentUser.blockedUsers || [];
 
-        // --- فلتر الأشباح: حذف المستخدمين الخاملين +3 أشهر ---
+        // --- فلتر الأشباح: حذف المستخدمين الخاملين +7 أيام ---
         const ghostCutoff = new Date();
-        ghostCutoff.setMonth(ghostCutoff.getMonth() - 3);
+        ghostCutoff.setDate(ghostCutoff.getDate() - 7);
 
         // بناء الفلتر الأساسي
         const filter = {
@@ -504,7 +502,7 @@ router.get('/cards', protect, async (req, res) => {
             },
             isActive: true,
             'privacySettings.profileVisibility': { $ne: 'private' },
-            // فلتر الأشباح: لازم يكون آخر دخول خلال 3 أشهر
+            // فلتر الأشباح: لازم يكون آخر دخول خلال 7 أيام
             lastLogin: { $exists: true, $gte: ghostCutoff }
         };
 
