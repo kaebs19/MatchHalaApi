@@ -114,7 +114,7 @@ app.use(cors({
 // 4. Rate Limiting - منع الهجمات بالطلبات المتكررة
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 دقيقة
-    max: 500, // 100 طلب كحد أقصى
+    max: parseInt(process.env.RATE_LIMIT_MAX) || 2000,
     message: {
         success: false,
         message: 'عدد كبير من المحاولات. يرجى المحاولة بعد 15 دقيقة'
