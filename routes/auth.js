@@ -159,15 +159,44 @@ router.post('/login', loginValidation, validate, async (req, res) => {
     }
 });
 
+// Helper: تحويل المسار النسبي إلى URL كامل
+const getFullUrl = (imgPath) => {
+    if (!imgPath) return null;
+    if (imgPath.startsWith('http')) return imgPath;
+    const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+    return `${baseUrl}${imgPath}`;
+};
+
 // @route   GET /api/auth/me
 // @desc    الحصول على بيانات المستخدم الحالي
 // @access  Private
 router.get('/me', protect, async (req, res) => {
     try {
+        const userObj = req.user.toObject ? req.user.toObject() : { ...req.user };
+
+        // ✅ تحويل profileImage إلى URL كامل
+        if (userObj.profileImage) {
+            userObj.profileImage = getFullUrl(userObj.profileImage);
+        }
+
+        // ✅ تحويل photos إلى مصفوفة strings (URLs كاملة)
+        // الباكند يخزنها كـ objects {original, medium, thumbnail, order}
+        // iOS يتوقعها كـ [String] — نرسل الـ medium أو original
+        if (userObj.photos && Array.isArray(userObj.photos)) {
+            userObj.photos = userObj.photos.map(photo => {
+                if (typeof photo === 'string') {
+                    return getFullUrl(photo);
+                }
+                // photo object: استخدم medium أو original
+                const imgPath = photo.medium || photo.original || photo.thumbnail;
+                return getFullUrl(imgPath);
+            }).filter(Boolean);
+        }
+
         res.status(200).json({
             success: true,
             data: {
-                user: req.user
+                user: userObj
             }
         });
     } catch (error) {
