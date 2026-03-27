@@ -1,0 +1,459 @@
+.users-page {
+    min-height: 100vh;
+    background: #f5f5f5;
+    padding: 30px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Header */
+.users-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.users-header h1 {
+    margin: 0 0 5px 0;
+    color: #333;
+    font-size: 28px;
+}
+
+.users-header p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+/* Filters Section */
+.users-page .filters-section {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.users-page .search-box {
+    position: relative;
+    flex: 1;
+    min-width: 300px;
+}
+
+.users-page .search-box input {
+    width: 100%;
+    padding: 12px 45px 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+    box-sizing: border-box;
+}
+
+.users-page .search-box input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.users-page .search-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+}
+
+.filter-group {
+    display: flex;
+    gap: 15px;
+}
+
+.filter-group select {
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+    min-width: 150px;
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Table Controls */
+.table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.results-info {
+    color: #666;
+    font-size: 14px;
+}
+
+.items-per-page {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.items-per-page label {
+    color: #666;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.items-per-page select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.items-per-page select:hover {
+    border-color: #667eea;
+}
+
+.items-per-page select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Table Container */
+.table-container {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.users-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.users-table th {
+    padding: 18px 15px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.users-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.users-table th.sortable:hover {
+    background: #e9ecef;
+}
+
+.users-table tbody tr {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+}
+
+.users-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.users-table td {
+    padding: 15px;
+    text-align: right;
+    font-size: 14px;
+    color: #333;
+}
+
+/* User Cell */
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar-small {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.email-cell {
+    color: #666;
+    text-align: left !important;
+}
+
+/* Badges — scoped to avoid shared badge conflicts */
+.users-page .badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.users-page .badge-success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.badge-admin {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge-user {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.badge-google {
+    background: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.badge-apple {
+    background: #000;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.badge-app {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.provider-icon {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+}
+
+.no-login {
+    color: #999;
+    font-size: 13px;
+}
+
+/* Actions Cell — scoped to avoid shared conflicts */
+.users-page .actions-cell {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.users-page .action-btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.users-page .action-btn:hover {
+    transform: scale(1.1);
+}
+
+.users-page .action-btn.btn-primary {
+    background: #cce5ff;
+}
+
+.users-page .action-btn.btn-primary:hover {
+    background: #b3d7ff;
+}
+
+.users-page .action-btn.btn-info {
+    background: #d1ecf1;
+}
+
+.users-page .action-btn.btn-info:hover {
+    background: #bee5eb;
+}
+
+.users-page .action-btn.btn-warning {
+    background: #fff3cd;
+}
+
+.users-page .action-btn.btn-warning:hover {
+    background: #ffeaa7;
+}
+
+.users-page .action-btn.btn-success {
+    background: #d4edda;
+}
+
+.users-page .action-btn.btn-success:hover {
+    background: #b8e6c0;
+}
+
+.users-page .action-btn.btn-danger {
+    background: #f8d7da;
+}
+
+.users-page .action-btn.btn-danger:hover {
+    background: #f5c6cb;
+}
+
+/* No Results */
+.no-results {
+    background: white;
+    padding: 60px 40px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.no-results p {
+    margin: 0 0 20px 0;
+    color: #666;
+    font-size: 18px;
+}
+
+.no-results button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Loading */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+.loading-container p {
+    color: #666;
+    font-size: 16px;
+}
+
+/* User info in ConfirmModal */
+.user-to-delete {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.user-to-delete strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #333;
+    font-size: 16px;
+}
+
+.user-to-delete span {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .users-table {
+        font-size: 13px;
+    }
+
+    .users-table th,
+    .users-table td {
+        padding: 12px 10px;
+    }
+}
+
+@media (max-width: 768px) {
+    .users-page {
+        padding: 15px;
+    }
+
+    .users-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    .users-page .filters-section {
+        flex-direction: column;
+    }
+
+    .users-page .search-box {
+        min-width: 100%;
+    }
+
+    .filter-group {
+        flex-direction: column;
+    }
+
+    .filter-group select {
+        width: 100%;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .users-table {
+        min-width: 800px;
+    }
+}

@@ -1,0 +1,343 @@
+.premium-users-page {
+    min-height: 100vh;
+    background: #f5f5f5;
+    padding: 30px;
+}
+
+/* Filters Section */
+.premium-filters {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    margin-bottom: 20px;
+}
+
+.premium-filters .filter-group {
+    display: flex;
+    gap: 15px;
+}
+
+.premium-filters .filter-group select {
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+    min-width: 150px;
+}
+
+.premium-filters .filter-group select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Table Controls */
+.premium-users-page .table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.premium-users-page .results-info {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Verification Badges (page-specific) */
+.badge-verified {
+    background: #d4edda;
+    color: #155724;
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-unverified {
+    background: #f8d7da;
+    color: #721c24;
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Expiry Display */
+.expiry-display {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.expiry-date {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.expiry-relative {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.expiry-display.active .expiry-date {
+    color: #155724;
+}
+
+.expiry-display.active .expiry-relative {
+    color: #28a745;
+}
+
+.expiry-display.expired .expiry-date {
+    color: #721c24;
+}
+
+.expiry-display.expired .expiry-relative {
+    color: #dc3545;
+}
+
+/* Action Buttons */
+.premium-users-page .action-btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.premium-users-page .action-btn:hover {
+    transform: scale(1.1);
+}
+
+.premium-users-page .btn-info {
+    background: #d1ecf1;
+}
+
+.premium-users-page .btn-info:hover {
+    background: #bee5eb;
+}
+
+.premium-users-page .btn-danger-light {
+    background: #f8d7da;
+}
+
+.premium-users-page .btn-danger-light:hover {
+    background: #f5c6cb;
+}
+
+/* Edit Modal - Premium Header */
+.premium-edit-modal {
+    max-width: 500px;
+}
+
+.premium-modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px 20px 0 0;
+    border-bottom: none;
+}
+
+.premium-modal-header h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: white;
+}
+
+.modal-close-white {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 28px;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.modal-close-white:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+/* Edit User Info */
+.edit-user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.edit-user-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.edit-user-info strong {
+    display: block;
+    color: #333;
+    font-size: 16px;
+    margin-bottom: 3px;
+}
+
+.edit-user-info span {
+    color: #666;
+    font-size: 13px;
+}
+
+/* Toggle Switch */
+.toggle-label {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+}
+
+.toggle-switch {
+    position: relative;
+    width: 50px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 26px;
+}
+
+.toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    right: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(-24px);
+}
+
+.toggle-status {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.toggle-status.on {
+    color: #155724;
+}
+
+.toggle-status.off {
+    color: #721c24;
+}
+
+/* Modal Footer */
+.premium-modal-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+    border-radius: 0 0 20px 20px;
+    justify-content: flex-end;
+}
+
+/* User to Delete (in confirm modal) */
+.user-to-delete {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.user-to-delete strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #333;
+    font-size: 16px;
+}
+
+.user-to-delete span {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .premium-users-page {
+        padding: 15px;
+    }
+
+    .premium-filters {
+        flex-direction: column;
+    }
+
+    .premium-filters .filter-group {
+        flex-direction: column;
+    }
+
+    .premium-filters .filter-group select {
+        width: 100%;
+    }
+
+    .premium-edit-modal {
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .premium-modal-header {
+        border-radius: 0;
+    }
+
+    .premium-modal-footer {
+        flex-direction: column;
+        border-radius: 0;
+    }
+}
+
+@media (max-width: 600px) {
+    .plan-breakdown {
+        flex-direction: column;
+        gap: 4px;
+    }
+}

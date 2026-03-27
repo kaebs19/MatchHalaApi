@@ -233,4 +233,274 @@ router.get('/super-likes', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/stats/analytics
+// @desc    تحليلات متقدمة: أكثر نشاطاً، أكثر إرسالاً، أكثر تواجداً، مواقع المستخدمين
+// @access  Private/Admin
+router.get('/analytics', protect, adminOnly, async (req, res) => {
+    try {
+        const cachedData = get('analytics_stats');
+        if (cachedData) {
+            return res.status(200).json(cachedData);
+        }
+
+        const now = new Date();
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+        // ═══════════ 1. الأكثر إرسالاً للرسائل (آخر 30 يوم) ═══════════
+        const topMessagers = await Message.aggregate([
+            { $match: { createdAt: { $gte: thirtyDaysAgo }, isDeleted: false } },
+            { $group: { _id: '$sender', messageCount: { $sum: 1 }, lastMessage: { $max: '$createdAt' } } },
+            { $sort: { messageCount: -1 } },
+            { $limit: 15 },
+            { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+            { $unwind: '$user' },
+            { $project: {
+                _id: 1,
+                messageCount: 1,
+                lastMessage: 1,
+                'user.name': 1,
+                'user.email': 1,
+                'user.profileImage': 1,
+                'user.isOnline': 1,
+                'user.isPremium': 1,
+                'user.lastLogin': 1,
+                'user.verification.isVerified': 1
+            }}
+        ]);
+
+        // ═══════════ 2. الأكثر تواجداً (أحدث lastLogin) ═══════════
+        const mostOnline = await User.find({ isActive: true, lastLogin: { $exists: true } })
+            .select('name email profileImage isOnline isPremium lastLogin verification.isVerified location createdAt')
+            .sort({ lastLogin: -1 })
+            .limit(15);
+
+        // ═══════════ 3. الأكثر نشاطاً (swipes + messages مجتمعة) ═══════════
+        const topSwipersRaw = await Swipe.aggregate([
+            { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+            { $group: { _id: '$swiper', swipeCount: { $sum: 1 } } },
+            { $sort: { swipeCount: -1 } },
+            { $limit: 30 }
+        ]);
+
+        const topMsgRaw = await Message.aggregate([
+            { $match: { createdAt: { $gte: thirtyDaysAgo }, isDeleted: false } },
+            { $group: { _id: '$sender', msgCount: { $sum: 1 } } },
+            { $sort: { msgCount: -1 } },
+            { $limit: 30 }
+        ]);
+
+        // دمج النتائج لحساب نقاط النشاط الإجمالية
+        const activityMap = {};
+        topSwipersRaw.forEach(s => {
+            const id = s._id.toString();
+            if (!activityMap[id]) activityMap[id] = { swipes: 0, messages: 0 };
+            activityMap[id].swipes = s.swipeCount;
+        });
+        topMsgRaw.forEach(m => {
+            const id = m._id.toString();
+            if (!activityMap[id]) activityMap[id] = { swipes: 0, messages: 0 };
+            activityMap[id].messages = m.msgCount;
+        });
+
+        // حساب النقاط: رسائل × 2 + سوايبات × 1
+        const activityScores = Object.entries(activityMap)
+            .map(([userId, data]) => ({
+                userId,
+                score: data.messages * 2 + data.swipes,
+                messages: data.messages,
+                swipes: data.swipes
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 15);
+
+        // جلب بيانات المستخدمين
+        const activityUserIds = activityScores.map(a => a.userId);
+        const activityUsers = await User.find({ _id: { $in: activityUserIds } })
+            .select('name email profileImage isOnline isPremium lastLogin verification.isVerified');
+
+        const activityUsersMap = {};
+        activityUsers.forEach(u => { activityUsersMap[u._id.toString()] = u; });
+
+        const topActive = activityScores.map(a => ({
+            ...a,
+            user: activityUsersMap[a.userId] || null
+        })).filter(a => a.user);
+
+        // ═══════════ 4. مواقع المستخدمين (تجميع بالدول) ═══════════
+        const locationStats = await User.aggregate([
+            { $match: { isActive: true, country: { $exists: true, $ne: '' } } },
+            { $group: { _id: '$country', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 20 }
+        ]);
+
+        // مستخدمين عندهم موقع GPS فعلي (مو [0,0])
+        const usersWithLocation = await User.countDocuments({
+            isActive: true,
+            'location.coordinates.0': { $ne: 0 },
+            'location.coordinates.1': { $ne: 0 }
+        });
+
+        const usersWithoutLocation = await User.countDocuments({
+            isActive: true,
+            $or: [
+                { location: { $exists: false } },
+                { 'location.coordinates.0': 0, 'location.coordinates.1': 0 }
+            ]
+        });
+
+        // ═══════════ 5. إحصائيات الأجهزة ═══════════
+        const deviceStats = await User.aggregate([
+            { $match: { isActive: true, 'deviceInfo.platform': { $exists: true, $ne: '' } } },
+            { $group: { _id: '$deviceInfo.platform', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+
+        // ═══════════ 6. نمو المستخدمين (آخر 30 يوم يومياً) ═══════════
+        const userGrowth = await User.aggregate([
+            { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+            { $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                count: { $sum: 1 }
+            }},
+            { $sort: { _id: 1 } }
+        ]);
+
+        // ═══════════ 7. نمو الرسائل (آخر 30 يوم يومياً) ═══════════
+        const messageGrowth = await Message.aggregate([
+            { $match: { createdAt: { $gte: thirtyDaysAgo }, isDeleted: false } },
+            { $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                count: { $sum: 1 }
+            }},
+            { $sort: { _id: 1 } }
+        ]);
+
+        // ═══════════ 8. توزيع الجنس ═══════════
+        const genderStats = await User.aggregate([
+            { $match: { isActive: true } },
+            { $group: { _id: '$gender', count: { $sum: 1 } } }
+        ]);
+
+        // ═══════════ 9. توزيع الأعمار ═══════════
+        const ageStats = await User.aggregate([
+            { $match: { isActive: true, birthDate: { $exists: true } } },
+            { $addFields: {
+                age: { $floor: { $divide: [{ $subtract: [now, '$birthDate'] }, 365.25 * 24 * 60 * 60 * 1000] } }
+            }},
+            { $bucket: {
+                groupBy: '$age',
+                boundaries: [18, 25, 30, 35, 40, 50, 100],
+                default: 'other',
+                output: { count: { $sum: 1 } }
+            }}
+        ]);
+
+        // ═══════════ 10. طرق التسجيل ═══════════
+        const authProviderStats = await User.aggregate([
+            { $match: { isActive: true } },
+            { $group: { _id: '$authProvider', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+
+        // ═══════════ 11. مستخدمين بدون صورة / بدون bio ═══════════
+        const noProfileImage = await User.countDocuments({
+            isActive: true,
+            $or: [
+                { profileImage: { $exists: false } },
+                { profileImage: '' },
+                { profileImage: 'default.png' }
+            ]
+        });
+        const noBio = await User.countDocuments({
+            isActive: true,
+            $or: [
+                { bio: { $exists: false } },
+                { bio: '' }
+            ]
+        });
+        const activeTotal = await User.countDocuments({ isActive: true });
+
+        const responseData = {
+            success: true,
+            data: {
+                topMessagers: topMessagers.map(t => ({
+                    user: t.user,
+                    messageCount: t.messageCount,
+                    lastMessage: t.lastMessage
+                })),
+                mostOnline: mostOnline.map(u => ({
+                    _id: u._id,
+                    name: u.name,
+                    email: u.email,
+                    profileImage: u.profileImage,
+                    isOnline: u.isOnline,
+                    isPremium: u.isPremium,
+                    isVerified: u.verification?.isVerified || false,
+                    lastLogin: u.lastLogin,
+                    hasLocation: u.location && u.location.coordinates && u.location.coordinates[0] !== 0
+                })),
+                topActive,
+                locationStats: {
+                    byCountry: locationStats,
+                    withGPS: usersWithLocation,
+                    withoutGPS: usersWithoutLocation
+                },
+                deviceStats,
+                userGrowth,
+                messageGrowth,
+                genderStats,
+                ageStats,
+                authProviderStats,
+                profileCompleteness: {
+                    total: activeTotal,
+                    noPhoto: noProfileImage,
+                    noBio: noBio,
+                    complete: activeTotal - Math.max(noProfileImage, noBio)
+                }
+            }
+        };
+
+        set('analytics_stats', responseData, 300); // Cache 5 دقائق
+        res.status(200).json(responseData);
+
+    } catch (error) {
+        console.error('خطأ في جلب التحليلات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/stats/user-locations
+// @desc    مواقع المستخدمين على الخريطة
+// @access  Private/Admin
+router.get('/user-locations', protect, adminOnly, async (req, res) => {
+    try {
+        const users = await User.find({
+            isActive: true,
+            'location.coordinates.0': { $ne: 0 },
+            'location.coordinates.1': { $ne: 0 }
+        })
+        .select('name profileImage location.coordinates isOnline lastLogin country')
+        .limit(500);
+
+        res.json({
+            success: true,
+            data: users.map(u => ({
+                _id: u._id,
+                name: u.name,
+                profileImage: u.profileImage,
+                lat: u.location.coordinates[1],
+                lng: u.location.coordinates[0],
+                isOnline: u.isOnline,
+                lastLogin: u.lastLogin,
+                country: u.country
+            }))
+        });
+    } catch (error) {
+        console.error('خطأ في جلب مواقع المستخدمين:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

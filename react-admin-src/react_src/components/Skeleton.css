@@ -1,0 +1,88 @@
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        #f0f0f0 0%,
+        #e0e0e0 20%,
+        #f0f0f0 40%,
+        #f0f0f0 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+.skeleton-text {
+    height: 16px;
+    margin: 8px 0;
+    width: 100%;
+}
+
+.skeleton-title {
+    height: 24px;
+    margin: 12px 0;
+    width: 70%;
+}
+
+.skeleton-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+.skeleton-card {
+    height: 150px;
+    width: 100%;
+    border-radius: 12px;
+}
+
+.skeleton-button {
+    height: 36px;
+    width: 100px;
+    border-radius: 8px;
+}
+
+/* Row Skeleton */
+.skeleton-row td {
+    padding: 15px;
+}
+
+/* Card Skeleton Wrapper */
+.skeleton-card-wrapper {
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* User Item Skeleton */
+.skeleton-user-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .skeleton {
+        background: linear-gradient(
+            90deg,
+            #2a2a2a 0%,
+            #3a3a3a 20%,
+            #2a2a2a 40%,
+            #2a2a2a 100%
+        );
+    }
+}
