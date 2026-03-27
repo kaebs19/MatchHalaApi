@@ -502,8 +502,11 @@ router.get('/cards', protect, async (req, res) => {
             },
             isActive: true,
             'privacySettings.profileVisibility': { $ne: 'private' },
-            // فلتر الأشباح: لازم يكون آخر دخول خلال 7 أيام
-            lastLogin: { $exists: true, $gte: ghostCutoff }
+            // فلتر الأشباح: نستبعد فقط من آخر دخولهم قبل 30 يوم (لكن نبقي من ليس لديهم lastLogin)
+            $or: [
+                { lastLogin: { $gte: ghostCutoff } },
+                { lastLogin: { $exists: false } }
+            ]
         };
 
         // فلتر نشاط مخصص (اختياري) مثل ?lastActiveWithin=30d
@@ -517,7 +520,10 @@ router.get('/cards', protect, async (req, res) => {
                 else if (unit === 'd') activeCutoff.setDate(activeCutoff.getDate() - val);
                 else if (unit === 'w') activeCutoff.setDate(activeCutoff.getDate() - val * 7);
                 else if (unit === 'm') activeCutoff.setMonth(activeCutoff.getMonth() - val);
-                filter.lastLogin.$gte = activeCutoff;
+                // استبدال فلتر $or بفلتر أكثر صرامة
+                filter.$or = [
+                    { lastLogin: { $gte: activeCutoff } }
+                ];
             }
         }
 
@@ -549,7 +555,10 @@ router.get('/cards', protect, async (req, res) => {
         const fetchLimit = limitNum * fetchMultiplier;
 
         // إذا المستخدم الحالي لديه موقع، رتب حسب القرب + النقاط
-        if (currentUser.location && currentUser.location.coordinates[0] !== 0 && currentUser.location.coordinates[1] !== 0) {
+        const hasValidLocation = currentUser.location && currentUser.location.coordinates[0] !== 0 && currentUser.location.coordinates[1] !== 0;
+
+        if (hasValidLocation) {
+            // محاولة أولى: البحث ضمن 100 كم
             const pipeline = [
                 {
                     $geoNear: {
@@ -572,6 +581,12 @@ router.get('/cards', protect, async (req, res) => {
             ];
 
             users = await User.aggregate(pipeline);
+
+            // إذا ما لقينا أحد قريب، نوسع البحث لكل العالم (بدون حد مسافة)
+            if (users.length === 0) {
+                pipeline[0].$geoNear.maxDistance = 20000000; // 20,000 كم (كل العالم)
+                users = await User.aggregate(pipeline);
+            }
 
             // حساب النقاط الذكية
             users = users.map(u => {
