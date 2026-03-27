@@ -269,7 +269,7 @@ router.post('/batch', protect, async (req, res) => {
         }
 
         // جلب السوايبات السابقة مرة واحدة
-        const targetIds = swipes.map(s => s.targetUserId).filter(Boolean);
+        const targetIds = swipes.map(s => s.targetUserId || s.userId).filter(Boolean);
         const existingSwipes = await Swipe.find({
             swiper: swiperId,
             swiped: { $in: targetIds }
@@ -286,10 +286,12 @@ router.post('/batch', protect, async (req, res) => {
         const results = [];
 
         for (const swipeData of swipes) {
-            const { targetUserId, direction } = swipeData;
+            // دعم كلا الصيغتين: {targetUserId, direction} أو {userId, type}
+            const targetUserId = swipeData.targetUserId || swipeData.userId;
+            const rawType = swipeData.direction || swipeData.type;
 
             // تحويل direction إلى type
-            const type = direction === 'right' ? 'like' : direction === 'left' ? 'dislike' : direction;
+            const type = rawType === 'right' ? 'like' : rawType === 'left' ? 'dislike' : rawType;
 
             if (!targetUserId || !['like', 'dislike', 'superlike'].includes(type)) {
                 results.push({ targetUserId, success: false, message: 'بيانات غير صالحة' });
