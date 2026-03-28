@@ -330,9 +330,20 @@ router.get('/users/search', protect, async (req, res) => {
             };
         }
 
-        // فلتر الاسم (اختياري)
+        // فلتر البحث: اسم أو إيميل أو معرف
         if (q && q.length >= 2) {
-            filter.name = { $regex: q, $options: 'i' };
+            // إذا كان يبدو كـ MongoDB ObjectId (24 حرف hex)
+            if (/^[0-9a-fA-F]{24}$/.test(q)) {
+                filter._id = q;
+            }
+            // إذا كان يحتوي @ فهو إيميل
+            else if (q.includes('@')) {
+                filter.email = { $regex: q, $options: 'i' };
+            }
+            // بحث بالاسم
+            else {
+                filter.name = { $regex: q, $options: 'i' };
+            }
         }
 
         // فلتر الجنس
