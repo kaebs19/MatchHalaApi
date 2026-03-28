@@ -2013,12 +2013,17 @@ router.post('/messages/send', protect, async (req, res) => {
             );
             userViolations = updatedUser.bannedWords?.violations || 1;
 
-            // حظر تلقائي عند 3 مخالفات
-            if (userViolations >= 3) {
+            // ✅ حد المخالفات من الإعدادات (افتراضي 3)
+            const Settings = require('../models/Settings');
+            const appSettings = await Settings.getSettings();
+            const maxViolations = appSettings.maxBannedWordViolations || 3;
+
+            // حظر تلقائي عند الوصول للحد
+            if (userViolations >= maxViolations) {
                 await User.findByIdAndUpdate(req.user._id, {
                     'bannedWords.isBanned': true,
                     'bannedWords.bannedAt': new Date(),
-                    'bannedWords.banReason': 'حظر تلقائي - 3 مخالفات كلمات محظورة',
+                    'bannedWords.banReason': `حظر تلقائي - ${maxViolations} مخالفات كلمات محظورة`,
                     isActive: false
                 });
             }
@@ -2026,7 +2031,7 @@ router.post('/messages/send', protect, async (req, res) => {
             // تنبيه جميع الأدمن
             try {
                 const admins = await User.find({ role: 'admin' }, '_id');
-                const banText = userViolations >= 3 ? ' (تم حظر الحساب تلقائياً!)' : ` (مخالفة ${userViolations}/3)`;
+                const banText = userViolations >= maxViolations ? ' (تم حظر الحساب تلقائياً!)' : ` (مخالفة ${userViolations}/${maxViolations})`;
                 for (const admin of admins) {
                     await pushNotificationService.sendNotificationToUser(admin._id, {
                         title: '⚠️ رسالة محظورة',
@@ -2040,7 +2045,8 @@ router.post('/messages/send', protect, async (req, res) => {
                         senderId: req.user._id,
                         matchedWords: bannedResult.matchedWords,
                         violations: userViolations,
-                        autoBanned: userViolations >= 3
+                        maxViolations: maxViolations,
+                        autoBanned: userViolations >= maxViolations
                     });
                 }
             } catch (notifErr) {
@@ -2119,11 +2125,14 @@ router.post('/messages/send', protect, async (req, res) => {
 
         // تحذير المرسل عند اكتشاف كلمات محظورة
         if (bannedResult.hasBannedWords) {
+            const Settings = require('../models/Settings');
+            const appSettings = await Settings.getSettings();
+            const maxViol = appSettings.maxBannedWordViolations || 3;
             response.warning = {
                 message: 'تم اكتشاف كلمات غير لائقة في رسالتك',
                 violations: userViolations,
-                maxViolations: 3,
-                banned: userViolations >= 3
+                maxViolations: maxViol,
+                banned: userViolations >= maxViol
             };
         }
 

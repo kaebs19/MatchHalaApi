@@ -42,6 +42,31 @@ const protect = async (req, res, next) => {
                 });
             }
 
+            // ✅ فحص تعليق العضوية
+            if (req.user.suspension?.isSuspended) {
+                const now = new Date();
+                if (req.user.suspension.suspendedUntil && now >= req.user.suspension.suspendedUntil) {
+                    // انتهت مدة التعليق — إلغاء التعليق تلقائياً
+                    await User.findByIdAndUpdate(req.user._id, {
+                        'suspension.isSuspended': false,
+                        isActive: true
+                    });
+                } else {
+                    const until = req.user.suspension.suspendedUntil
+                        ? req.user.suspension.suspendedUntil.toISOString()
+                        : 'غير محدد';
+                    return res.status(403).json({
+                        success: false,
+                        message: `تم تعليق حسابك حتى ${until}`,
+                        code: 'ACCOUNT_SUSPENDED',
+                        data: {
+                            reason: req.user.suspension.reason,
+                            suspendedUntil: req.user.suspension.suspendedUntil
+                        }
+                    });
+                }
+            }
+
             // تحديث آخر ظهور (كل 5 دقائق كحد أقصى لتقليل الحِمل)
             const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
             if (!req.user.lastLogin || req.user.lastLogin < fiveMinAgo) {

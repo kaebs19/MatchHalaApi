@@ -284,4 +284,131 @@ router.put('/content/:type', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// ✅ الأسماء المحظورة
+// ═══════════════════════════════════════════════════════════════════
+
+// @route   GET /api/settings/banned-names
+// @desc    الحصول على قائمة الأسماء المحظورة
+// @access  Admin
+router.get('/banned-names', protect, adminOnly, async (req, res) => {
+    try {
+        const settings = await Settings.getSettings();
+        res.json({
+            success: true,
+            count: settings.bannedNames?.length || 0,
+            data: { bannedNames: settings.bannedNames || [] }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في جلب الأسماء المحظورة' });
+    }
+});
+
+// @route   POST /api/settings/banned-names
+// @desc    إضافة أسماء محظورة
+// @access  Admin
+router.post('/banned-names', protect, adminOnly, async (req, res) => {
+    try {
+        const { names, reason } = req.body;
+        // names: اسم واحد (string) أو مصفوفة أسماء
+
+        if (!names) {
+            return res.status(400).json({ success: false, message: 'الأسماء مطلوبة' });
+        }
+
+        const nameList = Array.isArray(names) ? names : [names];
+        const settings = await Settings.getSettings();
+
+        if (!settings.bannedNames) settings.bannedNames = [];
+
+        const added = [];
+        const duplicates = [];
+
+        for (const name of nameList) {
+            const trimmed = name.trim().toLowerCase();
+            if (!trimmed) continue;
+
+            const exists = settings.bannedNames.some(bn => bn.name === trimmed);
+            if (exists) {
+                duplicates.push(trimmed);
+            } else {
+                settings.bannedNames.push({
+                    name: trimmed,
+                    reason: reason || 'اسم غير لائق',
+                    addedBy: req.user._id,
+                    addedAt: new Date()
+                });
+                added.push(trimmed);
+            }
+        }
+
+        await settings.save();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: `تم إضافة ${added.length} اسم محظور`,
+            data: { added, duplicates, total: settings.bannedNames.length }
+        });
+    } catch (error) {
+        console.error('خطأ في إضافة أسماء محظورة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/settings/banned-names/:name
+// @desc    حذف اسم محظور
+// @access  Admin
+router.delete('/banned-names/:name', protect, adminOnly, async (req, res) => {
+    try {
+        const settings = await Settings.getSettings();
+        const nameToRemove = req.params.name.toLowerCase().trim();
+
+        const idx = settings.bannedNames?.findIndex(bn => bn.name === nameToRemove);
+        if (idx === -1 || idx === undefined) {
+            return res.status(404).json({ success: false, message: 'الاسم غير موجود' });
+        }
+
+        settings.bannedNames.splice(idx, 1);
+        await settings.save();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: `تم حذف الاسم المحظور: ${nameToRemove}`,
+            data: { total: settings.bannedNames.length }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/settings/max-violations
+// @desc    تحديث حد المخالفات قبل الحظر التلقائي
+// @access  Admin
+router.put('/max-violations', protect, adminOnly, async (req, res) => {
+    try {
+        const { maxViolations } = req.body;
+
+        if (!maxViolations || maxViolations < 1) {
+            return res.status(400).json({ success: false, message: 'الحد الأدنى 1 مخالفة' });
+        }
+
+        const settings = await Settings.getSettings();
+        settings.maxBannedWordViolations = maxViolations;
+        settings.lastUpdated = Date.now();
+        settings.updatedBy = req.user._id;
+        await settings.save();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: `تم تحديث حد المخالفات إلى ${maxViolations}`,
+            data: { maxBannedWordViolations: maxViolations }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

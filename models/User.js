@@ -217,7 +217,37 @@ const userSchema = new mongoose.Schema({
         isBanned: { type: Boolean, default: false },
         bannedAt: { type: Date, default: null },
         banReason: { type: String, default: null }
-    }
+    },
+
+    // ✅ تعليق العضوية (إيقاف مؤقت)
+    suspension: {
+        isSuspended: { type: Boolean, default: false },
+        suspendedAt: { type: Date, default: null },
+        suspendedUntil: { type: Date, default: null },   // null = دائم
+        reason: { type: String, default: null },
+        suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+    },
+
+    // ✅ حالة الاسم (عادي / محظور / معلق)
+    nameStatus: {
+        status: {
+            type: String,
+            enum: ['normal', 'suspended', 'banned'],
+            default: 'normal'
+        },
+        originalName: { type: String, default: null },       // الاسم الأصلي قبل التعليق
+        reason: { type: String, default: null },
+        changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        changedAt: { type: Date, default: null }
+    },
+
+    // ✅ سجل حذف الصور (من الأدمن)
+    photoRemovals: [{
+        photoUrl: { type: String },
+        reason: { type: String },
+        removedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        removedAt: { type: Date, default: Date.now }
+    }]
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });

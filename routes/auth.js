@@ -101,6 +101,21 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             });
         }
 
+        // ✅ فحص الاسم ضد قائمة الأسماء المحظورة في الإعدادات
+        const Settings = require('../models/Settings');
+        const appSettings = await Settings.getSettings();
+        const nameLower = name.trim().toLowerCase();
+        const isBannedName = appSettings.bannedNames?.some(bn =>
+            nameLower === bn.name || nameLower.includes(bn.name)
+        );
+        if (isBannedName) {
+            return res.status(400).json({
+                success: false,
+                message: 'هذا الاسم غير مسموح به',
+                code: 'BANNED_NAME'
+            });
+        }
+
         // التحقق من أن البريد غير مستخدم
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -298,6 +313,21 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 return res.status(400).json({
                     success: false,
                     message: 'الاسم يحتوي على كلمات غير مسموح بها',
+                    code: 'BANNED_NAME'
+                });
+            }
+
+            // ✅ فحص الاسم ضد قائمة الأسماء المحظورة في الإعدادات
+            const Settings = require('../models/Settings');
+            const appSettings = await Settings.getSettings();
+            const nameLower = name.trim().toLowerCase();
+            const isBannedName = appSettings.bannedNames?.some(bn =>
+                nameLower === bn.name || nameLower.includes(bn.name)
+            );
+            if (isBannedName) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'هذا الاسم غير مسموح به',
                     code: 'BANNED_NAME'
                 });
             }

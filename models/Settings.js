@@ -110,6 +110,20 @@ const settingsSchema = new mongoose.Schema({
         }
     },
 
+    // ✅ الأسماء المحظورة
+    bannedNames: [{
+        name: { type: String, lowercase: true, trim: true },
+        reason: { type: String, default: 'اسم غير لائق' },
+        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        addedAt: { type: Date, default: Date.now }
+    }],
+
+    // ✅ حد المخالفات قبل الحظر التلقائي
+    maxBannedWordViolations: {
+        type: Number,
+        default: 3
+    },
+
     // آخر تحديث
     lastUpdated: {
         type: Date,
