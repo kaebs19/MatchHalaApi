@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { getUserActivity } from '../services/api';
+import { getUserActivity, toggleUserActive, deleteUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
+import config from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
+import ConfirmModal from '../components/ConfirmModal';
 import './UserDetail.css';
 
 function UserDetail({ userId, onBack }) {
@@ -13,6 +15,9 @@ function UserDetail({ userId, onBack }) {
     const [activeTab, setActiveTab] = useState('info');
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
+    const [showBanConfirm, setShowBanConfirm] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [actionLoading, setActionLoading] = useState(false);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -30,6 +35,62 @@ function UserDetail({ userId, onBack }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    // Toggle active/inactive
+    const handleToggleActive = async () => {
+        setActionLoading(true);
+        try {
+            await toggleUserActive(userId);
+            showToast(user.isActive ? 'تم تعطيل الحساب' : 'تم تفعيل الحساب', 'success');
+            fetchUserActivity();
+        } catch (err) {
+            showToast('فشل في تغيير حالة الحساب', 'error');
+        }
+        setActionLoading(false);
+    };
+
+    // Ban/Unban user (banned words)
+    const handleBanToggle = async () => {
+        setActionLoading(true);
+        try {
+            const API_URL = config.API_URL;
+            const token = localStorage.getItem('token');
+            const isBanned = user.bannedWords?.isBanned;
+            const res = await fetch(`${API_URL}/users/${userId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    'bannedWords.isBanned': !isBanned,
+                    'bannedWords.bannedAt': !isBanned ? new Date() : null,
+                    'bannedWords.banReason': !isBanned ? 'حظر يدوي من الأدمن' : null,
+                    isActive: isBanned ? true : false
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(isBanned ? 'تم فك الحظر' : 'تم حظر المستخدم', 'success');
+                fetchUserActivity();
+            }
+        } catch (err) {
+            showToast('فشل في تغيير حالة الحظر', 'error');
+        }
+        setActionLoading(false);
+        setShowBanConfirm(false);
+    };
+
+    // Delete user
+    const handleDeleteUser = async () => {
+        setActionLoading(true);
+        try {
+            await deleteUser(userId);
+            showToast('تم حذف المستخدم', 'success');
+            onBack();
+        } catch (err) {
+            showToast('فشل في حذف المستخدم', 'error');
+        }
+        setActionLoading(false);
+        setShowDeleteConfirm(false);
     };
 
     const formatDate = (date) => formatDateTimeLong(date) === '-' ? 'غير محدد' : formatDateTimeLong(date);
@@ -168,6 +229,61 @@ function UserDetail({ userId, onBack }) {
                     )}
                 </div>
             </div>
+
+            {/* Quick Actions */}
+            <div className="quick-actions-bar">
+                <button
+                    className={`action-btn ${user.isActive ? 'warning' : 'success'}`}
+                    onClick={handleToggleActive}
+                    disabled={actionLoading}
+                >
+                    {user.isActive ? '🔒 تعطيل الحساب' : '✅ تفعيل الحساب'}
+                </button>
+                <button
+                    className={`action-btn ${user.bannedWords?.isBanned ? 'success' : 'danger'}`}
+                    onClick={() => setShowBanConfirm(true)}
+                    disabled={actionLoading}
+                >
+                    {user.bannedWords?.isBanned ? '🔓 فك الحظر' : '🚫 حظر المستخدم'}
+                </button>
+                <button
+                    className="action-btn danger-outline"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={actionLoading}
+                >
+                    🗑️ حذف المستخدم
+                </button>
+                {user.isPremium && (
+                    <span className="premium-badge-large">⭐ Premium — {user.premiumPlan || 'مشترك'}</span>
+                )}
+            </div>
+
+            {/* Ban Confirm Modal */}
+            {showBanConfirm && (
+                <ConfirmModal
+                    title={user.bannedWords?.isBanned ? 'فك حظر المستخدم' : 'حظر المستخدم'}
+                    message={user.bannedWords?.isBanned
+                        ? `هل تريد فك حظر ${user.name}؟ سيتمكن من تسجيل الدخول مرة أخرى.`
+                        : `هل تريد حظر ${user.name}؟ لن يتمكن من تسجيل الدخول أو إرسال رسائل.`}
+                    confirmText={user.bannedWords?.isBanned ? 'فك الحظر' : 'حظر'}
+                    onConfirm={handleBanToggle}
+                    onCancel={() => setShowBanConfirm(false)}
+                    loading={actionLoading}
+                />
+            )}
+
+            {/* Delete Confirm Modal */}
+            {showDeleteConfirm && (
+                <ConfirmModal
+                    title="حذف المستخدم"
+                    message={`هل أنت متأكد من حذف ${user.name}؟ هذا الإجراء لا يمكن التراجع عنه.`}
+                    confirmText="حذف نهائي"
+                    onConfirm={handleDeleteUser}
+                    onCancel={() => setShowDeleteConfirm(false)}
+                    loading={actionLoading}
+                    danger
+                />
+            )}
 
             {/* Tabs Navigation */}
             <div className="tabs-navigation">

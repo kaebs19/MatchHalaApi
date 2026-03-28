@@ -33,6 +33,24 @@ const protect = async (req, res, next) => {
                 });
             }
 
+            // فحص حظر الكلمات المحظورة
+            if (req.user.bannedWords?.isBanned) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'تم حظر حسابك بسبب مخالفات متكررة',
+                    code: 'ACCOUNT_BANNED'
+                });
+            }
+
+            // تحديث آخر ظهور (كل 5 دقائق كحد أقصى لتقليل الحِمل)
+            const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+            if (!req.user.lastLogin || req.user.lastLogin < fiveMinAgo) {
+                User.findByIdAndUpdate(req.user._id, {
+                    lastLogin: new Date(),
+                    isOnline: true
+                }).exec().catch(() => {});
+            }
+
             next();
         } catch (error) {
             console.error('خطأ في التحقق من Token:', error.message);

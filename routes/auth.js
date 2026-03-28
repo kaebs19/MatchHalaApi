@@ -173,6 +173,16 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
+        // التحقق من حظر الكلمات المحظورة
+        if (user.bannedWords?.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة للكلمات المحظورة. تواصل مع الإدارة',
+                code: 'ACCOUNT_BANNED',
+                data: { reason: user.bannedWords.banReason, bannedAt: user.bannedWords.bannedAt }
+            });
+        }
+
         // تحديث آخر تسجيل دخول + حفظ السجل
         await saveLoginRecord(user, req);
 
@@ -732,6 +742,15 @@ router.post('/google', async (req, res) => {
         }
 
         // تحديث Device Token و معلومات الجهاز
+        // فحص الحظر
+        if (!isNewUser && user.bannedWords?.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة. تواصل مع الإدارة',
+                code: 'ACCOUNT_BANNED'
+            });
+        }
+
         if (deviceToken) user.deviceToken = deviceToken;
         user.fcmToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
@@ -834,6 +853,15 @@ router.post('/apple', async (req, res) => {
                 appleId,
                 authProvider: 'apple',
                 isActive: true
+            });
+        }
+
+        // فحص الحظر
+        if (!isNewUser && user.bannedWords?.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة. تواصل مع الإدارة',
+                code: 'ACCOUNT_BANNED'
             });
         }
 

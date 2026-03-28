@@ -138,6 +138,71 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/stats/devices
+// @desc    إحصائيات الأجهزة والمواقع
+// @access  Private/Admin
+router.get('/stats/devices', protect, adminOnly, async (req, res) => {
+    try {
+        const [
+            platformStats,
+            deviceModelStats,
+            countryStats,
+            cityStats,
+            languageStats,
+            totalUsers,
+            onlineUsers,
+            activeToday
+        ] = await Promise.all([
+            User.aggregate([
+                { $match: { 'deviceInfo.platform': { $ne: null } } },
+                { $group: { _id: '$deviceInfo.platform', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+            User.aggregate([
+                { $match: { 'deviceInfo.deviceModel': { $ne: null } } },
+                { $group: { _id: '$deviceInfo.deviceModel', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 15 }
+            ]),
+            User.aggregate([
+                { $match: { country: { $ne: null } } },
+                { $group: { _id: '$country', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 20 }
+            ]),
+            User.aggregate([
+                { $match: { city: { $ne: null } } },
+                { $group: { _id: '$city', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 20 }
+            ]),
+            User.aggregate([
+                { $match: { 'deviceInfo.language': { $ne: null } } },
+                { $group: { _id: '$deviceInfo.language', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+            User.countDocuments({}),
+            User.countDocuments({ isOnline: true }),
+            User.countDocuments({ lastLogin: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                overview: { totalUsers, onlineUsers, activeToday },
+                platforms: platformStats.map(p => ({ name: p._id, count: p.count })),
+                deviceModels: deviceModelStats.map(d => ({ name: d._id, count: d.count })),
+                countries: countryStats.map(c => ({ name: c._id, count: c.count })),
+                cities: cityStats.map(c => ({ name: c._id, count: c.count })),
+                languages: languageStats.map(l => ({ name: l._id, count: l.count }))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إحصائيات الأجهزة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/users/:id
 // @desc    الحصول على مستخدم واحد
 // @access  Private/Admin
@@ -367,6 +432,46 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر'
         });
+    }
+});
+
+// @route   PUT /api/users/:id/ban
+// @desc    حظر/إلغاء حظر مستخدم
+// @access  Private/Admin
+router.put('/:id/ban', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const isBanned = user.bannedWords?.isBanned;
+
+        if (isBanned) {
+            // إلغاء الحظر
+            user.set('bannedWords.isBanned', false);
+            user.set('bannedWords.bannedAt', null);
+            user.set('bannedWords.banReason', null);
+            user.isActive = true;
+        } else {
+            // حظر
+            user.set('bannedWords.isBanned', true);
+            user.set('bannedWords.bannedAt', new Date());
+            user.set('bannedWords.banReason', req.body.reason || 'حظر يدوي من الأدمن');
+            user.isActive = false;
+        }
+
+        await user.save();
+        invalidateUsers();
+
+        res.json({
+            success: true,
+            message: isBanned ? 'تم إلغاء حظر المستخدم' : 'تم حظر المستخدم',
+            data: { user }
+        });
+    } catch (error) {
+        console.error('خطأ في حظر المستخدم:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
