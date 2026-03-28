@@ -12,28 +12,111 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, type, isActive } = req.query;
+        const { page = 1, limit = 20, type, isActive, status, search, hasFlaggedMessages, sortBy = 'updatedAt' } = req.query;
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
 
         // بناء الفلتر
         const filter = {};
         if (type) filter.type = type;
         if (isActive !== undefined) filter.isActive = isActive === 'true';
+        if (status) filter.status = status;
+
+        // بحث بالاسم
+        let participantIds = null;
+        if (search) {
+            const User = require('../models/User');
+            const matchingUsers = await User.find({
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } }
+                ]
+            }).select('_id');
+            participantIds = matchingUsers.map(u => u._id);
+            if (participantIds.length > 0) {
+                filter.participants = { $in: participantIds };
+            } else {
+                return res.status(200).json({
+                    success: true,
+                    data: { conversations: [], totalPages: 0, currentPage: pageNum, total: 0 }
+                });
+            }
+        }
+
+        // فلترة المحادثات التي تحتوي رسائل محظورة
+        let flaggedConvIds = null;
+        if (hasFlaggedMessages === 'true') {
+            const FlaggedMessage = require('../models/FlaggedMessage');
+            const flaggedAgg = await FlaggedMessage.aggregate([
+                { $group: { _id: '$conversation' } }
+            ]);
+            flaggedConvIds = flaggedAgg.map(f => f._id);
+            filter._id = { $in: flaggedConvIds };
+        }
+
+        // ترتيب
+        const sortOptions = {};
+        if (sortBy === 'messages') {
+            sortOptions['metadata.totalMessages'] = -1;
+        } else if (sortBy === 'oldest') {
+            sortOptions.createdAt = 1;
+        } else {
+            sortOptions.updatedAt = -1;
+        }
 
         const conversations = await Conversation.find(filter)
-            .populate('participants', 'name email profileImage isPremium verification.isVerified')
-            .populate('lastMessage')
-            .sort({ updatedAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit);
+            .populate('participants', 'name email profileImage isPremium isOnline lastLogin verification.isVerified bannedWords.isBanned')
+            .populate({
+                path: 'lastMessage',
+                populate: { path: 'sender', select: 'name' }
+            })
+            .sort(sortOptions)
+            .limit(limitNum)
+            .skip((pageNum - 1) * limitNum);
 
         const count = await Conversation.countDocuments(filter);
+
+        // جلب عدد الرسائل المحظورة لكل محادثة
+        const FlaggedMessage = require('../models/FlaggedMessage');
+        const convIds = conversations.map(c => c._id);
+        const flaggedCounts = await FlaggedMessage.aggregate([
+            { $match: { conversation: { $in: convIds } } },
+            { $group: { _id: '$conversation', count: { $sum: 1 } } }
+        ]);
+        const flaggedMap = {};
+        flaggedCounts.forEach(f => { flaggedMap[f._id.toString()] = f.count; });
+
+        // جلب عدد الرسائل لكل محادثة
+        const messageCounts = await Message.aggregate([
+            { $match: { conversation: { $in: convIds }, isDeleted: false } },
+            { $group: { _id: '$conversation', count: { $sum: 1 } } }
+        ]);
+        const msgCountMap = {};
+        messageCounts.forEach(m => { msgCountMap[m._id.toString()] = m.count; });
+
+        // جلب عدد الصور لكل محادثة
+        const imageCounts = await Message.aggregate([
+            { $match: { conversation: { $in: convIds }, type: 'image', isDeleted: false } },
+            { $group: { _id: '$conversation', count: { $sum: 1 } } }
+        ]);
+        const imgCountMap = {};
+        imageCounts.forEach(i => { imgCountMap[i._id.toString()] = i.count; });
+
+        // إضافة العدادات
+        const enriched = conversations.map(c => {
+            const obj = c.toObject();
+            obj.flaggedMessagesCount = flaggedMap[c._id.toString()] || 0;
+            obj.messagesCount = msgCountMap[c._id.toString()] || 0;
+            obj.imagesCount = imgCountMap[c._id.toString()] || 0;
+            return obj;
+        });
 
         res.status(200).json({
             success: true,
             data: {
-                conversations,
-                totalPages: Math.ceil(count / limit),
-                currentPage: page,
+                conversations: enriched,
+                totalPages: Math.ceil(count / limitNum),
+                currentPage: pageNum,
                 total: count
             }
         });
@@ -47,13 +130,53 @@ router.get('/', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/conversations/stats/overview
+// @desc    الحصول على إحصائيات المحادثات
+// @access  Private/Admin
+router.get('/stats/overview', protect, adminOnly, async (req, res) => {
+    try {
+        const FlaggedMessage = require('../models/FlaggedMessage');
+        const [
+            totalConversations, activeConversations, totalMessages,
+            privateConversations, groupConversations, pendingConversations,
+            lockedConversations, totalImages, flaggedMessagesCount, todayMessages
+        ] = await Promise.all([
+            Conversation.countDocuments(),
+            Conversation.countDocuments({ isActive: true }),
+            Message.countDocuments({ isDeleted: false }),
+            Conversation.countDocuments({ type: 'private' }),
+            Conversation.countDocuments({ type: 'group' }),
+            Conversation.countDocuments({ status: 'pending' }),
+            Conversation.countDocuments({ isLocked: true }),
+            Message.countDocuments({ type: 'image', isDeleted: false }),
+            FlaggedMessage.countDocuments(),
+            Message.countDocuments({
+                isDeleted: false,
+                createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+            })
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalConversations, activeConversations, totalMessages,
+                privateConversations, groupConversations, pendingConversations,
+                lockedConversations, totalImages, flaggedMessagesCount, todayMessages
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الإحصائيات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/conversations/:id
 // @desc    الحصول على محادثة واحدة مع رسائلها
 // @access  Private/Admin
 router.get('/:id', protect, adminOnly, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email role');
+            .populate('participants', 'name email profileImage isPremium isOnline lastLogin verification.isVerified bannedWords.isBanned');
 
         if (!conversation) {
             return res.status(404).json({
@@ -62,20 +185,19 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
             });
         }
 
-        // جلب الرسائل
-        const messages = await Message.find({
-            conversation: req.params.id,
-            isDeleted: false
-        })
-            .populate('sender', 'name email')
-            .sort({ createdAt: 1 })
-            .limit(100);
+        // إحصائيات المحادثة
+        const FlaggedMessage = require('../models/FlaggedMessage');
+        const [totalMessages, imageMessages, flaggedMessages] = await Promise.all([
+            Message.countDocuments({ conversation: req.params.id, isDeleted: false }),
+            Message.countDocuments({ conversation: req.params.id, type: 'image', isDeleted: false }),
+            FlaggedMessage.countDocuments({ conversation: req.params.id })
+        ]);
 
         res.status(200).json({
             success: true,
             data: {
                 conversation,
-                messages
+                stats: { totalMessages, imageMessages, flaggedMessages }
             }
         });
 
@@ -147,39 +269,6 @@ router.put('/:id/toggle-active', protect, adminOnly, async (req, res) => {
 
     } catch (error) {
         console.error('خطأ في تحديث المحادثة:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في السيرفر'
-        });
-    }
-});
-
-// @route   GET /api/conversations/stats/overview
-// @desc    الحصول على إحصائيات المحادثات
-// @access  Private/Admin
-router.get('/stats/overview', protect, adminOnly, async (req, res) => {
-    try {
-        const totalConversations = await Conversation.countDocuments();
-        const activeConversations = await Conversation.countDocuments({ isActive: true });
-        const totalMessages = await Message.countDocuments({ isDeleted: false });
-
-        // عدد المحادثات الخاصة والجماعية
-        const privateConversations = await Conversation.countDocuments({ type: 'private' });
-        const groupConversations = await Conversation.countDocuments({ type: 'group' });
-
-        res.status(200).json({
-            success: true,
-            data: {
-                totalConversations,
-                activeConversations,
-                totalMessages,
-                privateConversations,
-                groupConversations
-            }
-        });
-
-    } catch (error) {
-        console.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر'
