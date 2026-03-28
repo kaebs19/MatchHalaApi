@@ -241,6 +241,8 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             fullSenderImage = `${baseUrl}${fullSenderImage}`;
         }
 
+        console.log('🖼️ [DEBUG] senderImage URL:', fullSenderImage);
+
         const data = {
             type: 'message',
             conversationId: conversationId.toString(),

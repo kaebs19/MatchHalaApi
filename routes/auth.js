@@ -69,7 +69,7 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    profileImage: user.profileImage || null
+                    profileImage: getFullUrl(user.profileImage) || null
                 },
                 token: generateToken(user._id)
             }
@@ -142,7 +142,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    profileImage: user.profileImage,
+                    profileImage: getFullUrl(user.profileImage),
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id)
@@ -249,7 +249,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         // دعم الصور الافتراضية (avatar_1 إلى avatar_13)
         if (defaultAvatar) {
             // التحقق من صحة اسم الصورة الافتراضية
-            const validAvatars = Array.from({ length: 13 }, (_, i) => `avatar_${i + 1}`);
+            const validAvatars = Array.from({ length: 14 }, (_, i) => `avatar_${i + 1}`);
             if (validAvatars.includes(defaultAvatar)) {
                 user.profileImage = `/uploads/defaults/${defaultAvatar}.jpg`;
             }
@@ -257,11 +257,24 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
         await user.save();
 
+        // تحويل الصور لـ URLs كاملة
+        const userObj = user.toObject ? user.toObject() : { ...user._doc };
+        if (userObj.profileImage) {
+            userObj.profileImage = getFullUrl(userObj.profileImage);
+        }
+        if (userObj.photos && Array.isArray(userObj.photos)) {
+            userObj.photos = userObj.photos.map(photo => {
+                if (typeof photo === 'string') return getFullUrl(photo);
+                const imgPath = photo.medium || photo.original || photo.thumbnail;
+                return getFullUrl(imgPath);
+            }).filter(Boolean);
+        }
+
         res.status(200).json({
             success: true,
             message: 'تم تحديث البيانات بنجاح',
             data: {
-                user
+                user: userObj
             }
         });
 
