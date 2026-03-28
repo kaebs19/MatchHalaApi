@@ -28,6 +28,51 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Apple Auth
 const appleSignin = require('apple-signin-auth');
 
+// Helper: استخراج IP من الطلب
+const getClientIP = (req) => {
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+        || req.headers['x-real-ip']
+        || req.connection?.remoteAddress
+        || req.ip
+        || null;
+};
+
+// Helper: حفظ سجل تسجيل الدخول
+const saveLoginRecord = async (user, req) => {
+    const ip = getClientIP(req);
+    const { deviceModel, platform, appVersion, city, country } = req.body;
+
+    const loginEntry = {
+        ip,
+        country: country || user.country,
+        city: city || user.city,
+        deviceModel: deviceModel || user.deviceInfo?.deviceModel,
+        platform: platform || user.deviceInfo?.platform,
+        appVersion: appVersion || user.deviceInfo?.appVersion,
+        loginAt: new Date()
+    };
+
+    // تحديث بيانات المستخدم + إضافة سجل الدخول (الاحتفاظ بآخر 20)
+    const updateData = {
+        lastLogin: new Date(),
+        lastIP: ip,
+        $push: {
+            loginHistory: {
+                $each: [loginEntry],
+                $slice: -20 // الاحتفاظ بآخر 20 سجل فقط
+            }
+        }
+    };
+
+    if (city) updateData.city = city;
+    if (country) updateData.country = country;
+    if (deviceModel) updateData['deviceInfo.deviceModel'] = deviceModel;
+    if (platform) updateData['deviceInfo.platform'] = platform;
+    if (appVersion) updateData['deviceInfo.appVersion'] = appVersion;
+
+    await User.findByIdAndUpdate(user._id, updateData);
+};
+
 // @route   POST /api/auth/register
 // @desc    تسجيل مستخدم جديد
 // @access  Public
@@ -128,9 +173,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
-        // تحديث آخر تسجيل دخول
-        user.lastLogin = new Date();
-        await user.save();
+        // تحديث آخر تسجيل دخول + حفظ السجل
+        await saveLoginRecord(user, req);
 
         // إرجاع البيانات مع Token
         res.status(200).json({
@@ -691,9 +735,9 @@ router.post('/google', async (req, res) => {
         if (deviceToken) user.deviceToken = deviceToken;
         user.fcmToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
-        user.lastLogin = new Date();
 
         await user.save();
+        await saveLoginRecord(user, req);
 
         res.status(200).json({
             success: true,
@@ -797,9 +841,9 @@ router.post('/apple', async (req, res) => {
         if (deviceToken) user.deviceToken = deviceToken;
         user.fcmToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
-        user.lastLogin = new Date();
 
         await user.save();
+        await saveLoginRecord(user, req);
 
         // هل يحتاج إدخال اسم؟ (مستخدمي Apple اللي ما أدخلوا اسمهم)
         const needsName = !user.name || user.name === 'مستخدم Apple' || user.name.trim().length < 2;
@@ -838,7 +882,7 @@ router.post('/apple', async (req, res) => {
 // @access  Private
 router.put('/device-token', protect, async (req, res) => {
     try {
-        const { deviceToken, deviceInfo } = req.body;
+        const { deviceToken, deviceInfo, platform, osVersion, appVersion, deviceModel, language } = req.body;
 
         if (!deviceToken) {
             return res.status(400).json({
@@ -858,7 +902,19 @@ router.put('/device-token', protect, async (req, res) => {
 
         user.deviceToken = deviceToken;
         user.fcmToken = deviceToken;
-        if (deviceInfo) user.deviceInfo = deviceInfo;
+
+        // تحديث معلومات الجهاز (من body مباشرة أو من deviceInfo object)
+        const info = deviceInfo || {};
+        user.deviceInfo = {
+            platform: platform || info.platform || user.deviceInfo?.platform,
+            osVersion: osVersion || info.osVersion || user.deviceInfo?.osVersion,
+            appVersion: appVersion || info.appVersion || user.deviceInfo?.appVersion,
+            deviceModel: deviceModel || info.deviceModel || user.deviceInfo?.deviceModel,
+            language: language || info.language || user.deviceInfo?.language
+        };
+
+        // حفظ IP
+        user.lastIP = getClientIP(req);
         await user.save();
 
         res.status(200).json({

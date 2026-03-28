@@ -716,3 +716,67 @@
 .message-image-preview:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
+
+/* Login History */
+.login-history-section {
+    margin-top: 20px;
+}
+
+.login-history-section h4 {
+    margin-bottom: 12px;
+    font-size: 16px;
+    color: #1f2937;
+}
+
+.login-history-table {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.login-history-table table {
+    width: 100%;
+    font-size: 13px;
+}
+
+.ip-value {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #6b7280;
+    direction: ltr;
+    text-align: left;
+}
+
+/* Violations */
+.violations-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: #fef2f2;
+    border-radius: 12px;
+    border: 1px solid #fecaca;
+}
+
+.violations-section h4 {
+    margin-bottom: 8px;
+    color: #991b1b;
+}
+
+.violations-info {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.violation-count {
+    font-weight: 700;
+    color: #dc2626;
+    font-size: 18px;
+}
+
+.violation-banned {
+    background: #dc2626;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+}

@@ -143,7 +143,8 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
 // @access  Private/Admin
 router.get('/:id', protect, adminOnly, async (req, res) => {
     try {
-        const user = await User.findById(req.params.id).select('-password');
+        const user = await User.findById(req.params.id)
+            .select('-password -resetPasswordToken -resetPasswordExpire +lastIP');
 
         if (!user) {
             return res.status(404).json({
@@ -152,10 +153,26 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
             });
         }
 
+        // إحصائيات إضافية للأدمن
+        const Conversation = require('../models/Conversation');
+        const Message = require('../models/Message');
+        const FlaggedMessage = require('../models/FlaggedMessage');
+
+        const [conversationCount, messageCount, flaggedCount] = await Promise.all([
+            Conversation.countDocuments({ participants: user._id }),
+            Message.countDocuments({ sender: user._id }),
+            FlaggedMessage.countDocuments({ sender: user._id })
+        ]);
+
         res.status(200).json({
             success: true,
             data: {
-                user
+                user,
+                stats: {
+                    conversations: conversationCount,
+                    messages: messageCount,
+                    flaggedMessages: flaggedCount
+                }
             }
         });
 

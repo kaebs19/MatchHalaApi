@@ -302,27 +302,97 @@ function UserDetail({ userId, onBack }) {
                         )}
 
                         {/* Device Info */}
-                        {user.deviceInfo && (user.deviceInfo.platform || user.deviceInfo.osVersion || user.deviceInfo.appVersion) && (
-                            <div className="device-section">
-                                <h4>📱 معلومات الجهاز</h4>
-                                <div className="device-grid">
-                                    {user.deviceInfo.platform && (
-                                        <div className="device-item">
-                                            <span className="device-label">النظام:</span>
-                                            <span className="device-value">{user.deviceInfo.platform}</span>
-                                        </div>
-                                    )}
-                                    {user.deviceInfo.osVersion && (
-                                        <div className="device-item">
-                                            <span className="device-label">إصدار النظام:</span>
-                                            <span className="device-value">{user.deviceInfo.osVersion}</span>
-                                        </div>
-                                    )}
-                                    {user.deviceInfo.appVersion && (
-                                        <div className="device-item">
-                                            <span className="device-label">إصدار التطبيق:</span>
-                                            <span className="device-value">{user.deviceInfo.appVersion}</span>
-                                        </div>
+                        <div className="device-section">
+                            <h4>📱 معلومات الجهاز والشبكة</h4>
+                            <div className="device-grid">
+                                {user.deviceInfo?.deviceModel && (
+                                    <div className="device-item">
+                                        <span className="device-label">📱 الجهاز:</span>
+                                        <span className="device-value">{user.deviceInfo.deviceModel}</span>
+                                    </div>
+                                )}
+                                {user.deviceInfo?.platform && (
+                                    <div className="device-item">
+                                        <span className="device-label">💻 النظام:</span>
+                                        <span className="device-value">{user.deviceInfo.platform}</span>
+                                    </div>
+                                )}
+                                {user.deviceInfo?.osVersion && (
+                                    <div className="device-item">
+                                        <span className="device-label">🔢 إصدار النظام:</span>
+                                        <span className="device-value">{user.deviceInfo.osVersion}</span>
+                                    </div>
+                                )}
+                                {user.deviceInfo?.appVersion && (
+                                    <div className="device-item">
+                                        <span className="device-label">📦 إصدار التطبيق:</span>
+                                        <span className="device-value">{user.deviceInfo.appVersion}</span>
+                                    </div>
+                                )}
+                                {user.deviceInfo?.language && (
+                                    <div className="device-item">
+                                        <span className="device-label">🌐 اللغة:</span>
+                                        <span className="device-value">{user.deviceInfo.language}</span>
+                                    </div>
+                                )}
+                                {user.city && (
+                                    <div className="device-item">
+                                        <span className="device-label">🏙️ المدينة:</span>
+                                        <span className="device-value">{user.city}</span>
+                                    </div>
+                                )}
+                                {user.lastIP && (
+                                    <div className="device-item">
+                                        <span className="device-label">🌐 آخر IP:</span>
+                                        <span className="device-value ip-value">{user.lastIP}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Login History */}
+                        {user.loginHistory && user.loginHistory.length > 0 && (
+                            <div className="login-history-section">
+                                <h4>📋 سجل تسجيل الدخول (آخر {user.loginHistory.length})</h4>
+                                <div className="login-history-table">
+                                    <table className="bw-table">
+                                        <thead>
+                                            <tr>
+                                                <th>التاريخ</th>
+                                                <th>الجهاز</th>
+                                                <th>النظام</th>
+                                                <th>الإصدار</th>
+                                                <th>الدولة</th>
+                                                <th>المدينة</th>
+                                                <th>IP</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {[...user.loginHistory].reverse().map((entry, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="date-cell">{entry.loginAt ? new Date(entry.loginAt).toLocaleString('ar-SA') : '-'}</td>
+                                                    <td>{entry.deviceModel || '-'}</td>
+                                                    <td>{entry.platform || '-'}</td>
+                                                    <td>{entry.appVersion || '-'}</td>
+                                                    <td>{entry.country || '-'}</td>
+                                                    <td>{entry.city || '-'}</td>
+                                                    <td className="ip-value">{entry.ip || '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Banned Words Violations */}
+                        {user.bannedWords && user.bannedWords.violations > 0 && (
+                            <div className="violations-section">
+                                <h4>⚠️ مخالفات الكلمات المحظورة</h4>
+                                <div className="violations-info">
+                                    <span className="violation-count">{user.bannedWords.violations} مخالفة</span>
+                                    {user.bannedWords.isBanned && (
+                                        <span className="violation-banned">🚫 محظور - {user.bannedWords.banReason}</span>
                                     )}
                                 </div>
                             </div>

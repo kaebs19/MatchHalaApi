@@ -112,8 +112,25 @@ const userSchema = new mongoose.Schema({
     deviceInfo: {
         platform: { type: String, default: null },
         osVersion: { type: String, default: null },
-        appVersion: { type: String, default: null }
+        appVersion: { type: String, default: null },
+        deviceModel: { type: String, default: null },  // iPhone 15 Pro, etc.
+        language: { type: String, default: null }       // ar, en
     },
+
+    // معلومات الشبكة والموقع التفصيلي
+    city: { type: String, default: null },
+    lastIP: { type: String, default: null, select: false },
+
+    // سجل تسجيل الدخول (آخر 20 دخول)
+    loginHistory: [{
+        ip: String,
+        country: String,
+        city: String,
+        deviceModel: String,
+        platform: String,
+        appVersion: String,
+        loginAt: { type: Date, default: Date.now }
+    }],
     // إعدادات الخصوصية
     privacySettings: {
         // إخفاء الملف الشخصي: public (للجميع), contacts (جهات الاتصال فقط), private (مخفي)

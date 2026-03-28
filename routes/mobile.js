@@ -263,7 +263,7 @@ router.get('/home', protect, async (req, res) => {
 // @access  Protected
 router.put('/users/location', protect, async (req, res) => {
     try {
-        const { latitude, longitude } = req.body;
+        const { latitude, longitude, city, country } = req.body;
 
         if (typeof latitude !== 'number' || typeof longitude !== 'number') {
             return res.status(400).json({
@@ -279,12 +279,16 @@ router.put('/users/location', protect, async (req, res) => {
             });
         }
 
-        await User.findByIdAndUpdate(req.user._id, {
+        const updateData = {
             location: {
                 type: 'Point',
                 coordinates: [longitude, latitude] // GeoJSON: [lng, lat]
             }
-        });
+        };
+        if (city) updateData.city = city;
+        if (country) updateData.country = country;
+
+        await User.findByIdAndUpdate(req.user._id, updateData);
 
         res.json({ success: true, message: 'تم تحديث الموقع بنجاح' });
     } catch (error) {
