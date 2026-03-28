@@ -1741,8 +1741,7 @@ router.get('/conversations', protect, async (req, res) => {
 
         const convFilter = {
             participants: userId,
-            status: { $in: ['accepted', 'pending'] },
-            isActive: true
+            status: { $in: ['accepted', 'pending', 'rejected'] }
         };
 
         // ETag: التحقق من آخر تعديل
