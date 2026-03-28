@@ -60,6 +60,29 @@ const messageSchema = new mongoose.Schema({
     deletedAt: {
         type: Date
     },
+    // ✅ مصدر الصورة (كاميرا أو معرض)
+    imageSource: {
+        type: String,
+        enum: ['camera', 'gallery', null],
+        default: null
+    },
+    // ✅ الصور المؤقتة (تختفي بعد المشاهدة)
+    disappearing: {
+        enabled: { type: Boolean, default: false },
+        duration: { type: Number, default: null },    // مدة العرض بالثواني (5, 10, 30)
+        expiresAt: { type: Date, default: null },      // وقت انتهاء الصلاحية
+        viewedBy: [{
+            user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            viewedAt: { type: Date, default: Date.now },
+            expired: { type: Boolean, default: false }
+        }]
+    },
+    // ✅ إشعارات الأمان
+    securityAlerts: [{
+        type: { type: String, enum: ['screenshot', 'screen_record', 'photo_saved'] },
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        createdAt: { type: Date, default: Date.now }
+    }],
     metadata: {
         fileUrl: String,
         fileName: String,

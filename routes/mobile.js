@@ -2212,14 +2212,35 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
         const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
-        const message = await Message.create({
+        // ✅ بيانات الصورة المؤقتة ومصدرها
+        const imageSource = req.body.imageSource || null; // 'camera' | 'gallery'
+        const disappearingDuration = req.body.disappearingDuration ? parseInt(req.body.disappearingDuration) : null; // ثواني
+
+        const messageData = {
             conversation: conversationId,
             sender: senderId,
             type: 'image',
             mediaUrl: mediaUrl,
             content: req.body.caption || '',
             status: 'sent'
-        });
+        };
+
+        // مصدر الصورة
+        if (imageSource) {
+            messageData.imageSource = imageSource;
+        }
+
+        // صورة مؤقتة (تختفي)
+        if (disappearingDuration && [5, 10, 30].includes(disappearingDuration)) {
+            messageData.disappearing = {
+                enabled: true,
+                duration: disappearingDuration,
+                expiresAt: null, // يتم تعيينه عند المشاهدة
+                viewedBy: []
+            };
+        }
+
+        const message = await Message.create(messageData);
 
         conversation.lastMessage = message._id;
         await conversation.save();
@@ -2246,7 +2267,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                     await pushNotificationService.sendNewMessageNotification(
                         recipient._id || recipient,
                         req.user.name || req.user,
-                        '📷 صورة',
+                        disappearingDuration ? '📷 صورة مؤقتة' : '📷 صورة',
                         conversationId,
                         getBestUserImage(req.user),
                         req.user._id
@@ -2268,6 +2289,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                     content: populatedMessage.content,
                     type: populatedMessage.type,
                     mediaUrl: populatedMessage.mediaUrl,
+                    imageSource: populatedMessage.imageSource,
+                    disappearing: populatedMessage.disappearing,
                     isRead: false,
                     createdAt: populatedMessage.createdAt,
                     updatedAt: populatedMessage.updatedAt
@@ -3325,6 +3348,335 @@ router.post('/messages/forward', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// ==========================================
+// 📷 مشاهدة صورة مؤقتة | View Disappearing Photo
+// ==========================================
+
+// @route   POST /api/mobile/messages/:messageId/view-photo
+// @desc    تسجيل مشاهدة صورة مؤقتة وبدء العد التنازلي
+// @access  Private
+router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user._id;
+
+        const message = await Message.findById(messageId);
+        if (!message || message.isDeleted) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        if (!message.disappearing || !message.disappearing.enabled) {
+            return res.status(400).json({ success: false, message: 'هذه ليست صورة مؤقتة' });
+        }
+
+        // تحقق هل المشاهد مش المرسل
+        if (message.sender.toString() === userId.toString()) {
+            return res.json({ success: true, message: 'المرسل يقدر يشوف صورته دائماً' });
+        }
+
+        // هل شاهدها مسبقاً وانتهت؟
+        const existingView = message.disappearing.viewedBy.find(
+            v => v.user.toString() === userId.toString()
+        );
+        if (existingView && existingView.expired) {
+            return res.status(410).json({
+                success: false,
+                message: 'انتهت صلاحية هذه الصورة',
+                code: 'PHOTO_EXPIRED'
+            });
+        }
+
+        // تسجيل المشاهدة لأول مرة
+        if (!existingView) {
+            message.disappearing.viewedBy.push({
+                user: userId,
+                viewedAt: new Date(),
+                expired: false
+            });
+            // تعيين وقت الانتهاء
+            const duration = message.disappearing.duration || 10;
+            message.disappearing.expiresAt = new Date(Date.now() + duration * 1000);
+            await message.save();
+
+            // إشعار المرسل بأن الصورة شوهدت
+            if (global.io) {
+                global.io.to(`user-${message.sender}`).emit('photo-viewed', {
+                    messageId: message._id,
+                    conversationId: message.conversation,
+                    viewedBy: req.user.name,
+                    duration: duration
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                duration: message.disappearing.duration,
+                expiresAt: message.disappearing.expiresAt,
+                mediaUrl: message.mediaUrl
+            }
+        });
+
+    } catch (error) {
+        console.error('View photo error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// @route   POST /api/mobile/messages/:messageId/expire-photo
+// @desc    تأكيد انتهاء صلاحية الصورة بعد انتهاء المؤقت
+// @access  Private
+router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user._id;
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        if (!message.disappearing || !message.disappearing.enabled) {
+            return res.status(400).json({ success: false, message: 'هذه ليست صورة مؤقتة' });
+        }
+
+        // وضع علامة انتهاء المشاهدة
+        const viewEntry = message.disappearing.viewedBy.find(
+            v => v.user.toString() === userId.toString()
+        );
+        if (viewEntry) {
+            viewEntry.expired = true;
+            await message.save();
+        }
+
+        // إشعار المرسل
+        if (global.io) {
+            global.io.to(`user-${message.sender}`).emit('photo-expired', {
+                messageId: message._id,
+                conversationId: message.conversation,
+                expiredFor: req.user.name
+            });
+        }
+
+        res.json({ success: true, message: 'تم تأكيد انتهاء الصورة' });
+
+    } catch (error) {
+        console.error('Expire photo error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// ==========================================
+// 🔒 إشعارات الأمان | Security Alerts
+// ==========================================
+
+// @route   POST /api/mobile/messages/:messageId/security-alert
+// @desc    تنبيه عند لقطة شاشة أو حفظ صورة
+// @access  Private
+router.post('/messages/:messageId/security-alert', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { alertType } = req.body; // 'screenshot' | 'screen_record' | 'photo_saved'
+        const userId = req.user._id;
+
+        if (!['screenshot', 'screen_record', 'photo_saved'].includes(alertType)) {
+            return res.status(400).json({ success: false, message: 'نوع التنبيه غير صالح' });
+        }
+
+        const message = await Message.findById(messageId)
+            .populate('conversation', 'participants');
+
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        // تسجيل التنبيه
+        if (!message.securityAlerts) message.securityAlerts = [];
+        message.securityAlerts.push({
+            type: alertType,
+            user: userId,
+            createdAt: new Date()
+        });
+        await message.save();
+
+        // إشعار الطرف الآخر عبر Socket
+        const otherParticipants = message.conversation.participants.filter(
+            p => p.toString() !== userId.toString()
+        );
+
+        const alertEmoji = alertType === 'screenshot' ? '📸' : alertType === 'screen_record' ? '🎥' : '💾';
+        const alertTextAr = alertType === 'screenshot' ? 'أخذ لقطة شاشة' :
+                           alertType === 'screen_record' ? 'سجّل الشاشة' : 'حفظ الصورة';
+        const alertTextEn = alertType === 'screenshot' ? 'took a screenshot' :
+                           alertType === 'screen_record' ? 'recorded the screen' : 'saved the photo';
+
+        if (global.io) {
+            for (const participantId of otherParticipants) {
+                global.io.to(`user-${participantId}`).emit('security-alert', {
+                    messageId: message._id,
+                    conversationId: message.conversation._id,
+                    alertType: alertType,
+                    userName: req.user.name,
+                    emoji: alertEmoji,
+                    textAr: `${req.user.name} ${alertTextAr}`,
+                    textEn: `${req.user.name} ${alertTextEn}`
+                });
+            }
+        }
+
+        // Push notification للمستخدم غير المتصل
+        for (const participantId of otherParticipants) {
+            const isOnline = global.connectedUsers && global.connectedUsers.has(participantId.toString());
+            if (!isOnline) {
+                try {
+                    await pushNotificationService.sendNotificationToUser(participantId, {
+                        title: `${alertEmoji} تنبيه أمان`,
+                        body: `${req.user.name} ${alertTextAr}`
+                    }, {
+                        type: 'security_alert',
+                        conversationId: message.conversation._id.toString(),
+                        alertType: alertType
+                    });
+                } catch (pushErr) {
+                    console.error('Push error:', pushErr.message);
+                }
+            }
+        }
+
+        res.json({ success: true, message: 'تم إرسال التنبيه' });
+
+    } catch (error) {
+        console.error('Security alert error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// ==========================================
+// 💬 وضع المحادثة | Chat Mode (Snap/24h/Keep)
+// ==========================================
+
+// @route   PUT /api/mobile/conversations/:conversationId/chat-mode
+// @desc    تغيير وضع المحادثة
+// @access  Private
+router.put('/conversations/:conversationId/chat-mode', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const { chatMode } = req.body; // 'snap' | '24h' | 'keep'
+        const userId = req.user._id;
+
+        if (!['snap', '24h', 'keep'].includes(chatMode)) {
+            return res.status(400).json({ success: false, message: 'وضع غير صالح. استخدم: snap, 24h, keep' });
+        }
+
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p.toString() === userId.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        conversation.chatMode = chatMode;
+        await conversation.save();
+
+        // إشعار الطرف الآخر
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('chat-mode-changed', {
+                conversationId: conversationId,
+                chatMode: chatMode,
+                changedBy: req.user.name
+            });
+        }
+
+        const modeTextAr = chatMode === 'snap' ? 'حذف عند الخروج' :
+                          chatMode === '24h' ? 'حذف بعد 24 ساعة' : 'الاحتفاظ دائماً';
+
+        res.json({
+            success: true,
+            message: `تم تغيير وضع المحادثة إلى: ${modeTextAr}`,
+            data: { chatMode }
+        });
+
+    } catch (error) {
+        console.error('Chat mode error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// @route   POST /api/mobile/conversations/:conversationId/clear-messages
+// @desc    مسح الرسائل للمستخدم (وضع سناب - عند الخروج)
+// @access  Private
+router.post('/conversations/:conversationId/clear-messages', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const userId = req.user._id;
+
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p.toString() === userId.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        // ✅ مهم: الرسائل تبقى في السيرفر دائماً (للأدمن)
+        // هنا نرجع فقط تأكيد — التطبيق يمسح الكاش المحلي
+        // لا نحذف فعلياً من قاعدة البيانات
+
+        res.json({
+            success: true,
+            message: 'تم مسح الرسائل من جهازك',
+            data: {
+                conversationId: conversationId,
+                chatMode: conversation.chatMode,
+                clearedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Clear messages error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// @route   GET /api/mobile/conversations/:conversationId/chat-mode
+// @desc    الحصول على وضع المحادثة الحالي
+// @access  Private
+router.get('/conversations/:conversationId/chat-mode', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const conversation = await Conversation.findById(conversationId, 'chatMode');
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                chatMode: conversation.chatMode || 'snap',
+                modes: [
+                    { id: 'snap', nameAr: 'حذف عند الخروج', nameEn: 'Delete on exit', icon: '👻', isDefault: true },
+                    { id: '24h', nameAr: 'حذف بعد 24 ساعة', nameEn: 'Delete after 24h', icon: '⏰', isDefault: false },
+                    { id: 'keep', nameAr: 'الاحتفاظ دائماً', nameEn: 'Keep forever', icon: '💾', isDefault: false }
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Get chat mode error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
     }
 });
 
