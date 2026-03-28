@@ -21,6 +21,9 @@ const {
     changePasswordValidation
 } = require('../validators/user.validator');
 
+// فلترة الأسماء المحظورة
+const { checkBannedWords } = require('./bannedWords');
+
 // Google Auth
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -85,6 +88,16 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'جميع الحقول مطلوبة'
+            });
+        }
+
+        // فحص الاسم ضد الكلمات المحظورة
+        const nameCheck = await checkBannedWords(name);
+        if (nameCheck.hasBannedWords) {
+            return res.status(400).json({
+                success: false,
+                message: 'الاسم يحتوي على كلمات غير مسموح بها',
+                code: 'BANNED_NAME'
             });
         }
 
@@ -276,6 +289,18 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 success: false,
                 message: 'المستخدم غير موجود'
             });
+        }
+
+        // فحص الاسم ضد الكلمات المحظورة
+        if (name && name !== user.name) {
+            const nameCheck = await checkBannedWords(name);
+            if (nameCheck.hasBannedWords) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'الاسم يحتوي على كلمات غير مسموح بها',
+                    code: 'BANNED_NAME'
+                });
+            }
         }
 
         // التحقق من عدم تكرار البريد الإلكتروني
@@ -729,10 +754,17 @@ router.post('/google', async (req, res) => {
                 user.profileImage = picture;
             }
         } else {
+            // فحص الاسم ضد الكلمات المحظورة
+            let safeName = name;
+            if (name) {
+                const nameCheck = await checkBannedWords(name);
+                if (nameCheck.hasBannedWords) safeName = nameCheck.censoredText;
+            }
+
             // إنشاء مستخدم جديد
             isNewUser = true;
             user = new User({
-                name,
+                name: safeName,
                 email,
                 googleId,
                 authProvider: 'google',
@@ -741,7 +773,6 @@ router.post('/google', async (req, res) => {
             });
         }
 
-        // تحديث Device Token و معلومات الجهاز
         // فحص الحظر
         if (!isNewUser && user.bannedWords?.isBanned) {
             return res.status(403).json({
@@ -844,7 +875,13 @@ router.post('/apple', async (req, res) => {
                 const firstName = fullName.givenName || '';
                 const lastName = fullName.familyName || '';
                 name = `${firstName} ${lastName}`.trim();
-            if (name.length < 2) name = 'مستخدم Apple';
+                if (name.length < 2) name = 'مستخدم Apple';
+            }
+
+            // فحص الاسم ضد الكلمات المحظورة
+            if (name !== 'مستخدم Apple') {
+                const nameCheck = await checkBannedWords(name);
+                if (nameCheck.hasBannedWords) name = nameCheck.censoredText;
             }
 
             user = new User({
