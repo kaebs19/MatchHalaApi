@@ -583,6 +583,7 @@ function BannedWords() {
                                     <thead>
                                         <tr>
                                             <th>المرسل</th>
+                                            <th>المستقبل</th>
                                             <th>المحتوى الأصلي</th>
                                             <th>الكلمات المطابقة</th>
                                             <th>الحالة</th>
@@ -595,7 +596,24 @@ function BannedWords() {
                                             <tr key={item._id}>
                                                 <td>
                                                     <div className="bw-sender">
-                                                        <span className="sender-name">{item.sender?.name || 'مجهول'}</span>
+                                                        <span
+                                                            className="sender-name clickable"
+                                                            onClick={() => item.sender?._id && window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'users', userId: item.sender._id } }))}
+                                                            title="عرض الملف الشخصي"
+                                                        >
+                                                            👤 {item.sender?.name || 'مجهول'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div className="bw-sender">
+                                                        <span
+                                                            className="sender-name clickable"
+                                                            onClick={() => item.receiver?._id && window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'users', userId: item.receiver._id } }))}
+                                                            title="عرض الملف الشخصي"
+                                                        >
+                                                            👤 {item.receiver?.name || 'مجهول'}
+                                                        </span>
                                                     </div>
                                                 </td>
                                                 <td className="content-cell">
@@ -617,22 +635,33 @@ function BannedWords() {
                                                     {new Date(item.createdAt).toLocaleDateString('ar-SA')}
                                                 </td>
                                                 <td>
-                                                    {item.status === 'pending' ? (
-                                                        <button
-                                                            className="bw-btn primary small"
-                                                            onClick={() => openReviewModal(item)}
-                                                        >
-                                                            مراجعة
-                                                        </button>
-                                                    ) : (
-                                                        <span className="bw-reviewed-label">
-                                                            {item.action === 'none' ? 'تم التجاهل' :
-                                                             item.action === 'warning' ? 'تم التحذير' :
-                                                             item.action === 'message_deleted' ? 'تم حذف الرسالة' :
-                                                             item.action === 'user_suspended' ? 'تم الإيقاف' :
-                                                             item.action === 'user_banned' ? 'تم الحظر' : item.action}
-                                                        </span>
-                                                    )}
+                                                    <div className="bw-action-btns">
+                                                        {item.conversation && (
+                                                            <button
+                                                                className="bw-btn secondary small"
+                                                                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'conversations', conversationId: item.conversation } }))}
+                                                                title="عرض المحادثة"
+                                                            >
+                                                                💬 المحادثة
+                                                            </button>
+                                                        )}
+                                                        {item.status === 'pending' ? (
+                                                            <button
+                                                                className="bw-btn primary small"
+                                                                onClick={() => openReviewModal(item)}
+                                                            >
+                                                                📋 مراجعة
+                                                            </button>
+                                                        ) : (
+                                                            <span className="bw-reviewed-label">
+                                                                {item.action === 'none' ? 'تم التجاهل' :
+                                                                 item.action === 'warning' ? 'تم التحذير' :
+                                                                 item.action === 'message_deleted' ? 'تم حذف الرسالة' :
+                                                                 item.action === 'user_suspended' ? 'تم الإيقاف' :
+                                                                 item.action === 'user_banned' ? 'تم الحظر' : item.action}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}

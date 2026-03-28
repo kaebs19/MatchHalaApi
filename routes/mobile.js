@@ -1989,10 +1989,16 @@ router.post('/messages/send', protect, async (req, res) => {
         // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة + تنبيه أدمن + حظر تلقائي
         let userViolations = 0;
         if (bannedResult.hasBannedWords) {
+            // تحديد المستقبل (الطرف الآخر في المحادثة)
+            const receiverId = conversation.participants.find(
+                p => p._id.toString() !== req.user._id.toString()
+            )?._id;
+
             await FlaggedMessage.create({
                 message: message._id,
                 conversation: conversationId,
                 sender: req.user._id,
+                receiver: receiverId,
                 originalContent: content,
                 matchedWords: bannedResult.matchedWords
             });

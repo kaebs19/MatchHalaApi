@@ -19,6 +19,10 @@ const flaggedMessageSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+    receiver: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
     originalContent: {
         type: String,
         required: true

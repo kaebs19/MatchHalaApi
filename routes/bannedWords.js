@@ -301,6 +301,7 @@ router.get('/flagged', protect, adminOnly, async (req, res) => {
             .skip((page - 1) * limit)
             .limit(parseInt(limit))
             .populate('sender', 'name email profileImage')
+            .populate('receiver', 'name email profileImage')
             .populate('conversation', 'participants')
             .populate('reviewedBy', 'name');
 
@@ -392,15 +393,16 @@ async function checkBannedWords(text) {
 
     for (const bw of bannedWords) {
         const word = bw.word;
-        // بحث عن الكلمة ككلمة كاملة أو جزء (للعربية لا يمكن استخدام word boundary بسهولة)
-        const regex = new RegExp(escapeRegex(word), 'gi');
+        const escaped = escapeRegex(word);
+        // مطابقة كلمة كاملة: للعربية نستخدم حدود الحروف العربية، للإنجليزية نستخدم \b
+        const isArabic = /[\u0600-\u06FF]/.test(word);
+        const regex = isArabic
+            ? new RegExp(`(?<![\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF])${escaped}(?![\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF])`, 'gi')
+            : new RegExp(`\\b${escaped}\\b`, 'gi');
         if (regex.test(lowerText)) {
             matchedWords.push(word);
             // استبدال بنجوم
-            censoredText = censoredText.replace(
-                new RegExp(escapeRegex(word), 'gi'),
-                '*'.repeat(word.length)
-            );
+            censoredText = censoredText.replace(regex, '*'.repeat(word.length));
         }
     }
 
