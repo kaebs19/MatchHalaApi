@@ -169,6 +169,10 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// ✅ Version Check Middleware — فحص إصدار التطبيق قبل كل الـ routes
+const { versionCheck } = require('./middleware/versionCheck');
+app.use('/api/mobile', versionCheck);  // فحص فقط على طلبات التطبيق
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));

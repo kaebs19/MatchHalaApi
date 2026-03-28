@@ -110,6 +110,22 @@ const settingsSchema = new mongoose.Schema({
         }
     },
 
+    // ✅ التحكم بإصدارات التطبيق
+    appVersionControl: {
+        // الحد الأدنى المطلوب — أقل من هذا = تحديث إجباري (426)
+        minRequiredVersion: { type: String, default: '1.0' },
+        // أحدث إصدار متاح
+        latestVersion: { type: String, default: '2.4' },
+        // رابط المتجر
+        iosStoreURL: { type: String, default: '' },
+        // رسالة التحديث (عربي)
+        updateMessageAr: { type: String, default: 'يجب تحديث التطبيق للاستمرار. النسخة الحالية لم تعد مدعومة.' },
+        // رسالة التحديث (إنجليزي)
+        updateMessageEn: { type: String, default: 'Please update the app to continue. Your current version is no longer supported.' },
+        // تفعيل/تعطيل فحص الإصدار
+        enforceUpdate: { type: Boolean, default: false }
+    },
+
     // ✅ الأسماء المحظورة
     bannedNames: [{
         name: { type: String, lowercase: true, trim: true },

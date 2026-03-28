@@ -285,6 +285,107 @@ router.put('/content/:type', protect, adminOnly, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// ✅ التحكم بإصدارات التطبيق
+// ═══════════════════════════════════════════════════════════════════
+
+const { invalidateVersionCache } = require('../middleware/versionCheck');
+
+// @route   GET /api/settings/version-control
+// @desc    الحصول على إعدادات التحكم بالإصدار
+// @access  Admin
+router.get('/version-control', protect, adminOnly, async (req, res) => {
+    try {
+        const settings = await Settings.getSettings();
+        res.json({
+            success: true,
+            data: { appVersionControl: settings.appVersionControl }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في جلب إعدادات الإصدار' });
+    }
+});
+
+// @route   PUT /api/settings/version-control
+// @desc    تحديث إعدادات التحكم بالإصدار
+// @access  Admin
+router.put('/version-control', protect, adminOnly, async (req, res) => {
+    try {
+        const {
+            minRequiredVersion,
+            latestVersion,
+            iosStoreURL,
+            updateMessageAr,
+            updateMessageEn,
+            enforceUpdate
+        } = req.body;
+
+        const settings = await Settings.getSettings();
+
+        if (minRequiredVersion !== undefined) settings.appVersionControl.minRequiredVersion = minRequiredVersion;
+        if (latestVersion !== undefined) settings.appVersionControl.latestVersion = latestVersion;
+        if (iosStoreURL !== undefined) settings.appVersionControl.iosStoreURL = iosStoreURL;
+        if (updateMessageAr !== undefined) settings.appVersionControl.updateMessageAr = updateMessageAr;
+        if (updateMessageEn !== undefined) settings.appVersionControl.updateMessageEn = updateMessageEn;
+        if (enforceUpdate !== undefined) settings.appVersionControl.enforceUpdate = enforceUpdate;
+
+        settings.lastUpdated = Date.now();
+        settings.updatedBy = req.user._id;
+        await settings.save();
+
+        // ✅ إبطال كاش الإصدار في الـ middleware
+        invalidateVersionCache();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: 'تم تحديث إعدادات الإصدار',
+            data: { appVersionControl: settings.appVersionControl }
+        });
+    } catch (error) {
+        console.error('خطأ في تحديث إعدادات الإصدار:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/settings/check-version
+// @desc    فحص إصدار التطبيق (يستخدمه التطبيق عند التشغيل)
+// @access  Public
+router.get('/check-version', async (req, res) => {
+    try {
+        const appVersion = req.headers['x-app-version'] || req.query.version;
+        const settings = await Settings.getSettings();
+        const vc = settings.appVersionControl;
+
+        const { compareVersions } = require('../middleware/versionCheck');
+
+        const isOutdated = appVersion && vc.minRequiredVersion
+            ? compareVersions(appVersion, vc.minRequiredVersion) < 0
+            : false;
+
+        const hasUpdate = appVersion && vc.latestVersion
+            ? compareVersions(appVersion, vc.latestVersion) < 0
+            : false;
+
+        res.json({
+            success: true,
+            data: {
+                currentVersion: appVersion || null,
+                latestVersion: vc.latestVersion,
+                minRequiredVersion: vc.minRequiredVersion,
+                updateRequired: vc.enforceUpdate && isOutdated,
+                updateAvailable: hasUpdate,
+                storeURL: vc.iosStoreURL || null,
+                message: isOutdated
+                    ? (vc.updateMessageAr || 'يجب تحديث التطبيق')
+                    : null
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في فحص الإصدار' });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // ✅ الأسماء المحظورة
 // ═══════════════════════════════════════════════════════════════════
 
