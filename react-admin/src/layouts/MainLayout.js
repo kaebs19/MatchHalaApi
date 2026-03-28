@@ -15,6 +15,7 @@ import Notifications from '../pages/Notifications';
 import VerificationRequests from '../pages/VerificationRequests';
 import SuperLikes from '../pages/SuperLikes';
 import Analytics from '../pages/Analytics';
+import BannedWords from '../pages/BannedWords';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -174,6 +175,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Analytics onViewUserDetail={handleViewUserDetail} />;
             case 'super-likes':
                 return <SuperLikes />;
+            case 'banned-words':
+                return <BannedWords />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:
@@ -208,6 +211,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'super-likes' && '⚡ Super Likes'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
+                        {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
                     </h1>
                     <div className="header-actions">
                         {/* زر إرسال إشعار */}

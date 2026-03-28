@@ -59,6 +59,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'banned-words',
+            name: 'الكلمات المحظورة',
+            icon: '🚫',
+            adminOnly: true
+        },
+        {
             id: 'settings',
             name: 'الإعدادات',
             icon: '⚙️',

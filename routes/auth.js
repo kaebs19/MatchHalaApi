@@ -801,6 +801,9 @@ router.post('/apple', async (req, res) => {
 
         await user.save();
 
+        // هل يحتاج إدخال اسم؟ (مستخدمي Apple اللي ما أدخلوا اسمهم)
+        const needsName = !user.name || user.name === 'مستخدم Apple' || user.name.trim().length < 2;
+
         res.status(200).json({
             success: true,
             message: isNewUser ? 'تم التسجيل بنجاح عبر Apple' : 'تم تسجيل الدخول بنجاح عبر Apple',
@@ -810,12 +813,13 @@ router.post('/apple', async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
-                    profileImage: user.profileImage,
+                    profileImage: user.profileImage ? getFullUrl(user.profileImage) : null,
                     authProvider: user.authProvider,
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id),
-                isNewUser
+                isNewUser,
+                needsName
             }
         });
 
