@@ -204,19 +204,33 @@ router.get('/home', protect, async (req, res) => {
                     .limit(10)
                     .lean();
 
-                // حساب الرسائل غير المقروءة لكل محادثة
-                const convsWithUnread = await Promise.all(
-                    convs.map(async (conv) => {
-                        const unreadCount = await Message.countDocuments({
-                            conversation: conv._id,
-                            sender: { $ne: userId },
-                            'readBy.user': { $ne: userId }
-                        });
-                        return { ...conv, unreadCount };
-                    })
-                );
+                // ✅ حساب الرسائل غير المقروءة بـ aggregation واحد بدل N+1 queries
+                const convIds = convs.map(c => c._id);
+                const unreadCounts = await Message.aggregate([
+                    {
+                        $match: {
+                            conversation: { $in: convIds },
+                            sender: { $ne: new mongoose.Types.ObjectId(userId) },
+                            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: '$conversation',
+                            count: { $sum: 1 }
+                        }
+                    }
+                ]);
 
-                return convsWithUnread;
+                const unreadMap = {};
+                for (const item of unreadCounts) {
+                    unreadMap[item._id.toString()] = item.count;
+                }
+
+                return convs.map(conv => ({
+                    ...conv,
+                    unreadCount: unreadMap[conv._id.toString()] || 0
+                }));
             })()
         ]);
 
@@ -1782,33 +1796,47 @@ router.get('/conversations', protect, async (req, res) => {
             }
         }
 
-        // حساب عدد الرسائل غير المقروءة + حالة قراءة آخر رسالة
-        const conversationsWithUnread = await Promise.all(
-            conversations.map(async (conv) => {
-                const unreadCount = await Message.countDocuments({
-                    conversation: conv._id,
-                    sender: { $ne: userId },
-                    'readBy.user': { $ne: userId }
-                });
-
-                // إضافة isRead + isDelivered لآخر رسالة
-                if (conv.lastMessage && conv.lastMessage.sender) {
-                    const senderId = conv.lastMessage.sender.toString();
-                    if (senderId === userId.toString()) {
-                        conv.lastMessage.isRead = conv.lastMessage.status === 'read' ||
-                            (conv.lastMessage.readBy && conv.lastMessage.readBy.some(
-                                r => r.user && r.user.toString() !== userId.toString()
-                            ));
-                        conv.lastMessage.isDelivered = conv.lastMessage.isRead || conv.lastMessage.status === 'delivered';
-                    } else {
-                        conv.lastMessage.isRead = true;
-                        conv.lastMessage.isDelivered = true;
-                    }
+        // ✅ حساب عدد الرسائل غير المقروءة بـ aggregation واحد بدل N+1 queries
+        const convIds = conversations.map(c => c._id);
+        const unreadCounts = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: convIds },
+                    sender: { $ne: new mongoose.Types.ObjectId(userId) },
+                    'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
                 }
+            },
+            {
+                $group: {
+                    _id: '$conversation',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
 
-                return { ...conv, unreadCount };
-            })
-        );
+        const unreadMap = {};
+        for (const item of unreadCounts) {
+            unreadMap[item._id.toString()] = item.count;
+        }
+
+        const conversationsWithUnread = conversations.map(conv => {
+            // إضافة isRead + isDelivered لآخر رسالة
+            if (conv.lastMessage && conv.lastMessage.sender) {
+                const senderId = conv.lastMessage.sender.toString();
+                if (senderId === userId.toString()) {
+                    conv.lastMessage.isRead = conv.lastMessage.status === 'read' ||
+                        (conv.lastMessage.readBy && conv.lastMessage.readBy.some(
+                            r => r.user && r.user.toString() !== userId.toString()
+                        ));
+                    conv.lastMessage.isDelivered = conv.lastMessage.isRead || conv.lastMessage.status === 'delivered';
+                } else {
+                    conv.lastMessage.isRead = true;
+                    conv.lastMessage.isDelivered = true;
+                }
+            }
+
+            return { ...conv, unreadCount: unreadMap[conv._id.toString()] || 0 };
+        });
 
         const total = await Conversation.countDocuments(convFilter);
 
@@ -1909,6 +1937,11 @@ router.post('/messages/send', protect, async (req, res) => {
     try {
         const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
+        // ✅ validation: محتوى الرسالة مطلوب
+        if (!content || !content.trim()) {
+            return res.status(400).json({ success: false, message: 'محتوى الرسالة مطلوب' });
+        }
+
         // فحص حظر الكلمات المحظورة
         if (req.user.bannedWords?.isBanned) {
             return res.status(403).json({
@@ -1918,7 +1951,7 @@ router.post('/messages/send', protect, async (req, res) => {
             });
         }
 
-        if (!conversationId || !content) {
+        if (!conversationId) {
             return res.status(400).json({
                 success: false,
                 message: 'معرف المحادثة والمحتوى مطلوبان'
@@ -2016,7 +2049,7 @@ router.post('/messages/send', protect, async (req, res) => {
             // ✅ حد المخالفات من الإعدادات (افتراضي 3)
             const Settings = require('../models/Settings');
             const appSettings = await Settings.getSettings();
-            const maxViolations = appSettings.maxBannedWordViolations || 3;
+            const maxViolations = appSettings.maxBannedWordViolations || 5;
 
             // حظر تلقائي عند الوصول للحد
             if (userViolations >= maxViolations) {
@@ -2092,20 +2125,15 @@ router.post('/messages/send', protect, async (req, res) => {
             p => p._id.toString() !== req.user._id.toString()
         );
 
-        console.log('📲 عدد المستقبلين:', recipients.length);
-
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
 
             // تحقق هل المستقبل متصل بالسوكت
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
 
-            if (isOnline) {
-                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
-            } else {
-                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
+            if (!isOnline) {
                 // إرسال Push Notification عبر Firebase للـ offline users فقط
-                const pushResult = await pushNotificationService.sendNewMessageNotification(
+                await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
@@ -2113,7 +2141,6 @@ router.post('/messages/send', protect, async (req, res) => {
                     getBestUserImage(req.user),
                     req.user._id
                 );
-                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
         }
 
@@ -2524,17 +2551,12 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
             p => p._id.toString() !== req.user._id.toString()
         );
 
-        console.log('📲 عدد المستقبلين:', recipients.length);
-
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
             const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
 
-            if (isOnline) {
-                console.log(`📲 ${recipient.name} متصل بالسوكت - لا حاجة لـ Push`);
-            } else {
-                console.log(`📲 ${recipient.name} غير متصل - إرسال Push Notification`);
-                const pushResult = await pushNotificationService.sendNewMessageNotification(
+            if (!isOnline) {
+                await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
@@ -2542,7 +2564,6 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     getBestUserImage(req.user),
                     req.user._id
                 );
-                console.log('📲 نتيجة الإشعار:', JSON.stringify(pushResult));
             }
         }
 
@@ -3687,6 +3708,21 @@ router.get('/conversations/:conversationId/chat-mode', protect, async (req, res)
         console.error('Get chat mode error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
     }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// @route   POST /api/mobile/client-error
+// @desc    استقبال أخطاء التطبيق لتشخيص المشاكل عن بُعد
+// @access  Private
+// ═══════════════════════════════════════════════════════════════
+router.post('/client-error', protect, async (req, res) => {
+    const { endpoint, error, details, appVersion, device } = req.body;
+    console.error(`📱 CLIENT ERROR from ${req.user.name} (${req.user._id}):`);
+    console.error(`   Endpoint: ${endpoint}`);
+    console.error(`   Error: ${error}`);
+    console.error(`   Details: ${details}`);
+    console.error(`   App: ${appVersion} | Device: ${device}`);
+    res.json({ success: true });
 });
 
 module.exports = router;

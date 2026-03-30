@@ -40,6 +40,8 @@ const server = http.createServer(app);
 
 // إعداد Socket.IO
 const io = new Server(server, {
+    pingInterval: 25000,
+    pingTimeout: 20000,
     cors: {
         origin: process.env.FRONTEND_URL || 'http://localhost:3000',
         credentials: true
@@ -87,6 +89,19 @@ global.connectedUsers = new Map();
 
 // الإعدادات الأساسية
 const PORT = process.env.PORT || 5000;
+
+// ✅ Request Timeout — حماية من الطلبات المعلقة (30 ثانية)
+app.use((req, res, next) => {
+    req.setTimeout(30000, () => {
+        if (!res.headersSent) {
+            res.status(408).json({
+                success: false,
+                message: 'انتهت مهلة الطلب — حاول مرة أخرى'
+            });
+        }
+    });
+    next();
+});
 
 // Security Middlewares
 // 1. Helmet - حماية HTTP headers
@@ -138,6 +153,73 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 
+// 4.1 ✅ Rate Limit لكل مستخدم (بالتوكن) — حماية من الاستخدام المفرط
+const userLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // دقيقة واحدة
+    max: 60,                  // 60 طلب / دقيقة لكل مستخدم (طلب كل ثانية)
+    keyGenerator: (req) => {
+        // استخدام التوكن كمفتاح بدل IP
+        if (req.headers.authorization) {
+            return req.headers.authorization;
+        }
+        return req.ip; // fallback للـ IP إذا بدون توكن
+    },
+    message: {
+        success: false,
+        message: 'طلبات كثيرة. حاول بعد دقيقة',
+        code: 'USER_RATE_LIMITED'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { ipAddress: false },
+});
+app.use('/api/mobile', userLimiter);
+
+// 4.2 ✅ حد إرسال الرسائل (أكثر صرامة)
+const messageLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // دقيقة واحدة
+    max: 30,                  // 30 رسالة / دقيقة (رسالة كل ثانيتين)
+    keyGenerator: (req) => {
+        if (req.headers.authorization) {
+            return 'msg_' + req.headers.authorization;
+        }
+        return 'msg_' + req.ip;
+    },
+    message: {
+        success: false,
+        message: 'إرسال رسائل كثيرة. انتظر دقيقة',
+        code: 'MESSAGE_RATE_LIMITED'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { ipAddress: false },
+});
+app.use('/api/mobile/messages/send', messageLimiter);
+app.use('/api/v1/mobile/messages/send', messageLimiter);
+app.use('/api/v2/mobile/messages/send', messageLimiter);
+app.use('/api/v3/mobile/messages/send', messageLimiter);
+
+// 4.3 ✅ حد Swipes (5 في الدقيقة للعادي)
+const swipeLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // دقيقة
+    max: 30,                  // 30 swipe / دقيقة
+    keyGenerator: (req) => {
+        if (req.headers.authorization) {
+            return 'swipe_' + req.headers.authorization;
+        }
+        return 'swipe_' + req.ip;
+    },
+    message: {
+        success: false,
+        message: 'سوايبات كثيرة. انتظر دقيقة',
+        code: 'SWIPE_RATE_LIMITED'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { ipAddress: false },
+});
+app.use('/api/swipes', swipeLimiter);
+
 // 5. Body parser
 app.use(express.json({ limit: '10mb' })); // تحديد حجم الطلبات
 app.use(express.urlencoded({ extended: true }));
@@ -171,7 +253,13 @@ app.get('/api/health', (req, res) => {
 
 // ✅ Version Check Middleware — فحص إصدار التطبيق قبل كل الـ routes
 const { versionCheck } = require('./middleware/versionCheck');
-app.use('/api/mobile', versionCheck);  // فحص فقط على طلبات التطبيق
+const { apiVersion } = require('./middleware/apiVersion');
+
+// فحص الإصدار على كل طلبات التطبيق (مع وبدون version prefix)
+app.use('/api/mobile', versionCheck);
+app.use('/api/v1/mobile', versionCheck);
+app.use('/api/v2/mobile', versionCheck);
+app.use('/api/v3/mobile', versionCheck);
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -182,7 +270,18 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/mobile', require('./routes/mobile'));
+
+// ✅ Versioned Mobile API
+// /api/mobile     → v1 (backward compatible — النسخ القديمة)
+// /api/v1/mobile  → v1
+// /api/v2/mobile  → v2 (يرث v1 + تعديلات)
+// /api/v3/mobile  → v3 (يرث v2 + تعديلات)
+const mobileVersions = require('./routes/mobile/index');
+app.use('/api/mobile', apiVersion, mobileVersions.v1);
+app.use('/api/v1/mobile', apiVersion, mobileVersions.v1);
+app.use('/api/v2/mobile', apiVersion, mobileVersions.v2);
+app.use('/api/v3/mobile', apiVersion, mobileVersions.v3);
+
 app.use('/api/privacy', require('./routes/privacy'));
 app.use('/api/verifications', require('./routes/verifications'));
 app.use('/api/swipes', require('./routes/swipes'));
@@ -199,9 +298,38 @@ app.get('/admin/*', (req, res) => {
 app.use(notFound); // 404 Handler
 app.use(errorHandler); // Error Handler
 
+// ═══════════════════════════════════════════════════════════════
+// Helper: إبلاغ شركاء المحادثات فقط (بدل broadcast للجميع)
+// ═══════════════════════════════════════════════════════════════
+async function notifyConversationPartners(userId, event, data) {
+    try {
+        // جلب محادثات المستخدم النشطة فقط
+        const conversations = await Conversation.find(
+            { participants: userId, isActive: true },
+            'participants'
+        ).lean();
+
+        // جمع الشركاء بدون تكرار
+        const partnerIds = new Set();
+        for (const conv of conversations) {
+            for (const p of conv.participants) {
+                const pid = p.toString();
+                if (pid !== userId) partnerIds.add(pid);
+            }
+        }
+
+        // إرسال فقط للشركاء المتصلين
+        for (const partnerId of partnerIds) {
+            io.to(`user:${partnerId}`).emit(event, data);
+        }
+    } catch (error) {
+        console.error('خطأ في notifyConversationPartners:', error.message);
+    }
+}
+
 // Socket.IO Connection Handler
 io.on('connection', async (socket) => {
-    console.log(`👤 مستخدم متصل: ${socket.user.name} (${socket.id})`);
+    console.log(`👤 متصل: ${socket.user.name} (${socket.id})`);
 
     // إضافة المستخدم إلى قائمة المتصلين
     connectedUsers.set(socket.userId, {
@@ -216,8 +344,8 @@ io.on('connection', async (socket) => {
         lastLogin: new Date()
     });
 
-    // إبلاغ الآخرين أن المستخدم متصل
-    socket.broadcast.emit('user:online', { userId: socket.userId });
+    // ✅ إبلاغ شركاء المحادثات فقط (بدل broadcast للجميع)
+    notifyConversationPartners(socket.userId, 'user:online', { userId: socket.userId });
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
@@ -233,14 +361,11 @@ io.on('connection', async (socket) => {
     // عند الانضمام لمحادثة معينة
     socket.on('join-conversation', async (conversationId) => {
         try {
-            // التحقق من وجود المحادثة
             const conversation = await Conversation.findById(conversationId);
-
             if (!conversation) {
                 return socket.emit('error', { message: 'المحادثة غير موجودة' });
             }
 
-            // التحقق من أن المستخدم عضو في المحادثة أو Admin
             const isMember = conversation.participants.some(
                 p => p.toString() === socket.userId
             );
@@ -251,14 +376,13 @@ io.on('connection', async (socket) => {
             }
 
             socket.join(`conversation-${conversationId}`);
-            console.log(`📥 ${socket.user.name} انضم للمحادثة ${conversationId}`);
 
-            // إرسال عدد المتصلين للجميع
+            // إرسال عدد المتصلين
             const room = io.sockets.adapter.rooms.get(`conversation-${conversationId}`);
             const onlineCount = room ? room.size : 0;
             io.to(`conversation-${conversationId}`).emit('users-online', { count: onlineCount });
         } catch (error) {
-            console.error('خطأ في join-conversation:', error);
+            console.error('خطأ في join-conversation:', error.message);
             socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للمحادثة' });
         }
     });
@@ -266,9 +390,7 @@ io.on('connection', async (socket) => {
     // عند مغادرة محادثة
     socket.on('leave-conversation', (conversationId) => {
         socket.leave(`conversation-${conversationId}`);
-        console.log(`📤 ${socket.user.name} غادر المحادثة ${conversationId}`);
 
-        // تحديث عدد المتصلين بعد المغادرة
         setTimeout(() => {
             const room = io.sockets.adapter.rooms.get(`conversation-${conversationId}`);
             const onlineCount = room ? room.size : 0;
@@ -283,7 +405,6 @@ io.on('connection', async (socket) => {
             userName,
             isTyping: true
         });
-        console.log(`⌨️ ${userName} يكتب في المحادثة ${conversationId}`);
     });
 
     // عند التوقف عن الكتابة
@@ -300,21 +421,19 @@ io.on('connection', async (socket) => {
         try {
             if (!messageId) return;
 
-            // تحديث حالة الرسالة إلى delivered (فقط إذا كانت sent)
             const result = await Message.updateOne(
                 { _id: messageId, status: 'sent' },
                 { $set: { status: 'delivered' } }
             );
 
             if (result.modifiedCount > 0) {
-                // إبلاغ المرسل الأصلي إن رسالته وصلت
                 socket.to(`conversation-${conversationId}`).emit('message-delivered', {
                     messageId,
                     conversationId
                 });
             }
         } catch (error) {
-            console.error('خطأ في message-delivered:', error);
+            console.error('خطأ في message-delivered:', error.message);
         }
     });
 
@@ -323,7 +442,6 @@ io.on('connection', async (socket) => {
         try {
             if (!conversationId) return;
 
-            // تحديث كل الرسائل غير المقروءة من الطرف الآخر
             const result = await Message.updateMany(
                 {
                     conversation: conversationId,
@@ -337,21 +455,19 @@ io.on('connection', async (socket) => {
             );
 
             if (result.modifiedCount > 0) {
-                // إبلاغ المرسل الأصلي إن رسائله قُرأت
                 socket.to(`conversation-${conversationId}`).emit('messages-read', {
                     conversationId,
                     readBy: socket.userId
                 });
-                console.log(`📖 ${socket.user.name} قرأ ${result.modifiedCount} رسالة في ${conversationId}`);
             }
         } catch (error) {
-            console.error('خطأ في mark-read:', error);
+            console.error('خطأ في mark-read:', error.message);
         }
     });
 
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
-        console.log(`👋 ${socket.user.name} قطع الاتصال (${socket.id})`);
+        console.log(`👋 غادر: ${socket.user.name}`);
         connectedUsers.delete(socket.userId);
 
         // تحديث حالة المستخدم: غير متصل
@@ -360,14 +476,9 @@ io.on('connection', async (socket) => {
             lastLogin: new Date()
         });
 
-        // إبلاغ الآخرين أن المستخدم قطع الاتصال
-        socket.broadcast.emit('user:offline', { userId: socket.userId });
-
-        // إرسال إشعار للجميع بأن المستخدم غير متصل (للتوافق مع الكود القديم)
-        io.emit('user-disconnected', {
-            userId: socket.userId,
-            userName: socket.user.name
-        });
+        // ✅ إبلاغ شركاء المحادثات فقط (بدل broadcast للجميع)
+        // ✅ حدث واحد فقط بدل حدثين (أزلنا user-disconnected المكرر)
+        notifyConversationPartners(socket.userId, 'user:offline', { userId: socket.userId });
     });
 });
 
