@@ -3672,6 +3672,28 @@ router.put('/conversations/:conversationId/chat-mode', protect, async (req, res)
             });
         }
 
+        // ✅ إرسال Push Notification للطرف الآخر
+        try {
+            const otherParticipant = conversation.participants.find(
+                p => p.toString() !== userId.toString()
+            );
+            if (otherParticipant) {
+                const modeIcon = chatMode === 'snap' ? '👻' : chatMode === '24h' ? '⏰' : '♾️';
+                await pushNotificationService.sendNotificationToUser(otherParticipant, {
+                    title: `${modeIcon} تم تغيير وضع المحادثة`,
+                    body: `${req.user.name} غيّر وضع المحادثة إلى: ${modeTextAr}`,
+                    type: 'chat_mode_changed'
+                }, {
+                    userId: userId.toString(),
+                    type: 'chat_mode_changed',
+                    conversationId: conversationId,
+                    chatMode: chatMode
+                });
+            }
+        } catch (notifError) {
+            console.error('خطأ في إرسال إشعار تغيير وضع المحادثة:', notifError);
+        }
+
         res.json({
             success: true,
             message: `تم تغيير وضع المحادثة إلى: ${modeTextAr}`,
