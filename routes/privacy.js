@@ -613,4 +613,77 @@ router.put('/notification-sound', [
     }
 });
 
+// ==================== عدم الإزعاج ====================
+
+/**
+ * @route   PUT /api/privacy/do-not-disturb
+ * @desc    تفعيل/إلغاء وضع عدم الإزعاج مع ساعات هادئة
+ * @access  Private
+ */
+router.put('/do-not-disturb', auth, async (req, res) => {
+    try {
+        const { enabled, startHour, startMinute, endHour, endMinute } = req.body;
+
+        const updateFields = {};
+        if (enabled !== undefined) {
+            updateFields['privacySettings.doNotDisturb.enabled'] = !!enabled;
+        }
+        if (startHour !== undefined) {
+            updateFields['privacySettings.doNotDisturb.startHour'] = Math.min(23, Math.max(0, parseInt(startHour)));
+        }
+        if (startMinute !== undefined) {
+            updateFields['privacySettings.doNotDisturb.startMinute'] = Math.min(59, Math.max(0, parseInt(startMinute)));
+        }
+        if (endHour !== undefined) {
+            updateFields['privacySettings.doNotDisturb.endHour'] = Math.min(23, Math.max(0, parseInt(endHour)));
+        }
+        if (endMinute !== undefined) {
+            updateFields['privacySettings.doNotDisturb.endMinute'] = Math.min(59, Math.max(0, parseInt(endMinute)));
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { $set: updateFields },
+            { new: true }
+        ).select('privacySettings.doNotDisturb');
+
+        res.json({
+            success: true,
+            message: enabled ? 'تم تفعيل عدم الإزعاج' : 'تم إلغاء عدم الإزعاج',
+            data: { doNotDisturb: user.privacySettings.doNotDisturb }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد عدم الإزعاج:', error);
+        res.status(500).json({
+            success: false,
+            message: 'حدث خطأ في الخادم'
+        });
+    }
+});
+
+/**
+ * @route   GET /api/privacy/do-not-disturb
+ * @desc    الحصول على إعدادات عدم الإزعاج
+ * @access  Private
+ */
+router.get('/do-not-disturb', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('privacySettings.doNotDisturb');
+        res.json({
+            success: true,
+            data: {
+                doNotDisturb: user.privacySettings?.doNotDisturb || {
+                    enabled: false,
+                    startHour: 23,
+                    startMinute: 0,
+                    endHour: 7,
+                    endMinute: 0
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'حدث خطأ في الخادم' });
+    }
+});
+
 module.exports = router;

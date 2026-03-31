@@ -229,6 +229,28 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             }
         }
 
+        // ✅ فحص عدم الإزعاج (ساعات هادئة)
+        const dnd = user.privacySettings?.doNotDisturb;
+        if (dnd?.enabled) {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const startMinutes = (dnd.startHour || 23) * 60 + (dnd.startMinute || 0);
+            const endMinutes = (dnd.endHour || 7) * 60 + (dnd.endMinute || 0);
+
+            let isDND = false;
+            if (startMinutes > endMinutes) {
+                // يعبر منتصف الليل (مثل 23:00 - 07:00)
+                isDND = currentMinutes >= startMinutes || currentMinutes < endMinutes;
+            } else {
+                isDND = currentMinutes >= startMinutes && currentMinutes < endMinutes;
+            }
+
+            if (isDND) {
+                console.log(`🌙 عدم إزعاج — لا إشعار لـ ${user.name}`);
+                return { success: true, skipped: true, reason: 'dnd' };
+            }
+        }
+
         const notification = {
             title: senderName,
             body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview

@@ -148,6 +148,14 @@ const userSchema = new mongoose.Schema({
         notificationSound: {
             type: Boolean,
             default: true
+        },
+        // ✅ عدم الإزعاج — ساعات هادئة
+        doNotDisturb: {
+            enabled: { type: Boolean, default: false },
+            startHour: { type: Number, default: 23 },  // 11 PM
+            startMinute: { type: Number, default: 0 },
+            endHour: { type: Number, default: 7 },     // 7 AM
+            endMinute: { type: Number, default: 0 }
         }
     },
     // قائمة المستخدمين المحظورين
