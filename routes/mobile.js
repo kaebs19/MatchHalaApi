@@ -2613,9 +2613,30 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             });
         }
 
-        const messages = await Message.find({
-            conversation: conversationId
-        })
+        // ✅ فلترة حسب clearedAt و chatMode
+        const messageQuery = { conversation: conversationId };
+
+        // 1) فلترة snap: لا نعرض الرسائل قبل آخر مسح
+        const userClear = conversation.clearedAt?.find(
+            c => c.user.toString() === req.user._id.toString()
+        );
+        if (userClear?.date) {
+            messageQuery.createdAt = { $gt: userClear.date };
+        }
+
+        // 2) فلترة 24h: لا نعرض الرسائل الأقدم من 24 ساعة
+        if (conversation.chatMode === '24h') {
+            const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            if (messageQuery.createdAt) {
+                // دمج مع فلتر clearedAt — نأخذ الأحدث
+                const clearDate = messageQuery.createdAt.$gt;
+                messageQuery.createdAt.$gt = clearDate > cutoff ? clearDate : cutoff;
+            } else {
+                messageQuery.createdAt = { $gt: cutoff };
+            }
+        }
+
+        const messages = await Message.find(messageQuery)
             .populate('sender', 'name email profileImage isPremium verification.isVerified')
             .populate({
                 path: 'replyTo',
@@ -2626,9 +2647,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        const total = await Message.countDocuments({
-            conversation: conversationId
-        });
+        const total = await Message.countDocuments(messageQuery);
 
         // إضافة isRead + isDelivered لكل رسالة
         const userId = req.user._id.toString();
@@ -3614,25 +3633,49 @@ router.put('/conversations/:conversationId/chat-mode', protect, async (req, res)
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
         }
 
+        const oldMode = conversation.chatMode || 'snap';
         conversation.chatMode = chatMode;
         await conversation.save();
 
-        // إشعار الطرف الآخر
+        const modeTextAr = chatMode === 'snap' ? 'حذف عند الخروج' :
+                          chatMode === '24h' ? 'حذف بعد 24 ساعة' : 'الاحتفاظ دائماً';
+        const modeTextEn = chatMode === 'snap' ? 'Delete on exit' :
+                          chatMode === '24h' ? 'Delete after 24h' : 'Keep forever';
+
+        // ✅ إنشاء رسالة نظام تظهر في المحادثة
+        const systemMessage = await Message.create({
+            conversation: conversationId,
+            sender: req.user._id,
+            type: 'system',
+            content: JSON.stringify({
+                action: 'chat_mode_changed',
+                oldMode: oldMode,
+                newMode: chatMode,
+                textAr: `تم تغيير وضع المحادثة إلى: ${modeTextAr}`,
+                textEn: `Chat mode changed to: ${modeTextEn}`
+            })
+        });
+
+        const populatedSystem = await Message.findById(systemMessage._id)
+            .populate('sender', 'name email profileImage');
+
+        // إشعار الطرف الآخر عبر Socket
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('chat-mode-changed', {
                 conversationId: conversationId,
                 chatMode: chatMode,
                 changedBy: req.user.name
             });
+            // إرسال رسالة النظام كرسالة جديدة
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: populatedSystem.toObject()
+            });
         }
-
-        const modeTextAr = chatMode === 'snap' ? 'حذف عند الخروج' :
-                          chatMode === '24h' ? 'حذف بعد 24 ساعة' : 'الاحتفاظ دائماً';
 
         res.json({
             success: true,
             message: `تم تغيير وضع المحادثة إلى: ${modeTextAr}`,
-            data: { chatMode }
+            data: { chatMode, systemMessage: populatedSystem }
         });
 
     } catch (error) {
@@ -3662,8 +3705,17 @@ router.post('/conversations/:conversationId/clear-messages', protect, async (req
         }
 
         // ✅ مهم: الرسائل تبقى في السيرفر دائماً (للأدمن)
-        // هنا نرجع فقط تأكيد — التطبيق يمسح الكاش المحلي
-        // لا نحذف فعلياً من قاعدة البيانات
+        // نحفظ تاريخ المسح لكل مستخدم — لا نعرض الرسائل القديمة عند إعادة فتح المحادثة
+        const now = new Date();
+        const clearIndex = conversation.clearedAt.findIndex(
+            c => c.user.toString() === userId.toString()
+        );
+        if (clearIndex >= 0) {
+            conversation.clearedAt[clearIndex].date = now;
+        } else {
+            conversation.clearedAt.push({ user: userId, date: now });
+        }
+        await conversation.save();
 
         res.json({
             success: true,
@@ -3671,7 +3723,7 @@ router.post('/conversations/:conversationId/clear-messages', protect, async (req
             data: {
                 conversationId: conversationId,
                 chatMode: conversation.chatMode,
-                clearedAt: new Date()
+                clearedAt: now
             }
         });
 

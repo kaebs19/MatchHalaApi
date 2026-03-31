@@ -62,6 +62,11 @@ const conversationSchema = new mongoose.Schema({
         // keep = تبقى دائماً
         // ملاحظة: الرسائل تبقى في السيرفر دائماً للأدمن
     },
+    // ✅ تتبع آخر مسح رسائل لكل مستخدم (snap/24h)
+    clearedAt: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        date: { type: Date, default: null }
+    }],
     settings: {
         allowMembersToSend: {
             type: Boolean,
