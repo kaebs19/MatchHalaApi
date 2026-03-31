@@ -2994,6 +2994,43 @@ router.put('/notifications/read-all', protect, async (req, res) => {
     }
 });
 
+// @route   DELETE /api/mobile/notifications/:id
+// @desc    حذف إشعار للمستخدم
+// @access  Private
+router.delete('/notifications/:id', protect, async (req, res) => {
+    try {
+        const notification = await Notification.findById(req.params.id);
+        if (!notification) {
+            return res.status(404).json({ success: false, message: 'الإشعار غير موجود' });
+        }
+
+        // حذف الإشعار (المستخدم يحذف إشعاراته فقط)
+        await Notification.findByIdAndDelete(req.params.id);
+
+        res.json({ success: true, message: 'تم حذف الإشعار' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في حذف الإشعار', error: error.message });
+    }
+});
+
+// @route   DELETE /api/mobile/notifications
+// @desc    حذف جميع إشعارات المستخدم
+// @access  Private
+router.delete('/notifications', protect, async (req, res) => {
+    try {
+        await Notification.deleteMany({
+            $or: [
+                { targetUsers: req.user._id },
+                { sender: req.user._id }
+            ]
+        });
+
+        res.json({ success: true, message: 'تم حذف جميع الإشعارات' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في حذف الإشعارات', error: error.message });
+    }
+});
+
 // ==========================================
 // نظام FCM Token (Firebase Cloud Messaging)
 // ==========================================

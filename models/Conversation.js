@@ -56,9 +56,9 @@ const conversationSchema = new mongoose.Schema({
     chatMode: {
         type: String,
         enum: ['snap', '24h', 'keep'],
-        default: 'snap'
+        default: '24h'
         // snap = تنحذف عند الخروج من المحادثة (مثل سناب شات)
-        // 24h = تنحذف بعد 24 ساعة
+        // 24h = تنحذف بعد 24 ساعة (الافتراضي)
         // keep = تبقى دائماً
         // ملاحظة: الرسائل تبقى في السيرفر دائماً للأدمن
     },
