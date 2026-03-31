@@ -923,6 +923,7 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
             }
 
             user.profileImage = null;
+            user.markModified('profileImage');
         } else {
             // حذف صورة من المصفوفة
             const idx = parseInt(photoIndex);

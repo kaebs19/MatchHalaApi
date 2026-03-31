@@ -55,36 +55,43 @@ router.get('/', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.post('/', protect, adminOnly, async (req, res) => {
     try {
-        const { words, language = 'other', category = 'other' } = req.body;
+        const { words, word, language = 'other', category = 'other' } = req.body;
 
-        if (!words || (Array.isArray(words) && words.length === 0)) {
+        // دعم إرسال كلمة واحدة (word) أو عدة كلمات (words)
+        let rawList = words || word;
+        if (!rawList || (Array.isArray(rawList) && rawList.length === 0)) {
             return res.status(400).json({
                 success: false,
                 message: 'يجب تقديم كلمة واحدة على الأقل'
             });
         }
 
-        // تحويل لمصفوفة إذا كان نص واحد
-        const wordList = Array.isArray(words) ? words : [words];
+        // تحويل لمصفوفة
+        const wordList = Array.isArray(rawList) ? rawList : [rawList];
 
         const results = { added: 0, duplicates: 0, errors: 0 };
         const addedWords = [];
 
         for (const w of wordList) {
-            const word = w.trim().toLowerCase();
-            if (!word) continue;
+            // دعم الإرسال كنص أو كائن { word, category, language }
+            const isObject = typeof w === 'object' && w !== null;
+            const wordText = (isObject ? w.word : w)?.trim?.()?.toLowerCase?.();
+            const wordLang = (isObject ? w.language : null) || language;
+            const wordCat = (isObject ? w.category : null) || category;
+
+            if (!wordText) continue;
 
             try {
-                const existing = await BannedWord.findOne({ word });
+                const existing = await BannedWord.findOne({ word: wordText });
                 if (existing) {
                     results.duplicates++;
                     continue;
                 }
 
                 const newWord = await BannedWord.create({
-                    word,
-                    language,
-                    category,
+                    word: wordText,
+                    language: wordLang,
+                    category: wordCat,
                     addedBy: req.user._id
                 });
                 addedWords.push(newWord);
