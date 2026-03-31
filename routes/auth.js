@@ -300,7 +300,7 @@ router.get('/me', protect, async (req, res) => {
 // @access  Private
 router.put('/update-profile', protect, updateProfileValidation, validate, async (req, res) => {
     try {
-        const { name, email, profileImage, birthDate, gender, country, bio, defaultAvatar } = req.body;
+        const { name, email, profileImage, birthDate, gender, country, bio, defaultAvatar, interests } = req.body;
 
         const user = await User.findById(req.user.id);
 
@@ -309,6 +309,25 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 success: false,
                 message: 'المستخدم غير موجود'
             });
+        }
+
+        // ✅ فحص قيود الأدمن على تغيير الاسم
+        if (name && name !== user.name && user.restrictions?.nameBlocked) {
+            if (!user.restrictions.nameBlockedUntil || user.restrictions.nameBlockedUntil > new Date()) {
+                const until = user.restrictions.nameBlockedUntil
+                    ? new Date(user.restrictions.nameBlockedUntil).toLocaleDateString('ar-SA')
+                    : 'غير محدد';
+                return res.status(403).json({
+                    success: false,
+                    message: `تم منعك من تغيير الاسم حتى: ${until}. السبب: ${user.restrictions.nameBlockedReason || 'مخالفة'}`,
+                    code: 'NAME_BLOCKED'
+                });
+            } else {
+                // انتهت فترة المنع — رفع القيد
+                user.restrictions.nameBlocked = false;
+                user.restrictions.nameBlockedUntil = null;
+                user.restrictions.nameBlockedReason = null;
+            }
         }
 
         // ✅ فحص cooldown تغيير الاسم (مرة كل 30 يوم)
@@ -379,9 +398,29 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (gender !== undefined) user.gender = gender;
         if (country !== undefined) user.country = country;
         if (bio !== undefined) user.bio = bio;
+        if (interests !== undefined) user.interests = interests;
 
         // دعم الصور الافتراضية (avatar_1 إلى avatar_13)
         if (defaultAvatar) {
+            // ✅ فحص قيود الأدمن على تغيير الصورة
+            if (user.restrictions?.photoBlocked) {
+                if (!user.restrictions.photoBlockedUntil || user.restrictions.photoBlockedUntil > new Date()) {
+                    const until = user.restrictions.photoBlockedUntil
+                        ? new Date(user.restrictions.photoBlockedUntil).toLocaleDateString('ar-SA')
+                        : 'غير محدد';
+                    return res.status(403).json({
+                        success: false,
+                        message: `تم منعك من تغيير الصورة حتى: ${until}. السبب: ${user.restrictions.photoBlockedReason || 'مخالفة'}`,
+                        code: 'PHOTO_BLOCKED'
+                    });
+                } else {
+                    user.restrictions.photoBlocked = false;
+                    user.restrictions.photoBlockedUntil = null;
+                    user.restrictions.photoBlockedReason = null;
+                    await user.save();
+                }
+            }
+
             // ✅ فحص cooldown تغيير الصورة (مرة كل 24 ساعة)
             if (user.lastPhotoChange) {
                 const hoursSinceChange = (Date.now() - new Date(user.lastPhotoChange).getTime()) / (1000 * 60 * 60);
@@ -643,6 +682,26 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
                 success: false,
                 message: 'المستخدم غير موجود'
             });
+        }
+
+        // ✅ فحص قيود الأدمن على تغيير الصورة
+        if (user.restrictions?.photoBlocked) {
+            if (!user.restrictions.photoBlockedUntil || user.restrictions.photoBlockedUntil > new Date()) {
+                fs.unlinkSync(req.file.path);
+                const until = user.restrictions.photoBlockedUntil
+                    ? new Date(user.restrictions.photoBlockedUntil).toLocaleDateString('ar-SA')
+                    : 'غير محدد';
+                return res.status(403).json({
+                    success: false,
+                    message: `تم منعك من تغيير الصورة حتى: ${until}. السبب: ${user.restrictions.photoBlockedReason || 'مخالفة'}`,
+                    code: 'PHOTO_BLOCKED'
+                });
+            } else {
+                user.restrictions.photoBlocked = false;
+                user.restrictions.photoBlockedUntil = null;
+                user.restrictions.photoBlockedReason = null;
+                await user.save();
+            }
         }
 
         // ✅ فحص cooldown تغيير الصورة (مرة كل 24 ساعة)

@@ -81,6 +81,10 @@ const userSchema = new mongoose.Schema({
         default: null,
         maxlength: [500, 'النبذة يجب أن لا تتجاوز 500 حرف']
     },
+    interests: [{
+        type: String,
+        trim: true
+    }],
     // نوع التسجيل (app, google, apple)
     authProvider: {
         type: String,
@@ -259,7 +263,17 @@ const userSchema = new mongoose.Schema({
         reason: { type: String },
         removedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         removedAt: { type: Date, default: Date.now }
-    }]
+    }],
+
+    // ✅ قيود الأدمن (منع تغيير الصورة/الاسم لفترة)
+    restrictions: {
+        photoBlocked: { type: Boolean, default: false },
+        photoBlockedUntil: { type: Date, default: null },
+        photoBlockedReason: { type: String, default: null },
+        nameBlocked: { type: Boolean, default: false },
+        nameBlockedUntil: { type: Date, default: null },
+        nameBlockedReason: { type: String, default: null }
+    }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
 });

@@ -6,7 +6,8 @@ import {
     setUserViolations,
     userNameAction,
     deleteUserPhoto,
-    sendUserNotification
+    sendUserNotification,
+    restrictUser
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -30,9 +31,12 @@ function UserDetail({ userId, onBack }) {
     const [showNotifyModal, setShowNotifyModal] = useState(false);
     const [showViolationsModal, setShowViolationsModal] = useState(false);
     const [showPhotoDeleteModal, setShowPhotoDeleteModal] = useState(false);
+    const [showRestrictModal, setShowRestrictModal] = useState(false);
 
     // Suspend form
     const [suspendForm, setSuspendForm] = useState({ duration: '24h', customDays: 7, reason: '' });
+    // Restrict form
+    const [restrictForm, setRestrictForm] = useState({ type: 'photo', duration: '7d', reason: '' });
     // Name action form
     const [nameForm, setNameForm] = useState({ action: 'suspend', reason: '', newName: '' });
     // Notification form
@@ -144,6 +148,23 @@ function UserDetail({ userId, onBack }) {
             }
         } catch (error) {
             showToast(error.response?.data?.message || 'فشل في حذف الصورة', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleRestrict = async () => {
+        try {
+            setActionLoading(true);
+            const res = await restrictUser(userId, restrictForm.type, restrictForm.duration, restrictForm.reason);
+            if (res.success) {
+                showToast(res.message || 'تم تطبيق القيد بنجاح', 'success');
+                setShowRestrictModal(false);
+                setRestrictForm({ type: 'photo', duration: '7d', reason: '' });
+                fetchUserActivity();
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل في تطبيق القيد', 'error');
         } finally {
             setActionLoading(false);
         }
@@ -721,11 +742,49 @@ function UserDetail({ userId, onBack }) {
                                 </button>
                             )}
 
+                            {/* Restrict Photo/Name */}
+                            <button className="admin-action-btn restrict" onClick={() => setShowRestrictModal(true)} disabled={actionLoading}>
+                                ⛔ منع تغيير صورة/اسم
+                            </button>
+
                             {/* Send Notification */}
                             <button className="admin-action-btn notify" onClick={() => setShowNotifyModal(true)} disabled={actionLoading}>
                                 📢 إرسال إشعار
                             </button>
                         </div>
+
+                        {/* Active Restrictions */}
+                        {(user.restrictions?.photoBlocked || user.restrictions?.nameBlocked) && (
+                            <div className="active-restrictions">
+                                <h4>⛔ القيود النشطة</h4>
+                                {user.restrictions.photoBlocked && (
+                                    <div className="restriction-item photo">
+                                        <span>📷 منع تغيير الصورة</span>
+                                        <span>{user.restrictions.photoBlockedUntil ? `حتى ${formatDate(user.restrictions.photoBlockedUntil)}` : 'دائم'}</span>
+                                        <span className="restriction-reason">{user.restrictions.photoBlockedReason}</span>
+                                    </div>
+                                )}
+                                {user.restrictions.nameBlocked && (
+                                    <div className="restriction-item name">
+                                        <span>📛 منع تغيير الاسم</span>
+                                        <span>{user.restrictions.nameBlockedUntil ? `حتى ${formatDate(user.restrictions.nameBlockedUntil)}` : 'دائم'}</span>
+                                        <span className="restriction-reason">{user.restrictions.nameBlockedReason}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* User Interests */}
+                        {user.interests && user.interests.length > 0 && (
+                            <div className="user-interests-section">
+                                <h4>✨ الاهتمامات</h4>
+                                <div className="interests-chips">
+                                    {user.interests.map((interest, idx) => (
+                                        <span key={idx} className="interest-chip">{interest}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Photo Removals History */}
                         {user.photoRemovals && user.photoRemovals.length > 0 && (
@@ -1003,6 +1062,51 @@ function UserDetail({ userId, onBack }) {
                             <button className="cancel-btn" onClick={() => setShowNotifyModal(false)} disabled={actionLoading}>إلغاء</button>
                             <button className="submit-btn" onClick={handleSendNotification} disabled={actionLoading}>
                                 {actionLoading ? 'جاري الإرسال...' : 'إرسال الإشعار'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Restrict Photo/Name Modal */}
+            {showRestrictModal && (
+                <div className="modal-overlay" onClick={() => setShowRestrictModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>⛔ منع تغيير صورة/اسم</h3>
+                            <button className="close-modal-btn" onClick={() => setShowRestrictModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>نوع المنع</label>
+                                <select value={restrictForm.type} onChange={(e) => setRestrictForm({...restrictForm, type: e.target.value})}>
+                                    <option value="photo">📷 منع تغيير الصورة</option>
+                                    <option value="name">📛 منع تغيير الاسم</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>المدة</label>
+                                <select value={restrictForm.duration} onChange={(e) => setRestrictForm({...restrictForm, duration: e.target.value})}>
+                                    <option value="7d">7 أيام</option>
+                                    <option value="30d">30 يوم</option>
+                                    <option value="90d">90 يوم</option>
+                                    <option value="permanent">دائم</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>السبب (سيتم إشعار المستخدم)</label>
+                                <textarea
+                                    value={restrictForm.reason}
+                                    onChange={(e) => setRestrictForm({...restrictForm, reason: e.target.value})}
+                                    placeholder="صورة/اسم مخالف لسياسة الاستخدام..."
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowRestrictModal(false)} disabled={actionLoading}>إلغاء</button>
+                            <button className="submit-btn danger" onClick={handleRestrict} disabled={actionLoading}>
+                                {actionLoading ? 'جاري التطبيق...' : '⛔ تطبيق المنع + إشعار المستخدم'}
                             </button>
                         </div>
                     </div>

@@ -839,6 +839,70 @@
 }
 .admin-action-btn.notify:hover:not(:disabled) { background: #2980b9; }
 
+.admin-action-btn.restrict {
+    background: #e74c3c;
+    color: white;
+}
+.admin-action-btn.restrict:hover:not(:disabled) { background: #c0392b; }
+
+/* Active Restrictions */
+.active-restrictions {
+    margin-top: 20px;
+    padding: 16px;
+    background: #fff3f3;
+    border-radius: 12px;
+    border: 1px solid #f5c6cb;
+}
+.active-restrictions h4 {
+    margin-bottom: 12px;
+    color: #c0392b;
+}
+.restriction-item {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 14px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #f5c6cb;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.restriction-item.photo { border-right: 4px solid #e74c3c; }
+.restriction-item.name { border-right: 4px solid #e67e22; }
+.restriction-reason {
+    color: #95a5a6;
+    font-size: 12px;
+    width: 100%;
+}
+
+/* User Interests */
+.user-interests-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: #f0f8ff;
+    border-radius: 12px;
+    border: 1px solid #d4e6f1;
+}
+.user-interests-section h4 {
+    margin-bottom: 12px;
+    color: #2c3e50;
+}
+.interests-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.interest-chip {
+    padding: 6px 14px;
+    background: #e8f4fd;
+    color: #2980b9;
+    border-radius: 20px;
+    font-size: 13px;
+    border: 1px solid #bee5eb;
+}
+
 /* Photo Removals History */
 .photo-removals-history {
     margin-top: 24px;

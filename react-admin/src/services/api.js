@@ -496,6 +496,12 @@ export const searchUsers = async (query, type = 'auto') => {
     return response.data;
 };
 
+// منع مستخدم من تغيير الصورة/الاسم
+export const restrictUser = async (userId, type, duration, reason) => {
+    const response = await api.put(`/users/${userId}/restrict`, { type, duration, reason });
+    return response.data;
+};
+
 // ============ ✅ التحكم بالإصدارات ============
 
 // الحصول على إعدادات الإصدار

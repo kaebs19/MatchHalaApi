@@ -287,6 +287,7 @@ app.use('/api/verifications', require('./routes/verifications'));
 app.use('/api/swipes', require('./routes/swipes'));
 app.use('/api/matches', require('./routes/matches'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
+app.use('/api/interests', require('./routes/interests'));
 
 // 9. React Admin Panel - لوحة التحكم
 app.use('/admin', express.static(path.join(__dirname, 'react-admin/build')));

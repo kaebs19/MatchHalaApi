@@ -1040,4 +1040,78 @@ router.post('/search', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/restrict
+// @desc    منع مستخدم من تغيير الصورة/الاسم لفترة
+// @access  Private/Admin
+router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
+    try {
+        const { type, duration, reason } = req.body;
+        // type: 'photo' | 'name'
+        // duration: '7d' | '30d' | '90d' | 'permanent'
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const durationMap = { '7d': 7, '30d': 30, '90d': 90 };
+        const days = durationMap[duration];
+        const until = days ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null;
+
+        const durationTextAr = duration === '7d' ? '7 أيام' : duration === '30d' ? '30 يوم' : duration === '90d' ? '90 يوم' : 'دائم';
+
+        if (type === 'photo') {
+            user.restrictions = user.restrictions || {};
+            user.restrictions.photoBlocked = true;
+            user.restrictions.photoBlockedUntil = until;
+            user.restrictions.photoBlockedReason = reason || 'صورة مخالفة';
+        } else if (type === 'name') {
+            user.restrictions = user.restrictions || {};
+            user.restrictions.nameBlocked = true;
+            user.restrictions.nameBlockedUntil = until;
+            user.restrictions.nameBlockedReason = reason || 'اسم مخالف';
+        } else {
+            return res.status(400).json({ success: false, message: 'نوع القيد غير صحيح (photo أو name)' });
+        }
+
+        // تسجيل كمخالفة
+        if (!user.photoRemovals) user.photoRemovals = [];
+        user.photoRemovals.push({
+            reason: `قيد ${type === 'photo' ? 'صورة' : 'اسم'}: ${reason || 'مخالفة'} (${durationTextAr})`,
+            removedBy: req.user._id,
+            removedAt: new Date()
+        });
+
+        await user.save();
+
+        // إشعار المستخدم
+        const typeAr = type === 'photo' ? 'تغيير الصورة' : 'تغيير الاسم';
+        const notifTitle = `⛔ تم منعك من ${typeAr}`;
+        const notifBody = `تم منعك من ${typeAr} لمدة ${durationTextAr}.\nالسبب: ${reason || 'مخالفة سياسة الاستخدام'}`;
+
+        const pushNotificationService = require('../services/pushNotificationService');
+        await pushNotificationService.sendNotificationToUser(user._id, {
+            title: notifTitle, body: notifBody
+        }, { type: 'restriction', restrictionType: type, duration });
+
+        const Notification = require('../models/Notification');
+        await Notification.create({
+            title: notifTitle, body: notifBody,
+            type: 'system', recipients: 'specific',
+            targetUsers: [user._id], sender: req.user._id,
+            data: { type: 'restriction', restrictionType: type },
+            status: 'sent', sentAt: new Date()
+        });
+
+        res.json({
+            success: true,
+            message: `تم منع ${user.name} من ${typeAr} لمدة ${durationTextAr}`,
+            data: { restrictions: user.restrictions }
+        });
+    } catch (error) {
+        console.error('Restrict error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;
