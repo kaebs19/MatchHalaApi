@@ -3563,8 +3563,23 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
         const alertTextEn = alertType === 'screenshot' ? 'took a screenshot' :
                            alertType === 'screen_record' ? 'recorded the screen' : 'saved the photo';
 
+        // ✅ إنشاء رسالة نظام في المحادثة (مثل سناب شات)
+        const systemMessage = await Message.create({
+            conversation: message.conversation._id,
+            sender: userId,
+            content: `${alertEmoji} ${req.user.name} ${alertTextAr}`,
+            type: 'system'
+        });
+
+        // تحديث آخر رسالة في المحادثة
+        await Conversation.findByIdAndUpdate(message.conversation._id, {
+            lastMessage: systemMessage._id,
+            lastMessageAt: new Date()
+        });
+
         if (global.io) {
             for (const participantId of otherParticipants) {
+                // تنبيه أمان
                 global.io.to(`user:${participantId}`).emit('security-alert', {
                     messageId: message._id,
                     conversationId: message.conversation._id,
@@ -3573,6 +3588,12 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
                     emoji: alertEmoji,
                     textAr: `${req.user.name} ${alertTextAr}`,
                     textEn: `${req.user.name} ${alertTextEn}`
+                });
+
+                // رسالة النظام تظهر في المحادثة
+                global.io.to(`user:${participantId}`).emit('new-message', {
+                    message: systemMessage.toObject(),
+                    conversationId: message.conversation._id.toString()
                 });
             }
         }
