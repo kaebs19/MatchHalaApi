@@ -3452,7 +3452,7 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
 
             // إشعار المرسل بأن الصورة شوهدت
             if (global.io) {
-                global.io.to(`user-${message.sender}`).emit('photo-viewed', {
+                global.io.to(`user:${message.sender}`).emit('photo-viewed', {
                     messageId: message._id,
                     conversationId: message.conversation,
                     viewedBy: req.user.name,
@@ -3504,7 +3504,7 @@ router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
 
         // إشعار المرسل
         if (global.io) {
-            global.io.to(`user-${message.sender}`).emit('photo-expired', {
+            global.io.to(`user:${message.sender}`).emit('photo-expired', {
                 messageId: message._id,
                 conversationId: message.conversation,
                 expiredFor: req.user.name
@@ -3565,7 +3565,7 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
 
         if (global.io) {
             for (const participantId of otherParticipants) {
-                global.io.to(`user-${participantId}`).emit('security-alert', {
+                global.io.to(`user:${participantId}`).emit('security-alert', {
                     messageId: message._id,
                     conversationId: message.conversation._id,
                     alertType: alertType,
