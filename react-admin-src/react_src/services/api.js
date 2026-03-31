@@ -444,4 +444,102 @@ export const getUserLocations = async () => {
     return response.data;
 };
 
+// ============ ✅ إدارة المستخدمين المتقدمة ============
+
+// تعليق مستخدم
+export const suspendUser = async (userId, duration, reason, notify = true) => {
+    const response = await api.put(`/users/${userId}/suspend`, { duration, reason, notify });
+    return response.data;
+};
+
+// إلغاء تعليق مستخدم
+export const unsuspendUser = async (userId) => {
+    const response = await api.put(`/users/${userId}/suspend`, { duration: 'unsuspend' });
+    return response.data;
+};
+
+// تحديد مخالفات المستخدم
+export const setUserViolations = async (userId, violations) => {
+    const response = await api.put(`/users/${userId}/violations`, { violations });
+    return response.data;
+};
+
+// حظر/إلغاء حظر مستخدم
+export const banUser = async (userId, reason) => {
+    const response = await api.put(`/users/${userId}/ban`, { reason });
+    return response.data;
+};
+
+// إجراء على اسم المستخدم (suspend/ban/restore/change)
+export const userNameAction = async (userId, action, reason, newName) => {
+    const response = await api.put(`/users/${userId}/name-action`, { action, reason, newName, notify: true });
+    return response.data;
+};
+
+// حذف صورة مستخدم
+export const deleteUserPhoto = async (userId, photoIndex, reason) => {
+    const response = await api.delete(`/users/${userId}/photo`, {
+        data: { photoIndex, reason, notify: true }
+    });
+    return response.data;
+};
+
+// إرسال إشعار لمستخدم بالبريد/الاسم/المعرف
+export const sendUserNotification = async (title, body, identifier, identifierType = 'id', type = 'system') => {
+    const response = await api.post('/users/send-notification', { title, body, identifier, identifierType, type });
+    return response.data;
+};
+
+// بحث مستخدمين
+export const searchUsers = async (query, type = 'auto') => {
+    const response = await api.post('/users/search', { query, type });
+    return response.data;
+};
+
+// ============ ✅ التحكم بالإصدارات ============
+
+// الحصول على إعدادات الإصدار
+export const getVersionControl = async () => {
+    const response = await api.get('/settings/version-control');
+    return response.data;
+};
+
+// تحديث إعدادات الإصدار
+export const updateVersionControl = async (settings) => {
+    const response = await api.put('/settings/version-control', settings);
+    return response.data;
+};
+
+// ============ ✅ الأسماء المحظورة ============
+
+// الحصول على الأسماء المحظورة
+export const getBannedNames = async () => {
+    const response = await api.get('/settings/banned-names');
+    return response.data;
+};
+
+// إضافة أسماء محظورة
+export const addBannedNames = async (names, reason) => {
+    const response = await api.post('/settings/banned-names', { names, reason });
+    return response.data;
+};
+
+// حذف اسم محظور
+export const deleteBannedName = async (name) => {
+    const response = await api.delete(`/settings/banned-names/${encodeURIComponent(name)}`);
+    return response.data;
+};
+
+// تحديث حد المخالفات
+export const updateMaxViolations = async (maxViolations) => {
+    const response = await api.put('/settings/max-violations', { maxViolations });
+    return response.data;
+};
+
+// إضافة أسماء مشهورة محظورة (seed)
+export const seedBannedNames = async () => {
+    const response = await api.post('/settings/banned-names/seed');
+    return response.data;
+};
+
 export default api;

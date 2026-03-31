@@ -480,6 +480,7 @@ router.put('/:id/ban', protect, adminOnly, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const pushNotificationService = require('../services/pushNotificationService');
+const Notification = require('../models/Notification');
 
 // @route   PUT /api/users/:id/violations
 // @desc    تحديد عدد مخالفات الكلمات المحظورة يدوياً
@@ -620,12 +621,30 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             await user.save();
             invalidateUsers();
 
-            // إشعار المستخدم
+            // إشعار المستخدم (push + داخلي)
             if (notify) {
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: '✅ تم إلغاء تعليق حسابك',
-                    body: 'يمكنك الآن استخدام التطبيق بشكل طبيعي'
+                    body: 'يمكنك الآن استخدام التطبيق بشكل طبيعي. مرحباً بعودتك!'
                 }, { type: 'account_unsuspended' });
+
+                // ✅ إشعار داخلي
+                await Notification.create({
+                    title: '✅ تم إلغاء تعليق حسابك',
+                    body: 'يمكنك الآن استخدام التطبيق بشكل طبيعي. مرحباً بعودتك!',
+                    type: 'system',
+                    recipients: 'specific',
+                    targetUsers: [user._id],
+                    sender: req.user._id,
+                    data: { type: 'account_unsuspended', userId: user._id.toString() },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+            }
+
+            // ✅ Socket.IO — فك التعليق فوري على جهاز المستخدم
+            if (global.io) {
+                global.io.to(`user:${user._id}`).emit('account-unsuspended');
             }
 
             return res.json({
@@ -681,12 +700,28 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
-        // إشعار المستخدم
+        // ✅ إشعار المستخدم (push + داخلي)
         if (notify) {
+            const suspendTitle = '⚠️ تم تعليق حسابك';
+            const suspendBody = `تم تعليق حسابك لمدة ${durationText}.\nالسبب: ${reason || 'مخالفة شروط الاستخدام'}`;
+
             await pushNotificationService.sendNotificationToUser(user._id, {
-                title: '⚠️ تم تعليق حسابك',
-                body: `تم تعليق حسابك لمدة ${durationText}. السبب: ${reason || 'مخالفة شروط الاستخدام'}`
+                title: suspendTitle,
+                body: suspendBody
             }, { type: 'account_suspended', suspendedUntil, reason });
+
+            // ✅ إشعار داخلي
+            await Notification.create({
+                title: suspendTitle,
+                body: suspendBody,
+                type: 'system',
+                recipients: 'specific',
+                targetUsers: [user._id],
+                sender: req.user._id,
+                data: { type: 'account_suspended', suspendedUntil, reason, userId: user._id.toString() },
+                status: 'sent',
+                sentAt: new Date()
+            });
         }
 
         // Socket.IO
@@ -801,31 +836,46 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
-        // إشعار المستخدم
+        // ✅ إشعار المستخدم (push + داخل التطبيق)
         if (notify) {
             let notifTitle, notifBody;
             switch (action) {
                 case 'suspend':
-                    notifTitle = '⚠️ تم تعليق اسمك';
-                    notifBody = `تم تعليق اسمك بسبب: ${reason || 'اسم غير لائق'}. يرجى تغيير اسمك.`;
+                    notifTitle = '⚠️ تنبيه: تم تعليق اسمك';
+                    notifBody = `تم تعليق اسمك بسبب: ${reason || 'اسم غير لائق'}.\n\n⚠️ يجب عليك تغيير اسمك فوراً من الإعدادات لتجنب حظر حسابك نهائياً.`;
                     break;
                 case 'ban':
                     notifTitle = '🚫 تم حظر اسمك';
-                    notifBody = `تم حظر اسمك بسبب: ${reason || 'مخالفة'}. يرجى التواصل مع الإدارة.`;
+                    notifBody = `تم حظر اسمك بسبب: ${reason || 'اسم مخالف'}.\n\n🔴 يجب تغيير اسمك فوراً من الإعدادات. عدم التغيير سيؤدي لتعليق حسابك.`;
                     break;
                 case 'restore':
                     notifTitle = '✅ تم إعادة اسمك';
-                    notifBody = 'تم إعادة اسمك الأصلي بنجاح.';
+                    notifBody = 'تم إعادة اسمك الأصلي بنجاح. شكراً لتعاونك.';
                     break;
                 case 'change':
                     notifTitle = '📝 تم تغيير اسمك';
-                    notifBody = `تم تغيير اسمك بواسطة الإدارة إلى "${newName}".`;
+                    notifBody = `تم تغيير اسمك بواسطة الإدارة إلى "${newName}". يمكنك تغييره من الإعدادات.`;
                     break;
             }
+
+            // Push notification
             await pushNotificationService.sendNotificationToUser(user._id, {
                 title: notifTitle,
                 body: notifBody
             }, { type: 'name_action', action, reason });
+
+            // ✅ إشعار داخلي في التطبيق
+            await Notification.create({
+                title: notifTitle,
+                body: notifBody,
+                type: 'system',
+                recipients: 'specific',
+                targetUsers: [user._id],
+                sender: req.user._id,
+                data: { type: 'name_action', action, reason, userId: user._id.toString() },
+                status: 'sent',
+                sentAt: new Date()
+            });
         }
 
         res.json({
@@ -866,7 +916,7 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
 
             // حذف الملف من السيرفر
             if (removedUrl) {
-                const filePath = path.join(__dirname, '..', 'public', removedUrl);
+                const filePath = path.join(__dirname, '..', removedUrl);
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
                 }
@@ -886,7 +936,7 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
             // حذف الملفات من السيرفر
             ['original', 'medium', 'thumbnail'].forEach(size => {
                 if (photo[size]) {
-                    const filePath = path.join(__dirname, '..', 'public', photo[size]);
+                    const filePath = path.join(__dirname, '..', photo[size]);
                     if (fs.existsSync(filePath)) {
                         fs.unlinkSync(filePath);
                     }
@@ -908,17 +958,34 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
-        // إشعار المستخدم
+        // ✅ إشعار المستخدم (push + داخل التطبيق)
         if (notify) {
+            const notifTitle = '⚠️ تنبيه: تم حذف صورتك';
+            const notifBody = `تم حذف صورتك بسبب: ${reason || 'مخالفة سياسة الاستخدام'}.\n\n⚠️ يرجى رفع صورة مناسبة لا تنتهك شروط الاستخدام لتجنب تعليق حسابك.`;
+
+            // Push notification
             await pushNotificationService.sendNotificationToUser(user._id, {
-                title: '🚫 تم حذف صورتك',
-                body: `تم حذف صورتك بسبب: ${reason || 'مخالفة سياسة الاستخدام'}. يرجى رفع صورة مناسبة.`
+                title: notifTitle,
+                body: notifBody
             }, { type: 'photo_removed', reason });
+
+            // ✅ إشعار داخلي في التطبيق (يظهر في صفحة الإشعارات)
+            await Notification.create({
+                title: notifTitle,
+                body: notifBody,
+                type: 'system',
+                recipients: 'specific',
+                targetUsers: [user._id],
+                sender: req.user._id,
+                data: { type: 'photo_removed', reason, userId: user._id.toString() },
+                status: 'sent',
+                sentAt: new Date()
+            });
         }
 
         res.json({
             success: true,
-            message: `تم حذف صورة ${user.name}`,
+            message: `تم حذف صورة ${user.name} وإشعاره`,
             data: {
                 _id: user._id,
                 name: user.name,

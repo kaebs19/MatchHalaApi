@@ -106,6 +106,8 @@ const conversationSchema = new mongoose.Schema({
 conversationSchema.index({ participants: 1 });
 conversationSchema.index({ createdAt: -1 });
 conversationSchema.index({ isActive: 1 });
+// ✅ Compound index لفلترة محادثات المستخدم (يسرّع /home و /conversations)
+conversationSchema.index({ participants: 1, status: 1, isActive: 1, updatedAt: -1 });
 
 // دالة لحساب عدد المشاركين تلقائياً
 conversationSchema.pre('save', function() {

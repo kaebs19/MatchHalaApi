@@ -512,4 +512,85 @@ router.put('/max-violations', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   POST /api/settings/banned-names/seed
+// @desc    إضافة أسماء مشهورة محظورة (عربي + إنجليزي)
+// @access  Admin
+router.post('/banned-names/seed', protect, adminOnly, async (req, res) => {
+    try {
+        const settings = await Settings.getSettings();
+        if (!settings.bannedNames) settings.bannedNames = [];
+
+        // أسماء مشهورة عربية + إنجليزية
+        const famousNames = [
+            // شخصيات عربية مشهورة
+            'محمد بن سلمان', 'الملك سلمان', 'الملك عبدالله', 'محمد بن راشد', 'محمد بن زايد',
+            'أمير قطر', 'تميم بن حمد', 'السيسي', 'عبدالفتاح السيسي', 'الأسد', 'بشار الأسد',
+            'الملك حمد', 'صدام حسين', 'القذافي', 'معمر القذافي', 'حسني مبارك',
+            // ممثلين ومشاهير عرب
+            'عادل إمام', 'محمد رمضان', 'عمرو دياب', 'تامر حسني', 'محمد صلاح', 'ميسي',
+            'كريستيانو', 'رونالدو', 'نيمار', 'مبابي', 'هيفاء وهبي', 'نانسي عجرم',
+            'اليسا', 'أحلام', 'محمد عبده', 'عبدالمجيد عبدالله', 'راشد الماجد',
+            'ماجد المهندس', 'حسين الجسمي', 'بلقيس', 'أصالة', 'شيرين',
+            // مشاهير يوتيوب وسوشيال
+            'أبو فله', 'بندريتا', 'سعود الهوساوي', 'فيحان', 'أنس مروة',
+            // شخصيات دينية
+            'النبي محمد', 'عيسى', 'موسى', 'إبراهيم',
+            // شخصيات عالمية
+            'ترامب', 'بايدن', 'أوباما', 'بوتين', 'إيلون ماسك',
+            // English celebrities
+            'trump', 'biden', 'obama', 'putin', 'elon musk', 'jeff bezos', 'bill gates',
+            'kim kardashian', 'taylor swift', 'beyonce', 'rihanna', 'drake', 'kanye west',
+            'ariana grande', 'selena gomez', 'justin bieber', 'ed sheeran',
+            'cristiano ronaldo', 'lionel messi', 'neymar', 'mbappe', 'mohamed salah',
+            'lebron james', 'michael jordan',
+            'tom cruise', 'brad pitt', 'leonardo dicaprio', 'will smith', 'dwayne johnson',
+            'scarlett johansson', 'jennifer lawrence', 'angelina jolie',
+            'mark zuckerberg', 'tim cook', 'jack dorsey',
+            'queen elizabeth', 'prince harry', 'meghan markle', 'king charles',
+            'mbs', 'mbz',
+            // أسماء حساسة / ألقاب
+            'admin', 'administrator', 'مدير', 'ادمن', 'مشرف', 'moderator',
+            'support', 'الدعم', 'دعم فني', 'خدمة العملاء',
+            'matchhala', 'ماتش هلا', 'هلا شات', 'halachat',
+            'الله', 'god', 'allah', 'jesus', 'prophet',
+            // ألقاب ملكية
+            'الأمير', 'الملك', 'الشيخ', 'السلطان', 'الرئيس',
+            'prince', 'king', 'sheikh', 'sultan', 'president'
+        ];
+
+        let added = 0;
+        let skipped = 0;
+
+        for (const name of famousNames) {
+            const trimmed = name.trim().toLowerCase();
+            if (!trimmed) continue;
+
+            const exists = settings.bannedNames.some(bn => bn.name === trimmed);
+            if (exists) {
+                skipped++;
+            } else {
+                settings.bannedNames.push({
+                    name: trimmed,
+                    reason: 'اسم مشهور / حساس',
+                    addedBy: req.user._id,
+                    addedAt: new Date()
+                });
+                added++;
+            }
+        }
+
+        await settings.save();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: `تم إضافة ${added} اسم (${skipped} موجود مسبقاً)`,
+            data: { added, skipped, total: settings.bannedNames.length }
+        });
+    } catch (error) {
+        console.error('خطأ في إضافة الأسماء المشهورة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;

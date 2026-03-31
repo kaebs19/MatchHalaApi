@@ -53,6 +53,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
+            id: 'analytics',
+            name: 'التحليلات',
+            icon: '🔍',
+            adminOnly: true
+        },
+        {
             id: 'stats',
             name: 'الإحصائيات',
             icon: '📈',

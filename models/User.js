@@ -241,6 +241,10 @@ const userSchema = new mongoose.Schema({
         changedAt: { type: Date, default: null }
     },
 
+    // ✅ آخر تغيير للصورة والاسم (cooldown)
+    lastPhotoChange: { type: Date, default: null },
+    lastNameChange: { type: Date, default: null },
+
     // ✅ سجل حذف الصور (من الأدمن)
     photoRemovals: [{
         photoUrl: { type: String },

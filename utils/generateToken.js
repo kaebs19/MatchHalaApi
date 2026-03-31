@@ -3,14 +3,32 @@
 
 const jwt = require('jsonwebtoken');
 
+/**
+ * توليد Access Token (للاستخدام اليومي)
+ * المدة: 30 يوم (من .env) أو 30d افتراضياً
+ */
 const generateToken = (userId) => {
     return jwt.sign(
-        { id: userId }, 
-        process.env.JWT_SECRET, 
+        { id: userId, type: 'access' },
+        process.env.JWT_SECRET,
         {
-            expiresIn: process.env.JWT_EXPIRE || '30d' // صلاحية Token (30 يوم افتراضياً)
+            expiresIn: process.env.JWT_EXPIRE || '30d'
         }
     );
 };
 
-module.exports = generateToken;
+/**
+ * توليد Refresh Token (لتجديد Access Token بدون إعادة تسجيل الدخول)
+ * المدة: 90 يوم — يُخزّن في التطبيق ويُستخدم عند انتهاء Access Token
+ */
+const generateRefreshToken = (userId) => {
+    return jwt.sign(
+        { id: userId, type: 'refresh' },
+        process.env.JWT_SECRET,
+        {
+            expiresIn: process.env.JWT_REFRESH_EXPIRE || '90d'
+        }
+    );
+};
+
+module.exports = { generateToken, generateRefreshToken };

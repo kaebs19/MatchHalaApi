@@ -49,8 +49,15 @@ const protect = async (req, res, next) => {
                     // انتهت مدة التعليق — إلغاء التعليق تلقائياً
                     await User.findByIdAndUpdate(req.user._id, {
                         'suspension.isSuspended': false,
+                        'suspension.suspendedUntil': null,
+                        'suspension.reason': null,
                         isActive: true
                     });
+
+                    // ✅ Socket.IO — إبلاغ التطبيق فوراً بفك التعليق
+                    if (global.io) {
+                        global.io.to(`user:${req.user._id}`).emit('account-unsuspended');
+                    }
                 } else {
                     const until = req.user.suspension.suspendedUntil
                         ? req.user.suspension.suspendedUntil.toISOString()
@@ -67,13 +74,16 @@ const protect = async (req, res, next) => {
                 }
             }
 
-            // تحديث آخر ظهور (كل 5 دقائق كحد أقصى لتقليل الحِمل)
-            const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-            if (!req.user.lastLogin || req.user.lastLogin < fiveMinAgo) {
+            // تحديث آخر ظهور (كل 10 دقائق كحد أقصى لتقليل الحِمل)
+            const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+            if (!req.user.lastLogin || req.user.lastLogin < tenMinAgo) {
+                // ✅ fire-and-forget لكن مع logging عند الخطأ
                 User.findByIdAndUpdate(req.user._id, {
                     lastLogin: new Date(),
                     isOnline: true
-                }).exec().catch(() => {});
+                }).exec().catch(err => {
+                    console.error('⚠️ خطأ في تحديث lastLogin:', err.message);
+                });
             }
 
             next();

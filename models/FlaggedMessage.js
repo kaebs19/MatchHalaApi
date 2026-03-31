@@ -44,7 +44,7 @@ const flaggedMessageSchema = new mongoose.Schema({
     },
     action: {
         type: String,
-        enum: ['none', 'warning', 'message_deleted', 'user_suspended', 'user_banned'],
+        enum: ['none', 'dismiss', 'warning', 'message_deleted', 'user_suspended', 'user_suspended_1h', 'user_suspended_24h', 'user_suspended_3d', 'user_suspended_7d', 'user_banned', 'delete_account'],
         default: 'none'
     },
     notes: {

@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
+const { generateToken, generateRefreshToken } = require('../utils/generateToken');
 const sendEmail = require('../utils/sendEmail');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -144,7 +144,8 @@ router.post('/register', registerValidation, validate, async (req, res) => {
                     role: user.role,
                     profileImage: getFullUrl(user.profileImage) || null
                 },
-                token: generateToken(user._id)
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
             }
         });
 
@@ -227,7 +228,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     profileImage: getFullUrl(user.profileImage),
                     lastLogin: user.lastLogin
                 },
-                token: generateToken(user._id)
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
             }
         });
 
@@ -306,6 +308,23 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             });
         }
 
+        // ✅ فحص cooldown تغيير الاسم (مرة كل 30 يوم)
+        if (name && name !== user.name) {
+            if (user.lastNameChange) {
+                const daysSinceChange = (Date.now() - new Date(user.lastNameChange).getTime()) / (1000 * 60 * 60 * 24);
+                if (daysSinceChange < 30) {
+                    const remainingDays = Math.ceil(30 - daysSinceChange);
+                    return res.status(429).json({
+                        success: false,
+                        message: `يمكنك تغيير الاسم مرة كل 30 يوم. متبقي ${remainingDays} يوم`,
+                        messageEn: `You can change your name once every 30 days. ${remainingDays} days remaining`,
+                        code: 'NAME_COOLDOWN',
+                        remainingDays
+                    });
+                }
+            }
+        }
+
         // فحص الاسم ضد الكلمات المحظورة
         if (name && name !== user.name) {
             const nameCheck = await checkBannedWords(name);
@@ -345,7 +364,10 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         }
 
         // تحديث الحقول الأساسية
-        if (name) user.name = name;
+        if (name && name !== user.name) {
+            user.name = name;
+            user.lastNameChange = new Date();
+        }
         if (email) user.email = email;
 
         // تحديث حقول الملف الشخصي الجديدة
@@ -357,10 +379,26 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
         // دعم الصور الافتراضية (avatar_1 إلى avatar_13)
         if (defaultAvatar) {
+            // ✅ فحص cooldown تغيير الصورة (مرة كل 24 ساعة)
+            if (user.lastPhotoChange) {
+                const hoursSinceChange = (Date.now() - new Date(user.lastPhotoChange).getTime()) / (1000 * 60 * 60);
+                if (hoursSinceChange < 24) {
+                    const remainingHours = Math.ceil(24 - hoursSinceChange);
+                    return res.status(429).json({
+                        success: false,
+                        message: `يمكنك تغيير الصورة مرة كل 24 ساعة. متبقي ${remainingHours} ساعة`,
+                        messageEn: `You can change your photo once every 24 hours. ${remainingHours} hours remaining`,
+                        code: 'PHOTO_COOLDOWN',
+                        remainingHours
+                    });
+                }
+            }
+
             // التحقق من صحة اسم الصورة الافتراضية
-            const validAvatars = Array.from({ length: 14 }, (_, i) => `avatar_${i + 1}`);
+            const validAvatars = Array.from({ length: 29 }, (_, i) => `avatar_${i + 1}`);
             if (validAvatars.includes(defaultAvatar)) {
                 user.profileImage = `/uploads/defaults/${defaultAvatar}.jpg`;
+                user.lastPhotoChange = new Date();
             }
         }
 
@@ -604,6 +642,22 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
             });
         }
 
+        // ✅ فحص cooldown تغيير الصورة (مرة كل 24 ساعة)
+        if (user.lastPhotoChange) {
+            const hoursSinceChange = (Date.now() - new Date(user.lastPhotoChange).getTime()) / (1000 * 60 * 60);
+            if (hoursSinceChange < 24) {
+                fs.unlinkSync(req.file.path);
+                const remainingHours = Math.ceil(24 - hoursSinceChange);
+                return res.status(429).json({
+                    success: false,
+                    message: `يمكنك تغيير الصورة مرة كل 24 ساعة. متبقي ${remainingHours} ساعة`,
+                    messageEn: `You can change your photo once every 24 hours. ${remainingHours} hours remaining`,
+                    code: 'PHOTO_COOLDOWN',
+                    remainingHours
+                });
+            }
+        }
+
         // معالجة الصورة بأحجام متعددة (thumb, medium, original)
         const processed = await processImage(req.file.path, { prefix: 'profile' });
 
@@ -644,6 +698,9 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
             user.photos.push(photoEntry);
         }
 
+        // ✅ تسجيل وقت تغيير الصورة
+        user.lastPhotoChange = new Date();
+
         await user.save();
 
         res.status(200).json({
@@ -669,6 +726,153 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
         res.status(500).json({
             success: false,
             message: error.message || 'خطأ في السيرفر'
+        });
+    }
+});
+
+// @route   POST /api/auth/reset-account
+// @desc    إعادة تعيين الحساب (مستويات متعددة)
+// @access  Private
+router.post('/reset-account', protect, async (req, res) => {
+    try {
+        const { level, password } = req.body;
+        // level: "chats" | "profile" | "full"
+
+        if (!['chats', 'profile', 'full'].includes(level)) {
+            return res.status(400).json({
+                success: false,
+                message: 'مستوى إعادة التعيين غير صالح'
+            });
+        }
+
+        const user = await User.findById(req.user.id).select('+password');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // التحقق من كلمة المرور (لمستخدمي app)
+        if (user.authProvider === 'app') {
+            if (!password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'كلمة المرور مطلوبة لتأكيد إعادة التعيين'
+                });
+            }
+            const isMatch = await user.comparePassword(password);
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'كلمة المرور غير صحيحة'
+                });
+            }
+        }
+
+        const results = { level };
+
+        // ── مسح المحادثات ──
+        if (level === 'chats' || level === 'full') {
+            const userConversations = await Conversation.find({
+                participants: req.user.id
+            }).select('_id');
+
+            const convIds = userConversations.map(c => c._id);
+
+            // حذف جميع الرسائل
+            const deletedMessages = await Message.deleteMany({
+                conversation: { $in: convIds }
+            });
+
+            // حذف جميع المحادثات
+            const deletedConversations = await Conversation.deleteMany({
+                _id: { $in: convIds }
+            });
+
+            // حذف البلاغات المرتبطة
+            await FlaggedMessage.deleteMany({
+                conversation: { $in: convIds }
+            });
+
+            results.deletedMessages = deletedMessages.deletedCount;
+            results.deletedConversations = deletedConversations.deletedCount;
+        }
+
+        // ── إعادة تعيين الملف الشخصي ──
+        if (level === 'profile' || level === 'full') {
+            // حذف صورة الملف الشخصي
+            if (user.profileImage && !user.profileImage.includes('/defaults/')) {
+                const imagePath = path.join(__dirname, '..', user.profileImage);
+                if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
+            }
+            // حذف صور الألبوم
+            if (user.photos && user.photos.length > 0) {
+                for (const photo of user.photos) {
+                    for (const size of ['thumbnail', 'medium', 'original']) {
+                        if (photo[size]) {
+                            const photoPath = path.join(__dirname, '..', photo[size]);
+                            if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
+                        }
+                    }
+                }
+            }
+
+            user.profileImage = null;
+            user.photos = [];
+            user.bio = null;
+            user.gender = null;
+            user.birthDate = null;
+            user.country = null;
+            user.lastPhotoChange = null;
+            user.lastNameChange = null;
+
+            results.profileReset = true;
+        }
+
+        // ── إعادة تعيين كامل (إضافي) ──
+        if (level === 'full') {
+            // إلغاء التوثيق
+            user.verification = {
+                isVerified: false,
+                selfieUrl: null,
+                status: 'none',
+                submittedAt: null,
+                reviewedAt: null
+            };
+
+            // إعادة تعيين Premium (لا نلغي من Apple — فقط نمسح من السيرفر)
+            user.isPremium = false;
+            user.premiumPlan = null;
+            user.premiumExpiresAt = null;
+            user.subscriptionTransactionId = null;
+            user.subscriptionOriginalTransactionId = null;
+
+            // إعادة تعيين البيانات الأخرى
+            user.stealthMode = false;
+            user.blockedUsers = [];
+            user.mutedConversations = [];
+            user.superLikes = { daily: 0, lastReset: new Date() };
+            user.bannedWords = { violations: 0, isBanned: false, bannedAt: null, banReason: null };
+
+            results.fullReset = true;
+        }
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: level === 'chats'
+                ? 'تم مسح جميع المحادثات بنجاح'
+                : level === 'profile'
+                    ? 'تم إعادة تعيين الملف الشخصي بنجاح'
+                    : 'تم إعادة تعيين الحساب بالكامل',
+            data: results
+        });
+
+    } catch (error) {
+        console.error('خطأ في إعادة تعيين الحساب:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
         });
     }
 });
@@ -706,11 +910,23 @@ router.delete('/delete-account', protect, async (req, res) => {
             }
         }
         // حذف صورة الملف الشخصي إذا كانت موجودة
-        if (user.profileImage) {
+        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
             const imagePath = path.join(__dirname, '..', user.profileImage);
             if (fs.existsSync(imagePath)) {
                 fs.unlinkSync(imagePath);
             }
+        }
+
+        // ✅ حذف المحادثات والرسائل المرتبطة
+        const userConversations = await Conversation.find({
+            participants: req.user.id
+        }).select('_id');
+        const convIds = userConversations.map(c => c._id);
+
+        if (convIds.length > 0) {
+            await Message.deleteMany({ conversation: { $in: convIds } });
+            await Conversation.deleteMany({ _id: { $in: convIds } });
+            await FlaggedMessage.deleteMany({ conversation: { $in: convIds } });
         }
 
         // حذف المستخدم
@@ -833,6 +1049,7 @@ router.post('/google', async (req, res) => {
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
                 isNewUser
             }
         });
@@ -957,6 +1174,7 @@ router.post('/apple', async (req, res) => {
                     lastLogin: user.lastLogin
                 },
                 token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
                 isNewUser,
                 needsName
             }
@@ -1023,6 +1241,83 @@ router.put('/device-token', protect, async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر',
             error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/refresh-token
+// @desc    تجديد Access Token باستخدام Refresh Token (بدون إعادة تسجيل الدخول)
+// @access  Public
+router.post('/refresh-token', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Refresh Token مطلوب'
+            });
+        }
+
+        // التحقق من Refresh Token
+        const jwt = require('jsonwebtoken');
+        let decoded;
+        try {
+            decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({
+                success: false,
+                message: 'Refresh Token منتهي أو غير صالح — يرجى إعادة تسجيل الدخول',
+                code: 'REFRESH_TOKEN_EXPIRED'
+            });
+        }
+
+        // التأكد أنه refresh token وليس access token
+        if (decoded.type !== 'refresh') {
+            return res.status(401).json({
+                success: false,
+                message: 'Token غير صالح للتجديد'
+            });
+        }
+
+        // التأكد أن المستخدم لا يزال نشطاً
+        const user = await User.findById(decoded.id).select('isActive name email role profileImage bannedWords suspension');
+
+        if (!user || !user.isActive) {
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير نشط أو غير موجود'
+            });
+        }
+
+        if (user.bannedWords?.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك',
+                code: 'ACCOUNT_BANNED'
+            });
+        }
+
+        // توليد tokens جديدة
+        res.json({
+            success: true,
+            data: {
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تجديد Token:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
         });
     }
 });

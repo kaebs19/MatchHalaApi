@@ -241,11 +241,15 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             { $group: { _id: '$category', count: { $sum: 1 } } }
         ]);
 
-        // أكثر المخالفين
+        // أكثر المخالفين - Top 5
         const topViolators = await User.find(
             { 'bannedWords.violations': { $gt: 0 } },
-            'name email bannedWords.violations bannedWords.isBanned'
-        ).sort({ 'bannedWords.violations': -1 }).limit(10);
+            'name bannedWords.violations bannedWords.isBanned bannedWords.accountStatus profileImage'
+        ).sort({ 'bannedWords.violations': -1 }).limit(5);
+
+        // المخالفات في آخر 7 و 30 يوم (بناءً على FlaggedMessage)
+        const violationsLast7Days = await FlaggedMessage.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+        const violationsLast30Days = await FlaggedMessage.countDocuments({ createdAt: { $gte: thirtyDaysAgo } });
 
         // أكثر الكلمات المطابقة
         const topMatchedWords = await FlaggedMessage.aggregate([
@@ -273,7 +277,9 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
                 byCategory,
                 topViolators,
                 topMatchedWords,
-                autoBannedCount
+                autoBannedCount,
+                violationsLast7Days,
+                violationsLast30Days
             }
         });
     } catch (error) {
@@ -290,14 +296,76 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.get('/flagged', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, status = 'pending' } = req.query;
+        const { page = 1, limit = 20, status = 'pending', search, matchedWord, dateRange, sort = 'newest' } = req.query;
 
         const filter = {};
         if (status !== 'all') filter.status = status;
 
+        // فلتر حسب كلمة محددة
+        if (matchedWord) {
+            filter.matchedWords = matchedWord;
+        }
+
+        // فلتر حسب التاريخ
+        if (dateRange && dateRange !== 'all') {
+            const now = new Date();
+            let dateFrom;
+            if (dateRange === 'today') {
+                dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            } else if (dateRange === '7days') {
+                dateFrom = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            } else if (dateRange === '30days') {
+                dateFrom = new Date(now - 30 * 24 * 60 * 60 * 1000);
+            }
+            if (dateFrom) filter.createdAt = { $gte: dateFrom };
+        }
+
+        // بحث بالاسم - نحتاج lookup
+        let pipeline = [];
+        if (search) {
+            pipeline = [
+                { $match: filter },
+                { $lookup: { from: 'users', localField: 'sender', foreignField: '_id', as: 'senderInfo' } },
+                { $unwind: '$senderInfo' },
+                { $match: { 'senderInfo.name': { $regex: search, $options: 'i' } } },
+                { $sort: { createdAt: sort === 'oldest' ? 1 : -1 } },
+                { $facet: {
+                    metadata: [{ $count: 'total' }],
+                    data: [
+                        { $skip: (parseInt(page) - 1) * parseInt(limit) },
+                        { $limit: parseInt(limit) }
+                    ]
+                }}
+            ];
+
+            const result = await FlaggedMessage.aggregate(pipeline);
+            const total = result[0]?.metadata[0]?.total || 0;
+            const flaggedIds = result[0]?.data.map(f => f._id) || [];
+
+            const flagged = await FlaggedMessage.find({ _id: { $in: flaggedIds } })
+                .sort({ createdAt: sort === 'oldest' ? 1 : -1 })
+                .populate('sender', 'name email profileImage')
+                .populate('receiver', 'name email profileImage')
+                .populate('conversation', 'participants')
+                .populate('reviewedBy', 'name');
+
+            return res.json({
+                success: true,
+                data: {
+                    flagged,
+                    pagination: {
+                        total,
+                        page: parseInt(page),
+                        pages: Math.ceil(total / parseInt(limit))
+                    }
+                }
+            });
+        }
+
+        const sortOrder = sort === 'oldest' ? 1 : -1;
         const total = await FlaggedMessage.countDocuments(filter);
         const flagged = await FlaggedMessage.find(filter)
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: sortOrder })
             .skip((page - 1) * limit)
             .limit(parseInt(limit))
             .populate('sender', 'name email profileImage')
@@ -341,15 +409,60 @@ router.put('/flagged/:id', protect, adminOnly, async (req, res) => {
         if (notes) flagged.notes = notes;
 
         // تنفيذ الإجراء
-        if (action === 'message_deleted') {
+        const suspensionDurations = {
+            'user_suspended_1h': 1 * 60 * 60 * 1000,
+            'user_suspended_24h': 24 * 60 * 60 * 1000,
+            'user_suspended_3d': 3 * 24 * 60 * 60 * 1000,
+            'user_suspended_7d': 7 * 24 * 60 * 60 * 1000
+        };
+
+        if (action === 'dismiss') {
+            flagged.status = 'dismissed';
+        } else if (action === 'warning') {
+            flagged.status = 'reviewed';
+        } else if (action === 'message_deleted') {
             await Message.findByIdAndUpdate(flagged.message, { isDeleted: true, deletedAt: new Date() });
+            flagged.status = 'action_taken';
+        } else if (suspensionDurations[action]) {
+            const duration = suspensionDurations[action];
+            const suspendedUntil = new Date(Date.now() + duration);
+            await User.findByIdAndUpdate(flagged.sender, {
+                isActive: false,
+                'bannedWords.isSuspended': true,
+                'bannedWords.suspendedAt': new Date(),
+                'bannedWords.suspendedUntil': suspendedUntil,
+                'bannedWords.suspendedBy': req.user._id,
+                'bannedWords.accountStatus': 'suspended'
+            });
+            flagged.status = 'action_taken';
         } else if (action === 'user_suspended') {
             await User.findByIdAndUpdate(flagged.sender, { isActive: false });
+            flagged.status = 'action_taken';
         } else if (action === 'user_banned') {
-            await User.findByIdAndUpdate(flagged.sender, { isActive: false, isBanned: true });
+            await User.findByIdAndUpdate(flagged.sender, {
+                isActive: false,
+                'bannedWords.isBanned': true,
+                'bannedWords.bannedAt': new Date(),
+                'bannedWords.banReason': 'حظر يدوي من الأدمن',
+                'bannedWords.accountStatus': 'banned'
+            });
+            flagged.status = 'action_taken';
+        } else if (action === 'delete_account') {
+            await User.findByIdAndUpdate(flagged.sender, {
+                isActive: false,
+                isDeleted: true,
+                deletedAt: new Date(),
+                'bannedWords.isBanned': true,
+                'bannedWords.banReason': 'حذف الحساب بسبب مخالفة كلمات محظورة'
+            });
+            flagged.status = 'action_taken';
         }
 
         await flagged.save();
+
+        // Populate before returning
+        await flagged.populate('sender', 'name email profileImage');
+        await flagged.populate('reviewedBy', 'name');
 
         res.json({
             success: true,

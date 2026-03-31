@@ -3725,4 +3725,80 @@ router.post('/client-error', protect, async (req, res) => {
     res.json({ success: true });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// @route   GET /api/mobile/chat/export
+// @desc    تصدير جميع المحادثات والرسائل للنسخ الاحتياطي
+// @access  Private
+// ═══════════════════════════════════════════════════════════════
+router.get('/chat/export', protect, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // جلب جميع المحادثات المقبولة
+        const conversations = await Conversation.find({
+            participants: userId,
+            isActive: true,
+            status: 'accepted'
+        })
+        .populate('participants', 'name profileImage')
+        .sort({ updatedAt: -1 })
+        .lean();
+
+        // جلب رسائل كل محادثة (بدون المحذوفة والمؤقتة المنتهية)
+        const exportData = [];
+
+        for (const conv of conversations) {
+            const messages = await Message.find({
+                conversation: conv._id,
+                isDeleted: { $ne: true },
+                $or: [
+                    { 'disappearing.enabled': { $ne: true } },
+                    { 'disappearing.enabled': true, 'disappearing.expiresAt': { $gt: new Date() } }
+                ]
+            })
+            .populate('sender', 'name')
+            .sort({ createdAt: 1 })
+            .select('sender content type mediaUrl createdAt imageSource')
+            .lean();
+
+            // أسماء المشاركين (بدون المستخدم الحالي)
+            const participantNames = conv.participants
+                .filter(p => p._id.toString() !== userId)
+                .map(p => p.name);
+
+            exportData.push({
+                id: conv._id,
+                participantNames,
+                chatMode: conv.chatMode || 'snap',
+                totalMessages: messages.length,
+                messages: messages.map(m => ({
+                    sender: m.sender?.name || 'مجهول',
+                    content: m.content || null,
+                    type: m.type || 'text',
+                    mediaUrl: m.mediaUrl ? getFullUrl(m.mediaUrl) : null,
+                    createdAt: m.createdAt
+                }))
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                exportedAt: new Date().toISOString(),
+                totalConversations: exportData.length,
+                totalMessages: exportData.reduce((sum, c) => sum + c.totalMessages, 0),
+                conversations: exportData
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تصدير المحادثات:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في تصدير المحادثات'
+        });
+    }
+});
+
 module.exports = router;

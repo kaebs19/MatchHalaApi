@@ -9,7 +9,9 @@ import {
     getConversationMessages,
     getConversationById,
     deleteMessage,
-    sendMessage
+    sendMessage,
+    suspendUser,
+    toggleUserActive
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -18,7 +20,7 @@ import socketService from '../services/socket';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Conversations.css';
 
-function Conversations() {
+function Conversations({ onViewUserDetail }) {
     // State - القائمة
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -272,7 +274,7 @@ function Conversations() {
     };
 
     const handleViewUser = (userId) => {
-        window.dispatchEvent(new CustomEvent('navigate', { detail: { page: 'user-detail', userId } }));
+        if (onViewUserDetail) onViewUserDetail(userId);
     };
 
     return (
@@ -664,6 +666,43 @@ function Conversations() {
                                 <span>❌</span> حذف المحادثة نهائياً
                             </button>
                         </div>
+
+                        {/* User Actions */}
+                        {actionConv.participants?.length > 0 && (
+                            <div className="conv-modal-users-section">
+                                <h4 style={{margin: '16px 0 8px', fontSize: '14px', color: '#7f8c8d'}}>إجراءات المستخدمين</h4>
+                                {actionConv.participants.map((p, i) => (
+                                    <div key={i} className="conv-modal-user-row">
+                                        <span className="conv-modal-user-name">{p.name}</span>
+                                        <div className="conv-modal-user-btns">
+                                            <button className="conv-modal-user-btn" onClick={() => { handleViewUser(p._id); setShowActionsModal(false); }} title="عرض">
+                                                👤
+                                            </button>
+                                            <button className="conv-modal-user-btn warn" onClick={async () => {
+                                                try {
+                                                    await suspendUser(p._id, '24h', 'تعليق من المحادثات');
+                                                    showToast(`تم تعليق ${p.name} لمدة 24 ساعة`, 'success');
+                                                } catch { showToast('فشل التعليق', 'error'); }
+                                                setShowActionsModal(false);
+                                            }} title="تعليق 24h">
+                                                🔒
+                                            </button>
+                                            <button className="conv-modal-user-btn danger" onClick={async () => {
+                                                if (!window.confirm(`تعطيل حساب ${p.name}؟`)) return;
+                                                try {
+                                                    await toggleUserActive(p._id);
+                                                    showToast(`تم تعطيل ${p.name}`, 'success');
+                                                } catch { showToast('فشل التعطيل', 'error'); }
+                                                setShowActionsModal(false);
+                                            }} title="تعطيل">
+                                                🚫
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <button className="conv-modal-close" onClick={() => setShowActionsModal(false)}>إغلاق</button>
                     </div>
                 </div>

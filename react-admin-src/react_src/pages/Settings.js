@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, updateSettings, updatePageContent, changePassword, updateProfile, uploadProfileImage } from '../services/api';
+import {
+    getSettings, updateSettings, updatePageContent, changePassword, updateProfile, uploadProfileImage,
+    getVersionControl, updateVersionControl, getBannedNames, addBannedNames, deleteBannedName, updateMaxViolations, seedBannedNames
+} from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -8,7 +11,7 @@ import './Settings.css';
 function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('profile'); // profile, password, pages, app
+    const [activeTab, setActiveTab] = useState('profile'); // profile, password, pages, app, version, banned-names
     const { showToast } = useToast();
 
     // بيانات المستخدم
@@ -41,6 +44,22 @@ function Settings() {
         aboutApp: '',
         contactUs: ''
     });
+
+    // ✅ إعدادات التحكم بالإصدار
+    const [versionControl, setVersionControl] = useState({
+        minRequiredVersion: '1.0',
+        latestVersion: '2.4',
+        iosStoreURL: '',
+        updateMessageAr: '',
+        updateMessageEn: '',
+        enforceUpdate: false
+    });
+
+    // ✅ الأسماء المحظورة
+    const [bannedNames, setBannedNames] = useState([]);
+    const [newBannedName, setNewBannedName] = useState('');
+    const [bannedNameReason, setBannedNameReason] = useState('');
+    const [maxViolations, setMaxViolations] = useState(3);
 
     useEffect(() => {
         fetchData();
@@ -249,6 +268,99 @@ function Settings() {
         }
     };
 
+    // ✅ جلب إعدادات الإصدار
+    const fetchVersionControl = async () => {
+        try {
+            const response = await getVersionControl();
+            if (response.success && response.data?.appVersionControl) {
+                setVersionControl(response.data.appVersionControl);
+            }
+        } catch (err) {
+            console.log('استخدام قيم افتراضية للإصدار');
+        }
+    };
+
+    // ✅ حفظ إعدادات الإصدار
+    const handleSaveVersionControl = async (e) => {
+        e.preventDefault();
+        try {
+            setSaving(true);
+            const response = await updateVersionControl(versionControl);
+            if (response.success) {
+                showToast('تم تحديث إعدادات الإصدار ✅', 'success');
+            } else {
+                showToast(response.message || 'فشل التحديث', 'error');
+            }
+        } catch (error) {
+            showToast('فشل تحديث إعدادات الإصدار', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ✅ جلب الأسماء المحظورة
+    const fetchBannedNames = async () => {
+        try {
+            const response = await getBannedNames();
+            if (response.success) {
+                setBannedNames(response.data?.bannedNames || []);
+            }
+        } catch (err) {
+            console.log('فشل جلب الأسماء المحظورة');
+        }
+    };
+
+    // ✅ إضافة اسم محظور
+    const handleAddBannedName = async () => {
+        if (!newBannedName.trim()) {
+            showToast('أدخل الاسم المحظور', 'error');
+            return;
+        }
+        try {
+            setSaving(true);
+            const names = newBannedName.split(',').map(n => n.trim()).filter(Boolean);
+            const response = await addBannedNames(names, bannedNameReason || 'اسم غير لائق');
+            if (response.success) {
+                showToast(`تم إضافة ${response.data.added.length} اسم ✅`, 'success');
+                setNewBannedName('');
+                setBannedNameReason('');
+                fetchBannedNames();
+            }
+        } catch (error) {
+            showToast('فشل إضافة الاسم', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ✅ حذف اسم محظور
+    const handleDeleteBannedName = async (name) => {
+        try {
+            const response = await deleteBannedName(name);
+            if (response.success) {
+                showToast('تم حذف الاسم ✅', 'success');
+                fetchBannedNames();
+            }
+        } catch (error) {
+            showToast('فشل حذف الاسم', 'error');
+        }
+    };
+
+    // ✅ تحديث حد المخالفات
+    const handleUpdateMaxViolations = async () => {
+        try {
+            setSaving(true);
+            const response = await updateMaxViolations(maxViolations);
+            if (response.success) {
+                showToast(`تم تحديث حد المخالفات إلى ${maxViolations} ✅`, 'success');
+            }
+        } catch (error) {
+            showToast('فشل التحديث', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     if (loading) {
         return <LoadingSpinner text="جاري تحميل الإعدادات..." />;
     }
@@ -285,6 +397,18 @@ function Settings() {
                     onClick={() => setActiveTab('app')}
                 >
                     🎨 إعدادات التطبيق
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'version' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab('version'); fetchVersionControl(); }}
+                >
+                    📱 إدارة الإصدارات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'banned-names' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab('banned-names'); fetchBannedNames(); }}
+                >
+                    🚫 أسماء محظورة
                 </button>
             </div>
 
@@ -501,6 +625,219 @@ function Settings() {
                                 {saving ? '⏳ جاري الحفظ...' : '💾 حفظ الإعدادات'}
                             </button>
                         </form>
+                    </div>
+                )}
+                {/* ✅ تبويب إدارة الإصدارات */}
+                {activeTab === 'version' && (
+                    <div className="settings-section">
+                        <h2>📱 التحكم بإصدارات التطبيق</h2>
+                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                            تحكم في إجبار المستخدمين على تحديث التطبيق عندما تنشر نسخة جديدة
+                        </p>
+
+                        <form onSubmit={handleSaveVersionControl}>
+                            {/* تفعيل/تعطيل */}
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <label style={{ marginBottom: 0 }}>تفعيل التحديث الإجباري</label>
+                                <button
+                                    type="button"
+                                    className={`btn-toggle ${versionControl.enforceUpdate ? 'active' : ''}`}
+                                    onClick={() => setVersionControl({ ...versionControl, enforceUpdate: !versionControl.enforceUpdate })}
+                                    style={{
+                                        padding: '6px 16px',
+                                        borderRadius: '20px',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        background: versionControl.enforceUpdate ? '#22c55e' : '#ef4444',
+                                        color: '#fff'
+                                    }}
+                                >
+                                    {versionControl.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
+                                </button>
+                            </div>
+
+                            <div className="form-group">
+                                <label>الحد الأدنى المطلوب (أقل من هذا = تحديث إجباري)</label>
+                                <input
+                                    type="text"
+                                    value={versionControl.minRequiredVersion}
+                                    onChange={(e) => setVersionControl({ ...versionControl, minRequiredVersion: e.target.value })}
+                                    placeholder="مثال: 2.4"
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>أحدث إصدار متاح</label>
+                                <input
+                                    type="text"
+                                    value={versionControl.latestVersion}
+                                    onChange={(e) => setVersionControl({ ...versionControl, latestVersion: e.target.value })}
+                                    placeholder="مثال: 2.5"
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>رابط المتجر (App Store)</label>
+                                <input
+                                    type="url"
+                                    value={versionControl.iosStoreURL}
+                                    onChange={(e) => setVersionControl({ ...versionControl, iosStoreURL: e.target.value })}
+                                    placeholder="https://apps.apple.com/app/id..."
+                                    dir="ltr"
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>رسالة التحديث (عربي)</label>
+                                <textarea
+                                    rows="2"
+                                    value={versionControl.updateMessageAr}
+                                    onChange={(e) => setVersionControl({ ...versionControl, updateMessageAr: e.target.value })}
+                                    placeholder="يجب تحديث التطبيق للاستمرار..."
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>رسالة التحديث (إنجليزي)</label>
+                                <textarea
+                                    rows="2"
+                                    value={versionControl.updateMessageEn}
+                                    onChange={(e) => setVersionControl({ ...versionControl, updateMessageEn: e.target.value })}
+                                    placeholder="Please update the app to continue..."
+                                    dir="ltr"
+                                />
+                            </div>
+
+                            <button type="submit" className="btn-save" disabled={saving}>
+                                {saving ? '⏳ جاري الحفظ...' : '💾 حفظ إعدادات الإصدار'}
+                            </button>
+                        </form>
+
+                        {/* معلومات */}
+                        <div style={{ marginTop: '24px', padding: '16px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fbbf24' }}>
+                            <p style={{ margin: 0, color: '#92400e', fontWeight: 'bold' }}>⚠️ تنبيه:</p>
+                            <p style={{ margin: '8px 0 0', color: '#92400e', fontSize: '14px' }}>
+                                عند تفعيل التحديث الإجباري، أي مستخدم بإصدار أقل من الحد الأدنى لن يستطيع استخدام التطبيق حتى يحدّث.
+                                تأكد أن النسخة الجديدة متاحة على المتجر قبل التفعيل.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* ✅ تبويب الأسماء المحظورة */}
+                {activeTab === 'banned-names' && (
+                    <div className="settings-section">
+                        <h2>🚫 الأسماء المحظورة + حد المخالفات</h2>
+
+                        {/* حد المخالفات */}
+                        <div style={{ marginBottom: '24px', padding: '16px', background: '#fef2f2', borderRadius: '12px', border: '1px solid #fca5a5' }}>
+                            <h3 style={{ margin: '0 0 12px', color: '#dc2626' }}>🔢 حد المخالفات قبل الحظر التلقائي</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="20"
+                                    value={maxViolations}
+                                    onChange={(e) => setMaxViolations(parseInt(e.target.value) || 3)}
+                                    style={{ width: '80px', textAlign: 'center', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                />
+                                <span style={{ color: '#666' }}>مخالفات</span>
+                                <button
+                                    onClick={handleUpdateMaxViolations}
+                                    className="btn-save"
+                                    disabled={saving}
+                                    style={{ padding: '8px 16px', fontSize: '14px' }}
+                                >
+                                    {saving ? '⏳' : '💾 حفظ'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* إضافة اسم جديد */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <h3>➕ إضافة أسماء محظورة</h3>
+                            <p style={{ color: '#888', fontSize: '13px', marginBottom: '12px' }}>
+                                يمكنك إضافة عدة أسماء بفاصلة (مثل: اسم1, اسم2, اسم3)
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <input
+                                    type="text"
+                                    value={newBannedName}
+                                    onChange={(e) => setNewBannedName(e.target.value)}
+                                    placeholder="الأسماء المحظورة"
+                                    style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                />
+                                <input
+                                    type="text"
+                                    value={bannedNameReason}
+                                    onChange={(e) => setBannedNameReason(e.target.value)}
+                                    placeholder="السبب (اختياري)"
+                                    style={{ width: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                />
+                                <button
+                                    onClick={handleAddBannedName}
+                                    className="btn-save"
+                                    disabled={saving}
+                                    style={{ padding: '10px 20px' }}
+                                >
+                                    {saving ? '⏳' : '➕ إضافة'}
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (!window.confirm('إضافة قائمة الأسماء المشهورة المحظورة (عربي + إنجليزي)؟')) return;
+                                        try {
+                                            setSaving(true);
+                                            const res = await seedBannedNames();
+                                            if (res.success) {
+                                                showToast(res.message, 'success');
+                                                fetchBannedNames();
+                                            }
+                                        } catch (err) {
+                                            showToast('فشل الإضافة', 'error');
+                                        } finally {
+                                            setSaving(false);
+                                        }
+                                    }}
+                                    className="btn-save"
+                                    disabled={saving}
+                                    style={{ padding: '10px 20px', background: '#f59e0b' }}
+                                >
+                                    🌟 أسماء مشهورة
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* قائمة الأسماء المحظورة */}
+                        <div>
+                            <h3>📋 قائمة الأسماء المحظورة ({bannedNames.length})</h3>
+                            {bannedNames.length === 0 ? (
+                                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>لا توجد أسماء محظورة</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                                    {bannedNames.map((bn, idx) => (
+                                        <div key={idx} style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            padding: '8px 14px', background: '#fef2f2', borderRadius: '20px',
+                                            border: '1px solid #fca5a5', fontSize: '14px'
+                                        }}>
+                                            <span style={{ color: '#dc2626', fontWeight: 'bold' }}>{bn.name}</span>
+                                            {bn.reason && <span style={{ color: '#888', fontSize: '12px' }}>({bn.reason})</span>}
+                                            <button
+                                                onClick={() => handleDeleteBannedName(bn.name)}
+                                                style={{
+                                                    background: 'none', border: 'none', color: '#dc2626',
+                                                    cursor: 'pointer', fontSize: '16px', padding: '0 4px'
+                                                }}
+                                                title="حذف"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

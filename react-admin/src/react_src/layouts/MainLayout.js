@@ -14,6 +14,7 @@ import Profile from '../pages/Profile';
 import Notifications from '../pages/Notifications';
 import VerificationRequests from '../pages/VerificationRequests';
 import SuperLikes from '../pages/SuperLikes';
+import Analytics from '../pages/Analytics';
 import { getReportsStats, getNotifications } from '../services/api';
 import { useToast } from '../components/Toast';
 import config from '../config';
@@ -169,6 +170,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Notifications onNotificationRead={fetchNotificationsCount} />;
             case 'verification-requests':
                 return <VerificationRequests />;
+            case 'analytics':
+                return <Analytics onViewUserDetail={handleViewUserDetail} />;
             case 'super-likes':
                 return <SuperLikes />;
             case 'user-detail':
@@ -201,6 +204,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'profile' && '👤 الملف الشخصي'}
                         {currentPage === 'notifications' && '🔔 الإشعارات'}
                         {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
+                        {currentPage === 'analytics' && '🔍 التحليلات'}
                         {currentPage === 'super-likes' && '⚡ Super Likes'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}

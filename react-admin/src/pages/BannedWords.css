@@ -600,7 +600,532 @@
     color: #6b7280;
 }
 
-/* Responsive */
+/* =============================================
+   NEW STYLES - Enhanced BannedWords Page
+   ============================================= */
+
+/* 1. Enhanced Filtering Bar */
+.bw-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.bw-date-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bw-date-filter input[type="date"] {
+    padding: 7px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    background: white;
+    color: #374151;
+    transition: border-color 0.2s;
+}
+
+.bw-date-filter input[type="date"]:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.bw-date-filter .date-separator {
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.bw-search-sender {
+    padding: 7px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    min-width: 160px;
+    transition: border-color 0.2s;
+}
+
+.bw-search-sender:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.bw-sort-btn {
+    padding: 7px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.bw-sort-btn:hover {
+    background: #f9fafb;
+    border-color: #4f46e5;
+}
+
+.bw-sort-btn.active {
+    background: #ede9fe;
+    border-color: #7c4dff;
+    color: #5b21b6;
+}
+
+/* 2. Quick Action Buttons in Rows */
+.bw-quick-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+}
+
+.bw-quick-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: white;
+    transition: all 0.2s;
+    opacity: 0.85;
+}
+
+.bw-quick-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.bw-quick-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.bw-quick-btn.suspend {
+    background: #ff9800;
+}
+
+.bw-quick-btn.suspend:hover {
+    background: #f57c00;
+}
+
+.bw-quick-btn.ban {
+    background: #f44336;
+}
+
+.bw-quick-btn.ban:hover {
+    background: #d32f2f;
+}
+
+.bw-quick-btn.dismiss {
+    background: #4caf50;
+}
+
+.bw-quick-btn.dismiss:hover {
+    background: #388e3c;
+}
+
+.bw-quick-btn.review {
+    background: #2196f3;
+}
+
+.bw-quick-btn.review:hover {
+    background: #1976d2;
+}
+
+/* 3. Bulk Actions Bar */
+.bw-bulk-bar {
+    position: sticky;
+    bottom: 0;
+    background: #1a1a2e;
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 12px;
+    margin-top: 10px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 50;
+    animation: bw-bulk-slide-up 0.25s ease-out;
+}
+
+@keyframes bw-bulk-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.bw-bulk-count {
+    font-weight: bold;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bw-bulk-count span {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 2px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.bw-bulk-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.bw-bulk-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    color: white;
+}
+
+.bw-bulk-btn.dismiss {
+    background: rgba(76, 175, 80, 0.25);
+}
+
+.bw-bulk-btn.dismiss:hover {
+    background: rgba(76, 175, 80, 0.45);
+}
+
+.bw-bulk-btn.suspend {
+    background: rgba(255, 152, 0, 0.25);
+}
+
+.bw-bulk-btn.suspend:hover {
+    background: rgba(255, 152, 0, 0.45);
+}
+
+.bw-bulk-btn.ban {
+    background: rgba(244, 67, 54, 0.25);
+}
+
+.bw-bulk-btn.ban:hover {
+    background: rgba(244, 67, 54, 0.45);
+}
+
+.bw-bulk-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* 4. Row States */
+.bw-row-pending {
+    background: #fff8e1;
+}
+
+.bw-row-pending:hover {
+    background: #fff3c4 !important;
+}
+
+.bw-row-action {
+    background: #e8f5e9;
+}
+
+.bw-row-action:hover {
+    background: #c8e6c9 !important;
+}
+
+.bw-row-selected {
+    background: #e3f2fd;
+}
+
+.bw-row-selected:hover {
+    background: #bbdefb !important;
+}
+
+/* 5. Violation Badge */
+.bw-violation-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ff5252;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-inline-end: 4px;
+    flex-shrink: 0;
+}
+
+.bw-violation-badge.high {
+    background: #d32f2f;
+}
+
+.bw-violation-badge.medium {
+    background: #ff9800;
+}
+
+.bw-violation-badge.low {
+    background: #ffc107;
+    color: #333;
+}
+
+/* 6. Enhanced Review Modal */
+.review-modal-enhanced {
+    width: 550px;
+    max-width: 95vw;
+}
+
+.review-sender-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    background: #f9fafb;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    border: 1px solid #e5e7eb;
+}
+
+.review-sender-card .sender-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #e5e7eb;
+}
+
+.review-sender-card .sender-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.review-sender-card .sender-info .sender-display-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.review-sender-card .sender-info .sender-violations {
+    font-size: 12px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.review-message-box {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #991b1b;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.review-message-box .message-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #b91c1c;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.review-action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.review-action-card {
+    padding: 14px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.review-action-card:hover {
+    border-color: #c4b5fd;
+    background: #faf5ff;
+}
+
+.review-action-card.selected {
+    border-color: #7c4dff;
+    background: #ede7f6;
+}
+
+.review-action-card .action-icon {
+    font-size: 20px;
+    margin-bottom: 2px;
+}
+
+.review-action-card .action-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.review-action-card .action-desc {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.4;
+}
+
+.review-action-card.danger {
+    border-inline-start: 3px solid #f44336;
+}
+
+.review-action-card.warning {
+    border-inline-start: 3px solid #ff9800;
+}
+
+.review-action-card.info {
+    border-inline-start: 3px solid #2196f3;
+}
+
+.review-action-card.success {
+    border-inline-start: 3px solid #4caf50;
+}
+
+.review-action-card.danger.selected {
+    background: #fef2f2;
+    border-color: #f44336;
+}
+
+.review-action-card.warning.selected {
+    background: #fff8e1;
+    border-color: #ff9800;
+}
+
+.review-action-card.info.selected {
+    background: #e3f2fd;
+    border-color: #2196f3;
+}
+
+.review-action-card.success.selected {
+    background: #e8f5e9;
+    border-color: #4caf50;
+}
+
+/* 7. Top Violators Section */
+.bw-violators {
+    display: flex;
+    gap: 12px;
+    margin: 10px 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.bw-violator-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    min-width: 180px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.bw-violator-card:hover {
+    border-color: #c4b5fd;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.bw-violator-card .violator-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #e5e7eb;
+}
+
+.bw-violator-card .violator-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.bw-violator-card .violator-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.bw-violator-card .violator-count {
+    font-size: 11px;
+    color: #ef4444;
+    font-weight: 500;
+}
+
+/* 8. Time Ago Styling */
+.bw-time-ago {
+    font-size: 12px;
+    color: #888;
+    white-space: nowrap;
+}
+
+/* 9. Checkbox Styling */
+.bw-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #7c4dff;
+    flex-shrink: 0;
+}
+
+.bw-checkbox:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+/* =============================================
+   Responsive - Existing
+   ============================================= */
+
 @media (max-width: 768px) {
     .bw-stats-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -638,5 +1163,436 @@
 
     .bw-table {
         min-width: 600px;
+    }
+
+    /* New responsive styles */
+    .bw-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .bw-date-filter {
+        flex-wrap: wrap;
+    }
+
+    .bw-search-sender {
+        min-width: unset;
+        width: 100%;
+    }
+
+    .bw-sort-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .bw-bulk-bar {
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 10px;
+    }
+
+    .bw-bulk-actions {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .bw-bulk-btn {
+        flex: 1;
+        justify-content: center;
+        min-width: 80px;
+    }
+
+    .bw-violators {
+        gap: 8px;
+    }
+
+    .bw-violator-card {
+        min-width: 150px;
+        padding: 8px 12px;
+    }
+
+    .review-action-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .review-modal-enhanced {
+        width: 95vw;
+    }
+
+    .review-sender-card {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .bw-quick-actions {
+        gap: 3px;
+    }
+
+    .bw-quick-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .bw-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .bw-violator-card {
+        min-width: 130px;
+    }
+
+    .bw-bulk-bar {
+        border-radius: 8px;
+        margin-inline-start: -8px;
+        margin-inline-end: -8px;
+    }
+}
+
+/* =============================================
+   Additional Styles - Enhanced Flagged Tab
+   ============================================= */
+
+/* --- فلاتر الرسائل المحظورة الموسعة --- */
+.bw-flagged-filters {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.bw-search-group-wide {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.bw-search-group-wide .bw-search-input {
+    flex: 1;
+    min-width: 160px;
+}
+
+.bw-search-group-wide .bw-filter-select {
+    min-width: 130px;
+}
+
+/* --- شريط الإجراءات الجماعية --- */
+.bw-bulk-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #1e293b;
+    color: white;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    animation: bw-bulk-slide-up 0.25s ease-out;
+}
+
+.bw-bulk-action-bar .bw-bulk-count {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.bw-bulk-action-bar .bw-btn.secondary {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.bw-bulk-action-bar .bw-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.bw-bulk-action-bar .bw-btn.warning {
+    background: rgba(245, 158, 11, 0.3);
+    color: #fde68a;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.bw-bulk-action-bar .bw-btn.warning:hover {
+    background: rgba(245, 158, 11, 0.5);
+}
+
+.bw-bulk-loading {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+/* --- خانة التحديد في الجدول --- */
+.bw-checkbox-col {
+    width: 40px;
+    text-align: center;
+}
+
+.bw-checkbox-col input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #4f46e5;
+}
+
+/* --- ألوان الصفوف حسب الحالة --- */
+.bw-row-pending {
+    background: #fffbeb !important;
+}
+
+.bw-row-pending:hover {
+    background: #fef3c7 !important;
+}
+
+.bw-row-action-taken {
+    background: #f0fdf4 !important;
+}
+
+.bw-row-action-taken:hover {
+    background: #dcfce7 !important;
+}
+
+.bw-row-dismissed {
+    background: #f9fafb !important;
+}
+
+.bw-row-dismissed:hover {
+    background: #f3f4f6 !important;
+}
+
+/* --- شارة عدد المخالفات --- */
+.bw-violation-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: white;
+    border-radius: 10px;
+    min-width: 20px;
+    height: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 5px;
+    margin-inline-start: 4px;
+    flex-shrink: 0;
+}
+
+.bw-violation-badge-lg {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    height: auto;
+}
+
+/* --- حالة المستخدم في المراجعة --- */
+.bw-user-status-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #dc2626;
+    margin-inline-start: 6px;
+    font-weight: 500;
+}
+
+/* --- أزرار الإجراءات السريعة المحسنة --- */
+.bw-quick-view {
+    background: #dbeafe;
+}
+
+.bw-quick-view:hover {
+    background: #bfdbfe;
+}
+
+.bw-quick-suspend {
+    background: #fff7ed;
+}
+
+.bw-quick-suspend:hover {
+    background: #fed7aa;
+}
+
+.bw-quick-ban {
+    background: #fef2f2;
+}
+
+.bw-quick-ban:hover {
+    background: #fecaca;
+}
+
+.bw-quick-dismiss {
+    background: #f0fdf4;
+}
+
+.bw-quick-dismiss:hover {
+    background: #bbf7d0;
+}
+
+.bw-quick-review {
+    background: #ede9fe;
+}
+
+.bw-quick-review:hover {
+    background: #ddd6fe;
+}
+
+/* --- قسم أكثر المخالفين والاتجاهات --- */
+.bw-extra-stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.bw-top-violators-card,
+.bw-trend-card {
+    flex: 1;
+    min-width: 250px;
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
+}
+
+.bw-extra-stats-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 12px 0;
+}
+
+.bw-violators-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bw-violator-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.bw-violator-item:last-child {
+    border-bottom: none;
+}
+
+.bw-violator-rank {
+    font-size: 13px;
+    font-weight: 700;
+    color: #9ca3af;
+    min-width: 24px;
+}
+
+.bw-violator-name {
+    font-size: 13px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.bw-violator-name.clickable {
+    color: #3b82f6;
+    cursor: pointer;
+}
+
+.bw-violator-name.clickable:hover {
+    text-decoration: underline;
+}
+
+.bw-violator-count {
+    font-size: 12px;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.bw-trend-text {
+    font-size: 14px;
+    color: #4b5563;
+    margin: 0;
+    line-height: 1.6;
+}
+
+/* --- نافذة المراجعة المحسنة --- */
+.bw-review-enhanced {
+    max-width: 620px;
+}
+
+.bw-review-link {
+    color: #3b82f6;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.bw-review-link:hover {
+    text-decoration: underline;
+    color: #1d4ed8;
+}
+
+.bw-content-box {
+    display: block;
+    background: #fef2f2;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: #991b1b;
+    line-height: 1.6;
+    word-break: break-word;
+    border: 1px solid #fecaca;
+    margin-top: 4px;
+}
+
+.bw-time-ago {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-inline-start: 6px;
+}
+
+.bw-inline-btn {
+    display: inline-flex !important;
+    vertical-align: middle;
+}
+
+.bw-review-action-select {
+    font-size: 14px;
+}
+
+.bw-review-warning {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #92400e;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.bw-btn.danger {
+    background: #dc2626;
+    color: white;
+}
+
+.bw-btn.danger:hover {
+    background: #b91c1c;
+}
+
+/* --- جدول الرسائل المحظورة --- */
+.bw-flagged-table {
+    min-width: 900px;
+}
+
+@media (max-width: 768px) {
+    .bw-extra-stats {
+        flex-direction: column;
+    }
+
+    .bw-bulk-action-bar {
+        flex-wrap: wrap;
+    }
+
+    .bw-flagged-table {
+        min-width: 800px;
     }
 }

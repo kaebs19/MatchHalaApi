@@ -152,7 +152,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'premium-users':
                 return <UsersManagement onViewDetail={handleViewUserDetail} initialTab="premium" />;
             case 'conversations':
-                return <Conversations />;
+                return <Conversations onViewUserDetail={handleViewUserDetail} />;
             case 'swipes':
                 return <Swipes />;
             case 'matches':
@@ -176,7 +176,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'super-likes':
                 return <SuperLikes />;
             case 'banned-words':
-                return <BannedWords />;
+                return <BannedWords onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'user-detail':
                 return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
             default:

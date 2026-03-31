@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { getConversationById, getConversationReports } from '../services/api';
+import { getConversationById, getConversationReports, suspendUser, toggleUserActive } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { formatDateTimeLong } from '../utils/formatters';
 import ConversationMessages from './ConversationMessages';
 import './ConversationDetail.css';
 
-function ConversationDetail({ conversationId, onBack }) {
+function ConversationDetail({ conversationId, onBack, onViewUser }) {
     const [conversation, setConversation] = useState(null);
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('info');
     const [viewingMessages, setViewingMessages] = useState(false);
+    const [userActionMenu, setUserActionMenu] = useState(null);
+    const [actionLoading, setActionLoading] = useState(false);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -57,11 +59,43 @@ function ConversationDetail({ conversationId, onBack }) {
     }
 
     // إذا كنا نعرض الرسائل
+    // Admin actions on participants
+    const handleSuspendParticipant = async (userId, duration = '24h') => {
+        try {
+            setActionLoading(true);
+            const res = await suspendUser(userId, duration, 'تعليق من تفاصيل المحادثة');
+            if (res.success) {
+                showToast('تم تعليق المستخدم', 'success');
+            }
+        } catch (err) {
+            showToast(err.response?.data?.message || 'فشل التعليق', 'error');
+        } finally {
+            setActionLoading(false);
+            setUserActionMenu(null);
+        }
+    };
+
+    const handleBanParticipant = async (userId) => {
+        try {
+            setActionLoading(true);
+            const res = await toggleUserActive(userId);
+            if (res.success) {
+                showToast('تم تعطيل المستخدم', 'success');
+            }
+        } catch (err) {
+            showToast('فشل الحظر', 'error');
+        } finally {
+            setActionLoading(false);
+            setUserActionMenu(null);
+        }
+    };
+
     if (viewingMessages) {
         return (
             <ConversationMessages
                 conversationId={conversationId}
                 onBack={() => setViewingMessages(false)}
+                onViewUser={onViewUser}
             />
         );
     }
@@ -198,12 +232,22 @@ function ConversationDetail({ conversationId, onBack }) {
                         <div className="participants-grid">
                             {conversation.participants?.map((participant, index) => (
                                 <div key={index} className="participant-card">
-                                    <div className="participant-avatar">
+                                    <div className="participant-avatar"
+                                         style={{cursor: 'pointer'}}
+                                         onClick={() => onViewUser && onViewUser(participant._id)}>
                                         {participant.name?.charAt(0) || '?'}
                                     </div>
                                     <div className="participant-info">
-                                        <h4>{participant.name}</h4>
+                                        <h4 style={{cursor: 'pointer', color: '#3498db'}}
+                                            onClick={() => onViewUser && onViewUser(participant._id)}>
+                                            {participant.name}
+                                        </h4>
                                         <p>{participant.email}</p>
+                                        {participant._id && (
+                                            <p style={{fontSize: '11px', color: '#95a5a6', direction: 'ltr', textAlign: 'right'}}>
+                                                ID: {participant._id}
+                                            </p>
+                                        )}
                                         {conversation.admins?.some(admin => admin._id === participant._id) && (
                                             <span className="admin-badge">👑 مشرف</span>
                                         )}
@@ -211,9 +255,46 @@ function ConversationDetail({ conversationId, onBack }) {
                                             <span className="creator-badge">⭐ المنشئ</span>
                                         )}
                                     </div>
+                                    <div className="participant-actions">
+                                        <button
+                                            className="participant-action-btn view"
+                                            onClick={() => onViewUser && onViewUser(participant._id)}
+                                            title="عرض التفاصيل"
+                                        >👤</button>
+                                        <button
+                                            className="participant-action-btn suspend"
+                                            onClick={() => setUserActionMenu(participant)}
+                                            title="إجراءات"
+                                            disabled={actionLoading}
+                                        >⚙️</button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
+
+                        {/* User Action Menu */}
+                        {userActionMenu && (
+                            <div className="participant-action-overlay" onClick={() => setUserActionMenu(null)}>
+                                <div className="participant-action-modal" onClick={(e) => e.stopPropagation()}>
+                                    <h4>إجراءات: {userActionMenu.name}</h4>
+                                    <div className="participant-modal-actions">
+                                        <button onClick={() => { onViewUser && onViewUser(userActionMenu._id); setUserActionMenu(null); }}>
+                                            👤 عرض الملف الشخصي
+                                        </button>
+                                        <button onClick={() => handleSuspendParticipant(userActionMenu._id, '24h')}>
+                                            🔒 تعليق 24 ساعة
+                                        </button>
+                                        <button onClick={() => handleSuspendParticipant(userActionMenu._id, '7d')}>
+                                            🔒 تعليق أسبوع
+                                        </button>
+                                        <button className="danger-btn" onClick={() => handleBanParticipant(userActionMenu._id)}>
+                                            🚫 تعطيل الحساب
+                                        </button>
+                                    </div>
+                                    <button className="close-action-btn" onClick={() => setUserActionMenu(null)}>إغلاق</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

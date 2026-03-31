@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getConversationMessages, deleteMessage, getConversationById, sendMessage, toggleUserActive } from '../services/api';
+import { getConversationMessages, deleteMessage, getConversationById, sendMessage, toggleUserActive, suspendUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import socketService from '../services/socket';
@@ -440,6 +440,20 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             if (onViewUser) onViewUser(userActionMenu.userId);
                             setUserActionMenu(null);
                         }}>👤 عرض الملف الشخصي</button>
+                        <button className="user-action-btn" style={{background: '#fff3e0', color: '#e65100'}} onClick={async () => {
+                            try {
+                                await suspendUser(userActionMenu.userId, '24h', 'تعليق من الرسائل');
+                                showToast(`تم تعليق ${userActionMenu.userName} لمدة 24 ساعة`, 'success');
+                            } catch { showToast('فشل التعليق', 'error'); }
+                            setUserActionMenu(null);
+                        }}>🔒 تعليق 24 ساعة</button>
+                        <button className="user-action-btn" style={{background: '#fff3e0', color: '#e65100'}} onClick={async () => {
+                            try {
+                                await suspendUser(userActionMenu.userId, '7d', 'تعليق من الرسائل');
+                                showToast(`تم تعليق ${userActionMenu.userName} لمدة أسبوع`, 'success');
+                            } catch { showToast('فشل التعليق', 'error'); }
+                            setUserActionMenu(null);
+                        }}>🔒 تعليق أسبوع</button>
                         <button className="user-action-btn ban" onClick={() => {
                             setBanningUser({ id: userActionMenu.userId, name: userActionMenu.userName });
                             setShowBanConfirm(true);

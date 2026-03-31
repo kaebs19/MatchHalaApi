@@ -432,6 +432,110 @@
     color: #721c24;
 }
 
+/* Participant Actions */
+.participant-card {
+    position: relative;
+}
+
+.participant-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.participant-action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.participant-action-btn.view {
+    background: #e3f2fd;
+}
+.participant-action-btn.view:hover { background: #bbdefb; }
+
+.participant-action-btn.suspend {
+    background: #fff3e0;
+}
+.participant-action-btn.suspend:hover { background: #ffe0b2; }
+
+.participant-action-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.participant-action-modal {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    width: 320px;
+    max-width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.participant-action-modal h4 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    color: #2c3e50;
+    text-align: center;
+}
+
+.participant-modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.participant-modal-actions button {
+    padding: 12px 16px;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    background: #f8f9fa;
+    cursor: pointer;
+    font-size: 14px;
+    text-align: right;
+    transition: all 0.2s;
+}
+
+.participant-modal-actions button:hover {
+    background: #e9ecef;
+}
+
+.participant-modal-actions button.danger-btn {
+    background: #fff5f5;
+    border-color: #fed7d7;
+    color: #e53e3e;
+}
+
+.participant-modal-actions button.danger-btn:hover {
+    background: #fed7d7;
+}
+
+.close-action-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px;
+    border: none;
+    background: #e9ecef;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .conversation-detail-page {

@@ -716,3 +716,270 @@
 .message-image-preview:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
+
+/* ========== Admin Actions Section ========== */
+
+.admin-actions-section h3 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+.admin-status-overview {
+    margin-bottom: 24px;
+}
+
+.status-cards-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.admin-status-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+}
+
+.admin-status-card.warning {
+    background: #fff8e1;
+    border-color: #ffe082;
+}
+
+.admin-status-card.ok {
+    background: #e8f5e9;
+    border-color: #a5d6a7;
+}
+
+.status-card-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+}
+
+.status-card-label {
+    font-size: 12px;
+    color: #7f8c8d;
+    margin: 0;
+}
+
+.status-card-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 4px 0 0;
+}
+
+.status-card-sub {
+    font-size: 12px;
+    color: #95a5a6;
+    margin: 4px 0 0;
+}
+
+.admin-actions-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.admin-action-btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.admin-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.admin-action-btn.suspend {
+    background: #e74c3c;
+    color: white;
+}
+.admin-action-btn.suspend:hover:not(:disabled) { background: #c0392b; }
+
+.admin-action-btn.unsuspend {
+    background: #27ae60;
+    color: white;
+}
+.admin-action-btn.unsuspend:hover:not(:disabled) { background: #219a52; }
+
+.admin-action-btn.violations {
+    background: #f39c12;
+    color: white;
+}
+.admin-action-btn.violations:hover:not(:disabled) { background: #e67e22; }
+
+.admin-action-btn.name-action {
+    background: #9b59b6;
+    color: white;
+}
+.admin-action-btn.name-action:hover:not(:disabled) { background: #8e44ad; }
+
+.admin-action-btn.delete-photo {
+    background: #e74c3c;
+    color: white;
+}
+.admin-action-btn.delete-photo:hover:not(:disabled) { background: #c0392b; }
+
+.admin-action-btn.notify {
+    background: #3498db;
+    color: white;
+}
+.admin-action-btn.notify:hover:not(:disabled) { background: #2980b9; }
+
+/* Photo Removals History */
+.photo-removals-history {
+    margin-top: 24px;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 12px;
+    border: 1px solid #eee;
+}
+
+.photo-removals-history h4 {
+    margin-bottom: 12px;
+    color: #2c3e50;
+}
+
+.removals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.removal-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    font-size: 13px;
+}
+
+.removal-date {
+    color: #95a5a6;
+    font-size: 12px;
+}
+
+/* Admin Modals */
+.admin-modal {
+    background: white;
+    border-radius: 16px;
+    padding: 0;
+    width: 90%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.admin-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #eee;
+}
+
+.admin-modal .modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #2c3e50;
+}
+
+.admin-modal .modal-body {
+    padding: 24px;
+}
+
+.admin-modal .modal-body .form-group {
+    margin-bottom: 16px;
+}
+
+.admin-modal .modal-body .form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #34495e;
+}
+
+.admin-modal .modal-body .form-group input,
+.admin-modal .modal-body .form-group select,
+.admin-modal .modal-body .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    direction: rtl;
+    box-sizing: border-box;
+}
+
+.admin-modal .modal-body .form-group textarea {
+    resize: vertical;
+}
+
+.admin-modal .modal-body .form-group input:focus,
+.admin-modal .modal-body .form-group select:focus,
+.admin-modal .modal-body .form-group textarea:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.admin-modal .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding: 16px 24px;
+    border-top: 1px solid #eee;
+}
+
+.admin-modal .modal-actions .cancel-btn {
+    padding: 10px 20px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+}
+
+.admin-modal .modal-actions .submit-btn {
+    padding: 10px 24px;
+    border: none;
+    background: #3498db;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.admin-modal .modal-actions .submit-btn.danger {
+    background: #e74c3c;
+}
+
+.admin-modal .modal-actions .submit-btn:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.admin-modal .modal-actions .submit-btn:disabled,
+.admin-modal .modal-actions .cancel-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
