@@ -836,6 +836,126 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
     }
 });
 
+// ══════════════════════════════════════════════════════════
+// @route   POST /api/auth/upload-gallery-photo
+// @desc    رفع صورة إضافية للمعرض (مشتركين فقط — حد 5 صور)
+// @access  Private (Premium)
+// ══════════════════════════════════════════════════════════
+router.post('/upload-gallery-photo', protect, upload.single('galleryPhoto'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'لم يتم رفع أي صورة' });
+        }
+
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            fs.unlinkSync(req.file.path);
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // ✅ فحص الاشتراك
+        if (!user.isPremium) {
+            fs.unlinkSync(req.file.path);
+            return res.status(403).json({
+                success: false,
+                message: 'إضافة صور إضافية متاحة للمشتركين فقط',
+                code: 'PREMIUM_REQUIRED'
+            });
+        }
+
+        // ✅ فحص الحد الأقصى (5 صور إضافية + 1 رئيسية = 6)
+        const MAX_GALLERY = 5;
+        const currentGallery = (user.photos || []).filter(p => p.order > 0);
+        if (currentGallery.length >= MAX_GALLERY) {
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({
+                success: false,
+                message: `الحد الأقصى ${MAX_GALLERY} صور إضافية`,
+                code: 'MAX_PHOTOS'
+            });
+        }
+
+        // ✅ فحص قيود الأدمن
+        if (user.restrictions?.photoBlocked) {
+            if (!user.restrictions.photoBlockedUntil || user.restrictions.photoBlockedUntil > new Date()) {
+                fs.unlinkSync(req.file.path);
+                return res.status(403).json({ success: false, message: 'تم منعك من رفع الصور', code: 'PHOTO_BLOCKED' });
+            }
+        }
+
+        // معالجة الصورة
+        const processed = await processImage(req.file.path, { prefix: 'gallery' });
+
+        // إضافة الصورة بالترتيب التالي
+        const nextOrder = currentGallery.length > 0
+            ? Math.max(...currentGallery.map(p => p.order)) + 1
+            : 1;
+
+        if (!user.photos) user.photos = [];
+        user.photos.push({
+            original: processed.original,
+            medium: processed.medium,
+            thumbnail: processed.thumbnail,
+            order: nextOrder
+        });
+
+        await user.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إضافة الصورة للمعرض',
+            data: {
+                photo: { original: processed.original, medium: processed.medium, thumbnail: processed.thumbnail, order: nextOrder },
+                totalPhotos: user.photos.length,
+                user
+            }
+        });
+
+    } catch (error) {
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        console.error('خطأ في رفع صورة المعرض:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/auth/gallery-photo/:order
+// @desc    حذف صورة من المعرض
+// @access  Private
+router.delete('/gallery-photo/:order', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const order = parseInt(req.params.order);
+        if (order === 0) return res.status(400).json({ success: false, message: 'لا يمكن حذف الصورة الرئيسية من هنا' });
+
+        const photoIndex = (user.photos || []).findIndex(p => p.order === order);
+        if (photoIndex === -1) return res.status(404).json({ success: false, message: 'الصورة غير موجودة' });
+
+        // حذف الملفات
+        const photo = user.photos[photoIndex];
+        for (const size of ['thumbnail', 'medium', 'original']) {
+            if (photo[size]) {
+                const filePath = path.join(__dirname, '..', photo[size]);
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            }
+        }
+
+        user.photos.splice(photoIndex, 1);
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'تم حذف الصورة',
+            data: { totalPhotos: user.photos.length }
+        });
+
+    } catch (error) {
+        console.error('خطأ في حذف صورة المعرض:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/auth/reset-account
 // @desc    إعادة تعيين الحساب (مستويات متعددة)
 // @access  Private
