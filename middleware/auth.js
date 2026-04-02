@@ -38,14 +38,7 @@ const protect = async (req, res, next) => {
                 });
             }
 
-            if (!req.user.isActive) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'الحساب غير مفعل'
-                });
-            }
-
-            // فحص حظر الكلمات المحظورة
+            // ✅ فحص حظر الكلمات المحظورة (قبل isActive لأن الحظر يغيّر isActive)
             if (req.user.bannedWords?.isBanned) {
                 return res.status(403).json({
                     success: false,
@@ -54,7 +47,7 @@ const protect = async (req, res, next) => {
                 });
             }
 
-            // ✅ فحص تعليق العضوية
+            // ✅ فحص تعليق العضوية (قبل isActive لأن التعليق يغيّر isActive)
             if (req.user.suspension?.isSuspended) {
                 const now = new Date();
                 if (req.user.suspension.suspendedUntil && now >= req.user.suspension.suspendedUntil) {
@@ -97,6 +90,14 @@ const protect = async (req, res, next) => {
                         }
                     });
                 }
+            }
+
+            // فحص isActive (بعد الحظر والتعليق — لأنهم يغيّرون isActive)
+            if (!req.user.isActive) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'الحساب غير مفعل'
+                });
             }
 
             // تحديث آخر ظهور (كل 10 دقائق كحد أقصى لتقليل الحِمل)

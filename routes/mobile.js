@@ -2040,10 +2040,18 @@ router.post('/messages/send', protect, async (req, res) => {
                 matchedWords: bannedResult.matchedWords
             });
 
-            // زيادة عدد المخالفات
-            const updatedUser = await User.findByIdAndUpdate(req.user._id,
-                { $inc: { 'bannedWords.violations': 1 } }, { new: true }
-            );
+            // ✅ زيادة عدد المخالفات (حد يومي — يُعاد العدّاد كل يوم جديد)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const lastViolationDate = req.user.bannedWords?.lastViolationDate;
+            const lastDate = lastViolationDate ? new Date(lastViolationDate) : null;
+            const isNewDay = !lastDate || lastDate < today;
+
+            const updateQuery = isNewDay
+                ? { $set: { 'bannedWords.violations': 1, 'bannedWords.lastViolationDate': new Date() } }
+                : { $inc: { 'bannedWords.violations': 1 }, $set: { 'bannedWords.lastViolationDate': new Date() } };
+
+            const updatedUser = await User.findByIdAndUpdate(req.user._id, updateQuery, { new: true });
             userViolations = updatedUser.bannedWords?.violations || 1;
 
             // ✅ حد المخالفات من الإعدادات (افتراضي 3)

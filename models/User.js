@@ -223,9 +223,10 @@ const userSchema = new mongoose.Schema({
         lastReset: { type: Date, default: Date.now }
     },
 
-    // مخالفات الكلمات المحظورة
+    // مخالفات الكلمات المحظورة (يومياً — يُعاد العدّاد كل يوم)
     bannedWords: {
         violations: { type: Number, default: 0 },
+        lastViolationDate: { type: Date, default: null },  // تاريخ آخر مخالفة (لإعادة العدّاد يومياً)
         isBanned: { type: Boolean, default: false },
         bannedAt: { type: Date, default: null },
         banReason: { type: String, default: null }
