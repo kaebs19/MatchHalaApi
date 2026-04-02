@@ -48,6 +48,8 @@ function UserDetail({ userId, onBack }) {
     const [photoDeleteForm, setPhotoDeleteForm] = useState({ photoIndex: 'profile', reason: '' });
     // Reports count
     const [reportsCount, setReportsCount] = useState(null);
+    // Photo lightbox
+    const [lightboxImage, setLightboxImage] = useState(null);
 
     useEffect(() => {
         fetchUserActivity();
@@ -374,6 +376,12 @@ function UserDetail({ userId, onBack }) {
                     📨 الرسائل
                 </button>
                 <button
+                    className={`tab-btn ${activeTab === 'photos' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('photos')}
+                >
+                    🖼️ الصور ({(user.photos?.length || 0) + (user.profileImage ? 1 : 0)})
+                </button>
+                <button
                     className={`tab-btn ${activeTab === 'admin-actions' ? 'active' : ''}`}
                     onClick={() => {
                         setActiveTab('admin-actions');
@@ -661,6 +669,65 @@ function UserDetail({ userId, onBack }) {
                                     </div>
                                 ))}
                             </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Photos Tab */}
+                {activeTab === 'photos' && (
+                    <div className="photos-section">
+                        <h3>🖼️ صور المستخدم</h3>
+
+                        {/* Profile Image */}
+                        {user.profileImage && (
+                            <div className="photos-group">
+                                <h4>صورة الملف الشخصي</h4>
+                                <div className="photos-grid">
+                                    <div className="photo-card">
+                                        <img
+                                            src={getImageUrl(user.profileImage)}
+                                            alt="صورة الملف الشخصي"
+                                            className="photo-thumb"
+                                            onClick={() => setLightboxImage(getImageUrl(user.profileImage))}
+                                            onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
+                                        />
+                                        <div className="photo-actions">
+                                            <button className="photo-view-btn" onClick={() => setLightboxImage(getImageUrl(user.profileImage))}>🔍 عرض</button>
+                                            <button className="photo-delete-btn" onClick={() => { setPhotoDeleteForm({ photoIndex: 'profile', reason: '' }); setShowPhotoDeleteModal(true); }}>🗑️ حذف</button>
+                                        </div>
+                                        <span className="photo-label">الرئيسية</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Additional Photos */}
+                        {user.photos && user.photos.length > 0 && (
+                            <div className="photos-group">
+                                <h4>الصور الإضافية ({user.photos.length})</h4>
+                                <div className="photos-grid">
+                                    {user.photos.map((photo, idx) => (
+                                        <div key={idx} className="photo-card">
+                                            <img
+                                                src={getImageUrl(photo.original || photo.medium || photo.thumbnail)}
+                                                alt={`صورة ${idx + 1}`}
+                                                className="photo-thumb"
+                                                onClick={() => setLightboxImage(getImageUrl(photo.original || photo.medium))}
+                                                onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
+                                            />
+                                            <div className="photo-actions">
+                                                <button className="photo-view-btn" onClick={() => setLightboxImage(getImageUrl(photo.original || photo.medium))}>🔍 عرض</button>
+                                                <button className="photo-delete-btn" onClick={() => { setPhotoDeleteForm({ photoIndex: idx, reason: '' }); setShowPhotoDeleteModal(true); }}>🗑️ حذف</button>
+                                            </div>
+                                            <span className="photo-label">صورة {idx + 1}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {!user.profileImage && (!user.photos || user.photos.length === 0) && (
+                            <p style={{ textAlign: 'center', color: '#95a5a6', padding: '40px' }}>لا توجد صور لهذا المستخدم</p>
                         )}
                     </div>
                 )}
@@ -1217,6 +1284,15 @@ function UserDetail({ userId, onBack }) {
                                 {actionLoading ? 'جاري التطبيق...' : '⛔ تطبيق المنع + إشعار المستخدم'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Photo Lightbox */}
+            {lightboxImage && (
+                <div className="lightbox-overlay" onClick={() => setLightboxImage(null)}>
+                    <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+                        <button className="lightbox-close" onClick={() => setLightboxImage(null)}>✕</button>
+                        <img src={lightboxImage} alt="صورة كاملة" className="lightbox-image" />
                     </div>
                 </div>
             )}

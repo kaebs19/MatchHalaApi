@@ -64,8 +64,12 @@ const protect = async (req, res, next) => {
                         global.io.to(`user:${req.user._id}`).emit('account-unsuspended');
                     }
                 } else {
-                    const until = req.user.suspension.suspendedUntil
+                    const untilISO = req.user.suspension.suspendedUntil
                         ? req.user.suspension.suspendedUntil.toISOString()
+                        : null;
+                    // تنسيق التاريخ للعرض
+                    const untilFormatted = req.user.suspension.suspendedUntil
+                        ? req.user.suspension.suspendedUntil.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                         : 'غير محدد';
 
                     // حساب عدد البلاغات من مستخدمين مختلفين
@@ -80,7 +84,7 @@ const protect = async (req, res, next) => {
 
                     return res.status(403).json({
                         success: false,
-                        message: `تم تعليق حسابك حتى ${until}`,
+                        message: untilISO ? `تم تعليق حسابك حتى ${untilFormatted}` : 'تم تعليق حسابك بشكل دائم',
                         code: 'ACCOUNT_SUSPENDED',
                         data: {
                             reason: req.user.suspension.reason,

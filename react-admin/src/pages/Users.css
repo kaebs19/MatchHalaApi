@@ -353,6 +353,28 @@
     border: 1px solid #fecaca;
 }
 
+.ubadge.suspended-badge {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+/* Suspend/Unsuspend Action Buttons */
+.action-btn.btn-suspend {
+    background: #fff7ed;
+    color: #c2410c;
+}
+.action-btn.btn-suspend:hover {
+    background: #fed7aa;
+}
+.action-btn.btn-unsuspend {
+    background: #dcfce7;
+    color: #166534;
+}
+.action-btn.btn-unsuspend:hover {
+    background: #bbf7d0;
+}
+
 /* Email Column */
 .email-col {
     display: flex;

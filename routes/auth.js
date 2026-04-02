@@ -219,9 +219,12 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                     isActive: true
                 });
             } else {
+                const untilFormatted = user.suspension.suspendedUntil
+                    ? user.suspension.suspendedUntil.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'غير محدد';
                 return res.status(403).json({
                     success: false,
-                    message: 'تم تعليق حسابك',
+                    message: user.suspension.suspendedUntil ? `تم تعليق حسابك حتى ${untilFormatted}` : 'تم تعليق حسابك بشكل دائم',
                     code: 'ACCOUNT_SUSPENDED',
                     data: {
                         reason: user.suspension.reason,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, deleteUser, toggleUserActive, updateUser } from '../services/api';
+import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, unsuspendUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
@@ -68,8 +68,9 @@ function Users({ onViewDetail }) {
         if (filterRole !== 'all') filtered = filtered.filter(u => u.role === filterRole);
         if (filterAuthProvider !== 'all') filtered = filtered.filter(u => (u.authProvider || 'app') === filterAuthProvider);
         if (filterBanned === 'banned') filtered = filtered.filter(u => u.bannedWords?.isBanned);
+        if (filterBanned === 'suspended') filtered = filtered.filter(u => u.suspension?.isSuspended);
         if (filterBanned === 'violations') filtered = filtered.filter(u => (u.bannedWords?.violations || 0) > 0);
-        if (filterBanned === 'clean') filtered = filtered.filter(u => !u.bannedWords?.isBanned && !(u.bannedWords?.violations > 0));
+        if (filterBanned === 'clean') filtered = filtered.filter(u => !u.bannedWords?.isBanned && !u.suspension?.isSuspended && !(u.bannedWords?.violations > 0));
         if (filterGender !== 'all') filtered = filtered.filter(u => u.gender === filterGender);
         if (filterPremium === 'premium') filtered = filtered.filter(u => u.isPremium);
         if (filterPremium === 'free') filtered = filtered.filter(u => !u.isPremium);
@@ -119,6 +120,36 @@ function Users({ onViewDetail }) {
             }
         } catch (err) {
             toast.error(err.response?.data?.message || 'فشل التحديث');
+        }
+    };
+
+    // ✅ تعليق سريع (auto — المستوى التالي)
+    const handleQuickSuspend = async (userId) => {
+        try {
+            const user = users.find(u => u._id === userId);
+            const nextLevel = Math.min((user?.suspension?.level || 0) + 1, 5);
+            const levelNames = { 1: '24 ساعة', 2: '48 ساعة', 3: '3 أيام', 4: '7 أيام', 5: 'دائم' };
+            const res = await suspendUser(userId, 'auto', 'تعليق سريع من قائمة المستخدمين');
+            if (res.success) {
+                toast.success(`تم تعليق ${user?.name} — المستوى ${nextLevel} (${levelNames[nextLevel]})`);
+                fetchUsers();
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'فشل التعليق');
+        }
+    };
+
+    // ✅ فك التعليق
+    const handleQuickUnsuspend = async (userId) => {
+        try {
+            const user = users.find(u => u._id === userId);
+            const res = await unsuspendUser(userId);
+            if (res.success) {
+                toast.success(`تم إلغاء تعليق ${user?.name}`);
+                fetchUsers();
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'فشل إلغاء التعليق');
         }
     };
 
@@ -271,8 +302,9 @@ function Users({ onViewDetail }) {
                             <option value="apple">Apple</option>
                         </select>
                         <select value={filterBanned} onChange={(e) => setFilterBanned(e.target.value)}>
-                            <option value="all">جميع - محظور/غير محظور</option>
+                            <option value="all">جميع - محظور/معلّق</option>
                             <option value="banned">محظور فقط</option>
+                            <option value="suspended">معلّق فقط</option>
                             <option value="violations">لديه مخالفات</option>
                             <option value="clean">بدون مخالفات</option>
                         </select>
@@ -381,6 +413,10 @@ function Users({ onViewDetail }) {
                                                 <div className="status-col">
                                                     {user.bannedWords?.isBanned ? (
                                                         <span className="ubadge banned-badge">محظور</span>
+                                                    ) : user.suspension?.isSuspended ? (
+                                                        <span className="ubadge suspended-badge">
+                                                            معلّق {user.suspension.level ? `(${['', '24h', '48h', '3d', '7d', '∞'][user.suspension.level]})` : ''}
+                                                        </span>
                                                     ) : user.isActive ? (
                                                         <span className="ubadge active-badge">نشط</span>
                                                     ) : (
@@ -411,6 +447,11 @@ function Users({ onViewDetail }) {
                                                 <div className="actions-cell">
                                                     <button className="action-btn btn-primary" onClick={() => onViewDetail && onViewDetail(user._id)} title="التفاصيل">👁️</button>
                                                     <button className="action-btn btn-info" onClick={() => openEditModal(user)} title="تعديل">✏️</button>
+                                                    {user.suspension?.isSuspended ? (
+                                                        <button className="action-btn btn-unsuspend" onClick={() => handleQuickUnsuspend(user._id)} title="فك التعليق">🔓</button>
+                                                    ) : (
+                                                        <button className="action-btn btn-suspend" onClick={() => handleQuickSuspend(user._id)} title={`تعليق (المستوى ${Math.min((user.suspension?.level || 0) + 1, 5)})`}>🔒</button>
+                                                    )}
                                                     <button
                                                         className={`action-btn ${user.isActive ? 'btn-warning' : 'btn-success'}`}
                                                         onClick={() => handleToggleActive(user._id)}
