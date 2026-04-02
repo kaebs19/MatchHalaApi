@@ -501,16 +501,21 @@ router.put('/:id/violations', protect, adminOnly, async (req, res) => {
 
         user.set('bannedWords.violations', violations);
 
+        // ✅ جلب الحد من الإعدادات (افتراضي 5)
+        const Settings = require('../models/Settings');
+        const appSettings = await Settings.getSettings();
+        const maxViolations = appSettings?.maxBannedWordViolations || 5;
+
         // إلغاء الحظر التلقائي إذا تم تقليل المخالفات
-        if (violations < 3 && user.bannedWords?.isBanned) {
+        if (violations < maxViolations && user.bannedWords?.isBanned) {
             user.set('bannedWords.isBanned', false);
             user.set('bannedWords.bannedAt', null);
             user.set('bannedWords.banReason', null);
             user.isActive = true;
         }
 
-        // حظر تلقائي إذا تم زيادة المخالفات لـ 3+
-        if (violations >= 3 && !user.bannedWords?.isBanned) {
+        // حظر تلقائي إذا تم زيادة المخالفات للحد
+        if (violations >= maxViolations && !user.bannedWords?.isBanned) {
             user.set('bannedWords.isBanned', true);
             user.set('bannedWords.bannedAt', new Date());
             user.set('bannedWords.banReason', 'حظر تلقائي - تحديد مخالفات من الأدمن');

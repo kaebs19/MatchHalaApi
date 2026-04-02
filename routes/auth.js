@@ -197,21 +197,46 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
-        // التحقق من أن الحساب مفعل
-        if (!user.isActive) {
-            return res.status(401).json({
-                success: false,
-                message: 'الحساب غير مفعل، تواصل مع الإدارة'
-            });
-        }
-
-        // التحقق من حظر الكلمات المحظورة
+        // ✅ فحص الحظر والتعليق قبل isActive (لأنهم يغيّرون isActive=false)
         if (user.bannedWords?.isBanned) {
             return res.status(403).json({
                 success: false,
                 message: 'تم حظر حسابك بسبب مخالفات متكررة للكلمات المحظورة. تواصل مع الإدارة',
                 code: 'ACCOUNT_BANNED',
                 data: { reason: user.bannedWords.banReason, bannedAt: user.bannedWords.bannedAt }
+            });
+        }
+
+        // فحص التعليق
+        if (user.suspension?.isSuspended) {
+            const now = new Date();
+            if (user.suspension.suspendedUntil && now >= user.suspension.suspendedUntil) {
+                // انتهت مدة التعليق — إلغاء تلقائي
+                await User.findByIdAndUpdate(user._id, {
+                    'suspension.isSuspended': false,
+                    'suspension.suspendedUntil': null,
+                    'suspension.reason': null,
+                    isActive: true
+                });
+            } else {
+                return res.status(403).json({
+                    success: false,
+                    message: 'تم تعليق حسابك',
+                    code: 'ACCOUNT_SUSPENDED',
+                    data: {
+                        reason: user.suspension.reason,
+                        suspendedUntil: user.suspension.suspendedUntil,
+                        level: user.suspension.level || 0
+                    }
+                });
+            }
+        }
+
+        // التحقق من أن الحساب مفعل
+        if (!user.isActive) {
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير مفعل، تواصل مع الإدارة'
             });
         }
 
