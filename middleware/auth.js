@@ -1,8 +1,20 @@
 // HalaChat Dashboard - Authentication Middleware
 // للتحقق من صلاحية Token
+//
+// ✅ نظام التعليق التدريجي (Updated: 02/04/2026)
+// ─────────────────────────────────────────────
+// عند فحص تعليق العضوية:
+// 1. إذا انتهت مدة التعليق → يُلغى تلقائياً + Socket.IO event
+// 2. إذا لا يزال معلّقاً → يرد 403 مع:
+//    - reason: سبب التعليق
+//    - suspendedUntil: تاريخ انتهاء التعليق (ISO8601)
+//    - level: مستوى التعليق (1=24h, 2=48h, 3=3d, 4=7d, 5=دائم)
+//    - violationCount: عدد البلاغات من مستخدمين مختلفين
+//
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Report = require('../models/Report');
 
 const protect = async (req, res, next) => {
     let token;
@@ -62,13 +74,26 @@ const protect = async (req, res, next) => {
                     const until = req.user.suspension.suspendedUntil
                         ? req.user.suspension.suspendedUntil.toISOString()
                         : 'غير محدد';
+
+                    // حساب عدد البلاغات من مستخدمين مختلفين
+                    let violationCount = 0;
+                    try {
+                        const uniqueReporters = await Report.distinct('reportedBy', {
+                            reportedUser: req.user._id,
+                            status: { $in: ['pending', 'reviewing'] }
+                        });
+                        violationCount = uniqueReporters.length;
+                    } catch (e) { /* ignore */ }
+
                     return res.status(403).json({
                         success: false,
                         message: `تم تعليق حسابك حتى ${until}`,
                         code: 'ACCOUNT_SUSPENDED',
                         data: {
                             reason: req.user.suspension.reason,
-                            suspendedUntil: req.user.suspension.suspendedUntil
+                            suspendedUntil: req.user.suspension.suspendedUntil,
+                            level: req.user.suspension.level || 0,
+                            violationCount
                         }
                     });
                 }

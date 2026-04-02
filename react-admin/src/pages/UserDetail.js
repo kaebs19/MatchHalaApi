@@ -7,7 +7,8 @@ import {
     userNameAction,
     deleteUserPhoto,
     sendUserNotification,
-    restrictUser
+    restrictUser,
+    getUserReportsCount
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -34,7 +35,7 @@ function UserDetail({ userId, onBack }) {
     const [showRestrictModal, setShowRestrictModal] = useState(false);
 
     // Suspend form
-    const [suspendForm, setSuspendForm] = useState({ duration: '24h', customDays: 7, reason: '' });
+    const [suspendForm, setSuspendForm] = useState({ duration: 'auto', customDays: 7, reason: '' });
     // Restrict form
     const [restrictForm, setRestrictForm] = useState({ type: 'photo', duration: '7d', reason: '' });
     // Name action form
@@ -45,9 +46,12 @@ function UserDetail({ userId, onBack }) {
     const [violationsCount, setViolationsCount] = useState(0);
     // Photo delete form
     const [photoDeleteForm, setPhotoDeleteForm] = useState({ photoIndex: 'profile', reason: '' });
+    // Reports count
+    const [reportsCount, setReportsCount] = useState(null);
 
     useEffect(() => {
         fetchUserActivity();
+        fetchReportsCount();
     }, [userId]);
 
     const fetchUserActivity = async () => {
@@ -63,6 +67,17 @@ function UserDetail({ userId, onBack }) {
         }
     };
 
+    const fetchReportsCount = async () => {
+        try {
+            const response = await getUserReportsCount(userId);
+            if (response.success) {
+                setReportsCount(response.data);
+            }
+        } catch (error) {
+            console.error('Error fetching reports count:', error);
+        }
+    };
+
     // ========== Admin Action Handlers ==========
 
     const handleSuspendUser = async () => {
@@ -72,7 +87,7 @@ function UserDetail({ userId, onBack }) {
             if (res.success) {
                 showToast('تم تعليق المستخدم بنجاح', 'success');
                 setShowSuspendModal(false);
-                setSuspendForm({ duration: '24h', customDays: 7, reason: '' });
+                setSuspendForm({ duration: 'auto', customDays: 7, reason: '' });
                 fetchUserActivity();
             }
         } catch (error) {
@@ -673,6 +688,49 @@ function UserDetail({ userId, onBack }) {
                                     </div>
                                 </div>
 
+                                {/* Suspension Level & Reports */}
+                                <div className={`admin-status-card ${(user.suspension?.level || 0) >= 3 ? 'danger' : (user.suspension?.level || 0) >= 1 ? 'warning' : 'ok'}`}>
+                                    <span className="status-card-icon">📊</span>
+                                    <div>
+                                        <p className="status-card-label">مستوى التعليق</p>
+                                        <p className="status-card-value">
+                                            المستوى {user.suspension?.level || 0} / 5
+                                        </p>
+                                        <div className="suspension-level-bar">
+                                            {[1,2,3,4,5].map(lvl => (
+                                                <div key={lvl} className={`level-dot ${lvl <= (user.suspension?.level || 0) ? 'active' : ''} ${lvl === 5 ? 'permanent' : ''}`}>
+                                                    {lvl <= (user.suspension?.level || 0) ? '●' : '○'}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="status-card-sub">
+                                            {['', '24 ساعة', '48 ساعة', '3 أيام', '7 أيام', 'دائم'][user.suspension?.level || 0] || 'لا تعليق'}
+                                            {' — '}مرات التعليق: {user.suspension?.totalSuspensions || 0}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Reports Count */}
+                                <div className={`admin-status-card ${reportsCount && reportsCount.uniqueReporters >= 5 ? 'danger' : reportsCount && reportsCount.uniqueReporters >= 3 ? 'warning' : 'ok'}`}>
+                                    <span className="status-card-icon">🚨</span>
+                                    <div>
+                                        <p className="status-card-label">البلاغات</p>
+                                        <p className="status-card-value">
+                                            {reportsCount ? `${reportsCount.uniqueReporters} / ${reportsCount.autoSuspendThreshold} مبلّغ فريد` : 'جاري التحميل...'}
+                                        </p>
+                                        {reportsCount && (
+                                            <p className="status-card-sub">
+                                                إجمالي: {reportsCount.totalReports} — معلّقة: {reportsCount.pendingReports}
+                                            </p>
+                                        )}
+                                        {reportsCount && reportsCount.uniqueReporters >= 5 && !user.suspension?.isSuspended && (
+                                            <p className="status-card-sub" style={{color: '#e74c3c', fontWeight: 'bold'}}>
+                                                تجاوز الحد — سيُعلّق تلقائياً عند البلاغ القادم
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <div className={`admin-status-card ${(user.bannedWords?.violations || 0) > 0 ? 'warning' : 'ok'}`}>
                                     <span className="status-card-icon">⚠️</span>
                                     <div>
@@ -708,6 +766,34 @@ function UserDetail({ userId, onBack }) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Suspension History */}
+                        {user.suspension?.history && user.suspension.history.length > 0 && (
+                            <div className="suspension-history-section">
+                                <h4>📋 سجل التعليقات ({user.suspension.history.length})</h4>
+                                <div className="suspension-history-list">
+                                    {[...user.suspension.history].reverse().map((entry, idx) => (
+                                        <div key={idx} className={`suspension-history-item ${entry.source === 'auto' ? 'auto' : 'admin'}`}>
+                                            <div className="history-item-header">
+                                                <span className={`history-source-badge ${entry.source}`}>
+                                                    {entry.source === 'auto' ? '🤖 تلقائي' : '👤 أدمن'}
+                                                </span>
+                                                <span className="history-level-badge">المستوى {entry.level}</span>
+                                                <span className="history-date">
+                                                    {entry.suspendedAt ? new Date(entry.suspendedAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                </span>
+                                            </div>
+                                            <p className="history-reason">{entry.reason || 'بدون سبب'}</p>
+                                            <p className="history-duration">
+                                                {entry.suspendedUntil
+                                                    ? `حتى ${new Date(entry.suspendedUntil).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' })}`
+                                                    : 'دائم'}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Action Buttons */}
                         <div className="admin-actions-grid">
@@ -815,14 +901,36 @@ function UserDetail({ userId, onBack }) {
                             <button className="close-modal-btn" onClick={() => setShowSuspendModal(false)}>✕</button>
                         </div>
                         <div className="modal-body">
+                            {/* Next Level Suggestion */}
+                            {(() => {
+                                const currentLevel = user.suspension?.level || 0;
+                                const nextLevel = Math.min(currentLevel + 1, 5);
+                                const levelNames = { 1: '24 ساعة', 2: '48 ساعة', 3: '3 أيام', 4: '7 أيام', 5: 'دائم' };
+                                const levelCodes = { 1: '24h', 2: '48h', 3: '3d', 4: '7d', 5: 'permanent' };
+                                return (
+                                    <div className={`next-level-suggestion ${nextLevel === 5 ? 'danger' : 'info'}`}>
+                                        <p>المستوى الحالي: <strong>{currentLevel}</strong> — المستوى التالي المقترح: <strong>{nextLevel} ({levelNames[nextLevel]})</strong></p>
+                                        {nextLevel === 5 && <p style={{color: '#e74c3c', fontWeight: 'bold'}}>تحذير: المستوى التالي هو تعليق دائم!</p>}
+                                        <button
+                                            className="auto-level-btn"
+                                            onClick={() => setSuspendForm({...suspendForm, duration: 'auto'})}
+                                        >
+                                            استخدام المستوى التالي تلقائياً ({levelNames[nextLevel]})
+                                        </button>
+                                    </div>
+                                );
+                            })()}
+
                             <div className="form-group">
                                 <label>مدة التعليق</label>
                                 <select value={suspendForm.duration} onChange={(e) => setSuspendForm({...suspendForm, duration: e.target.value})}>
-                                    <option value="24h">24 ساعة</option>
-                                    <option value="48h">48 ساعة</option>
-                                    <option value="7d">أسبوع</option>
+                                    <option value="auto">تلقائي (المستوى التالي)</option>
+                                    <option value="24h">24 ساعة (مستوى 1)</option>
+                                    <option value="48h">48 ساعة (مستوى 2)</option>
+                                    <option value="3d">3 أيام (مستوى 3)</option>
+                                    <option value="7d">أسبوع (مستوى 4)</option>
+                                    <option value="permanent">دائم (مستوى 5)</option>
                                     <option value="custom">مدة مخصصة</option>
-                                    <option value="permanent">دائم</option>
                                 </select>
                             </div>
                             {suspendForm.duration === 'custom' && (

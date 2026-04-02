@@ -1047,3 +1047,149 @@
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* ============ Suspension Level Bar ============ */
+.suspension-level-bar {
+    display: flex;
+    gap: 6px;
+    margin: 6px 0;
+    direction: ltr;
+}
+
+.suspension-level-bar .level-dot {
+    font-size: 12px;
+    color: #95a5a6;
+    transition: color 0.3s;
+}
+
+.suspension-level-bar .level-dot.active {
+    color: #e67e22;
+}
+
+.suspension-level-bar .level-dot.active.permanent {
+    color: #e74c3c;
+}
+
+/* ============ Admin Status Card - Danger ============ */
+.admin-status-card.danger {
+    border-right: 3px solid #e74c3c;
+    background: rgba(231, 76, 60, 0.05);
+}
+
+/* ============ Suspension History ============ */
+.suspension-history-section {
+    margin-top: 20px;
+    background: #1a1d23;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.suspension-history-section h4 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #ecf0f1;
+}
+
+.suspension-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.suspension-history-item {
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 12px;
+    border-right: 3px solid #e67e22;
+}
+
+.suspension-history-item.auto {
+    border-right-color: #3498db;
+}
+
+.history-item-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.history-source-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(231, 126, 34, 0.2);
+    color: #e67e22;
+}
+
+.history-source-badge.auto {
+    background: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+}
+
+.history-level-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.history-date {
+    font-size: 11px;
+    color: #95a5a6;
+    margin-right: auto;
+}
+
+.history-reason {
+    font-size: 13px;
+    color: #bdc3c7;
+    margin: 4px 0 2px;
+}
+
+.history-duration {
+    font-size: 12px;
+    color: #95a5a6;
+}
+
+/* ============ Next Level Suggestion ============ */
+.next-level-suggestion {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.next-level-suggestion.info {
+    background: rgba(52, 152, 219, 0.1);
+    border: 1px solid rgba(52, 152, 219, 0.3);
+    color: #3498db;
+}
+
+.next-level-suggestion.danger {
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    color: #e74c3c;
+}
+
+.auto-level-btn {
+    margin-top: 8px;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    background: #3498db;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.auto-level-btn:hover {
+    background: #2980b9;
+}

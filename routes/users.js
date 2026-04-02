@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Report = require('../models/Report');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
 
@@ -599,13 +600,26 @@ router.post('/send-notification', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ══════════════════════════════════════════════════════════
 // @route   PUT /api/users/:id/suspend
-// @desc    تعليق/إلغاء تعليق عضوية مستخدم لمدة معينة
+// @desc    تعليق/إلغاء تعليق عضوية مستخدم — نظام تدريجي
 // @access  Private/Admin
+//
+// Body Parameters:
+//   duration: '24h' | '48h' | '3d' | '7d' | 'permanent' | 'auto' | 'unsuspend' | عدد أيام
+//   reason:   سبب التعليق (اختياري)
+//   notify:   إرسال إشعار للمستخدم (default: true)
+//   source:   'admin' | 'auto' — مصدر التعليق (default: 'admin')
+//
+// 'auto' → يختار المستوى التالي تلقائياً بناءً على level الحالي
+//   المستوى 0→1: 24h | 1→2: 48h | 2→3: 3d | 3→4: 7d | 4→5: دائم
+//
+// Response: يرجع بيانات المستخدم مع suspension (level, totalSuspensions, history)
+// ══════════════════════════════════════════════════════════
 router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
     try {
-        const { duration, reason, notify = true } = req.body;
-        // duration: '24h', '48h', '7d', أو عدد أيام (مثل 14)، أو 'permanent'، أو 'unsuspend'
+        const { duration, reason, notify = true, source = 'admin' } = req.body;
+        // duration: '24h', '48h', '3d', '7d', أو عدد أيام، أو 'permanent'، أو 'auto' (تلقائي تدريجي)، أو 'unsuspend'
 
         const user = await User.findById(req.params.id);
         if (!user) {
@@ -621,14 +635,12 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             await user.save();
             invalidateUsers();
 
-            // إشعار المستخدم (push + داخلي)
             if (notify) {
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: '✅ تم إلغاء تعليق حسابك',
                     body: 'يمكنك الآن استخدام التطبيق بشكل طبيعي. مرحباً بعودتك!'
                 }, { type: 'account_unsuspended' });
 
-                // ✅ إشعار داخلي
                 await Notification.create({
                     title: '✅ تم إلغاء تعليق حسابك',
                     body: 'يمكنك الآن استخدام التطبيق بشكل طبيعي. مرحباً بعودتك!',
@@ -642,7 +654,6 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
                 });
             }
 
-            // ✅ Socket.IO — فك التعليق فوري على جهاز المستخدم
             if (global.io) {
                 global.io.to(`user:${user._id}`).emit('account-unsuspended');
             }
@@ -654,53 +665,105 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             });
         }
 
-        // حساب تاريخ انتهاء التعليق
+        // ======= حساب المدة والمستوى =======
+
+        // خريطة المستويات: level → { hours, duration code, text }
+        const SUSPENSION_LEVELS = {
+            1: { hours: 24, code: '24h', text: '24 ساعة' },
+            2: { hours: 48, code: '48h', text: '48 ساعة' },
+            3: { hours: 72, code: '3d', text: '3 أيام' },
+            4: { hours: 168, code: '7d', text: '7 أيام' },
+            5: { hours: null, code: 'permanent', text: 'دائم' }
+        };
+
         let suspendedUntil = null;
         let durationText = '';
+        let newLevel = user.suspension?.level || 0;
 
-        switch (duration) {
-            case '24h':
-                suspendedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                durationText = '24 ساعة';
-                break;
-            case '48h':
-                suspendedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000);
-                durationText = '48 ساعة';
-                break;
-            case '7d':
-                suspendedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                durationText = 'أسبوع';
-                break;
-            case 'permanent':
-                suspendedUntil = null; // دائم
-                durationText = 'دائم';
-                break;
-            default:
-                // عدد أيام مخصص
-                const days = parseInt(duration);
-                if (isNaN(days) || days <= 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'المدة غير صحيحة. استخدم: 24h, 48h, 7d, permanent, أو عدد أيام'
-                    });
-                }
-                suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-                durationText = `${days} يوم`;
-                break;
+        if (duration === 'auto') {
+            // ✅ تعليق تلقائي تدريجي — المستوى التالي
+            newLevel = Math.min((user.suspension?.level || 0) + 1, 5);
+            const levelInfo = SUSPENSION_LEVELS[newLevel];
+            suspendedUntil = levelInfo.hours
+                ? new Date(Date.now() + levelInfo.hours * 60 * 60 * 1000)
+                : null;
+            durationText = levelInfo.text;
+        } else {
+            // تعليق يدوي من الأدمن
+            switch (duration) {
+                case '24h':
+                    suspendedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                    durationText = '24 ساعة';
+                    newLevel = 1;
+                    break;
+                case '48h':
+                    suspendedUntil = new Date(Date.now() + 48 * 60 * 60 * 1000);
+                    durationText = '48 ساعة';
+                    newLevel = 2;
+                    break;
+                case '3d':
+                    suspendedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+                    durationText = '3 أيام';
+                    newLevel = 3;
+                    break;
+                case '7d':
+                    suspendedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                    durationText = 'أسبوع';
+                    newLevel = 4;
+                    break;
+                case 'permanent':
+                    suspendedUntil = null;
+                    durationText = 'دائم';
+                    newLevel = 5;
+                    break;
+                default:
+                    const days = parseInt(duration);
+                    if (isNaN(days) || days <= 0) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'المدة غير صحيحة. استخدم: 24h, 48h, 3d, 7d, permanent, auto, أو عدد أيام'
+                        });
+                    }
+                    suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+                    durationText = `${days} يوم`;
+                    // تحديد المستوى بناءً على عدد الأيام
+                    if (days <= 1) newLevel = 1;
+                    else if (days <= 2) newLevel = 2;
+                    else if (days <= 3) newLevel = 3;
+                    else if (days <= 7) newLevel = 4;
+                    else newLevel = 5;
+                    break;
+            }
         }
+
+        // ✅ حفظ في السجل قبل التحديث
+        const historyEntry = {
+            level: newLevel,
+            reason: reason || 'مخالفة شروط الاستخدام',
+            suspendedAt: new Date(),
+            suspendedUntil: suspendedUntil,
+            suspendedBy: req.user?._id || null,
+            source: source
+        };
+
+        const currentHistory = user.suspension?.history || [];
+        const totalSuspensions = (user.suspension?.totalSuspensions || 0) + 1;
 
         user.set('suspension', {
             isSuspended: true,
             suspendedAt: new Date(),
             suspendedUntil: suspendedUntil,
-            reason: reason || 'تعليق من الإدارة',
-            suspendedBy: req.user._id
+            reason: reason || 'مخالفة شروط الاستخدام',
+            suspendedBy: req.user?._id || null,
+            level: newLevel,
+            totalSuspensions: totalSuspensions,
+            history: [...currentHistory, historyEntry]
         });
         user.isActive = false;
         await user.save();
         invalidateUsers();
 
-        // ✅ إشعار المستخدم (push + داخلي)
+        // ✅ إشعار المستخدم
         if (notify) {
             const suspendTitle = '⚠️ تم تعليق حسابك';
             const suspendBody = `تم تعليق حسابك لمدة ${durationText}.\nالسبب: ${reason || 'مخالفة شروط الاستخدام'}`;
@@ -708,17 +771,21 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             await pushNotificationService.sendNotificationToUser(user._id, {
                 title: suspendTitle,
                 body: suspendBody
-            }, { type: 'account_suspended', suspendedUntil, reason });
+            }, { type: 'account_suspended', suspendedUntil, reason, level: newLevel });
 
-            // ✅ إشعار داخلي
             await Notification.create({
                 title: suspendTitle,
                 body: suspendBody,
                 type: 'system',
                 recipients: 'specific',
                 targetUsers: [user._id],
-                sender: req.user._id,
-                data: { type: 'account_suspended', suspendedUntil, reason, userId: user._id.toString() },
+                sender: req.user?._id || null,
+                data: {
+                    type: 'account_suspended',
+                    suspendedUntil, reason,
+                    level: newLevel,
+                    userId: user._id.toString()
+                },
                 status: 'sent',
                 sentAt: new Date()
             });
@@ -727,13 +794,13 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         // Socket.IO
         if (global.io) {
             global.io.to(`user-${user._id}`).emit('account-suspended', {
-                suspendedUntil, reason, duration: durationText
+                suspendedUntil, reason, duration: durationText, level: newLevel
             });
         }
 
         res.json({
             success: true,
-            message: `تم تعليق ${user.name} لمدة ${durationText}`,
+            message: `تم تعليق ${user.name} لمدة ${durationText} (المستوى ${newLevel})`,
             data: {
                 user: {
                     _id: user._id,
@@ -744,6 +811,51 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في تعليق المستخدم:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ──────────────────────────────────────────────────────────
+// @route   GET /api/users/:id/reports-count
+// @desc    عدد البلاغات ضد مستخدم (من مستخدمين مختلفين)
+// @access  Private/Admin
+//
+// Response:
+//   uniqueReporters:      عدد المبلّغين الفريدين (pending/reviewing)
+//   totalReports:         إجمالي البلاغات ضد هذا المستخدم
+//   pendingReports:       البلاغات المعلّقة
+//   autoSuspendThreshold: الحد المطلوب للتعليق التلقائي (5)
+// ──────────────────────────────────────────────────────────
+router.get('/:id/reports-count', protect, adminOnly, async (req, res) => {
+    try {
+        const userId = req.params.id;
+
+        // عدد البلاغات من مستخدمين مختلفين (pending + reviewing)
+        const uniqueReporters = await Report.distinct('reportedBy', {
+            reportedUser: userId,
+            status: { $in: ['pending', 'reviewing'] }
+        });
+
+        // إجمالي البلاغات
+        const totalReports = await Report.countDocuments({ reportedUser: userId });
+
+        // البلاغات المعلّقة
+        const pendingReports = await Report.countDocuments({
+            reportedUser: userId,
+            status: { $in: ['pending', 'reviewing'] }
+        });
+
+        res.json({
+            success: true,
+            data: {
+                uniqueReporters: uniqueReporters.length,
+                totalReports,
+                pendingReports,
+                autoSuspendThreshold: 5
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب عدد البلاغات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

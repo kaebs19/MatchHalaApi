@@ -458,6 +458,12 @@ export const unsuspendUser = async (userId) => {
     return response.data;
 };
 
+// عدد البلاغات ضد مستخدم
+export const getUserReportsCount = async (userId) => {
+    const response = await api.get(`/users/${userId}/reports-count`);
+    return response.data;
+};
+
 // تحديد مخالفات المستخدم
 export const setUserViolations = async (userId, violations) => {
     const response = await api.put(`/users/${userId}/violations`, { violations });

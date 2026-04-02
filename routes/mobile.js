@@ -2816,6 +2816,119 @@ router.post('/reports', protect, async (req, res) => {
             // نكمل حتى لو فشل الإشعار
         }
 
+        // ══════════════════════════════════════════════════════════
+        // ✅ نظام التعليق التلقائي التدريجي (Auto-Suspension System)
+        // ──────────────────────────────────────────────────────────
+        // الشروط:
+        //   - 5 بلاغات أو أكثر من مستخدمين مختلفين (unique reporters)
+        //   - البلاغات بحالة pending أو reviewing فقط
+        //   - المستخدم غير معلّق حالياً
+        //
+        // التدرج:
+        //   المستوى 1 → 24 ساعة
+        //   المستوى 2 → 48 ساعة
+        //   المستوى 3 → 3 أيام
+        //   المستوى 4 → 7 أيام
+        //   المستوى 5 → دائم
+        //
+        // كل تعليق يُسجّل في history مع source: 'auto'
+        // ══════════════════════════════════════════════════════════
+        try {
+            const AUTO_SUSPEND_THRESHOLD = 5;
+
+            // حساب عدد البلاغات من مستخدمين مختلفين (pending أو reviewing فقط)
+            const uniqueReporters = await Report.distinct('reportedBy', {
+                reportedUser: reportedUser,
+                status: { $in: ['pending', 'reviewing'] }
+            });
+
+            if (uniqueReporters.length >= AUTO_SUSPEND_THRESHOLD && !targetUser.suspension?.isSuspended) {
+                // تحديد المستوى التالي تدريجياً
+                const SUSPENSION_LEVELS = {
+                    1: { hours: 24, text: '24 ساعة' },
+                    2: { hours: 48, text: '48 ساعة' },
+                    3: { hours: 72, text: '3 أيام' },
+                    4: { hours: 168, text: '7 أيام' },
+                    5: { hours: null, text: 'دائم' }
+                };
+
+                const currentLevel = targetUser.suspension?.level || 0;
+                const newLevel = Math.min(currentLevel + 1, 5);
+                const levelInfo = SUSPENSION_LEVELS[newLevel];
+
+                const suspendedUntil = levelInfo.hours
+                    ? new Date(Date.now() + levelInfo.hours * 60 * 60 * 1000)
+                    : null;
+
+                const suspendReason = 'تعليق تلقائي - بلاغات متعددة من مستخدمين مختلفين';
+
+                // حفظ في السجل
+                const historyEntry = {
+                    level: newLevel,
+                    reason: suspendReason,
+                    suspendedAt: new Date(),
+                    suspendedUntil: suspendedUntil,
+                    suspendedBy: null,
+                    source: 'auto'
+                };
+
+                const currentHistory = targetUser.suspension?.history || [];
+                const totalSuspensions = (targetUser.suspension?.totalSuspensions || 0) + 1;
+
+                targetUser.set('suspension', {
+                    isSuspended: true,
+                    suspendedAt: new Date(),
+                    suspendedUntil: suspendedUntil,
+                    reason: suspendReason,
+                    suspendedBy: null,
+                    level: newLevel,
+                    totalSuspensions: totalSuspensions,
+                    history: [...currentHistory, historyEntry]
+                });
+                targetUser.isActive = false;
+                await targetUser.save();
+
+                // إشعار المستخدم المعلّق
+                const suspendTitle = '⚠️ تم تعليق حسابك';
+                const suspendBody = `تم تعليق حسابك تلقائياً لمدة ${levelInfo.text} بسبب بلاغات متعددة.`;
+
+                await pushNotificationService.sendNotificationToUser(targetUser._id, {
+                    title: suspendTitle,
+                    body: suspendBody
+                }, { type: 'account_suspended', suspendedUntil, reason: suspendReason, level: newLevel });
+
+                await Notification.create({
+                    title: suspendTitle,
+                    body: suspendBody,
+                    type: 'system',
+                    recipients: 'specific',
+                    targetUsers: [targetUser._id],
+                    data: {
+                        type: 'account_suspended',
+                        suspendedUntil, reason: suspendReason,
+                        level: newLevel,
+                        violationCount: uniqueReporters.length,
+                        userId: targetUser._id.toString()
+                    },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+
+                // Socket.IO — تعليق فوري
+                if (global.io) {
+                    global.io.to(`user-${targetUser._id}`).emit('account-suspended', {
+                        suspendedUntil, reason: suspendReason,
+                        duration: levelInfo.text, level: newLevel
+                    });
+                }
+
+                console.log(`🔒 تعليق تلقائي: ${targetUser.name} — المستوى ${newLevel} (${levelInfo.text}) — ${uniqueReporters.length} بلاغ`);
+            }
+        } catch (autoSuspendError) {
+            console.error('خطأ في التعليق التلقائي:', autoSuspendError);
+            // نكمل حتى لو فشل التعليق التلقائي
+        }
+
         res.status(201).json({
             success: true,
             message: 'تم إرسال البلاغ'

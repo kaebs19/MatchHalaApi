@@ -231,13 +231,24 @@ const userSchema = new mongoose.Schema({
         banReason: { type: String, default: null }
     },
 
-    // ✅ تعليق العضوية (إيقاف مؤقت)
+    // ✅ تعليق العضوية (إيقاف مؤقت) — نظام تدريجي
+    // المستويات: 0=لا تعليق, 1=24h, 2=48h, 3=3d, 4=7d, 5=دائم
     suspension: {
         isSuspended: { type: Boolean, default: false },
         suspendedAt: { type: Date, default: null },
         suspendedUntil: { type: Date, default: null },   // null = دائم
         reason: { type: String, default: null },
-        suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+        suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        level: { type: Number, default: 0, min: 0, max: 5 },            // مستوى التعليق الحالي
+        totalSuspensions: { type: Number, default: 0 },                  // عدد مرات التعليق الكلي
+        history: [{
+            level: { type: Number },
+            reason: { type: String },
+            suspendedAt: { type: Date },
+            suspendedUntil: { type: Date },
+            suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            source: { type: String, enum: ['admin', 'auto'], default: 'admin' }
+        }]
     },
 
     // ✅ حالة الاسم (عادي / محظور / معلق)
