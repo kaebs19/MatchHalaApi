@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, unsuspendUser } from '../services/api';
+import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, unsuspendUser, banUser, sendUserNotification, setUserViolations } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
 import Pagination from '../components/Pagination';
@@ -32,6 +32,13 @@ function Users({ onViewDetail }) {
     const [sortField, setSortField] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
     const [showFilters, setShowFilters] = useState(false);
+    // ✅ Quick Actions State
+    const [quickActionUser, setQuickActionUser] = useState(null);
+    const [showQuickActions, setShowQuickActions] = useState(false);
+    const [showPhotoPreview, setShowPhotoPreview] = useState(null);
+    const [showQuickNotify, setShowQuickNotify] = useState(false);
+    const [quickNotifyForm, setQuickNotifyForm] = useState({ title: '', body: '' });
+    const [quickActionLoading, setQuickActionLoading] = useState(false);
     const toast = useToast();
 
     useEffect(() => { fetchUsers(); }, []);
@@ -151,6 +158,52 @@ function Users({ onViewDetail }) {
         } catch (err) {
             toast.error(err.response?.data?.message || 'فشل إلغاء التعليق');
         }
+    };
+
+    // ✅ Quick Actions
+    const openQuickActions = (user) => { setQuickActionUser(user); setShowQuickActions(true); };
+
+    const handleQuickBan = async () => {
+        if (!quickActionUser) return;
+        setQuickActionLoading(true);
+        try {
+            const res = await banUser(quickActionUser._id);
+            if (res.success) {
+                toast.success(quickActionUser.bannedWords?.isBanned ? `تم فك حظر ${quickActionUser.name}` : `تم حظر ${quickActionUser.name}`);
+                fetchUsers();
+                setShowQuickActions(false);
+            }
+        } catch (err) { toast.error(err.response?.data?.message || 'فشل'); }
+        finally { setQuickActionLoading(false); }
+    };
+
+    const handleQuickResetViolations = async () => {
+        if (!quickActionUser) return;
+        setQuickActionLoading(true);
+        try {
+            const res = await setUserViolations(quickActionUser._id, 0);
+            if (res.success) {
+                toast.success(`تم تصفير مخالفات ${quickActionUser.name}`);
+                fetchUsers();
+                setShowQuickActions(false);
+            }
+        } catch (err) { toast.error(err.response?.data?.message || 'فشل'); }
+        finally { setQuickActionLoading(false); }
+    };
+
+    const handleQuickNotify = async () => {
+        if (!quickActionUser || !quickNotifyForm.title) return;
+        setQuickActionLoading(true);
+        try {
+            const res = await sendUserNotification(quickActionUser._id, quickNotifyForm.title, quickNotifyForm.body);
+            if (res.success) {
+                toast.success(`تم إرسال إشعار لـ ${quickActionUser.name}`);
+                setShowQuickNotify(false);
+                setQuickNotifyForm({ title: '', body: '' });
+                setShowQuickActions(false);
+            }
+        } catch (err) { toast.error(err.response?.data?.message || 'فشل'); }
+        finally { setQuickActionLoading(false); }
     };
 
     const openEditModal = (user) => { setUserToEdit(user); setShowEditModal(true); };
@@ -446,19 +499,8 @@ function Users({ onViewDetail }) {
                                             <td>
                                                 <div className="actions-cell">
                                                     <button className="action-btn btn-primary" onClick={() => onViewDetail && onViewDetail(user._id)} title="التفاصيل">👁️</button>
-                                                    <button className="action-btn btn-info" onClick={() => openEditModal(user)} title="تعديل">✏️</button>
-                                                    {user.suspension?.isSuspended ? (
-                                                        <button className="action-btn btn-unsuspend" onClick={() => handleQuickUnsuspend(user._id)} title="فك التعليق">🔓</button>
-                                                    ) : (
-                                                        <button className="action-btn btn-suspend" onClick={() => handleQuickSuspend(user._id)} title={`تعليق (المستوى ${Math.min((user.suspension?.level || 0) + 1, 5)})`}>🔒</button>
-                                                    )}
-                                                    <button
-                                                        className={`action-btn ${user.isActive ? 'btn-warning' : 'btn-success'}`}
-                                                        onClick={() => handleToggleActive(user._id)}
-                                                        title={user.isActive ? 'تعطيل' : 'تفعيل'}
-                                                    >
-                                                        {user.isActive ? '⏸️' : '▶️'}
-                                                    </button>
+                                                    <button className="action-btn btn-photo" onClick={() => setShowPhotoPreview(user)} title="عرض الصورة">🖼️</button>
+                                                    <button className="action-btn btn-admin-actions" onClick={() => openQuickActions(user)} title="إجراءات سريعة">🛡️</button>
                                                     <button className="action-btn btn-danger" onClick={() => confirmDelete(user)} title="حذف">🗑️</button>
                                                 </div>
                                             </td>
@@ -502,6 +544,131 @@ function Users({ onViewDetail }) {
                     <span>{userToDelete?.email}</span>
                 </div>
             </ConfirmModal>
+
+            {/* ✅ Quick Actions Panel */}
+            {showQuickActions && quickActionUser && (
+                <div className="modal-overlay" onClick={() => setShowQuickActions(false)}>
+                    <div className="quick-actions-panel" onClick={(e) => e.stopPropagation()}>
+                        <div className="qap-header">
+                            <div className="qap-user-info">
+                                <img
+                                    src={getImageUrl(quickActionUser.profileImage)}
+                                    alt=""
+                                    className="qap-avatar"
+                                    onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(quickActionUser.name); }}
+                                />
+                                <div>
+                                    <h3>{quickActionUser.name}</h3>
+                                    <span>{quickActionUser.email}</span>
+                                </div>
+                            </div>
+                            <button className="qap-close" onClick={() => setShowQuickActions(false)}>✕</button>
+                        </div>
+
+                        {/* Status Badges */}
+                        <div className="qap-status-row">
+                            {quickActionUser.bannedWords?.isBanned && <span className="qap-badge danger">محظور</span>}
+                            {quickActionUser.suspension?.isSuspended && <span className="qap-badge warning">معلّق (مستوى {quickActionUser.suspension.level || 0})</span>}
+                            {!quickActionUser.isActive && !quickActionUser.bannedWords?.isBanned && !quickActionUser.suspension?.isSuspended && <span className="qap-badge muted">معطل</span>}
+                            {quickActionUser.isActive && !quickActionUser.suspension?.isSuspended && <span className="qap-badge success">نشط</span>}
+                            <span className="qap-badge info">مخالفات: {quickActionUser.bannedWords?.violations || 0}</span>
+                        </div>
+
+                        {/* Quick Action Buttons */}
+                        <div className="qap-actions">
+                            {/* تعليق / فك */}
+                            {quickActionUser.suspension?.isSuspended ? (
+                                <button className="qap-btn success" onClick={() => { handleQuickUnsuspend(quickActionUser._id); setShowQuickActions(false); }} disabled={quickActionLoading}>
+                                    🔓 فك التعليق
+                                </button>
+                            ) : (
+                                <button className="qap-btn warning" onClick={() => { handleQuickSuspend(quickActionUser._id); setShowQuickActions(false); }} disabled={quickActionLoading}>
+                                    🔒 تعليق (المستوى {Math.min((quickActionUser.suspension?.level || 0) + 1, 5)})
+                                </button>
+                            )}
+
+                            {/* حظر / فك حظر */}
+                            <button className="qap-btn danger" onClick={handleQuickBan} disabled={quickActionLoading}>
+                                {quickActionUser.bannedWords?.isBanned ? '✅ فك الحظر' : '🚫 حظر المستخدم'}
+                            </button>
+
+                            {/* تصفير المخالفات */}
+                            {(quickActionUser.bannedWords?.violations || 0) > 0 && (
+                                <button className="qap-btn info" onClick={handleQuickResetViolations} disabled={quickActionLoading}>
+                                    🔄 تصفير المخالفات ({quickActionUser.bannedWords.violations} → 0)
+                                </button>
+                            )}
+
+                            {/* تفعيل / تعطيل */}
+                            <button
+                                className={`qap-btn ${quickActionUser.isActive ? 'muted' : 'success'}`}
+                                onClick={() => { handleToggleActive(quickActionUser._id); setShowQuickActions(false); }}
+                                disabled={quickActionLoading}
+                            >
+                                {quickActionUser.isActive ? '⏸️ تعطيل الحساب' : '▶️ تفعيل الحساب'}
+                            </button>
+
+                            {/* إرسال إشعار */}
+                            <button className="qap-btn notify" onClick={() => setShowQuickNotify(true)} disabled={quickActionLoading}>
+                                📨 إرسال إشعار
+                            </button>
+
+                            {/* عرض الصورة */}
+                            <button className="qap-btn photo" onClick={() => { setShowPhotoPreview(quickActionUser); setShowQuickActions(false); }}>
+                                🖼️ عرض الصورة
+                            </button>
+
+                            {/* تفاصيل كاملة */}
+                            <button className="qap-btn primary" onClick={() => { onViewDetail && onViewDetail(quickActionUser._id); setShowQuickActions(false); }}>
+                                👁️ التفاصيل الكاملة
+                            </button>
+                        </div>
+
+                        {/* Quick Notify Form (inline) */}
+                        {showQuickNotify && (
+                            <div className="qap-notify-form">
+                                <input
+                                    type="text"
+                                    placeholder="عنوان الإشعار..."
+                                    value={quickNotifyForm.title}
+                                    onChange={(e) => setQuickNotifyForm({...quickNotifyForm, title: e.target.value})}
+                                />
+                                <textarea
+                                    placeholder="نص الإشعار..."
+                                    value={quickNotifyForm.body}
+                                    onChange={(e) => setQuickNotifyForm({...quickNotifyForm, body: e.target.value})}
+                                    rows={2}
+                                />
+                                <div className="qap-notify-btns">
+                                    <button onClick={() => setShowQuickNotify(false)}>إلغاء</button>
+                                    <button className="send" onClick={handleQuickNotify} disabled={!quickNotifyForm.title || quickActionLoading}>
+                                        {quickActionLoading ? 'جاري الإرسال...' : '📨 إرسال'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ✅ Photo Preview Modal */}
+            {showPhotoPreview && (
+                <div className="modal-overlay" onClick={() => setShowPhotoPreview(null)}>
+                    <div className="photo-preview-modal" onClick={(e) => e.stopPropagation()}>
+                        <button className="photo-preview-close" onClick={() => setShowPhotoPreview(null)}>✕</button>
+                        <img
+                            src={getImageUrl(showPhotoPreview.profileImage)}
+                            alt={showPhotoPreview.name}
+                            className="photo-preview-img"
+                            onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(showPhotoPreview.name); }}
+                        />
+                        <div className="photo-preview-info">
+                            <strong>{showPhotoPreview.name}</strong>
+                            <span>{showPhotoPreview.email}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
