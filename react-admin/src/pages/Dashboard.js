@@ -54,6 +54,7 @@ function Dashboard({ user, onPageChange }) {
         last7Days: 0
     });
     const [stealthStats, setStealthStats] = useState({ activeUsers: 0 });
+    const [moderationStats, setModerationStats] = useState({ suspendedNow: 0, bannedNow: 0, reportsToday: 0, reportsPending: 0, topReported: [] });
     const [latestUsers, setLatestUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -84,6 +85,7 @@ function Dashboard({ user, onPageChange }) {
                 if (userStatsResponse.data.premium) setPremiumStats(userStatsResponse.data.premium);
                 if (userStatsResponse.data.superLikes) setSuperLikeStats(userStatsResponse.data.superLikes);
                 if (userStatsResponse.data.stealthMode) setStealthStats(userStatsResponse.data.stealthMode);
+                if (userStatsResponse.data.moderation) setModerationStats(userStatsResponse.data.moderation);
                 if (userStatsResponse.data.conversations) {
                     setConversationStats(prev => ({
                         ...prev,
@@ -360,6 +362,48 @@ function Dashboard({ user, onPageChange }) {
                     )}
                 </>
             )}
+
+            {/* ✅ إحصائيات الإشراف */}
+            <div className="section-card">
+                <h3>🛡️ الإشراف والتعليقات</h3>
+                <div className="stats-grid">
+                    <div className="stat-card" style={{ borderRight: '4px solid #e67e22' }}>
+                        <span className="stat-number">{moderationStats.suspendedNow}</span>
+                        <span className="stat-label">معلّق حالياً</span>
+                    </div>
+                    <div className="stat-card" style={{ borderRight: '4px solid #e74c3c' }}>
+                        <span className="stat-number">{moderationStats.bannedNow}</span>
+                        <span className="stat-label">محظور حالياً</span>
+                    </div>
+                    <div className="stat-card" style={{ borderRight: '4px solid #3498db' }}>
+                        <span className="stat-number">{moderationStats.reportsToday}</span>
+                        <span className="stat-label">بلاغات اليوم</span>
+                    </div>
+                    <div className="stat-card" style={{ borderRight: '4px solid #f39c12' }}>
+                        <span className="stat-number">{moderationStats.reportsPending}</span>
+                        <span className="stat-label">بلاغات معلّقة</span>
+                    </div>
+                </div>
+                {moderationStats.topReported && moderationStats.topReported.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                        <h4 style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '8px' }}>🚨 الأكثر بلاغاً</h4>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {moderationStats.topReported.map((u, i) => (
+                                <span key={i} style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px',
+                                    background: u.count >= 5 ? '#fef2f2' : '#fef9c3',
+                                    color: u.count >= 5 ? '#dc2626' : '#a16207',
+                                    border: `1px solid ${u.count >= 5 ? '#fecaca' : '#fde68a'}`
+                                }}>
+                                    {u.name || 'مجهول'} ({u.count} بلاغ)
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* أحدث المستخدمين */}
             {latestUsers.length > 0 && (

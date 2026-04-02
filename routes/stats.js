@@ -9,6 +9,7 @@ const Conversation = require('../models/Conversation');
 const SuperLike = require('../models/SuperLike');
 const Swipe = require('../models/Swipe');
 const Match = require('../models/Match');
+const Report = require('../models/Report');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL } = require('../utils/cache');
 
@@ -80,6 +81,23 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
         const activeMatches = await Match.countDocuments({ isActive: true });
         const matchesLast7Days = await Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
 
+        // ============ إحصائيات الإشراف والتعليقات ============
+        const suspendedNow = await User.countDocuments({ 'suspension.isSuspended': true });
+        const bannedNow = await User.countDocuments({ 'bannedWords.isBanned': true });
+        const reportsToday = await Report.countDocuments({ createdAt: { $gte: oneDayAgo } });
+        const reportsPending = await Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } });
+
+        // أكثر المستخدمين بلاغاً (أعلى 5)
+        const topReported = await Report.aggregate([
+            { $match: { status: { $in: ['pending', 'reviewing'] } } },
+            { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 5 },
+            { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+            { $project: { _id: 1, count: 1, name: '$user.name', email: '$user.email' } }
+        ]);
+
         const responseData = {
             success: true,
             data: {
@@ -124,7 +142,14 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
                     active: activeConversations,
                     totalMessages: totalMessages
                 },
-                latestUsers
+                latestUsers,
+                moderation: {
+                    suspendedNow,
+                    bannedNow,
+                    reportsToday,
+                    reportsPending,
+                    topReported
+                }
             }
         };
 

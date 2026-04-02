@@ -2059,6 +2059,29 @@ router.post('/messages/send', protect, async (req, res) => {
             const appSettings = await Settings.getSettings();
             const maxViolations = appSettings.maxBannedWordViolations || 5;
 
+            // ✅ إشعار تحذيري عند اقتراب الحظر (بقي مخالفتين أو أقل)
+            const remaining = maxViolations - userViolations;
+            if (remaining > 0 && remaining <= 2) {
+                try {
+                    await pushNotificationService.sendNotificationToUser(req.user._id, {
+                        title: '⚠️ تحذير: اقتربت من الحظر',
+                        body: `لديك ${userViolations} من ${maxViolations} مخالفة. تبقى لك ${remaining} ${remaining === 1 ? 'مخالفة واحدة' : 'مخالفتين'} قبل حظر حسابك.`
+                    }, { type: 'system' });
+
+                    await Notification.create({
+                        title: '⚠️ تحذير: اقتربت من الحظر',
+                        body: `لديك ${userViolations}/${maxViolations} مخالفة. يرجى الالتزام بشروط الاستخدام لتجنب حظر حسابك.`,
+                        type: 'system',
+                        recipients: 'specific',
+                        targetUsers: [req.user._id],
+                        status: 'sent',
+                        sentAt: new Date()
+                    });
+                } catch (warnErr) {
+                    console.error('خطأ في إرسال تحذير الحظر:', warnErr.message);
+                }
+            }
+
             // حظر تلقائي عند الوصول للحد
             if (userViolations >= maxViolations) {
                 await User.findByIdAndUpdate(req.user._id, {
@@ -2773,9 +2796,17 @@ router.post('/reports', protect, async (req, res) => {
 
             const reasonArabic = reasonTranslations[reason] || reason;
 
+            // ✅ حساب عدد المبلّغين الفريدين لعرضه في الإشعار
+            const uniqueReportersCount = await Report.distinct('reportedBy', {
+                reportedUser: reportedUser,
+                status: { $in: ['pending', 'reviewing'] }
+            }).then(r => r.length);
+            const AUTO_THRESHOLD = 5;
+            const reportProgress = `(بلاغ ${uniqueReportersCount}/${AUTO_THRESHOLD}${uniqueReportersCount >= AUTO_THRESHOLD - 1 ? ' ⚠️ قريب من التعليق التلقائي!' : ''})`;
+
             // إنشاء إشعار في قاعدة البيانات
             await Notification.create({
-                title: 'بلاغ جديد',
+                title: `بلاغ جديد ${reportProgress}`,
                 body: `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`,
                 type: 'report',
                 recipients: 'specific',
@@ -2800,7 +2831,7 @@ router.post('/reports', protect, async (req, res) => {
                 if (global.io) {
                     global.io.to(`user:${admin._id}`).emit('notification', {
                         type: 'report',
-                        title: 'بلاغ جديد',
+                        title: `بلاغ جديد ${reportProgress}`,
                         body: `${req.user.name} أبلغ عن ${targetUser.name}`,
                         data: { reportId: report._id.toString() }
                     });
@@ -2810,7 +2841,7 @@ router.post('/reports', protect, async (req, res) => {
                 if (!admin.isOnline && admin.deviceToken) {
                     await notificationService.sendPush(
                         admin.deviceToken,
-                        'بلاغ جديد ⚠️',
+                        `بلاغ جديد ${reportProgress}`,
                         `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`,
                         {
                             type: 'new_report',

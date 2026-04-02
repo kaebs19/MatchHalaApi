@@ -199,12 +199,28 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 
         // ✅ فحص الحظر والتعليق قبل isActive (لأنهم يغيّرون isActive=false)
         if (user.bannedWords?.isBanned) {
-            return res.status(403).json({
-                success: false,
-                message: 'تم حظر حسابك بسبب مخالفات متكررة للكلمات المحظورة. تواصل مع الإدارة',
-                code: 'ACCOUNT_BANNED',
-                data: { reason: user.bannedWords.banReason, bannedAt: user.bannedWords.bannedAt }
-            });
+            // ✅ فك الحظر تلقائياً بعد 24 ساعة
+            const bannedAt = user.bannedWords.bannedAt;
+            const hoursSinceBan = bannedAt ? (Date.now() - new Date(bannedAt).getTime()) / (1000 * 60 * 60) : 0;
+
+            if (bannedAt && hoursSinceBan >= 24) {
+                await User.findByIdAndUpdate(user._id, {
+                    'bannedWords.isBanned': false,
+                    'bannedWords.bannedAt': null,
+                    'bannedWords.banReason': null,
+                    'bannedWords.violations': 0,
+                    'bannedWords.lastViolationDate': null,
+                    isActive: true
+                });
+                // فُكّ الحظر — يتابع تسجيل الدخول
+            } else {
+                return res.status(403).json({
+                    success: false,
+                    message: 'تم حظر حسابك بسبب مخالفات متكررة للكلمات المحظورة. تواصل مع الإدارة',
+                    code: 'ACCOUNT_BANNED',
+                    data: { reason: user.bannedWords.banReason, bannedAt: user.bannedWords.bannedAt }
+                });
+            }
         }
 
         // فحص التعليق
