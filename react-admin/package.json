@@ -1,0 +1,31 @@
+{
+  "name": "matchhala-admin",
+  "version": "1.0.0",
+  "private": true,
+  "homepage": "/admin",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "socket.io-client": "^4.7.0",
+    "web-vitals": "^5.1.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "REACT_APP_API_URL=https://matchhala.chathala.com/api REACT_APP_SERVER_URL=https://matchhala.chathala.com REACT_APP_SOCKET_URL=https://matchhala.chathala.com react-scripts build",
+    "test": "react-scripts test"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

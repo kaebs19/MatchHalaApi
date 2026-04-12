@@ -1,0 +1,215 @@
+/* Settings Page Styles */
+
+.settings-page {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.settings-header {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.settings-header h1 {
+    font-size: 2.5rem;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.settings-header p {
+    color: #666;
+    font-size: 1.1rem;
+}
+
+/* Tabs — scoped to avoid conflict with UserDetail .tab-btn */
+.settings-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.settings-page .tab-btn {
+    padding: 12px 24px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #666;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 0;
+}
+
+.settings-page .tab-btn:hover {
+    color: #7c3aed;
+    background: #f5f3ff;
+}
+
+.settings-page .tab-btn.active {
+    color: #7c3aed;
+    border-bottom-color: #7c3aed;
+    background: #f5f3ff;
+}
+
+/* Content */
+.settings-content {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.settings-section h2 {
+    font-size: 1.8rem;
+    color: #333;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+/* Form Styles — purple focus override for settings */
+.settings-page .form-group input:focus,
+.settings-page .form-group textarea:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.settings-page .form-group textarea {
+    min-height: 120px;
+}
+
+/* Buttons */
+.btn-save,
+.btn-save-page {
+    padding: 12px 30px;
+    background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-save:hover,
+.btn-save-page:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+.btn-save:disabled,
+.btn-save-page:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Page Editor */
+.page-editor {
+    margin-bottom: 40px;
+    padding: 25px;
+    background: #f9fafb;
+    border-radius: 12px;
+    border: 2px solid #e5e7eb;
+}
+
+.page-editor h3 {
+    font-size: 1.3rem;
+    color: #333;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.page-editor textarea {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: 'Courier New', monospace;
+    resize: vertical;
+    min-height: 180px;
+    background: white;
+    transition: all 0.3s;
+}
+
+.page-editor textarea:focus {
+    outline: none;
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.btn-save-page {
+    margin-top: 15px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .settings-page {
+        padding: 15px;
+    }
+
+    .settings-header h1 {
+        font-size: 2rem;
+    }
+
+    .settings-tabs {
+        flex-direction: column;
+    }
+
+    .settings-page .tab-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .settings-content {
+        padding: 20px;
+    }
+
+    .page-editor {
+        padding: 15px;
+    }
+}
+
+.settings-section {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Success Message */
+.success-message {
+    padding: 12px 20px;
+    background: #d1fae5;
+    border: 2px solid #6ee7b7;
+    border-radius: 8px;
+    color: #065f46;
+    font-weight: 600;
+    margin-bottom: 20px;
+    animation: fadeIn 0.3s;
+}
+
+/* Error Message */
+.error-message {
+    padding: 12px 20px;
+    background: #fee2e2;
+    border: 2px solid #fca5a5;
+    border-radius: 8px;
+    color: #991b1b;
+    font-weight: 600;
+    margin-bottom: 20px;
+    animation: fadeIn 0.3s;
+}

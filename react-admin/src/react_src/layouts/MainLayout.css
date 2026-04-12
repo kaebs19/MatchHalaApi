@@ -1,0 +1,239 @@
+.main-layout {
+    display: flex;
+    min-height: 100vh;
+    background: #f5f7fb;
+}
+
+.main-content {
+    flex: 1;
+    margin-right: 280px;
+    display: flex;
+    flex-direction: column;
+}
+
+.top-header {
+    background: white;
+    padding: 20px 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.top-header h1 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.header-icon-btn {
+    position: relative;
+    background: #f5f5f5;
+    color: #333;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 20px;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-icon-btn:hover {
+    background: #e8e8e8;
+    transform: translateY(-2px);
+}
+
+.header-icon-btn.notifications-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.header-icon-btn.notifications-btn:hover {
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.header-icon-btn.reports-notification-btn {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.header-icon-btn.reports-notification-btn:hover {
+    box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+}
+
+.header-icon-btn.send-notification-btn {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
+}
+
+.header-icon-btn.send-notification-btn:hover {
+    box-shadow: 0 6px 16px rgba(17, 153, 142, 0.4);
+}
+
+.notification-icon {
+    font-size: 20px;
+    animation: ring 2s ease-in-out infinite;
+}
+
+@keyframes ring {
+    0%, 100% {
+        transform: rotate(0deg);
+    }
+    10%, 30% {
+        transform: rotate(-10deg);
+    }
+    20%, 40% {
+        transform: rotate(10deg);
+    }
+}
+
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    background: #ff3b30;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.notification-badge.warning {
+    background: #ffc107;
+    color: #000;
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.4);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.logout-btn {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.2s;
+}
+
+.logout-btn:hover {
+    transform: translateY(-2px);
+}
+
+.page-content {
+    flex: 1;
+    padding: 0;
+}
+
+/* Modal Styles — scoped overlay with blur */
+.main-layout .modal-overlay {
+    backdrop-filter: blur(4px);
+}
+
+.notification-modal {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Scoped modal header/close for notification modal */
+.notification-modal .modal-header {
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.close-modal-btn {
+    background: #f5f5f5;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.close-modal-btn:hover {
+    background: #e0e0e0;
+    transform: rotate(90deg);
+}
+
+/* Scoped notification form textarea height */
+.notification-form .form-group textarea {
+    min-height: 100px;
+}
+
+/* Scoped modal-actions for notification modal */
+.notification-modal .modal-actions {
+    justify-content: flex-end;
+    padding-top: 20px;
+    border-top: 2px solid #f0f0f0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .main-content {
+        margin-right: 0;
+    }
+
+    .top-header {
+        padding: 15px 20px;
+    }
+
+    .top-header h1 {
+        font-size: 18px;
+    }
+
+    .notification-modal {
+        width: 95%;
+        padding: 20px;
+    }
+}

@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+config/serviceAccount.json
+config/AuthKey_43J3HP6K23.p8
+.env

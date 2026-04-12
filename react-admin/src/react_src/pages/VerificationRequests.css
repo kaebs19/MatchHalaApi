@@ -1,0 +1,235 @@
+.verification-page {
+    padding: 20px;
+    direction: rtl;
+}
+
+/* Filters */
+.verification-filters {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.verification-filters select {
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.3s;
+    min-width: 160px;
+}
+
+.verification-filters select:hover,
+.verification-filters select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Text Muted */
+.verification-page .text-muted {
+    color: #999;
+    font-size: 13px;
+}
+
+/* Action Buttons */
+.verification-page .action-btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    font-weight: 600;
+}
+
+.verification-page .action-btn:hover {
+    transform: scale(1.1);
+}
+
+.verification-page .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.verification-page .btn-view {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.verification-page .btn-view:hover {
+    background: #bbdefb;
+}
+
+.verification-page .btn-approve {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.verification-page .btn-approve:hover {
+    background: #c8e6c9;
+}
+
+.verification-page .btn-reject {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.verification-page .btn-reject:hover {
+    background: #ffcdd2;
+}
+
+/* Selfie Modal Specifics */
+.selfie-modal {
+    max-width: 550px;
+}
+
+.selfie-user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    margin: 0 30px 20px;
+}
+
+.selfie-user-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.selfie-user-details h4 {
+    margin: 0 0 4px 0;
+    color: #2c3e50;
+    font-size: 16px;
+}
+
+.selfie-user-details p {
+    margin: 0 0 6px 0;
+    color: #7f8c8d;
+    font-size: 13px;
+}
+
+.selfie-image-container {
+    text-align: center;
+    margin: 0 30px 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 15px;
+}
+
+.selfie-image {
+    max-width: 400px;
+    width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.selfie-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 30px 20px;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.selfie-meta-item {
+    display: flex;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.selfie-meta-item .meta-label {
+    color: #7f8c8d;
+    font-weight: 600;
+}
+
+.selfie-meta-item .meta-value {
+    color: #2c3e50;
+}
+
+.selfie-modal-actions {
+    display: flex;
+    gap: 12px;
+    padding: 0 30px 30px;
+}
+
+.btn-modal-approve,
+.btn-modal-reject {
+    flex: 1;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.btn-modal-approve {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    color: #1a5c2e;
+}
+
+.btn-modal-approve:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(67, 233, 123, 0.3);
+}
+
+.btn-modal-reject {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.btn-modal-reject:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+}
+
+.btn-modal-approve:disabled,
+.btn-modal-reject:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .verification-page {
+        padding: 15px;
+    }
+
+    .verification-filters {
+        flex-direction: column;
+    }
+
+    .verification-filters select {
+        width: 100%;
+    }
+
+    .selfie-modal-actions {
+        flex-direction: column;
+    }
+
+    .selfie-image {
+        max-width: 100%;
+    }
+
+    .selfie-user-info,
+    .selfie-image-container,
+    .selfie-meta,
+    .selfie-modal-actions {
+        margin-left: 15px;
+        margin-right: 15px;
+    }
+}

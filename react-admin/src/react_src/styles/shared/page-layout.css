@@ -1,0 +1,187 @@
+/* ===== Shared Page Layout Styles ===== */
+
+.page-header {
+    background: white;
+    padding: 25px 30px;
+    border-radius: 15px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.page-header h1 {
+    margin: 0 0 5px 0;
+    color: #333;
+    font-size: 28px;
+}
+
+.page-header p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.section-title {
+    margin: 30px 0 15px 0;
+    color: #2c3e50;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+/* Error Banner */
+.error-banner {
+    background: #fee;
+    color: #c33;
+    padding: 15px 25px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Loading State */
+.loading-state {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-size: 16px;
+}
+
+/* Empty State */
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.empty-state .empty-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 15px;
+}
+
+.empty-state p {
+    color: #999;
+    font-size: 16px;
+}
+
+/* No Results */
+.no-results {
+    background: white;
+    padding: 60px 40px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.no-results p {
+    margin: 0 0 20px 0;
+    color: #666;
+    font-size: 18px;
+}
+
+/* Simple Pagination */
+.simple-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    padding: 20px;
+    border-top: 1px solid #eee;
+}
+
+.simple-pagination .page-btn {
+    padding: 8px 20px;
+    background: #7c3aed;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.simple-pagination .page-btn:hover:not(:disabled) {
+    background: #6d28d9;
+}
+
+.simple-pagination .page-btn:disabled {
+    background: #e5e7eb;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.simple-pagination .page-info {
+    color: #666;
+    font-size: 14px;
+}
+
+/* User Action Menu */
+.user-action-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+}
+
+.user-action-menu {
+    position: fixed;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    min-width: 200px;
+    overflow: hidden;
+    z-index: 10000;
+    animation: fadeInMenu 0.2s ease;
+}
+
+.user-action-header {
+    padding: 12px 16px;
+    font-weight: 700;
+    color: #333;
+    font-size: 14px;
+    border-bottom: 1px solid #eee;
+    background: #f9fafb;
+}
+
+.user-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    transition: background 0.2s;
+    font-family: inherit;
+}
+
+.user-action-btn:hover {
+    background: #f5f5f5;
+}
+
+.user-action-btn.danger {
+    color: #dc2626;
+}
+
+.user-action-btn.danger:hover {
+    background: #fef2f2;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+}

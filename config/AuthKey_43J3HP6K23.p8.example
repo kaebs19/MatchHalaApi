@@ -1,0 +1,14 @@
+-----BEGIN PRIVATE KEY-----
+[ضع محتوى ملف AuthKey_43J3HP6K23.p8 هنا]
+
+قم بإعادة تسمية هذا الملف إلى: AuthKey_43J3HP6K23.p8
+وضع المفتاح الحقيقي من Apple Developer Console
+
+خطوات الحصول على المفتاح:
+1. اذهب إلى: https://developer.apple.com/account/
+2. اختر Certificates, Identifiers & Profiles
+3. اذهب إلى Keys
+4. أنشئ مفتاح جديد أو استخدم المفتاح الموجود
+5. حمّل ملف .p8
+6. ضع المحتوى هنا
+-----END PRIVATE KEY-----

@@ -1,0 +1,100 @@
+/* ===== Shared Button Styles ===== */
+
+.btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Primary */
+.btn-primary,
+.btn-submit,
+.submit-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-submit:hover:not(:disabled),
+.submit-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+/* Cancel / Secondary */
+.btn-cancel,
+.cancel-btn {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.btn-cancel:hover:not(:disabled),
+.cancel-btn:hover:not(:disabled) {
+    background: #e0e0e0;
+}
+
+/* Danger */
+.btn-danger,
+.btn-confirm-delete {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled),
+.btn-confirm-delete:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* Small */
+.btn--sm {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+/* Block */
+.btn--block {
+    width: 100%;
+}
+
+/* Flex pair (cancel + submit in modals) */
+.btn-cancel,
+.cancel-btn,
+.btn-submit,
+.submit-btn {
+    flex: 1;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+/* Refresh Button */
+.refresh-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.2s;
+}
+
+.refresh-btn:hover {
+    transform: translateY(-2px);
+}

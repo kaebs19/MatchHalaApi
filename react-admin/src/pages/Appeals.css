@@ -1,0 +1,603 @@
+.appeals-page {
+    padding: 20px;
+    direction: rtl;
+}
+
+/* Filters */
+.appeals-filters {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.appeals-filters select {
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.appeals-filters select:hover {
+    border-color: #667eea;
+}
+
+.appeals-filters select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.appeals-filters .refresh-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.appeals-filters .refresh-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* User cell */
+.appeals-page .user-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.appeals-page .user-cell-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.appeals-page .user-cell-info .email-cell {
+    color: #95a5a6;
+    font-size: 12px;
+}
+
+.appeals-page .user-link {
+    color: #667eea;
+    cursor: pointer;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.appeals-page .user-link:hover {
+    color: #764ba2;
+    text-decoration: underline;
+}
+
+/* Action type cell */
+.action-type-cell {
+    padding: 4px 10px;
+    background: #f0f0f0;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Status badges */
+.appeals-page .badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.appeals-page .badge-pending {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+.appeals-page .badge-forwarded {
+    background-color: #e8eaf6;
+    color: #3949ab;
+}
+
+.appeals-page .badge-review {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.appeals-page .badge-approved {
+    background-color: #e8f5e9;
+    color: #388e3c;
+}
+
+.appeals-page .badge-rejected {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+/* View button */
+.appeals-page .action-btn.btn-view {
+    padding: 6px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.appeals-page .action-btn.btn-view:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+}
+
+/* Detail Modal */
+.appeal-detail-modal {
+    max-width: 650px;
+    width: 95%;
+    max-height: 85vh;
+    overflow-y: auto;
+    direction: rtl;
+}
+
+.appeal-detail-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #ecf0f1;
+    margin-bottom: 20px;
+}
+
+.appeal-detail-modal .modal-header h3 {
+    margin: 0;
+    font-size: 20px;
+    color: #2c3e50;
+}
+
+.appeal-detail-modal .close-btn {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: #95a5a6;
+    padding: 5px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.appeal-detail-modal .close-btn:hover {
+    color: #e74c3c;
+}
+
+/* User info in modal */
+.appeal-user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.appeal-user-avatar {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #667eea;
+}
+
+.appeal-user-details {
+    flex: 1;
+}
+
+.appeal-user-details h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+}
+
+.appeal-user-details p {
+    margin: 0;
+    color: #7f8c8d;
+    font-size: 13px;
+}
+
+/* Appeal info section */
+.appeal-info-section {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.appeal-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.appeal-info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.info-value {
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+/* Reason section */
+.appeal-reason-section {
+    margin-bottom: 20px;
+}
+
+.appeal-reason-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 15px;
+    color: #2c3e50;
+}
+
+.appeal-reason-text {
+    background: #fff8e1;
+    border-radius: 10px;
+    padding: 15px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #333;
+    border-right: 4px solid #f39c12;
+    word-break: break-word;
+}
+
+/* Timeline */
+.appeal-timeline-section {
+    margin-bottom: 20px;
+}
+
+.appeal-timeline-section h4 {
+    margin: 0 0 15px 0;
+    font-size: 15px;
+    color: #2c3e50;
+}
+
+.timeline {
+    position: relative;
+    padding-right: 25px;
+}
+
+.timeline::before {
+    content: "";
+    position: absolute;
+    right: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e0e0e0;
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 18px;
+    padding-right: 20px;
+}
+
+.timeline-dot {
+    position: absolute;
+    right: -23px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #bdc3c7;
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px #e0e0e0;
+}
+
+.timeline-item.status-pending .timeline-dot {
+    background: #f39c12;
+    box-shadow: 0 0 0 2px #fdebd0;
+}
+
+.timeline-item.status-forwarded .timeline-dot {
+    background: #3949ab;
+    box-shadow: 0 0 0 2px #c5cae9;
+}
+
+.timeline-item.status-under_review .timeline-dot {
+    background: #1976d2;
+    box-shadow: 0 0 0 2px #bbdefb;
+}
+
+.timeline-item.status-approved .timeline-dot {
+    background: #27ae60;
+    box-shadow: 0 0 0 2px #d5f5e3;
+}
+
+.timeline-item.status-rejected .timeline-dot {
+    background: #e74c3c;
+    box-shadow: 0 0 0 2px #fadbd8;
+}
+
+.timeline-content {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px 15px;
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.timeline-date {
+    font-size: 12px;
+    color: #95a5a6;
+}
+
+.timeline-note {
+    margin: 8px 0 4px;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+.timeline-admin {
+    color: #95a5a6;
+    font-size: 12px;
+}
+
+/* Action section */
+.appeal-action-section {
+    border-top: 1px solid #ecf0f1;
+    padding-top: 20px;
+}
+
+.appeal-action-section h4 {
+    margin: 0 0 15px 0;
+    font-size: 15px;
+    color: #2c3e50;
+}
+
+.appeal-action-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.appeal-action-form .status-select {
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.appeal-action-form .status-select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.appeal-action-form .status-select.status-pending {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+.appeal-action-form .status-select.status-forwarded {
+    background-color: #e8eaf6;
+    color: #3949ab;
+}
+
+.appeal-action-form .status-select.status-under_review {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.appeal-action-form .status-select.status-approved {
+    background-color: #e8f5e9;
+    color: #388e3c;
+}
+
+.appeal-action-form .status-select.status-rejected {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.appeal-action-form textarea {
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.3s;
+}
+
+.appeal-action-form textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.appeal-action-form .save-btn {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.3s;
+    align-self: flex-start;
+}
+
+.appeal-action-form .save-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.appeal-action-form .save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .appeals-page {
+        padding: 10px;
+    }
+
+    .appeal-detail-modal {
+        width: 98%;
+        max-height: 90vh;
+    }
+
+    .appeal-user-info {
+        flex-wrap: wrap;
+    }
+
+    .appeal-action-form .save-btn {
+        width: 100%;
+    }
+}
+
+/* ==================== Enhanced Appeal Detail Modal ==================== */
+.appeal-user-info-enhanced {
+    background: linear-gradient(135deg, #faf5ff 0%, #fef3f8 100%);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 18px;
+    border: 1px solid #e9d5ff;
+}
+
+.appeal-user-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    direction: rtl;
+}
+
+.appeal-user-avatar-lg {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+    flex-shrink: 0;
+}
+
+.appeal-user-main {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+}
+
+.appeal-user-main h4 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: #1a1a2e;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.premium-mini-badge {
+    font-size: 14px;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    padding: 2px 6px;
+    border-radius: 10px;
+    color: white;
+}
+
+.user-email-lg {
+    color: #666;
+    font-size: 13px;
+    margin: 2px 0;
+}
+
+.user-hala-id {
+    font-size: 12px;
+    color: #888;
+    margin: 4px 0 0;
+}
+
+.user-hala-id code {
+    background: #fff;
+    padding: 2px 8px;
+    border-radius: 6px;
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+.appeal-user-status-col {
+    flex-shrink: 0;
+}
+
+.appeal-user-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(124, 58, 237, 0.1);
+    direction: rtl;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #f0f0f0;
+}
+
+.detail-item.warning {
+    background: #fef3c7;
+    border-color: #fde68a;
+}
+
+.detail-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.detail-item small {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 2px;
+}
+
+.detail-item strong {
+    display: block;
+    font-size: 13px;
+    color: #1a1a2e;
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+    .appeal-user-details-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
