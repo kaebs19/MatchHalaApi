@@ -30,9 +30,10 @@ const { checkBannedWords } = require('./bannedWords');
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
 
-// Google Auth
+// Google Auth — iOS + Web clients
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const googleWebClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
 
 // Apple Auth
 const appleSignin = require('apple-signin-auth');
@@ -1245,29 +1246,50 @@ router.delete('/delete-account', protect, async (req, res) => {
 // @access  Public
 router.post('/google', async (req, res) => {
     try {
-        const { idToken, deviceToken, deviceInfo } = req.body;
+        const { idToken, deviceToken, deviceInfo, googleUserInfo } = req.body;
 
-        if (!idToken) {
+        if (!idToken && !googleUserInfo) {
             return res.status(400).json({
                 success: false,
                 message: 'Google ID Token مطلوب'
             });
         }
 
-        // التحقق من Google ID Token
+        // التحقق من Google ID Token (iOS أو Web)
+        const platform = req.body.platform || 'ios';
         let payload;
         try {
-            const ticket = await googleClient.verifyIdToken({
-                idToken,
-                audience: process.env.GOOGLE_CLIENT_ID
-            });
-            payload = ticket.getPayload();
+            // جرب iOS client أولاً، ثم Web client
+            const clients = platform === 'web'
+                ? [{ client: googleWebClient, audience: process.env.GOOGLE_WEB_CLIENT_ID }]
+                : [{ client: googleClient, audience: process.env.GOOGLE_CLIENT_ID }];
+
+            for (const { client, audience } of clients) {
+                try {
+                    const ticket = await client.verifyIdToken({ idToken, audience });
+                    payload = ticket.getPayload();
+                    break;
+                } catch { /* try next */ }
+            }
+
+            if (!payload) {
+                // fallback: جرب الثاني
+                const fallback = platform === 'web' ? googleClient : googleWebClient;
+                const fallbackAudience = platform === 'web' ? process.env.GOOGLE_CLIENT_ID : process.env.GOOGLE_WEB_CLIENT_ID;
+                const ticket = await fallback.verifyIdToken({ idToken, audience: fallbackAudience });
+                payload = ticket.getPayload();
+            }
         } catch (error) {
             console.error('خطأ في التحقق من Google Token:', error);
-            return res.status(401).json({
-                success: false,
-                message: 'Google Token غير صالح'
-            });
+            // ✅ Web flow: إذا فيه googleUserInfo مباشرة (من access_token)
+            if (googleUserInfo && googleUserInfo.sub && googleUserInfo.email) {
+                payload = googleUserInfo;
+            } else {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Google Token غير صالح'
+                });
+            }
         }
 
         const { sub: googleId, email, name, picture } = payload;
@@ -1371,19 +1393,35 @@ router.post('/apple', async (req, res) => {
             });
         }
 
-        // التحقق من Apple Identity Token
+        // التحقق من Apple Identity Token (iOS أو Web)
+        const platform = req.body.platform || 'ios';
+        const appleAudience = platform === 'web'
+            ? (process.env.APPLE_WEB_CLIENT_ID || 'com.app.hala.web')
+            : (process.env.APPLE_CLIENT_ID || 'com.app.hala');
+
         let applePayload;
         try {
             applePayload = await appleSignin.verifyIdToken(identityToken, {
-                audience: process.env.APPLE_CLIENT_ID || 'com.alsaplel.octadevtn.HalaChat',
+                audience: appleAudience,
                 ignoreExpiration: false
             });
         } catch (error) {
-            console.error('خطأ في التحقق من Apple Token:', error);
-            return res.status(401).json({
-                success: false,
-                message: 'Apple Token غير صالح'
-            });
+            // fallback: جرب الـ audience الثاني
+            try {
+                const fallbackAudience = platform === 'web'
+                    ? (process.env.APPLE_CLIENT_ID || 'com.app.hala')
+                    : (process.env.APPLE_WEB_CLIENT_ID || 'com.app.hala.web');
+                applePayload = await appleSignin.verifyIdToken(identityToken, {
+                    audience: fallbackAudience,
+                    ignoreExpiration: false
+                });
+            } catch (err2) {
+                console.error('خطأ في التحقق من Apple Token:', error);
+                return res.status(401).json({
+                    success: false,
+                    message: 'Apple Token غير صالح'
+                });
+            }
         }
 
         const appleId = applePayload.sub;
