@@ -43,7 +43,13 @@ const io = new Server(server, {
     pingInterval: 25000,
     pingTimeout: 20000,
     cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+        origin: [
+            process.env.FRONTEND_URL || 'http://localhost:3000',
+            'https://chathala.com',
+            'https://www.chathala.com',
+            'https://matchhala.khalafiati.io',
+            'https://matchhala.chathala.com'
+        ],
         credentials: true
     }
 });
@@ -120,9 +126,22 @@ app.use(compression({
     }
 }));
 
-// 3. CORS - السماح بالطلبات من Frontend فقط
+// 3. CORS - السماح بالطلبات من Frontend + موقع ChatHala
+const allowedOrigins = [
+    process.env.FRONTEND_URL || 'http://localhost:3000',
+    'https://chathala.com',
+    'https://www.chathala.com',
+    'https://matchhala.khalafiati.io',
+    'https://matchhala.chathala.com',
+    'http://localhost:3001',
+];
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: function (origin, callback) {
+        // السماح بالطلبات بدون origin (mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(null, false);
+    },
     credentials: true
 }));
 
