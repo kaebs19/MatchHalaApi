@@ -237,6 +237,43 @@ router.get('/stats/devices', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/:id/profile
+// @desc    عرض بروفايل مستخدم (عام لأي مستخدم مسجّل)
+// @access  Private
+router.get('/:id/profile', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('name profileImage photos birthDate gender country city bio interests isOnline isPremium verification halaId lastLogin createdAt');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const profileData = {
+            _id: user._id,
+            name: user.name,
+            profileImage: user.profileImage,
+            photos: user.photos,
+            birthDate: user.birthDate,
+            gender: user.gender,
+            country: user.country,
+            city: user.city,
+            bio: user.bio,
+            interests: user.interests,
+            isOnline: user.isOnline,
+            isPremium: user.isPremium,
+            isVerified: user.verification?.isVerified || false,
+            halaId: user.halaId,
+            createdAt: user.createdAt
+        };
+
+        res.status(200).json({ success: true, data: { user: profileData } });
+    } catch (error) {
+        console.error('خطأ في عرض البروفايل:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/users/:id
 // @desc    الحصول على مستخدم واحد
 // @access  Private/Admin
