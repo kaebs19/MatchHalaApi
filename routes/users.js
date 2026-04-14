@@ -256,7 +256,12 @@ router.get('/featured', async (req, res) => {
         .limit(12)
         .lean();
 
-        const { getFullUrl } = require('../utils/imageHelpers');
+        const getFullUrl = (path) => {
+            if (!path || typeof path !== 'string') return null;
+            if (path.startsWith('http')) return path;
+            const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+            return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+        };
         const result = users.map(u => ({
             name: u.name,
             profileImage: getFullUrl(u.profileImage),
@@ -287,21 +292,44 @@ router.get('/:id/profile', protect, async (req, res) => {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
 
+        // Helper: تحويل المسار النسبي إلى URL كامل
+        const getFullUrl = (path) => {
+            if (!path) return null;
+            if (typeof path !== 'string') return null;
+            if (path.startsWith('http')) return path;
+            const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+            return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+        };
+
+        // استخراج أفضل صورة من photos array
+        let mainImage = user.profileImage;
+        if (user.photos && user.photos.length > 0) {
+            const mainPhoto = user.photos.find(p => p.order === 0) || user.photos[0];
+            if (mainPhoto?.original) mainImage = mainPhoto.original;
+            else if (mainPhoto?.thumbnail) mainImage = mainPhoto.thumbnail;
+        }
+
+        // تحويل photos array إلى URLs
+        const photoUrls = user.photos
+            ? user.photos.map(p => getFullUrl(typeof p === 'string' ? p : (p.original || p.thumbnail))).filter(Boolean)
+            : [];
+
         const profileData = {
             _id: user._id,
             name: user.name,
-            profileImage: user.profileImage,
-            photos: user.photos,
+            profileImage: getFullUrl(mainImage),
+            photos: photoUrls,
             birthDate: user.birthDate,
             gender: user.gender,
             country: user.country,
             city: user.city,
             bio: user.bio,
-            interests: user.interests,
-            isOnline: user.isOnline,
-            isPremium: user.isPremium,
+            interests: user.interests || [],
+            isOnline: user.isOnline || false,
+            isPremium: user.isPremium || false,
             isVerified: user.verification?.isVerified || false,
             halaId: user.halaId,
+            lastLogin: user.lastLogin,
             createdAt: user.createdAt
         };
 
