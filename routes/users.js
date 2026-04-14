@@ -237,6 +237,44 @@ router.get('/stats/devices', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/featured
+// @desc    مستخدمين مميزين للصفحة الرئيسية (بدون auth)
+// @access  Public
+router.get('/featured', async (req, res) => {
+    try {
+        const cacheKey = 'featured_users';
+        const cached = get(cacheKey);
+        if (cached) return res.json(cached);
+
+        const users = await User.find({
+            isActive: true,
+            profileImage: { $exists: true, $ne: null, $ne: '' },
+            name: { $exists: true, $ne: '' }
+        })
+        .select('name profileImage country isOnline isPremium verification.isVerified')
+        .sort({ lastLogin: -1 })
+        .limit(12)
+        .lean();
+
+        const { getFullUrl } = require('../utils/imageHelpers');
+        const result = users.map(u => ({
+            name: u.name,
+            profileImage: getFullUrl(u.profileImage),
+            country: u.country || null,
+            isOnline: u.isOnline || false,
+            isPremium: u.isPremium || false,
+            isVerified: u.verification?.isVerified || false
+        }));
+
+        const response = { success: true, data: { users: result } };
+        set(cacheKey, response, 300); // cache 5 minutes
+        res.json(response);
+    } catch (error) {
+        console.error('خطأ في المستخدمين المميزين:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/users/:id/profile
 // @desc    عرض بروفايل مستخدم (عام لأي مستخدم مسجّل)
 // @access  Private
