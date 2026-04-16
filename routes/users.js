@@ -468,8 +468,8 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
                 try {
                     const pushNotificationService = require('../services/pushNotificationService');
                     await pushNotificationService.sendNotificationToUser(user._id, {
-                        title: '⚠️ تم حذف النبذة الشخصية',
-                        body: 'تم حذف النبذة الشخصية لمخالفتها سياسة الاستخدام. مخالفة ' + (currentViolations + 1) + ' — يرجى الالتزام بالشروط.'
+                        title: '⚠️ تم حذف النبذة تلقائياً',
+                        body: 'اكتشف نظام الحماية مخالفة في النبذة الشخصية، وتمّت إزالتها تلقائياً. مخالفة ' + (currentViolations + 1) + ' — يُرجى الالتزام بالشروط.'
                     }, { type: 'warning' });
                 } catch(e) { console.error('Push error:', e.message); }
             }
@@ -534,8 +534,8 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
             try {
                 const pushNotificationService = require('../services/pushNotificationService');
                 await pushNotificationService.sendNotificationToUser(user._id, {
-                    title: 'تم حذف النبذة الشخصية',
-                    body: 'تم حذف النبذة الشخصية لمخالفتها سياسة الاستخدام. مخالفة ' + (currentViolations + 1) + ' — يرجى الالتزام بالشروط.'
+                    title: '⚠️ تم حذف النبذة تلقائياً',
+                    body: 'اكتشف نظام الحماية مخالفة في النبذة الشخصية، وتمّت إزالتها تلقائياً. مخالفة ' + (currentViolations + 1) + ' — يُرجى الالتزام بالشروط.'
                 }, { type: 'warning' });
             } catch(e) { console.error('Push error:', e.message); }
 
@@ -1738,20 +1738,20 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
             let notifTitle, notifBody;
             switch (action) {
                 case 'suspend':
-                    notifTitle = '⚠️ تم تعليق اسمك';
-                    notifBody = `تم رصد اسم مخالف لسياسة الاستخدام. تم تعليق الاسم وتسجيل مخالفة (${vCount}). يرجى تغيير اسمك من الإعدادات.`;
+                    notifTitle = '⚠️ تم تعليق الاسم تلقائياً';
+                    notifBody = `اكتشف نظام الحماية اسماً مخالفاً لسياسة الاستخدام. تمّ تعليق الاسم تلقائياً (مخالفة ${vCount}). يُرجى تغيير الاسم من الإعدادات.`;
                     break;
                 case 'ban':
-                    notifTitle = '🚫 تم حظر اسمك';
-                    notifBody = `تم حظر اسمك لمخالفته سياسة الاستخدام. مخالفة ${vCount} — يجب تغيير اسمك فوراً من الإعدادات لتجنب إيقاف حسابك.`;
+                    notifTitle = '🚫 تم حظر الاسم تلقائياً';
+                    notifBody = `رصد نظام الحماية اسماً مخالفاً لسياسة الاستخدام. مخالفة ${vCount} — يجب تغيير الاسم فوراً من الإعدادات لتجنّب إيقاف الحساب تلقائياً.`;
                     break;
                 case 'restore':
-                    notifTitle = '✅ تم إعادة اسمك';
-                    notifBody = 'تم إعادة اسمك الأصلي بنجاح. شكراً لالتزامك.';
+                    notifTitle = '✅ تم إعادة الاسم الأصلي';
+                    notifBody = 'تمّ إعادة الاسم الأصلي بنجاح. شكراً لالتزامك بسياسة الاستخدام.';
                     break;
                 case 'change':
-                    notifTitle = '📝 تم تغيير اسمك';
-                    notifBody = `تم تغيير اسمك بواسطة الإدارة إلى "${newName}". يمكنك تغييره من الإعدادات.`;
+                    notifTitle = '📝 تم تحديث الاسم';
+                    notifBody = `تمّ تحديث الاسم تلقائياً إلى "${newName}". يمكنك تعديله من الإعدادات.`;
                     break;
             }
 
@@ -1886,8 +1886,8 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
         // ✅ إشعار المستخدم (push + داخل التطبيق)
         if (notify) {
             const vCount = user.bannedWords?.violations || 0;
-            const notifTitle = '⚠️ تم حذف صورتك';
-            const notifBody = `تم حذف صورتك لمخالفتها سياسة الاستخدام. مخالفة ${vCount} — يرجى رفع صورة مناسبة لتجنب إيقاف حسابك.`;
+            const notifTitle = '⚠️ تم حذف الصورة تلقائياً';
+            const notifBody = `اكتشف نظام الحماية صورة مخالفة لسياسة الاستخدام، وتمّت إزالتها تلقائياً. مخالفة ${vCount} — يُرجى رفع صورة مناسبة لتجنّب إيقاف الحساب.`;
 
             // Push notification
             await pushNotificationService.sendNotificationToUser(user._id, {
@@ -2394,64 +2394,104 @@ router.get('/violations/recent', protect, adminOnly, async (req, res) => {
 });
 
 // @route   DELETE /api/users/:id/conversations/bulk
-// @desc    حذف جميع محادثات المستخدم + رسائلها (hard delete — يظهر التأثير فوراً في التطبيق)
+// @desc    إخفاء جميع محادثات المستخدم من تطبيقه (hiddenFor — تبقى في DB للمراجعة)
 // @access  Private/Admin
 router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) => {
     try {
         const Conversation = require('../models/Conversation');
-        const Message = require('../models/Message');
         const userId = req.params.id;
+        const mongoose = require('mongoose');
+        const userObjectId = new mongoose.Types.ObjectId(userId);
 
-        // جلب كل المحادثات + المشاركين (للـ socket)
+        // جلب كل المحادثات التي يشارك فيها (حتى لو كانت مخفية مسبقاً — نعيد الإخفاء)
         const conversations = await Conversation.find({ participants: userId }).select('_id participants');
         const convIds = conversations.map(c => c._id);
 
         if (convIds.length === 0) {
-            return res.json({ success: true, message: 'لا توجد محادثات لحذفها', data: { deletedConversations: 0, deletedMessages: 0 } });
+            return res.json({ success: true, message: 'لا توجد محادثات للإخفاء', data: { hiddenConversations: 0 } });
         }
 
-        // حذف الرسائل (hard delete)
-        const msgResult = await Message.deleteMany({ conversation: { $in: convIds } });
+        // ✅ إضافة userId إلى hiddenFor (بدل الحذف الفعلي)
+        // نحذف أولاً أي entry قديم لنفس المستخدم ثم نُضيف entry جديد
+        await Conversation.updateMany(
+            { _id: { $in: convIds } },
+            { $pull: { hiddenFor: { user: userObjectId } } }
+        );
+        const result = await Conversation.updateMany(
+            { _id: { $in: convIds } },
+            {
+                $push: {
+                    hiddenFor: {
+                        user: userObjectId,
+                        hiddenAt: new Date(),
+                        reason: 'admin_bulk_hide'
+                    }
+                }
+            }
+        );
 
-        // حذف المحادثات
-        const convResult = await Conversation.deleteMany({ _id: { $in: convIds } });
-
-        // Socket.IO — إبلاغ كل المشاركين بإزالة المحادثات من التطبيق فوراً
+        // Socket.IO — إبلاغ المستخدم فوراً بإخفاء محادثاته
         if (global.io) {
-            conversations.forEach(conv => {
-                const cId = String(conv._id);
-                // إلى غرفة المحادثة
-                global.io.to(`conversation-${cId}`).emit('conversation-deleted', {
-                    conversationId: cId, by: 'admin'
-                });
-                // إلى كل مشارك (user room) — حتى اللي مو في غرفة المحادثة
-                (conv.participants || []).forEach(pid => {
-                    global.io.to(`user:${pid}`).emit('conversation-deleted', {
-                        conversationId: cId, by: 'admin'
-                    });
+            convIds.forEach(cId => {
+                global.io.to(`user:${userId}`).emit('conversation-deleted', {
+                    conversationId: String(cId),
+                    by: 'admin',
+                    action: 'hidden'
                 });
             });
         }
 
-        // إشعار للمستخدم الذي تم حذف محادثاته
+        // إشعار للمستخدم
         try {
             const pushService = require('../services/pushNotificationService');
             await pushService.sendNotificationToUser(userId, {
-                title: 'تم مسح محادثاتك',
-                body: `قامت الإدارة بحذف جميع محادثاتك (${convResult.deletedCount} محادثة) بسبب مخالفة سياسة الاستخدام.`
-            }, { type: 'conversations_wiped', adminAction: 'bulk_delete', deletedCount: convResult.deletedCount });
-        } catch (e) { console.error('notify user wipe error:', e.message); }
+                title: '🗑️ تم إخفاء محادثاتك تلقائياً',
+                body: `اكتشف نظام الحماية التلقائي مخالفات في محادثاتك (${convIds.length} محادثة)، وتمّ إخفاؤها من حسابك. يُرجى الالتزام بسياسة الاستخدام.`
+            }, { type: 'conversations_wiped', hiddenCount: convIds.length });
+        } catch (e) { console.error('notify user hide error:', e.message); }
 
         res.json({
             success: true,
-            message: `تم حذف ${convResult.deletedCount} محادثة و ${msgResult.deletedCount} رسالة`,
+            message: `تمّ إخفاء ${convIds.length} محادثة من تطبيق المستخدم (محفوظة للمراجعة)`,
             data: {
-                deletedConversations: convResult.deletedCount,
-                deletedMessages: msgResult.deletedCount
+                hiddenConversations: convIds.length,
+                deletedConversations: convIds.length  // للتوافق مع UI القديم
             }
         });
     } catch (error) {
-        console.error('bulk delete conversations error:', error);
+        console.error('bulk hide conversations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/conversations/unhide-all
+// @desc    إلغاء إخفاء جميع محادثات المستخدم (إرجاعها للتطبيق)
+// @access  Private/Admin
+router.put('/:id/conversations/unhide-all', protect, adminOnly, async (req, res) => {
+    try {
+        const Conversation = require('../models/Conversation');
+        const mongoose = require('mongoose');
+        const userObjectId = new mongoose.Types.ObjectId(req.params.id);
+
+        const result = await Conversation.updateMany(
+            { 'hiddenFor.user': userObjectId },
+            { $pull: { hiddenFor: { user: userObjectId } } }
+        );
+
+        // Socket.IO — إبلاغ بإعادة الظهور
+        if (global.io) {
+            global.io.to(`user:${req.params.id}`).emit('conversations-restored', {
+                count: result.modifiedCount
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `تم إظهار ${result.modifiedCount} محادثة`,
+            data: { restoredConversations: result.modifiedCount }
+        });
+    } catch (error) {
+        console.error('unhide all error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -2467,7 +2507,7 @@ router.put('/:id/conversations/censor', protect, adminOnly, async (req, res) => 
         const userId = req.params.id;
 
         const { scope = 'all' } = req.body; // 'all' = كل محادثاته، 'sent' = رسائله فقط
-        const CENSOR_TEXT = '★★★★★★';
+        const CENSOR_TEXT = '***';
 
         // جلب كل المحادثات
         const conversations = await Conversation.find({ participants: userId }).select('_id participants');
@@ -2518,11 +2558,12 @@ router.put('/:id/conversations/censor', protect, adminOnly, async (req, res) => 
         // إشعار للمستخدم نفسه
         try {
             const pushService = require('../services/pushNotificationService');
+            const notifBody = scope === 'sent'
+                ? `اكتشف نظام الحماية التلقائي وجود محتوى غير لائق في رسائلك. تمّ إخفاء ${result.modifiedCount} رسالة تلقائياً.`
+                : `اكتشف نظام الحماية التلقائي مخالفات في محادثاتك. تمّ إخفاء ${result.modifiedCount} رسالة تلقائياً.`;
             await pushService.sendNotificationToUser(userId, {
-                title: 'تم إخفاء محتوى رسائلك',
-                body: scope === 'sent'
-                    ? `قامت الإدارة بإخفاء محتوى رسائلك (${result.modifiedCount} رسالة) بسبب مخالفة سياسة الاستخدام.`
-                    : `قامت الإدارة بإخفاء محتوى محادثاتك (${result.modifiedCount} رسالة) بسبب مخالفة سياسة الاستخدام.`
+                title: '⭐ تم إخفاء محتوى الرسائل',
+                body: notifBody
             }, { type: 'conversations_censored', scope, censoredCount: result.modifiedCount });
         } catch (e) { /* ignore */ }
 

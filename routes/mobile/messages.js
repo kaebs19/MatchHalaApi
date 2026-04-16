@@ -192,13 +192,13 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             if (remaining > 0 && remaining <= 2) {
                 try {
                     await pushNotificationService.sendNotificationToUser(req.user._id, {
-                        title: '⚠️ تحذير: اقتربت من الحظر',
-                        body: `لديك ${userViolations} من ${maxViolations} مخالفة. تبقى لك ${remaining} ${remaining === 1 ? 'مخالفة واحدة' : 'مخالفتين'} قبل حظر حسابك.`
+                        title: '⚠️ تنبيه تلقائي: اقتربت من الحظر',
+                        body: `رصد نظام الحماية ${userViolations}/${maxViolations} مخالفات. تبقى ${remaining} ${remaining === 1 ? 'مخالفة' : 'مخالفتين'} قبل إيقاف الحساب تلقائياً.`
                     }, { type: 'system' });
 
                     await Notification.create({
-                        title: '⚠️ تحذير: اقتربت من الحظر',
-                        body: `لديك ${userViolations}/${maxViolations} مخالفة. يرجى الالتزام بشروط الاستخدام لتجنب حظر حسابك.`,
+                        title: '⚠️ تنبيه تلقائي: اقتربت من الحظر',
+                        body: `لديك ${userViolations}/${maxViolations} مخالفة. يُرجى الالتزام بسياسة الاستخدام لتجنّب إيقاف الحساب تلقائياً.`,
                         type: 'system',
                         recipients: 'specific',
                         targetUsers: [req.user._id],

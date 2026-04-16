@@ -92,7 +92,9 @@ router.get('/home', protect, async (req, res) => {
                 const convs = await Conversation.find({
                     participants: userId,
                     status: { $in: ['accepted', 'pending'] },
-                    isActive: true
+                    isActive: true,
+                    // ✅ استبعاد المحادثات المخفية عن هذا المستخدم
+                    'hiddenFor.user': { $ne: userId }
                 })
                     .populate('participants', 'name email profileImage lastLogin isOnline isPremium isActive verification.isVerified')
                     .populate('lastMessage')

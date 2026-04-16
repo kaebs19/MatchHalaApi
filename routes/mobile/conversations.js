@@ -520,7 +520,9 @@ router.get('/conversations', protect, async (req, res) => {
 
         const convFilter = {
             participants: userId,
-            status: { $in: ['accepted', 'pending', 'rejected'] }
+            status: { $in: ['accepted', 'pending', 'rejected'] },
+            // ✅ استبعاد المحادثات المخفية عن هذا المستخدم
+            'hiddenFor.user': { $ne: userId }
         };
 
         // ETag: التحقق من آخر تعديل

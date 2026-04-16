@@ -45,7 +45,7 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         // ✅ استخدام deviceToken أو fcmToken (fallback)
         const pushToken = user.deviceToken || user.fcmToken;
         if (!pushToken) {
-            // No FCM token — skip push silently
+            console.log(`⚠️ Push skipped — no token for ${user.name} (${user._id})`);
             return { success: true, saved: true, pushed: false, reason: 'no_token' };
         }
 
@@ -55,7 +55,13 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
             userId: userId.toString()
         });
 
-        return { success: true, saved: true, pushed: result.success };
+        if (!result.success) {
+            console.log(`❌ Push failed for ${user.name} (${user._id}): ${result.error}`);
+        } else {
+            console.log(`✅ Push sent to ${user.name} (type: ${data.type || 'general'})`);
+        }
+
+        return { success: true, saved: true, pushed: result.success, tokenSource: user.deviceToken ? 'deviceToken' : 'fcmToken' };
     } catch (error) {
         console.error('❌ خطأ في إرسال الإشعار للمستخدم:', error.message);
         return { success: false, error: error.message };

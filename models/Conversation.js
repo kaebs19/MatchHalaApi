@@ -72,6 +72,13 @@ const conversationSchema = new mongoose.Schema({
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         date: { type: Date, default: null }
     }],
+    // ✅ مخفية عن مستخدمين محددين (بواسطة النظام التلقائي — لا تُحذف من DB)
+    //    عند fetch في التطبيق، نستبعد المحادثات التي فيها currentUser في hiddenFor
+    hiddenFor: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+        hiddenAt: { type: Date, default: Date.now },
+        reason: { type: String, default: null }
+    }],
     settings: {
         allowMembersToSend: {
             type: Boolean,

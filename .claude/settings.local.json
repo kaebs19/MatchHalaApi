@@ -31,7 +31,10 @@
       "Bash(node -c config/firebase.js)",
       "Bash(node -c models/Message.js)",
       "Bash(node -c models/Notification.js)",
-      "Bash(node -c services/pushNotificationService.js)"
+      "Bash(node -c services/pushNotificationService.js)",
+      "Bash(node -c routes/mobile/conversations.js)",
+      "Bash(node -c routes/mobile/users.js)",
+      "Bash(node -c models/Conversation.js)"
     ]
   }
 }

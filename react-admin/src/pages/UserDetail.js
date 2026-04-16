@@ -370,10 +370,10 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
         }
     };
 
-    // ========== حذف كل محادثات المستخدم ==========
+    // ========== إخفاء كل محادثات المستخدم من التطبيق ==========
+    // (الحذف فقط داخل التطبيق — المحادثات تبقى في الأرشيف للمراجعة)
     const handleDeleteAllConversations = async () => {
-        if (!window.confirm(`⚠️ حذف جميع محادثات ${user.name}؟\n\nسيتم حذف كل المحادثات والرسائل نهائياً. لا يمكن التراجع.`)) return;
-        if (!window.confirm('هل أنت متأكد 100%؟ الرسائل ستُحذف من جميع المشاركين.')) return;
+        if (!window.confirm(`⚠️ إخفاء جميع محادثات ${user.name} من تطبيقه؟\n\nالمحادثات ستختفي فوراً من تطبيق المستخدم لكن تبقى محفوظة في الأرشيف للمراجعة الإدارية.`)) return;
 
         try {
             setActionLoading(true);
@@ -383,7 +383,7 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                 fetchUserActivity();
             }
         } catch (e) {
-            showToast(e.response?.data?.message || 'فشل في الحذف', 'error');
+            showToast(e.response?.data?.message || 'فشل في الإخفاء', 'error');
         } finally {
             setActionLoading(false);
         }
@@ -406,7 +406,7 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
     // ========== تشفير الرسائل كنجوم ==========
     const handleCensorMessages = async (scope) => {
         const scopeText = scope === 'sent' ? 'رسائل هذا المستخدم فقط' : 'كل رسائل جميع محادثاته';
-        if (!window.confirm(`⭐ تشفير ${scopeText} كنجوم (★)؟\n\nالرسائل ستبقى موجودة لكن محتواها يتحوّل لنجوم. يظهر التأثير فوراً في التطبيق لكل المشاركين.`)) return;
+        if (!window.confirm(`*** تشفير ${scopeText}؟\n\nالرسائل ستبقى موجودة لكن محتواها يتحوّل إلى *** — يظهر التأثير فوراً في التطبيق لكل المشاركين.`)) return;
 
         try {
             setActionLoading(true);
@@ -1204,9 +1204,9 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                         cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
                                         opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
                                     }}
-                                    title="استبدال نص رسائل هذا المستخدم بنجوم ★ (يبقى السجل لكن المحتوى مخفي)"
+                                    title="استبدال نص رسائل هذا المستخدم بـ *** (يبقى السجل لكن المحتوى مخفي)"
                                 >
-                                    ★ تشفير رسائله
+                                    *** تشفير رسائله
                                 </button>
 
                                 {/* تشفير كل الرسائل في كل المحادثات */}
@@ -1226,10 +1226,10 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                     }}
                                     title="تشفير كل رسائل جميع محادثاته (من الطرفين) — يظهر فوراً في التطبيق"
                                 >
-                                    ★★ تشفير كل المحادثات
+                                    ****** تشفير كل المحادثات
                                 </button>
 
-                                {/* حذف كل المحادثات */}
+                                {/* إخفاء المحادثات من التطبيق (hiddenFor — تبقى في DB للمراجعة) */}
                                 <button
                                     onClick={handleDeleteAllConversations}
                                     disabled={actionLoading || !conversations?.length}
@@ -1244,9 +1244,9 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                         cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
                                         opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
                                     }}
-                                    title="حذف جميع محادثات المستخدم ورسائله نهائياً"
+                                    title="إخفاء جميع المحادثات من تطبيق المستخدم (تبقى محفوظة في الأرشيف للمراجعة)"
                                 >
-                                    🗑️ مسح كل المحادثات ({conversations?.length || 0})
+                                    🗑️ إخفاء كل المحادثات ({conversations?.length || 0})
                                 </button>
                             </div>
                         </div>
@@ -1284,7 +1284,7 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                                     {msg.status === 'sent' && '○ مرسلة'}
                                                 </span>
                                                 {msg.isDeleted && <span style={{fontSize:11,color:'#ef4444'}}>❌ محذوفة</span>}
-                                                {msg.isCensored && <span style={{fontSize:11,color:'#d97706',background:'#fef3c7',padding:'2px 6px',borderRadius:6}}>★ مشفّرة</span>}
+                                                {msg.isCensored && <span style={{fontSize:11,color:'#d97706',background:'#fef3c7',padding:'2px 6px',borderRadius:6}}>*** مشفّرة</span>}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDeleteSingleMessage(msg._id); }}
                                                     disabled={msg.isDeleted}

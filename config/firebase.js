@@ -23,9 +23,25 @@ const messaging = admin.messaging();
 const sendToDevice = async (token, notification, data = {}) => {
     try {
         const collapseId = data.conversationId || data.type || 'general';
-        // ⚠️ إزالة content-available:1 من regular notifications
-        // لأنها تحوّلها إلى silent push ولا يظهر banner.
-        // نبقي mutable-content:1 لتفعيل Notification Service Extension.
+        const hasImage = Boolean(data.senderImage && String(data.senderImage).trim());
+
+        // ⚠️ إزالة content-available:1 من regular notifications (تحوّلها silent)
+        // mutable-content:1 يُفعَّل فقط لو فيه صورة (تجنّب timeout في Notification Service Extension)
+        const apsPayload = {
+            alert: { title: notification.title, body: notification.body },
+            badge: data.badge ? parseInt(data.badge) : 1,
+            sound: 'default',
+            'thread-id': collapseId
+        };
+        if (hasImage) {
+            apsPayload['mutable-content'] = 1;
+        }
+
+        const apnsPayload = { aps: apsPayload };
+        if (hasImage) {
+            apnsPayload.senderImage = data.senderImage;
+        }
+
         const message = {
             token,
             notification: { title: notification.title, body: notification.body },
@@ -36,18 +52,8 @@ const sendToDevice = async (token, notification, data = {}) => {
                     'apns-collapse-id': collapseId,
                     'apns-push-type': 'alert'
                 },
-                payload: {
-                    aps: {
-                        alert: { title: notification.title, body: notification.body },
-                        badge: data.badge ? parseInt(data.badge) : 1,
-                        sound: 'default',
-                        'mutable-content': 1,
-                        'thread-id': collapseId
-                    },
-                    // تمرير senderImage مباشرة في APNs payload للـ Notification Service Extension
-                    senderImage: data.senderImage || ''
-                },
-                fcm_options: data.senderImage ? { image: data.senderImage } : undefined
+                payload: apnsPayload,
+                ...(hasImage ? { fcm_options: { image: data.senderImage } } : {})
             },
             android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } }
         };
