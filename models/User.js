@@ -302,6 +302,18 @@ const userSchema = new mongoose.Schema({
         removedAt: { type: Date, default: Date.now }
     }],
 
+    // ✅ صحة الإشعارات (تتبع نجاح/فشل push notifications)
+    pushHealth: {
+        lastSuccessAt: { type: Date, default: null },     // آخر push وصل بنجاح
+        lastFailureAt: { type: Date, default: null },     // آخر فشل
+        lastError: { type: String, default: null },       // سبب آخر فشل
+        consecutiveFailures: { type: Number, default: 0 }, // عداد الفشل المتتالي
+        totalSuccess: { type: Number, default: 0 },       // إجمالي النجاحات
+        totalFailures: { type: Number, default: 0 },      // إجمالي الفشل
+        noTokenSince: { type: Date, default: null },      // متى لاحظنا عدم وجود token
+        notificationsDisabled: { type: Boolean, default: false } // علم إذا الإشعارات معطّلة فعلياً
+    },
+
     // ✅ قيود الأدمن (منع تغيير الصورة/الاسم لفترة)
     restrictions: {
         photoBlocked: { type: Boolean, default: false },

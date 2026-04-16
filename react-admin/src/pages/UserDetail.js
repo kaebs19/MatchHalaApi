@@ -951,6 +951,81 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                         </span>
                                     </div>
                                 </div>
+
+                                {/* 🔔 حالة الإشعارات */}
+                                {(() => {
+                                    const ph = user.pushHealth || {};
+                                    const hasToken = !!(user.deviceToken || user.fcmToken);
+                                    const consec = ph.consecutiveFailures || 0;
+                                    const totalSuccess = ph.totalSuccess || 0;
+                                    const totalFailures = ph.totalFailures || 0;
+                                    const successRate = (totalSuccess + totalFailures) > 0
+                                        ? Math.round((totalSuccess / (totalSuccess + totalFailures)) * 100)
+                                        : null;
+
+                                    let statusColor = '#10b981';  // green
+                                    let statusBg = '#ecfdf5';
+                                    let statusBorder = '#a7f3d0';
+                                    let statusIcon = '✅';
+                                    let statusLabel = 'تعمل بشكل طبيعي';
+                                    let statusDetail = ph.lastSuccessAt ? `آخر نجاح: ${formatDate(ph.lastSuccessAt)}` : '';
+
+                                    if (ph.notificationsDisabled) {
+                                        statusColor = '#dc2626';
+                                        statusBg = '#fef2f2';
+                                        statusBorder = '#fecaca';
+                                        statusIcon = '🔕';
+                                        statusLabel = 'الإشعارات معطّلة فعلياً';
+                                        statusDetail = `${consec} فشل متتالي. آخر سبب: ${ph.lastError || 'غير محدد'}`;
+                                    } else if (!hasToken && ph.noTokenSince) {
+                                        const daysAgo = Math.floor((Date.now() - new Date(ph.noTokenSince).getTime()) / (24 * 60 * 60 * 1000));
+                                        statusColor = '#f59e0b';
+                                        statusBg = '#fef3c7';
+                                        statusBorder = '#fcd34d';
+                                        statusIcon = '⚠️';
+                                        statusLabel = 'بدون FCM token';
+                                        statusDetail = `منذ ${daysAgo} يوم — سيتم طلب tokenة عند فتح التطبيق`;
+                                    } else if (consec >= 3) {
+                                        statusColor = '#f59e0b';
+                                        statusBg = '#fef3c7';
+                                        statusBorder = '#fcd34d';
+                                        statusIcon = '⚠️';
+                                        statusLabel = `فشل متتالي (${consec})`;
+                                        statusDetail = `آخر سبب: ${ph.lastError || 'غير محدد'}`;
+                                    } else if (!ph.lastSuccessAt && !hasToken) {
+                                        statusColor = '#9ca3af';
+                                        statusBg = '#f9fafb';
+                                        statusBorder = '#e5e7eb';
+                                        statusIcon = '⚪';
+                                        statusLabel = 'لم يستقبل أي إشعار بعد';
+                                        statusDetail = 'مستخدم جديد أو لم يفعّل الإشعارات';
+                                    }
+
+                                    return (
+                                        <div style={{marginTop:14, padding:12, background:statusBg, border:`1px solid ${statusBorder}`, borderRadius:10}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                                                <span style={{fontSize:18}}>{statusIcon}</span>
+                                                <strong style={{color:statusColor}}>الإشعارات: {statusLabel}</strong>
+                                            </div>
+                                            {statusDetail && (
+                                                <div style={{fontSize:12, color:'#4b5563', marginRight:26}}>
+                                                    {statusDetail}
+                                                </div>
+                                            )}
+                                            {(totalSuccess > 0 || totalFailures > 0) && (
+                                                <div style={{marginTop:8, display:'flex', gap:12, fontSize:11, color:'#6b7280', marginRight:26}}>
+                                                    <span>✅ نجاح: {totalSuccess}</span>
+                                                    <span>❌ فشل: {totalFailures}</span>
+                                                    {successRate !== null && (
+                                                        <span style={{fontWeight:600, color: successRate >= 80 ? '#059669' : (successRate >= 50 ? '#d97706' : '#dc2626')}}>
+                                                            معدل النجاح: {successRate}%
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         )}
 

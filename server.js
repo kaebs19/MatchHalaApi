@@ -433,6 +433,37 @@ io.on('connection', async (socket) => {
         role: socket.user.role
     });
 
+    // ✅ طلب FCM token من التطبيق إذا كان مفقوداً أو قديماً (>14 يوم) أو فشل سابقاً
+    // الهدف: استرجاع المستخدمين المعطّلين تلقائياً عند فتح التطبيق
+    try {
+        const userTokenInfo = await User.findById(socket.userId)
+            .select('+deviceToken +fcmToken pushHealth')
+            .lean();
+        if (userTokenInfo) {
+            const hasToken = !!(userTokenInfo.deviceToken || userTokenInfo.fcmToken);
+            const lastSuccess = userTokenInfo.pushHealth?.lastSuccessAt;
+            const consecFailures = userTokenInfo.pushHealth?.consecutiveFailures || 0;
+            const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+            const needsRefresh =
+                !hasToken ||                                              // لا token
+                consecFailures >= 3 ||                                    // فشل متتالي
+                !lastSuccess ||                                           // لم ينجح أبداً
+                new Date(lastSuccess) < fourteenDaysAgo;                  // قديم > 14 يوم
+
+            if (needsRefresh) {
+                const reason = !hasToken ? 'missing' : (consecFailures >= 3 ? 'failures' : 'stale');
+                socket.emit('request-fcm-token', {
+                    reason,
+                    consecutiveFailures: consecFailures
+                });
+                console.log(`🔄 Requested FCM token refresh from ${socket.user.name} (reason: ${reason})`);
+            }
+        }
+    } catch (e) {
+        // صامت — لا نعطّل الـ flow
+    }
+
     // عند الانضمام لمحادثة معينة
     socket.on('join-conversation', async (conversationId) => {
         try {

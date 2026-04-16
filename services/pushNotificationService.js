@@ -12,6 +12,22 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 
 /**
+ * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
+ * @param {string} userId
+ * @param {object} update - تعديلات على pushHealth
+ */
+const updatePushHealth = (userId, update) => {
+    const updateOps = {};
+    if (update.set) updateOps.$set = update.set;
+    if (update.inc) updateOps.$inc = update.inc;
+    if (update.unset) updateOps.$unset = update.unset;
+
+    User.findByIdAndUpdate(userId, updateOps).exec().catch(err => {
+        console.error(`⚠️ pushHealth update failed for ${userId}:`, err.message);
+    });
+};
+
+/**
  * إرسال إشعار لمستخدم واحد
  * @param {string} userId - معرف المستخدم
  * @param {object} notification - بيانات الإشعار
@@ -46,6 +62,12 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         const pushToken = user.deviceToken || user.fcmToken;
         if (!pushToken) {
             console.log(`⚠️ Push skipped — no token for ${user.name} (${user._id})`);
+            // تسجيل noTokenSince إذا لم يكن مُسجَّل
+            if (!user.pushHealth?.noTokenSince) {
+                updatePushHealth(userId, {
+                    set: { 'pushHealth.noTokenSince': new Date() }
+                });
+            }
             return { success: true, saved: true, pushed: false, reason: 'no_token' };
         }
 
@@ -57,8 +79,33 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
 
         if (!result.success) {
             console.log(`❌ Push failed for ${user.name} (${user._id}): ${result.error}`);
+            // تتبع الفشل
+            const newConsec = (user.pushHealth?.consecutiveFailures || 0) + 1;
+            const update = {
+                set: {
+                    'pushHealth.lastFailureAt': new Date(),
+                    'pushHealth.lastError': String(result.error || 'unknown').substring(0, 200),
+                    'pushHealth.consecutiveFailures': newConsec
+                },
+                inc: { 'pushHealth.totalFailures': 1 }
+            };
+            // إذا 5 فشل متتالي → تعطيل
+            if (newConsec >= 5) {
+                update.set['pushHealth.notificationsDisabled'] = true;
+            }
+            updatePushHealth(userId, update);
         } else {
             console.log(`✅ Push sent to ${user.name} (type: ${data.type || 'general'})`);
+            // تسجيل النجاح + reset counters
+            updatePushHealth(userId, {
+                set: {
+                    'pushHealth.lastSuccessAt': new Date(),
+                    'pushHealth.consecutiveFailures': 0,
+                    'pushHealth.notificationsDisabled': false,
+                    'pushHealth.noTokenSince': null
+                },
+                inc: { 'pushHealth.totalSuccess': 1 }
+            });
         }
 
         return { success: true, saved: true, pushed: result.success, tokenSource: user.deviceToken ? 'deviceToken' : 'fcmToken' };
