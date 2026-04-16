@@ -63,41 +63,87 @@ function groupNotifications(notifications) {
 }
 
 /**
+ * تحويل تاريخ إلى نص عربي "قبل X دقيقة/ساعة/يوم"
+ * @param {Date|string} date
+ * @returns {string}
+ */
+function formatTimeAgoArabic(date) {
+    if (!date) return '';
+    const then = new Date(date);
+    const diffMs = Date.now() - then.getTime();
+    const seconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (seconds < 60) return 'قبل لحظات';
+    if (minutes === 1) return 'قبل دقيقة';
+    if (minutes === 2) return 'قبل دقيقتين';
+    if (minutes < 11) return `قبل ${minutes} دقائق`;
+    if (minutes < 60) return `قبل ${minutes} دقيقة`;
+    if (hours === 1) return 'قبل ساعة';
+    if (hours === 2) return 'قبل ساعتين';
+    if (hours < 11) return `قبل ${hours} ساعات`;
+    if (hours < 24) return `قبل ${hours} ساعة`;
+    if (days === 1) return 'أمس';
+    if (days === 2) return 'قبل يومين';
+    if (days < 11) return `قبل ${days} أيام`;
+    return `قبل ${days} يوم`;
+}
+
+/**
  * إعادة كتابة عنوان/نص الإشعار المجمّع للعرض
- * مثال: type=new_like, count=5 → "❤️ 5 إعجابات جديدة"
+ * مثال: type=new_like, count=5 → "❤️ 5 إعجابات جديدة" + "آخرها قبل 3 دقائق"
  */
 function formatGroupedNotification(notif) {
     if (!notif.grouped || !notif.groupCount || notif.groupCount <= 1) return notif;
 
     const count = notif.groupCount;
+    // الإشعار المُمرَّر هنا هو الأحدث (أعلى DESC)
+    const lastTimeAr = formatTimeAgoArabic(notif.createdAt);
+
     const formatters = {
         'new_like': () => ({
             title: '❤️ إعجابات جديدة',
-            body: count === 2 ? `أعجب بك شخصان` : `أعجب بك ${count} أشخاص`
+            body: count === 2
+                ? `أعجب بك شخصان • ${lastTimeAr}`
+                : `أعجب بك ${count} أشخاص • ${lastTimeAr}`
         }),
         'like': () => ({
             title: '❤️ إعجابات جديدة',
-            body: count === 2 ? `أعجب بك شخصان` : `أعجب بك ${count} أشخاص`
+            body: count === 2
+                ? `أعجب بك شخصان • ${lastTimeAr}`
+                : `أعجب بك ${count} أشخاص • ${lastTimeAr}`
         }),
         'super_like': () => ({
             title: '⭐ سوبر لايك جديدة',
-            body: count === 2 ? `استلمت سوبر لايك من شخصين` : `استلمت ${count} سوبر لايك`
+            body: count === 2
+                ? `سوبر لايك من شخصين • ${lastTimeAr}`
+                : `${count} سوبر لايك • ${lastTimeAr}`
         }),
         'profile_view': () => ({
             title: '👀 زيارات لبروفايلك',
-            body: count === 2 ? `زار بروفايلك شخصان اليوم` : `زار بروفايلك ${count} أشخاص اليوم`
+            body: count === 2
+                ? `زار بروفايلك شخصان اليوم • ${lastTimeAr}`
+                : `زار بروفايلك ${count} أشخاص اليوم • ${lastTimeAr}`
         }),
         'new_match': () => ({
             title: '💖 مطابقات جديدة',
-            body: count === 2 ? `لديك مطابقتان جديدتان` : `لديك ${count} مطابقات جديدة`
+            body: count === 2
+                ? `لديك مطابقتان جديدتان • ${lastTimeAr}`
+                : `لديك ${count} مطابقات جديدة • ${lastTimeAr}`
         }),
         'match': () => ({
             title: '💖 مطابقات جديدة',
-            body: count === 2 ? `لديك مطابقتان جديدتان` : `لديك ${count} مطابقات جديدة`
+            body: count === 2
+                ? `لديك مطابقتان جديدتان • ${lastTimeAr}`
+                : `لديك ${count} مطابقات جديدة • ${lastTimeAr}`
         }),
         'new_follower': () => ({
             title: '👋 متابعون جدد',
-            body: count === 2 ? `متابعان جديدان` : `${count} متابعين جدد`
+            body: count === 2
+                ? `متابعان جديدان • ${lastTimeAr}`
+                : `${count} متابعين جدد • ${lastTimeAr}`
         })
     };
 

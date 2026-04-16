@@ -21,6 +21,29 @@ try {
 const messaging = admin.messaging();
 
 /**
+ * Mapping من notification type → APNs category identifier
+ * هذه الـ categories معرّفة في PushNotificationManager.swift وتُفعّل
+ * Action Buttons (Rich Notifications) من شاشة القفل
+ *
+ * يجب أن تطابق identifiers في iOS exactly.
+ */
+const APNS_CATEGORY_MAP = {
+    // 💬 رسالة → Quick Reply + Mark as Read
+    'message': 'MESSAGE_CATEGORY',
+    'new_message': 'MESSAGE_CATEGORY',
+
+    // 📩 طلب محادثة → Accept / Reject
+    'conversation_request': 'REQUEST_CATEGORY',
+
+    // 💖 مطابقة جديدة → Say Hi
+    'new_match': 'MATCH_CATEGORY',
+    'match': 'MATCH_CATEGORY',
+
+    // 🛡️ تنبيه رسمي → I Understand (acknowledge من شاشة القفل)
+    'official_warning': 'WARNING_CATEGORY'
+};
+
+/**
  * تنقية بيانات الـ data payload لـ FCM
  * FCM يتطلب أن **كل القيم strings** — Boolean/Number/Array/Object/null/undefined ترفض الرسالة بـ:
  * "data must only contain string values"
@@ -73,6 +96,12 @@ const sendToDevice = async (token, notification, data = {}) => {
             apsPayload['mutable-content'] = 1;
         }
 
+        // ✅ Rich Notifications — تفعيل Action Buttons حسب نوع الإشعار
+        const apnsCategory = APNS_CATEGORY_MAP[data.type];
+        if (apnsCategory) {
+            apsPayload.category = apnsCategory;
+        }
+
         const apnsPayload = { aps: apsPayload };
         if (hasImage) {
             apnsPayload.senderImage = data.senderImage;
@@ -123,6 +152,16 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
             click_action: 'FLUTTER_NOTIFICATION_CLICK'
         });
 
+        // ✅ Rich Notifications — Action Buttons حسب type
+        const apnsCategory = APNS_CATEGORY_MAP[data.type];
+        const apsPayload = {
+            alert: { title: notification.title, body: notification.body },
+            badge: 1,
+            sound: 'default',
+            'thread-id': collapseId
+        };
+        if (apnsCategory) apsPayload.category = apnsCategory;
+
         const message = {
             notification: { title: notification.title, body: notification.body },
             data: sanitizedData,
@@ -132,14 +171,7 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                     'apns-collapse-id': collapseId,
                     'apns-push-type': 'alert'
                 },
-                payload: {
-                    aps: {
-                        alert: { title: notification.title, body: notification.body },
-                        badge: 1,
-                        sound: 'default',
-                        'thread-id': collapseId
-                    }
-                }
+                payload: { aps: apsPayload }
             },
             android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } },
             tokens
