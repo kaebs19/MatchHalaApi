@@ -54,6 +54,18 @@ const io = new Server(server, {
     }
 });
 
+// ✅ Redis Adapter — يدعم PM2 cluster mode (أكثر من process)
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createClient } = require("redis");
+const pubClient = createClient({ url: process.env.REDIS_URL || "redis://127.0.0.1:6379" });
+const subClient = pubClient.duplicate();
+Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("✅ Redis Adapter متصل — جاهز لـ Cluster Mode");
+}).catch(err => {
+    console.error("⚠️ Redis Adapter فشل:", err.message, "— يعمل بدون cluster");
+});
+
 // Socket.IO Authentication Middleware
 io.use(async (socket, next) => {
     try {
@@ -81,7 +93,10 @@ io.use(async (socket, next) => {
         socket.userId = user._id.toString();
         socket.user = user;
 
-        console.log(`✅ مستخدم معتمد: ${user.name} (${user.email})`);
+        // Log only in development
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`✅ مستخدم معتمد: ${user.name}`);
+        }
         next();
     } catch (error) {
         console.error('❌ خطأ في التحقق من Socket.IO:', error.message);
@@ -382,7 +397,7 @@ async function notifyConversationPartners(userId, event, data) {
 
 // Socket.IO Connection Handler
 io.on('connection', async (socket) => {
-    console.log(`👤 متصل: ${socket.user.name} (${socket.id})`);
+    if (process.env.NODE_ENV !== 'production') console.log(`👤 متصل: ${socket.user.name}`);
 
     // إضافة المستخدم إلى قائمة المتصلين
     connectedUsers.set(socket.userId, {
@@ -520,7 +535,7 @@ io.on('connection', async (socket) => {
 
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
-        console.log(`👋 غادر: ${socket.user.name}`);
+        if (process.env.NODE_ENV !== 'production') console.log(`👋 غادر: ${socket.user.name}`);
         connectedUsers.delete(socket.userId);
 
         // تحديث حالة المستخدم: غير متصل

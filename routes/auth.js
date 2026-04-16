@@ -82,7 +82,7 @@ const saveLoginRecord = async (user, req) => {
     // ✅ حفظ بصمة الجهاز (Anti-Abuse)
     const deviceFingerprint = req.body.deviceFingerprint || req.headers['x-device-fingerprint'];
     const deviceToken = req.body.deviceToken || req.headers['x-device-token'];
-    console.log(`📱 FINGERPRINT_DEBUG: user=${user.name}, fingerprint=${deviceFingerprint ? 'YES(' + deviceFingerprint.substring(0,12) + ')' : 'NO'}, token=${deviceToken ? 'YES' : 'NO'}`);
+    // Fingerprint debug removed — production
     if (deviceFingerprint) updateData.deviceFingerprint = deviceFingerprint;
     if (deviceToken) updateData.keychainToken = deviceToken;
     if (appVersion) updateData['deviceInfo.appVersion'] = appVersion;
@@ -393,7 +393,7 @@ router.get('/me', protect, async (req, res) => {
             if (dtFromHeader && !req.user.keychainToken) updateFields.keychainToken = dtFromHeader;
             if (Object.keys(updateFields).length > 0) {
                 await User.findByIdAndUpdate(req.user._id, updateFields);
-                console.log('📱 FINGERPRINT_SAVED_FROM_HEADERS: user=' + req.user.name + ', fp=' + (fpFromHeader ? 'YES' : 'NO'));
+                // Fingerprint saved silently
             }
         }
 

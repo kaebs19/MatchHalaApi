@@ -537,6 +537,7 @@ router.get('/conversations', protect, async (req, res) => {
         const conversations = await Conversation.find(convFilter)
             .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified')
             .populate('lastMessage')
+            .select('+creator')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit)

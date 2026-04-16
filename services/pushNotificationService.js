@@ -44,7 +44,7 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
 
         // إذا لم يكن لدى المستخدم FCM Token، نرجع نجاح (تم الحفظ فقط)
         if (!user.deviceToken) {
-            console.log(`⚠️ المستخدم ${user.name} ليس لديه FCM Token`);
+            // No FCM token — skip push silently
             return { success: true, saved: true, pushed: false };
         }
 
@@ -263,7 +263,7 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             fullSenderImage = `${baseUrl}${fullSenderImage}`;
         }
 
-        console.log('🖼️ [DEBUG] senderImage URL:', fullSenderImage);
+        // Debug removed — was filling logs
 
         const data = {
             type: 'message',

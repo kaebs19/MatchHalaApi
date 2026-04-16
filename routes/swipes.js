@@ -497,8 +497,8 @@ router.get('/cards', protect, async (req, res) => {
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
-        // جلب IDs المستخدمين الذين تم السوايب عليهم
-        const swipedIds = await Swipe.find({ swiper: userId }).distinct('swiped');
+        // ✅ أسرع: distinct مباشر بدون find
+        const swipedIds = await Swipe.distinct('swiped', { swiper: userId });
 
         // جلب IDs المستخدمين المحظورين
         const currentUser = await User.findById(userId);
