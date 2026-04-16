@@ -90,7 +90,7 @@ function UserDetail({ userId, onBack }) {
         if (activeTab === 'mod-tools' && warningsList.length === 0) {
             fetchWarnings();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
     }, [activeTab]);
 
     const fetchUserActivity = async () => {
