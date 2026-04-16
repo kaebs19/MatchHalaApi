@@ -10,6 +10,7 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { isChannelType } = require('../config/notificationCategories');
 
 /**
  * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
@@ -43,19 +44,27 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         }
 
         // حفظ الإشعار في قاعدة البيانات
-        if (saveToDb) {
-            await Notification.create({
-                title: notification.title,
-                body: notification.body,
-                type: data.type || 'general',
-                recipients: 'specific',
-                targetUsers: [userId],
-                sender: data.senderId || data.fromUserId || userId,
-                status: 'sent',
-                sentAt: new Date(),
-                sentCount: 1,
-                data: data
-            });
+        // ✅ تخطي تلقائياً إذا كان channel type (الرسائل) — يكفي tab المحادثات + push
+        const notifType = data.type || 'general';
+        if (saveToDb && !isChannelType(notifType)) {
+            try {
+                await Notification.create({
+                    title: notification.title,
+                    body: notification.body,
+                    type: notifType,
+                    recipients: 'specific',
+                    targetUsers: [userId],
+                    sender: data.senderId || data.fromUserId || userId,
+                    status: 'sent',
+                    sentAt: new Date(),
+                    sentCount: 1,
+                    data: data
+                    // category + adminOnly يُعيَّنان تلقائياً عبر pre-save hook
+                });
+            } catch (saveErr) {
+                // لا نوقف push إذا فشل حفظ DB
+                console.error('⚠️ Notification save failed:', saveErr.message);
+            }
         }
 
         // ✅ استخدام deviceToken أو fcmToken (fallback)

@@ -34,7 +34,11 @@
       "Bash(node -c services/pushNotificationService.js)",
       "Bash(node -c routes/mobile/conversations.js)",
       "Bash(node -c routes/mobile/users.js)",
-      "Bash(node -c models/Conversation.js)"
+      "Bash(node -c models/Conversation.js)",
+      "Bash(node -c config/notificationCategories.js)",
+      "Bash(node -c utils/notificationHelpers.js)",
+      "Bash(node -c scripts/cleanupOldNotifications.js)",
+      "Bash(node -c routes/mobile/notifications.js)"
     ]
   }
 }

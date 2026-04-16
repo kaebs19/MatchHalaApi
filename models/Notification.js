@@ -1,5 +1,6 @@
 // نموذج الإشعارات - Notification Model
 const mongoose = require('mongoose');
+const { getTypeMeta, isChannelType } = require('../config/notificationCategories');
 
 const notificationSchema = new mongoose.Schema({
     // العنوان
@@ -125,6 +126,20 @@ const notificationSchema = new mongoose.Schema({
         default: true
     },
 
+    // ✅ التصنيف الموحّد (يُحسب تلقائياً من type عبر pre-save hook)
+    category: {
+        type: String,
+        enum: ['personal', 'social', 'admin', 'channel'],
+        default: 'personal',
+        index: true
+    },
+    // ✅ flag للإشعارات الإدارية — لا تظهر في تطبيق المستخدم
+    adminOnly: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+
     // تاريخ الإنشاء والتحديث
     createdAt: {
         type: Date,
@@ -144,6 +159,27 @@ notificationSchema.index({ recipients: 1, status: 1 });
 notificationSchema.index({ targetUsers: 1 });
 notificationSchema.index({ type: 1 });
 notificationSchema.index({ targetUsers: 1, status: 1, createdAt: -1 });
+// ✅ index لـ filter السريع (category + adminOnly + targetUsers)
+notificationSchema.index({ targetUsers: 1, adminOnly: 1, category: 1, createdAt: -1 });
+// ✅ index لـ cleanup cron (createdAt + adminOnly)
+notificationSchema.index({ createdAt: 1, adminOnly: 1 });
+
+// ✅ Pre-save hook: تحديد category و adminOnly تلقائياً من type
+notificationSchema.pre('save', function(next) {
+    if (this.isNew || this.isModified('type')) {
+        const meta = getTypeMeta(this.type);
+        this.category = meta.category;
+        this.adminOnly = meta.adminOnly;
+
+        // ✋ منع حفظ channel notifications (الرسائل) — يجب لا تُحفظ في DB
+        if (isChannelType(this.type)) {
+            const err = new Error(`Notifications of type "${this.type}" should not be persisted (channel-only)`);
+            err.code = 'CHANNEL_NOTIFICATION_REJECTED';
+            return next(err);
+        }
+    }
+    next();
+});
 
 // دالة لعد المستخدمين الذين قرأوا الإشعار
 notificationSchema.methods.getReadCount = function() {
