@@ -495,9 +495,19 @@ router.get('/conversations/pending', protect, async (req, res) => {
             return new Date(b.createdAt) - new Date(a.createdAt);
         });
 
+        // ✅ عدد الطلبات الجديدة (لم تتجاوز 24 ساعة) للـ badge
+        const recentCount = enrichedConversations.filter(c => {
+            const ageHours = (Date.now() - new Date(c.createdAt).getTime()) / (1000 * 60 * 60);
+            return ageHours <= 24;
+        }).length;
+
         res.status(200).json({
             success: true,
-            data: { conversations: enrichedConversations }
+            data: {
+                conversations: enrichedConversations,
+                total: enrichedConversations.length,
+                recentCount   // ✅ للـ badge في bottom tab
+            }
         });
 
     } catch (error) {
@@ -507,6 +517,104 @@ router.get('/conversations/pending', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// @route   GET /api/mobile/conversations/pending-count
+// @desc    عدد طلبات المحادثة المعلقة (للـ badge في bottom tab) — خفيف وسريع
+// @access  Private
+router.get('/conversations/pending-count', protect, async (req, res) => {
+    try {
+        const Conversation = require('../../models/Conversation');
+        const userId = req.user._id;
+
+        const total = await Conversation.countDocuments({
+            participants: userId,
+            creator: { $ne: userId },
+            status: 'pending'
+        });
+
+        // العدد الجديد (آخر 24 ساعة)
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recent = await Conversation.countDocuments({
+            participants: userId,
+            creator: { $ne: userId },
+            status: 'pending',
+            createdAt: { $gte: dayAgo }
+        });
+
+        res.json({
+            success: true,
+            data: { total, recent }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   POST /api/mobile/conversations/:id/accept-with-message
+// @desc    قبول طلب محادثة + إرسال رسالة ترحيب فورية في خطوة واحدة
+// @access  Private
+router.post('/conversations/:id/accept-with-message', protect, async (req, res) => {
+    try {
+        const Conversation = require('../../models/Conversation');
+        const Message = require('../../models/Message');
+        const userId = req.user._id;
+        const { greeting } = req.body;
+
+        const conv = await Conversation.findById(req.params.id);
+        if (!conv) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+        if (conv.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'الطلب ليس قيد الانتظار' });
+        }
+        if (!conv.participants.some(p => p.toString() === userId.toString())) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        // 1. قبول
+        conv.status = 'accepted';
+        await conv.save();
+
+        // 2. إرسال رسالة الترحيب (إن وُجدت)
+        let welcomeMessage = null;
+        if (greeting && typeof greeting === 'string' && greeting.trim()) {
+            welcomeMessage = await Message.create({
+                conversation: conv._id,
+                sender: userId,
+                content: greeting.trim(),
+                type: 'text',
+                status: 'sent'
+            });
+            conv.lastMessage = welcomeMessage._id;
+            await conv.save();
+        }
+
+        // 3. Socket.IO — إبلاغ المُرسل بالقبول + الرسالة
+        if (global.io) {
+            const otherParticipant = conv.participants.find(p => p.toString() !== userId.toString());
+            if (otherParticipant) {
+                global.io.to(`user:${otherParticipant}`).emit('conversation-accepted', {
+                    conversationId: String(conv._id)
+                });
+                if (welcomeMessage) {
+                    global.io.to(`user:${otherParticipant}`).emit('new-message', {
+                        message: welcomeMessage
+                    });
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            message: welcomeMessage ? 'تم القبول وإرسال الترحيب' : 'تم القبول',
+            data: {
+                conversationId: conv._id,
+                welcomeMessage
+            }
+        });
+    } catch (error) {
+        console.error('accept-with-message error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

@@ -1,8 +1,9 @@
 /**
  * Cron Job: إدارة المحادثات المعلقة
  * - تذكير بعد 24 ساعة
- * - انتهاء صلاحية بعد 72 ساعة
- * - حذف بعد 7 أيام
+ * - تذكير ثاني بعد 3 أيام
+ * - انتهاء صلاحية بعد 7 أيام
+ * - حذف بعد 14 يوم (للسجل الإداري)
  */
 
 const mongoose = require("mongoose");
@@ -17,15 +18,16 @@ async function managePendingConversations() {
 
     const now = new Date();
     const h24ago = new Date(now - 24 * 60 * 60 * 1000);
-    const h72ago = new Date(now - 72 * 60 * 60 * 1000);
+    const d3ago = new Date(now - 3 * 24 * 60 * 60 * 1000);
     const d7ago = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const d14ago = new Date(now - 14 * 24 * 60 * 60 * 1000);
 
     let reminded = 0, expired = 0, deleted = 0;
 
-    // === 1. تذكير بعد 24 ساعة ===
+    // === 1. تذكير أول بعد 24 ساعة (إذا < 7 أيام) ===
     const needReminder = await Conversation.find({
         status: "pending",
-        createdAt: { $lte: h24ago, $gt: h72ago },
+        createdAt: { $lte: h24ago, $gt: d7ago },
         reminderSent: { $ne: true }
     }).populate("participants", "name deviceToken").populate("creator", "name");
 
@@ -54,10 +56,10 @@ async function managePendingConversations() {
         }
     }
 
-    // === 2. انتهاء صلاحية بعد 72 ساعة ===
+    // === 2. انتهاء صلاحية بعد 7 أيام ===
     const toExpire = await Conversation.find({
         status: "pending",
-        createdAt: { $lte: h72ago, $gt: d7ago }
+        createdAt: { $lte: d7ago, $gt: d14ago }
     }).populate("participants", "name deviceToken").populate("creator", "name");
 
     for (const conv of toExpire) {
@@ -87,10 +89,10 @@ async function managePendingConversations() {
         }
     }
 
-    // === 3. حذف بعد 7 أيام ===
+    // === 3. حذف بعد 14 يوم (للسجل الإداري) ===
     const toDelete = await Conversation.find({
         status: { $in: ["expired", "rejected"] },
-        createdAt: { $lte: d7ago }
+        createdAt: { $lte: d14ago }
     });
 
     if (toDelete.length > 0) {

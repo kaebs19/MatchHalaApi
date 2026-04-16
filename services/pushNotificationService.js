@@ -10,7 +10,7 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { isChannelType } = require('../config/notificationCategories');
+const { isChannelType, isAdminOnlyType } = require('../config/notificationCategories');
 
 /**
  * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
@@ -65,6 +65,12 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                 // لا نوقف push إذا فشل حفظ DB
                 console.error('⚠️ Notification save failed:', saveErr.message);
             }
+        }
+
+        // ✅ admin-only types (flagged_message, report) → لا Push للأدمن في التطبيق
+        // الأدمن يراها فقط في لوحة التحكم — Socket.IO يُبلّغ الـ dashboard
+        if (isAdminOnlyType(notifType)) {
+            return { success: true, saved: true, pushed: false, reason: 'admin_only_no_push' };
         }
 
         // ✅ استخدام deviceToken أو fcmToken (fallback)

@@ -38,7 +38,8 @@
       "Bash(node -c config/notificationCategories.js)",
       "Bash(node -c utils/notificationHelpers.js)",
       "Bash(node -c scripts/cleanupOldNotifications.js)",
-      "Bash(node -c routes/mobile/notifications.js)"
+      "Bash(node -c routes/mobile/notifications.js)",
+      "Bash(node -c scripts/managePendingConversations.js)"
     ]
   }
 }
