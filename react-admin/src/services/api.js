@@ -634,7 +634,7 @@ export const getRelatedAccounts = async (userId) => {
 // ============ Official Warnings APIs ============
 
 export const getWarningTemplates = async () => {
-    const response = await api.get('/users/warning-templates');
+    const response = await api.get('/users/tools/warning-templates');
     return response.data;
 };
 

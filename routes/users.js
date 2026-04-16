@@ -2069,10 +2069,11 @@ const OfficialWarning = require('../models/OfficialWarning');
 const { getAllTemplates, getTemplate } = require('../config/warningTemplates');
 const { recordViolation, sendOfficialWarning } = require('../utils/violationManager');
 
-// @route   GET /api/users/warning-templates
+// @route   GET /api/users/tools/warning-templates
 // @desc    الحصول على قائمة قوالب التنبيهات
 // @access  Private/Admin
-router.get('/warning-templates', protect, adminOnly, async (req, res) => {
+// ملاحظة: المسار مسارين لتجنب التضارب مع /:id (one segment)
+router.get('/tools/warning-templates', protect, adminOnly, async (req, res) => {
     try {
         return res.json({ success: true, data: { templates: getAllTemplates() } });
     } catch (error) {
