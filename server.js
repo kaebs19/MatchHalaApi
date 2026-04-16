@@ -265,6 +265,13 @@ app.use(mongoSanitize());
 app.use(hpp());
 
 // 8. Static Files - تقديم الملفات المرفوعة
+// ⚠️ مجلد violations محمي — الوصول فقط عبر /api/users/:id/violation-evidence/* (admin-only)
+app.use('/uploads/violations', (req, res) => {
+    return res.status(403).json({
+        success: false,
+        message: 'هذا المحتوى محمي — الوصول مسموح للإدارة فقط عبر لوحة التحكم'
+    });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Route تجريبي للتأكد من عمل السيرفر

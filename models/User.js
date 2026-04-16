@@ -131,6 +131,8 @@ const userSchema = new mongoose.Schema({
     deviceFingerprint: { type: String, default: null, select: false },
     keychainToken: { type: String, default: null, select: false },
     deviceDetails: { type: mongoose.Schema.Types.Mixed, default: null, select: false },
+    // ✅ آخر تحديث للبصمة (لمعرفة إذا المستخدم على النسخة المحدّثة)
+    lastFingerprintUpdate: { type: Date, default: null },
 
     // معلومات الشبكة والموقع التفصيلي
     city: { type: String, default: null },

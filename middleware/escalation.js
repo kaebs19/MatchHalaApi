@@ -160,6 +160,31 @@ async function escalateUser(userId, reason = 'مخالفة سياسة الاست
         console.error('Push notification error:', e.message);
     }
 
+    // ── تسجيل Violation (سجل موحّد للأدمن) ──
+    try {
+        const Violation = require('../models/Violation');
+        const actionMap = {
+            warn: 'warning',
+            restrict: 'restricted',
+            suspend: 'suspended',
+            ban: 'banned'
+        };
+        await Violation.create({
+            user: userId,
+            type: 'other',
+            reason,
+            action: actionMap[levelConfig.type] || 'warning',
+            escalationLevel: newLevel,
+            source,
+            evidence: {
+                kind: 'text',
+                text: `${levelConfig.text} — ${reason}`
+            }
+        });
+    } catch (e) {
+        console.error('Violation record (escalation) error:', e.message);
+    }
+
     return {
         success: true,
         newLevel,

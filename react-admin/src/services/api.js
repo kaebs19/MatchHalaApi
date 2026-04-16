@@ -611,3 +611,53 @@ export const unbanDevice = async (userId) => {
     const response = await api.delete('/users/' + userId + '/unban-device');
     return response.data;
 };
+
+// ============ Violations APIs ============
+
+export const getUserViolations = async (userId, params = {}) => {
+    const response = await api.get(`/users/${userId}/violations`, { params });
+    return response.data;
+};
+
+export const getRecentViolations = async (params = {}) => {
+    const response = await api.get('/users/violations/recent', { params });
+    return response.data;
+};
+
+// ============ Related Accounts APIs ============
+
+export const getRelatedAccounts = async (userId) => {
+    const response = await api.get(`/users/${userId}/related-accounts`);
+    return response.data;
+};
+
+// ============ Official Warnings APIs ============
+
+export const getWarningTemplates = async () => {
+    const response = await api.get('/users/warning-templates');
+    return response.data;
+};
+
+export const getUserWarnings = async (userId, params = {}) => {
+    const response = await api.get(`/users/${userId}/warnings`, { params });
+    return response.data;
+};
+
+export const sendOfficialWarning = async (userId, payload) => {
+    const response = await api.post(`/users/${userId}/official-warning`, payload);
+    return response.data;
+};
+
+export const dismissWarning = async (warningId) => {
+    const response = await api.put(`/users/warnings/${warningId}/dismiss`);
+    return response.data;
+};
+
+// Helper: رابط كامل لصورة دليل مخالفة (يحتاج auth — يُستخدم داخل <img src>)
+// ملاحظة: <img> العادي لا يرسل token، لذا نستخدم blob fetch + object URL
+export const fetchViolationEvidenceBlob = async (userId, filename) => {
+    const response = await api.get(`/users/${userId}/violation-evidence/${filename}`, {
+        responseType: 'blob'
+    });
+    return URL.createObjectURL(response.data);
+};

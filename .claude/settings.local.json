@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Volumes/me/DatingHala/**)",
+      "Bash(node -c routes/users.js)",
+      "Bash(node -c routes/mobile/warnings.js)",
+      "Bash(node -c routes/mobile/v1.js)",
+      "Bash(node -c middleware/auth.js)",
+      "Bash(node -c middleware/escalation.js)",
+      "Bash(node -c routes/mobile/messages.js)",
+      "Bash(node -c models/Violation.js)",
+      "Bash(node -c models/OfficialWarning.js)",
+      "Bash(node -c config/warningTemplates.js)",
+      "Bash(node -c models/User.js)",
+      "Bash(node -c middleware/fingerprintUpdater.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -c server.js)"
+    ]
+  }
+}

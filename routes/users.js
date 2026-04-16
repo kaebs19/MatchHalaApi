@@ -516,9 +516,10 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
 
         if (action === 'ban') {
             // Save original bio before banning
+            const originalBio = user.bio || '';
             user.bioStatus = {
                 status: 'banned',
-                originalBio: user.bio || '',
+                originalBio,
                 reason: reason || 'نبذة مخالفة',
                 bannedAt: new Date()
             };
@@ -537,6 +538,23 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
                     body: 'تم حذف النبذة الشخصية لمخالفتها سياسة الاستخدام. مخالفة ' + (currentViolations + 1) + ' — يرجى الالتزام بالشروط.'
                 }, { type: 'warning' });
             } catch(e) { console.error('Push error:', e.message); }
+
+            // ✅ تسجيل Violation مع النبذة الأصلية كـ دليل
+            try {
+                const Violation = require('../models/Violation');
+                await Violation.create({
+                    user: user._id,
+                    type: 'bio',
+                    reason: reason || 'نبذة مخالفة',
+                    action: 'bio_reset',
+                    source: 'admin',
+                    admin: req.user._id,
+                    evidence: {
+                        kind: 'bio',
+                        text: originalBio
+                    }
+                });
+            } catch (e) { console.error('violation (bio) error:', e.message); }
 
         } else if (action === 'restore') {
             // Restore original bio
@@ -1674,6 +1692,25 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
+        // ✅ تسجيل Violation (سجل موحّد) عند تعليق/حظر الاسم
+        if (action === 'suspend' || action === 'ban') {
+            try {
+                const Violation = require('../models/Violation');
+                await Violation.create({
+                    user: user._id,
+                    type: 'name',
+                    reason: reason || (action === 'ban' ? 'اسم مخالف' : 'اسم غير لائق'),
+                    action: 'name_reset',
+                    source: 'admin',
+                    admin: req.user._id,
+                    evidence: {
+                        kind: 'name',
+                        text: originalName // الاسم الأصلي كـ دليل
+                    }
+                });
+            } catch (e) { console.error('violation (name) error:', e.message); }
+        }
+
         // ✅ إشعار المستخدم (push + داخل التطبيق)
         if (notify) {
             const vCount = user.bannedWords?.violations || 0;
@@ -1746,19 +1783,15 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
         }
 
         let removedUrl = '';
-        const fs = require('fs');
-        const path = require('path');
+        // ✅ بدل الحذف النهائي: ننقل لمجلد /uploads/violations/<userId>/ كـ دليل
+        const { movePhotoToViolations } = require('../utils/violationEvidence');
+        let evidenceResult = { moved: false, publicUrl: null, originalPath: null };
 
         if (photoIndex === 'profile' || photoIndex === undefined) {
             // حذف الصورة الرئيسية
             removedUrl = user.profileImage || '';
-
-            // حذف الملف من السيرفر
             if (removedUrl) {
-                const filePath = path.join(__dirname, '..', removedUrl);
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
+                evidenceResult = await movePhotoToViolations(user._id, removedUrl);
             }
 
             user.profileImage = null;
@@ -1773,12 +1806,18 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
             const photo = user.photos[idx];
             removedUrl = photo.original || '';
 
-            // حذف الملفات من السيرفر
-            ['original', 'medium', 'thumbnail'].forEach(size => {
+            // ننقل original كـ دليل + نحذف medium/thumbnail فقط
+            if (photo.original) {
+                evidenceResult = await movePhotoToViolations(user._id, photo.original);
+            }
+            // الأحجام الأصغر (medium/thumbnail) يمكن حذفها لأن original محفوظ كـ دليل
+            const fs = require('fs');
+            const path = require('path');
+            ['medium', 'thumbnail'].forEach(size => {
                 if (photo[size]) {
                     const filePath = path.join(__dirname, '..', photo[size]);
                     if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
+                        try { fs.unlinkSync(filePath); } catch(e) { /* ignore */ }
                     }
                 }
             });
@@ -1786,7 +1825,7 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
             user.photos.splice(idx, 1);
         }
 
-        // تسجيل عملية الحذف
+        // تسجيل عملية الحذف (التوافق مع الـ API القديم)
         if (!user.photoRemovals) user.photoRemovals = [];
         user.photoRemovals.push({
             photoUrl: removedUrl,
@@ -1802,6 +1841,26 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
 
         await user.save();
         invalidateUsers();
+
+        // ✅ تسجيل في Violation (سجل المخالفات الموحّد) مع دليل
+        // الصورة نُقلت أصلاً لمجلد /uploads/violations/ أعلاه، لذا نمرر النتائج مباشرة
+        try {
+            const Violation = require('../models/Violation');
+            await Violation.create({
+                user: user._id,
+                type: 'photo',
+                reason: reason || 'صورة مخالفة',
+                action: 'photo_removed',
+                source: 'admin',
+                admin: req.user._id,
+                evidence: {
+                    kind: 'photo',
+                    photoPath: evidenceResult.publicUrl || null,
+                    originalPhotoPath: evidenceResult.originalPath || removedUrl || null,
+                    metadata: { moved: evidenceResult.moved }
+                }
+            });
+        } catch (e) { console.error('record violation (photo) error:', e.message); }
 
         // ✅ إشعار المستخدم (push + داخل التطبيق)
         if (notify) {
@@ -1997,6 +2056,343 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('Restrict error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ============================================================
+// ============ Violations & Official Warnings ================
+// ============================================================
+
+const Violation = require('../models/Violation');
+const OfficialWarning = require('../models/OfficialWarning');
+const { getAllTemplates, getTemplate } = require('../config/warningTemplates');
+const { recordViolation, sendOfficialWarning } = require('../utils/violationManager');
+
+// @route   GET /api/users/warning-templates
+// @desc    الحصول على قائمة قوالب التنبيهات
+// @access  Private/Admin
+router.get('/warning-templates', protect, adminOnly, async (req, res) => {
+    try {
+        return res.json({ success: true, data: { templates: getAllTemplates() } });
+    } catch (error) {
+        console.error('warning-templates error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/violations
+// @desc    سجل مخالفات المستخدم (مع أدلة)
+// @access  Private/Admin
+router.get('/:id/violations', protect, adminOnly, async (req, res) => {
+    try {
+        const { limit = 50, skip = 0, type } = req.query;
+        const filter = { user: req.params.id };
+        if (type) filter.type = type;
+
+        const [items, total] = await Promise.all([
+            Violation.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(parseInt(skip))
+                .limit(Math.min(parseInt(limit), 200))
+                .populate('admin', 'name email')
+                .populate('officialWarning', 'title body severity status acknowledgedAt')
+                .lean(),
+            Violation.countDocuments(filter)
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                violations: items,
+                total,
+                counts: {
+                    total,
+                    byType: await Violation.aggregate([
+                        { $match: { user: require('mongoose').Types.ObjectId.createFromHexString(req.params.id) } },
+                        { $group: { _id: '$type', count: { $sum: 1 } } }
+                    ])
+                }
+            }
+        });
+    } catch (error) {
+        console.error('get violations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/warnings
+// @desc    سجل التنبيهات الرسمية المُرسلة للمستخدم
+// @access  Private/Admin
+router.get('/:id/warnings', protect, adminOnly, async (req, res) => {
+    try {
+        const { limit = 50, skip = 0 } = req.query;
+        const filter = { user: req.params.id };
+
+        const [items, total] = await Promise.all([
+            OfficialWarning.find(filter)
+                .sort({ sentAt: -1 })
+                .skip(parseInt(skip))
+                .limit(Math.min(parseInt(limit), 200))
+                .populate('sentBy', 'name email')
+                .lean(),
+            OfficialWarning.countDocuments(filter)
+        ]);
+
+        res.json({ success: true, data: { warnings: items, total } });
+    } catch (error) {
+        console.error('get warnings error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   POST /api/users/:id/official-warning
+// @desc    إرسال تنبيه رسمي للمستخدم (قالب أو مخصص)
+// @access  Private/Admin
+// Body: { templateKey, customTitle?, customBody?, isBlocking?, recordViolation? }
+router.post('/:id/official-warning', protect, adminOnly, async (req, res) => {
+    try {
+        const { templateKey, customTitle, customBody, isBlocking, recordViolation: shouldRecordViolation = true } = req.body;
+
+        if (!templateKey) {
+            return res.status(400).json({ success: false, message: 'templateKey مطلوب' });
+        }
+        const template = getTemplate(templateKey);
+        if (!template) {
+            return res.status(400).json({ success: false, message: 'قالب غير موجود' });
+        }
+
+        const user = await User.findById(req.params.id).select('_id name');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // تسجيل مخالفة موازية (اختياري)
+        let violationId = null;
+        if (shouldRecordViolation && templateKey !== 'custom') {
+            const typeMap = {
+                photo_violation: 'photo',
+                name_violation: 'name',
+                bio_violation: 'bio',
+                inappropriate_content: 'inappropriate',
+                disruptive_behavior: 'behavior',
+                final_warning: 'other'
+            };
+            try {
+                const v = await recordViolation({
+                    userId: user._id,
+                    type: typeMap[templateKey] || 'other',
+                    reason: templateKey === 'custom' ? customTitle : template.label,
+                    action: 'warning',
+                    source: 'admin',
+                    adminId: req.user._id,
+                    evidence: { kind: 'text', text: customBody || template.body }
+                });
+                violationId = v._id;
+            } catch (e) {
+                console.error('recordViolation inside official-warning failed:', e.message);
+            }
+        }
+
+        const warning = await sendOfficialWarning({
+            userId: user._id,
+            templateKey,
+            customTitle,
+            customBody,
+            sentBy: req.user._id,
+            isBlocking,
+            violationId
+        });
+
+        res.json({
+            success: true,
+            message: `تم إرسال تنبيه رسمي إلى ${user.name}`,
+            data: { warning }
+        });
+    } catch (error) {
+        console.error('send official-warning error:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/warnings/:warningId/dismiss
+// @desc    الأدمن يُخفي تنبيه (يلغي حالته النشطة)
+// @access  Private/Admin
+router.put('/warnings/:warningId/dismiss', protect, adminOnly, async (req, res) => {
+    try {
+        const w = await OfficialWarning.findByIdAndUpdate(
+            req.params.warningId,
+            { status: 'dismissed', dismissedAt: new Date() },
+            { new: true }
+        );
+        if (!w) return res.status(404).json({ success: false, message: 'تنبيه غير موجود' });
+
+        // Socket.IO — إبلاغ التطبيق بإغلاق الـ modal فوراً
+        try {
+            if (global.io) global.io.to(`user:${w.user}`).emit('official-warning-dismissed', { _id: w._id });
+        } catch (e) { /* ignore */ }
+
+        res.json({ success: true, data: { warning: w } });
+    } catch (error) {
+        console.error('dismiss warning error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/related-accounts
+// @desc    حسابات مرتبطة بالمستخدم (بصمة/keychain/IP/email similar)
+// @access  Private/Admin
+router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
+    try {
+        const mainUser = await User.findById(req.params.id)
+            .select('+deviceFingerprint +keychainToken +lastIP name email halaId')
+            .lean();
+
+        if (!mainUser) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const results = {
+            byDeviceFingerprint: [],
+            byKeychainToken: [],
+            byIP: [],
+            byBannedDevice: []
+        };
+
+        // 1) نفس deviceFingerprint
+        if (mainUser.deviceFingerprint) {
+            results.byDeviceFingerprint = await User.find({
+                _id: { $ne: mainUser._id },
+                deviceFingerprint: mainUser.deviceFingerprint
+            })
+            .select('+deviceFingerprint name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
+            .limit(50)
+            .lean();
+        }
+
+        // 2) نفس keychainToken
+        if (mainUser.keychainToken) {
+            results.byKeychainToken = await User.find({
+                _id: { $ne: mainUser._id },
+                keychainToken: mainUser.keychainToken
+            })
+            .select('+keychainToken name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
+            .limit(50)
+            .lean();
+        }
+
+        // 3) نفس lastIP
+        if (mainUser.lastIP) {
+            results.byIP = await User.find({
+                _id: { $ne: mainUser._id },
+                lastIP: mainUser.lastIP
+            })
+            .select('+lastIP name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
+            .limit(30)
+            .lean();
+        }
+
+        // 4) الأجهزة المحظورة بنفس البصمة
+        const BannedDevice = require('../models/BannedDevice');
+        if (mainUser.deviceFingerprint || mainUser.keychainToken) {
+            const bannedMatch = await BannedDevice.find({
+                isActive: true,
+                $or: [
+                    ...(mainUser.deviceFingerprint ? [{ deviceFingerprint: mainUser.deviceFingerprint }] : []),
+                    ...(mainUser.keychainToken ? [{ keychainToken: mainUser.keychainToken }] : [])
+                ]
+            })
+            .populate('originalUserId', 'name email halaId profileImage')
+            .lean();
+            results.byBannedDevice = bannedMatch;
+        }
+
+        // dedupe: إذا نفس المستخدم ظهر في byDeviceFingerprint و byKeychainToken
+        const seen = new Set();
+        const dedupe = (arr) => arr.filter(u => {
+            const id = String(u._id);
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+
+        const uniqueRelated = dedupe([
+            ...results.byDeviceFingerprint,
+            ...results.byKeychainToken
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                mainUserId: mainUser._id,
+                hasFingerprint: !!mainUser.deviceFingerprint,
+                hasKeychain: !!mainUser.keychainToken,
+                hasIP: !!mainUser.lastIP,
+                counts: {
+                    byFingerprint: results.byDeviceFingerprint.length,
+                    byKeychain: results.byKeychainToken.length,
+                    byIP: results.byIP.length,
+                    byBannedDevice: results.byBannedDevice.length,
+                    uniqueRelated: uniqueRelated.length
+                },
+                uniqueRelated,
+                byDeviceFingerprint: results.byDeviceFingerprint,
+                byKeychainToken: results.byKeychainToken,
+                byIP: results.byIP,
+                byBannedDevice: results.byBannedDevice
+            }
+        });
+    } catch (error) {
+        console.error('related-accounts error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/violations/recent
+// @desc    آخر المخالفات في النظام (مراقبة إدارية)
+// @access  Private/Admin
+router.get('/violations/recent', protect, adminOnly, async (req, res) => {
+    try {
+        const { limit = 50, type } = req.query;
+        const filter = {};
+        if (type) filter.type = type;
+
+        const items = await Violation.find(filter)
+            .sort({ createdAt: -1 })
+            .limit(Math.min(parseInt(limit), 200))
+            .populate('user', 'name email profileImage halaId')
+            .populate('admin', 'name')
+            .lean();
+
+        res.json({ success: true, data: { violations: items } });
+    } catch (error) {
+        console.error('recent violations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/violation-evidence/:filename
+// @desc    تقديم صورة دليل مخالفة (admin فقط)
+// @access  Private/Admin
+router.get('/:id/violation-evidence/:filename', protect, adminOnly, async (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const { id, filename } = req.params;
+
+        // حماية من path traversal
+        if (filename.includes('..') || filename.includes('/')) {
+            return res.status(400).json({ success: false, message: 'اسم ملف غير صالح' });
+        }
+
+        const filePath = path.join(__dirname, '..', 'uploads', 'violations', id, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: 'الدليل غير موجود' });
+        }
+
+        res.sendFile(filePath);
+    } catch (error) {
+        console.error('violation evidence error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

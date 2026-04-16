@@ -11,5 +11,6 @@ router.use('/', require('./messages'));
 router.use('/', require('./notifications'));
 router.use('/', require('./device'));
 router.use('/', require('./reports'));
+router.use('/', require('./warnings'));
 
 module.exports = router;

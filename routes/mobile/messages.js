@@ -149,6 +149,25 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 matchedWords: bannedResult.matchedWords
             });
 
+            // ✅ تسجيل Violation في السجل الموحّد (مع الرسالة الأصلية كـ دليل)
+            try {
+                const Violation = require('../../models/Violation');
+                await Violation.create({
+                    user: req.user._id,
+                    type: 'banned_word',
+                    reason: `كلمات محظورة: ${bannedResult.matchedWords.join(', ')}`,
+                    action: 'warning',
+                    source: 'banned_words_filter',
+                    evidence: {
+                        kind: 'message',
+                        text: content,
+                        messageId: message._id,
+                        conversationId: conversationId,
+                        metadata: { matchedWords: bannedResult.matchedWords }
+                    }
+                });
+            } catch (vErr) { console.error('violation (banned_word) error:', vErr.message); }
+
             // ✅ زيادة عدد المخالفات (حد يومي — يُعاد العدّاد كل يوم جديد)
             const today = new Date();
             today.setHours(0, 0, 0, 0);

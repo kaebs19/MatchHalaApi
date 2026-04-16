@@ -8,7 +8,14 @@ import { userBioAction,
     deleteUserPhoto,
     sendUserNotification,
     restrictUser,
-    getUserReportsCount
+    getUserReportsCount,
+    getUserViolations,
+    getRelatedAccounts,
+    getWarningTemplates,
+    getUserWarnings,
+    sendOfficialWarning,
+    dismissWarning,
+    fetchViolationEvidenceBlob
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -52,10 +59,39 @@ function UserDetail({ userId, onBack }) {
     const [lightboxImage, setLightboxImage] = useState(null);
     const [convFilter, setConvFilter] = useState('all');
 
+    // ========== New State: Violations / Related / Warnings ==========
+    const [violationsList, setViolationsList] = useState([]);
+    const [violationsLoading, setViolationsLoading] = useState(false);
+    const [violationsFilter, setViolationsFilter] = useState('');
+    const [relatedAccounts, setRelatedAccounts] = useState(null);
+    const [relatedLoading, setRelatedLoading] = useState(false);
+    const [warningTemplates, setWarningTemplates] = useState([]);
+    const [warningsList, setWarningsList] = useState([]);
+    const [warningsLoading, setWarningsLoading] = useState(false);
+    const [showWarningModal, setShowWarningModal] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [warningForm, setWarningForm] = useState({ customTitle: '', customBody: '', isBlocking: true, recordViolation: true });
+    const [evidenceBlobs, setEvidenceBlobs] = useState({}); // map: violationId -> blob url
+
     useEffect(() => {
         fetchUserActivity();
         fetchReportsCount();
+        fetchWarningTemplates();
     }, [userId]);
+
+    // lazy-load عند فتح التابات الجديدة
+    useEffect(() => {
+        if (activeTab === 'violations' && violationsList.length === 0) {
+            fetchViolations();
+        }
+        if (activeTab === 'related' && !relatedAccounts) {
+            fetchRelatedAccounts();
+        }
+        if (activeTab === 'mod-tools' && warningsList.length === 0) {
+            fetchWarnings();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
     const fetchUserActivity = async () => {
         try {
@@ -185,6 +221,122 @@ function UserDetail({ userId, onBack }) {
             showToast(error.response?.data?.message || 'فشل في تطبيق القيد', 'error');
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    // ========== Violations / Related / Warnings Handlers ==========
+
+    const fetchViolations = async () => {
+        try {
+            setViolationsLoading(true);
+            const res = await getUserViolations(userId, { limit: 100 });
+            if (res.success) {
+                setViolationsList(res.data.violations || []);
+                // Pre-load evidence blobs للـ photo violations
+                (res.data.violations || []).forEach(v => {
+                    if (v.evidence?.kind === 'photo' && v.evidence?.photoPath) {
+                        const filename = v.evidence.photoPath.split('/').pop();
+                        if (filename && !evidenceBlobs[v._id]) {
+                            fetchViolationEvidenceBlob(userId, filename)
+                                .then(url => setEvidenceBlobs(prev => ({ ...prev, [v._id]: url })))
+                                .catch(() => {});
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            showToast('فشل في تحميل سجل المخالفات', 'error');
+        } finally {
+            setViolationsLoading(false);
+        }
+    };
+
+    const fetchRelatedAccounts = async () => {
+        try {
+            setRelatedLoading(true);
+            const res = await getRelatedAccounts(userId);
+            if (res.success) setRelatedAccounts(res.data);
+        } catch (e) {
+            showToast('فشل في تحميل الحسابات المرتبطة', 'error');
+        } finally {
+            setRelatedLoading(false);
+        }
+    };
+
+    const fetchWarnings = async () => {
+        try {
+            setWarningsLoading(true);
+            const res = await getUserWarnings(userId, { limit: 50 });
+            if (res.success) setWarningsList(res.data.warnings || []);
+        } catch (e) {
+            showToast('فشل في تحميل التنبيهات السابقة', 'error');
+        } finally {
+            setWarningsLoading(false);
+        }
+    };
+
+    const fetchWarningTemplates = async () => {
+        try {
+            const res = await getWarningTemplates();
+            if (res.success) setWarningTemplates(res.data.templates || []);
+        } catch (e) {
+            // silent
+        }
+    };
+
+    const openWarningModal = (template) => {
+        setSelectedTemplate(template);
+        setWarningForm({
+            customTitle: template.key === 'custom' ? '' : template.title,
+            customBody: template.key === 'custom' ? '' : template.body,
+            isBlocking: template.isBlocking,
+            recordViolation: template.key !== 'custom'
+        });
+        setShowWarningModal(true);
+    };
+
+    const handleSendWarning = async () => {
+        if (!selectedTemplate) return;
+        if (selectedTemplate.key === 'custom' && !warningForm.customBody.trim()) {
+            showToast('النص مطلوب للرسالة المخصصة', 'error');
+            return;
+        }
+        try {
+            setActionLoading(true);
+            const payload = {
+                templateKey: selectedTemplate.key,
+                isBlocking: warningForm.isBlocking,
+                recordViolation: warningForm.recordViolation
+            };
+            if (selectedTemplate.key === 'custom') {
+                payload.customTitle = warningForm.customTitle;
+                payload.customBody = warningForm.customBody;
+            }
+            const res = await sendOfficialWarning(userId, payload);
+            if (res.success) {
+                showToast('✅ تم إرسال التنبيه الرسمي', 'success');
+                setShowWarningModal(false);
+                setSelectedTemplate(null);
+                fetchWarnings();
+                fetchViolations();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في إرسال التنبيه', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleDismissWarning = async (warningId) => {
+        if (!window.confirm('هل تريد إخفاء هذا التنبيه (سيُغلق الـ modal عند المستخدم)؟')) return;
+        try {
+            const res = await dismissWarning(warningId);
+            if (res.success) {
+                showToast('تم إخفاء التنبيه', 'success');
+                fetchWarnings();
+            }
+        } catch (e) {
+            showToast('فشل في إخفاء التنبيه', 'error');
         }
     };
 
@@ -538,13 +690,31 @@ function UserDetail({ userId, onBack }) {
                     📜 سجل الأحداث
                 </button>
                 <button
+                    className={`tab-btn ${activeTab === 'violations' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('violations')}
+                >
+                    ⚠️ سجل المخالفات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'related' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('related')}
+                >
+                    👥 حسابات مرتبطة
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'mod-tools' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('mod-tools')}
+                >
+                    🛡️ أدوات الإشراف
+                </button>
+                <button
                     className={`tab-btn ${activeTab === 'admin-actions' ? 'active' : ''}`}
                     onClick={() => {
                         setActiveTab('admin-actions');
                         setViolationsCount(user.bannedWords?.violations || 0);
                     }}
                 >
-                    🛡️ إجراءات الأدمن
+                    ⚙️ إجراءات الأدمن
                 </button>
             </div>
 
@@ -690,6 +860,28 @@ function UserDetail({ userId, onBack }) {
                                             <span className="device-value">{user.deviceInfo.appVersion}</span>
                                         </div>
                                     )}
+                                    <div className="device-item">
+                                        <span className="device-label">آخر تحديث للبصمة:</span>
+                                        <span className="device-value">
+                                            {user.lastFingerprintUpdate
+                                                ? formatDate(user.lastFingerprintUpdate)
+                                                : <span style={{color:'#dc2626'}}>لم يسجّل بصمة بعد</span>}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* تحذير غياب البصمة */}
+                        {!user.lastFingerprintUpdate && (
+                            <div style={{marginTop:16,padding:14,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:12,color:'#78350f',display:'flex',alignItems:'flex-start',gap:10}}>
+                                <span style={{fontSize:22}}>⚠️</span>
+                                <div>
+                                    <div style={{fontWeight:700,marginBottom:4}}>لا توجد بصمة جهاز لهذا المستخدم</div>
+                                    <div style={{fontSize:13,lineHeight:1.6}}>
+                                        المستخدم لم يسجّل دخول من التطبيق المحدّث. لن يعمل حظر الجهاز عليه إلا بعد تحديث التطبيق.
+                                        <br/>سيتم تحديث البصمة تلقائياً عند فتحه للتطبيق المحدّث (أي request من بعد التحديث).
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1004,10 +1196,343 @@ function UserDetail({ userId, onBack }) {
                     </div>
                 )}
 
+                {/* ⚠️ Violations Tab */}
+                {activeTab === 'violations' && (
+                    <div className="violations-section">
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+                            <h3 style={{margin:0}}>⚠️ سجل المخالفات ({violationsList.length})</h3>
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                <select value={violationsFilter} onChange={e=>setViolationsFilter(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                    <option value="">كل الأنواع</option>
+                                    <option value="banned_word">كلمات محظورة</option>
+                                    <option value="photo">صور مخالفة</option>
+                                    <option value="name">اسم مخالف</option>
+                                    <option value="bio">نبذة مخالفة</option>
+                                    <option value="behavior">سلوك مزعج</option>
+                                    <option value="inappropriate">محتوى غير لائق</option>
+                                    <option value="spam">سبام</option>
+                                    <option value="report">بلاغ</option>
+                                    <option value="other">أخرى</option>
+                                </select>
+                                <button className="btn-secondary" onClick={fetchViolations}>🔄 تحديث</button>
+                            </div>
+                        </div>
+
+                        {violationsLoading && <div style={{padding:20,textAlign:'center'}}>جاري التحميل...</div>}
+
+                        {!violationsLoading && violationsList.length === 0 && (
+                            <div style={{padding:40,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12,marginTop:16}}>
+                                ✨ لا توجد مخالفات مسجّلة لهذا المستخدم
+                            </div>
+                        )}
+
+                        {!violationsLoading && violationsList.length > 0 && (
+                            <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:16}}>
+                                {violationsList
+                                    .filter(v => !violationsFilter || v.type === violationsFilter)
+                                    .map(v => {
+                                        const typeLabels = {
+                                            banned_word: { label: 'كلمة محظورة', color: '#ef4444', icon: '🚫' },
+                                            photo: { label: 'صورة مخالفة', color: '#f59e0b', icon: '🖼️' },
+                                            name: { label: 'اسم مخالف', color: '#8b5cf6', icon: '📝' },
+                                            bio: { label: 'نبذة مخالفة', color: '#06b6d4', icon: '📋' },
+                                            behavior: { label: 'سلوك مزعج', color: '#f97316', icon: '⚠️' },
+                                            inappropriate: { label: 'محتوى غير لائق', color: '#dc2626', icon: '🚫' },
+                                            spam: { label: 'سبام', color: '#a855f7', icon: '📢' },
+                                            report: { label: 'بلاغ', color: '#3b82f6', icon: '🚩' },
+                                            other: { label: 'أخرى', color: '#6b7280', icon: '📌' }
+                                        };
+                                        const tl = typeLabels[v.type] || typeLabels.other;
+                                        return (
+                                            <div key={v._id} style={{border:`1px solid ${tl.color}30`,borderRadius:12,padding:14,background:`${tl.color}08`}}>
+                                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:10,flexWrap:'wrap'}}>
+                                                    <div>
+                                                        <span style={{background:tl.color,color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:12,fontWeight:600}}>
+                                                            {tl.icon} {tl.label}
+                                                        </span>
+                                                        {v.action && v.action !== 'none' && (
+                                                            <span style={{marginRight:8,background:'#f3f4f6',padding:'3px 10px',borderRadius:20,fontSize:12,color:'#374151'}}>
+                                                                {v.action === 'warning' && '⚠️ تحذير'}
+                                                                {v.action === 'restricted' && '🔒 تقييد'}
+                                                                {v.action === 'suspended' && '⛔ إيقاف'}
+                                                                {v.action === 'banned' && '🚫 حظر'}
+                                                                {v.action === 'photo_removed' && '🗑️ حذف صورة'}
+                                                                {v.action === 'name_reset' && '🔄 إعادة الاسم'}
+                                                                {v.action === 'bio_reset' && '🔄 إعادة النبذة'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span style={{fontSize:12,color:'#6b7280'}}>{formatDate(v.createdAt)}</span>
+                                                </div>
+
+                                                {v.reason && <div style={{marginTop:10,color:'#374151'}}><strong>السبب:</strong> {v.reason}</div>}
+
+                                                {/* الدليل */}
+                                                {v.evidence?.kind === 'message' && v.evidence.text && (
+                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 الدليل (رسالة):</div>
+                                                        <div style={{color:'#b91c1c',fontWeight:500,direction:'rtl'}}>{v.evidence.text}</div>
+                                                        {v.evidence.metadata?.matchedWords && (
+                                                            <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
+                                                                الكلمات المرصودة: {v.evidence.metadata.matchedWords.join('، ')}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {v.evidence?.kind === 'name' && v.evidence.text && (
+                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 الاسم الأصلي (دليل):</div>
+                                                        <div style={{color:'#7c3aed',fontWeight:600}}>{v.evidence.text}</div>
+                                                    </div>
+                                                )}
+                                                {v.evidence?.kind === 'bio' && v.evidence.text && (
+                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 النبذة الأصلية (دليل):</div>
+                                                        <div style={{color:'#0e7490',direction:'rtl'}}>{v.evidence.text}</div>
+                                                    </div>
+                                                )}
+                                                {v.evidence?.kind === 'photo' && v.evidence.photoPath && (
+                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>📎 الصورة الأصلية (دليل محمي):</div>
+                                                        {evidenceBlobs[v._id] ? (
+                                                            <img
+                                                                src={evidenceBlobs[v._id]}
+                                                                alt="دليل"
+                                                                style={{maxWidth:200,maxHeight:200,borderRadius:8,cursor:'pointer',border:'2px solid #f59e0b'}}
+                                                                onClick={() => setLightboxImage(evidenceBlobs[v._id])}
+                                                            />
+                                                        ) : (
+                                                            <div style={{padding:20,background:'#f9fafb',borderRadius:8,textAlign:'center',color:'#9ca3af',fontSize:12}}>
+                                                                جاري تحميل الصورة...
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {v.evidence?.kind === 'text' && v.evidence.text && v.type === 'other' && (
+                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,color:'#374151'}}>
+                                                        {v.evidence.text}
+                                                    </div>
+                                                )}
+
+                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color:'#6b7280',flexWrap:'wrap'}}>
+                                                    <span>المصدر: {({auto:'تلقائي',admin:'أدمن',user_report:'بلاغ',banned_words_filter:'فلتر كلمات',spam_filter:'فلتر سبام'})[v.source] || v.source}</span>
+                                                    {v.admin?.name && <span>بواسطة: {v.admin.name}</span>}
+                                                    {v.escalationLevel > 0 && <span>المستوى: {v.escalationLevel}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* 👥 Related Accounts Tab */}
+                {activeTab === 'related' && (
+                    <div className="related-section">
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+                            <h3 style={{margin:0}}>👥 الحسابات المرتبطة</h3>
+                            <button className="btn-secondary" onClick={fetchRelatedAccounts}>🔄 تحديث</button>
+                        </div>
+
+                        {relatedLoading && <div style={{padding:20,textAlign:'center'}}>جاري البحث...</div>}
+
+                        {!relatedLoading && relatedAccounts && (
+                            <>
+                                {/* تحذير البصمة */}
+                                {!relatedAccounts.hasFingerprint && !relatedAccounts.hasKeychain && (
+                                    <div style={{marginTop:16,padding:14,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:12,color:'#78350f'}}>
+                                        ⚠️ <strong>لا توجد بصمة جهاز لهذا المستخدم</strong> — لم يسجل دخول من التطبيق المحدّث.
+                                        <div style={{fontSize:12,marginTop:4,color:'#92400e'}}>سيتم تحديث البصمة تلقائياً عند فتح المستخدم للتطبيق المحدّث.</div>
+                                    </div>
+                                )}
+
+                                {/* ملخص */}
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginTop:16}}>
+                                    <div style={{padding:14,background:'#eff6ff',borderRadius:12,border:'1px solid #bfdbfe'}}>
+                                        <div style={{fontSize:12,color:'#1e40af'}}>بصمة الجهاز</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'#1e3a8a'}}>{relatedAccounts.counts.byFingerprint}</div>
+                                    </div>
+                                    <div style={{padding:14,background:'#fdf4ff',borderRadius:12,border:'1px solid #f0abfc'}}>
+                                        <div style={{fontSize:12,color:'#86198f'}}>Keychain Token</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'#701a75'}}>{relatedAccounts.counts.byKeychain}</div>
+                                    </div>
+                                    <div style={{padding:14,background:'#ecfdf5',borderRadius:12,border:'1px solid #a7f3d0'}}>
+                                        <div style={{fontSize:12,color:'#065f46'}}>IP مشترك</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'#064e3b'}}>{relatedAccounts.counts.byIP}</div>
+                                    </div>
+                                    <div style={{padding:14,background:'#fef2f2',borderRadius:12,border:'1px solid #fecaca'}}>
+                                        <div style={{fontSize:12,color:'#991b1b'}}>أجهزة محظورة</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'#7f1d1d'}}>{relatedAccounts.counts.byBannedDevice}</div>
+                                    </div>
+                                </div>
+
+                                {/* حسابات مرتبطة (فريدة - دمج بصمة + keychain) */}
+                                {relatedAccounts.uniqueRelated?.length > 0 && (
+                                    <div style={{marginTop:20}}>
+                                        <h4 style={{marginBottom:12}}>🔗 حسابات مرتبطة بنفس الجهاز ({relatedAccounts.uniqueRelated.length})</h4>
+                                        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                                            {relatedAccounts.uniqueRelated.map(u => (
+                                                <div key={u._id} style={{display:'flex',alignItems:'center',gap:12,padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+                                                    <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt={u.name} style={{width:48,height:48,borderRadius:'50%',objectFit:'cover'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
+                                                    <div style={{flex:1}}>
+                                                        <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                                            {u.name}
+                                                            {u.suspension?.isSuspended && <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11}}>⛔ معلّق</span>}
+                                                            {!u.isActive && <span style={{background:'#f3f4f6',color:'#6b7280',padding:'2px 8px',borderRadius:10,fontSize:11}}>غير مفعّل</span>}
+                                                        </div>
+                                                        <div style={{fontSize:12,color:'#6b7280'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
+                                                        <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
+                                                    </div>
+                                                    <button className="btn-secondary" style={{padding:'6px 12px',fontSize:12}} onClick={() => { onBack && onBack(); setTimeout(() => window.location.hash = `#user/${u._id}`, 100); }}>فتح →</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* حسابات بنفس IP */}
+                                {relatedAccounts.byIP?.length > 0 && (
+                                    <div style={{marginTop:20}}>
+                                        <h4 style={{marginBottom:12}}>🌐 نفس عنوان IP ({relatedAccounts.byIP.length})</h4>
+                                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                                            {relatedAccounts.byIP.slice(0,10).map(u => (
+                                                <div key={u._id} style={{display:'flex',alignItems:'center',gap:10,padding:10,background:'#f9fafb',borderRadius:10,fontSize:13}}>
+                                                    <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt="" style={{width:32,height:32,borderRadius:'50%'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
+                                                    <span style={{flex:1}}>{u.name} • {u.email}</span>
+                                                    <span style={{fontSize:11,color:'#6b7280'}}>{formatDate(u.lastLogin)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* أجهزة محظورة مرتبطة */}
+                                {relatedAccounts.byBannedDevice?.length > 0 && (
+                                    <div style={{marginTop:20,padding:14,background:'#fef2f2',borderRadius:12,border:'1px solid #fecaca'}}>
+                                        <h4 style={{marginTop:0,color:'#991b1b'}}>🚫 هذا الجهاز محظور مسبقاً!</h4>
+                                        {relatedAccounts.byBannedDevice.map(b => (
+                                            <div key={b._id} style={{marginTop:8,fontSize:13,color:'#7f1d1d'}}>
+                                                • المستخدم الأصلي: {b.originalUserId?.name || 'محذوف'} — السبب: {b.reason} — {formatDate(b.createdAt)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {relatedAccounts.uniqueRelated?.length === 0 && relatedAccounts.byIP?.length === 0 && relatedAccounts.byBannedDevice?.length === 0 && (relatedAccounts.hasFingerprint || relatedAccounts.hasKeychain) && (
+                                    <div style={{padding:40,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12,marginTop:16}}>
+                                        ✅ لم يتم العثور على حسابات مرتبطة لهذا المستخدم
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+
+                {/* 🛡️ Moderation Tools Tab */}
+                {activeTab === 'mod-tools' && (
+                    <div className="mod-tools-section">
+                        <h3 style={{marginTop:0}}>🛡️ أدوات الإشراف — إرسال تنبيه رسمي</h3>
+                        <p style={{color:'#6b7280',fontSize:13,marginBottom:20}}>
+                            التنبيه يظهر للمستخدم كـ <strong>Modal إجباري</strong> داخل التطبيق — لا يُغلق إلا بضغطه "فهمت"، وتُحفظ لحظة التأكيد في السجل.
+                        </p>
+
+                        {/* 7 Templates Grid */}
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,marginBottom:24}}>
+                            {warningTemplates.map(t => {
+                                const colors = {
+                                    photo_violation: { bg:'#fef3c7', border:'#f59e0b', text:'#78350f' },
+                                    name_violation: { bg:'#e0e7ff', border:'#6366f1', text:'#312e81' },
+                                    inappropriate_content: { bg:'#fee2e2', border:'#ef4444', text:'#7f1d1d' },
+                                    disruptive_behavior: { bg:'#fff7ed', border:'#f97316', text:'#7c2d12' },
+                                    bio_violation: { bg:'#ecfeff', border:'#06b6d4', text:'#164e63' },
+                                    final_warning: { bg:'#fee2e2', border:'#dc2626', text:'#7f1d1d' },
+                                    custom: { bg:'#f9fafb', border:'#9ca3af', text:'#374151' }
+                                };
+                                const c = colors[t.key] || colors.custom;
+                                return (
+                                    <button
+                                        key={t.key}
+                                        onClick={() => openWarningModal(t)}
+                                        style={{
+                                            padding:16,
+                                            background:c.bg,
+                                            border:`2px ${t.key==='custom'?'dashed':'solid'} ${c.border}`,
+                                            borderRadius:14,
+                                            textAlign:'right',
+                                            cursor:'pointer',
+                                            transition:'all 0.15s',
+                                            color:c.text
+                                        }}
+                                        onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'}
+                                        onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}
+                                    >
+                                        <div style={{fontSize:24,marginBottom:6}}>{t.icon}</div>
+                                        <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{t.label}</div>
+                                        <div style={{fontSize:12,opacity:0.8,lineHeight:1.4}}>
+                                            {t.key === 'custom' ? 'اكتب عنوان ومحتوى' : (t.body.length > 70 ? t.body.substring(0,70)+'...' : t.body)}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* سجل التنبيهات السابقة */}
+                        <div style={{marginTop:30}}>
+                            <h4>📋 التنبيهات السابقة ({warningsList.length})</h4>
+                            {warningsLoading && <div>جاري التحميل...</div>}
+                            {!warningsLoading && warningsList.length === 0 && (
+                                <div style={{padding:24,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12}}>
+                                    لم يتم إرسال أي تنبيه رسمي لهذا المستخدم
+                                </div>
+                            )}
+                            {!warningsLoading && warningsList.length > 0 && (
+                                <div style={{display:'flex',flexDirection:'column',gap:10,marginTop:12}}>
+                                    {warningsList.map(w => {
+                                        const statusColors = {
+                                            active: { bg:'#fef3c7', text:'#92400e', label:'نشط — لم يُقرأ' },
+                                            acknowledged: { bg:'#dcfce7', text:'#166534', label:'تم التأكيد ✅' },
+                                            dismissed: { bg:'#f3f4f6', text:'#6b7280', label:'مُخفى' },
+                                            expired: { bg:'#f3f4f6', text:'#6b7280', label:'منتهي' }
+                                        };
+                                        const s = statusColors[w.status] || statusColors.active;
+                                        return (
+                                            <div key={w._id} style={{padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+                                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:10,flexWrap:'wrap'}}>
+                                                    <div style={{flex:1}}>
+                                                        <div style={{fontWeight:700,fontSize:14}}>{w.icon} {w.title}</div>
+                                                        <div style={{fontSize:13,color:'#4b5563',marginTop:4,lineHeight:1.5}}>{w.body}</div>
+                                                    </div>
+                                                    <span style={{background:s.bg,color:s.text,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
+                                                        {s.label}
+                                                    </span>
+                                                </div>
+                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color:'#6b7280',flexWrap:'wrap',justifyContent:'space-between'}}>
+                                                    <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                                                        <span>📤 {formatDate(w.sentAt)}</span>
+                                                        {w.readAt && <span>👁️ قُرِئ: {formatDate(w.readAt)}</span>}
+                                                        {w.acknowledgedAt && <span>✅ أُكِّد: {formatDate(w.acknowledgedAt)}</span>}
+                                                    </div>
+                                                    {w.status === 'active' && (
+                                                        <button
+                                                            onClick={() => handleDismissWarning(w._id)}
+                                                            style={{background:'transparent',border:'1px solid #ef4444',color:'#ef4444',padding:'3px 10px',borderRadius:8,fontSize:11,cursor:'pointer'}}
+                                                        >إخفاء التنبيه</button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Admin Actions Tab */}
                 {activeTab === 'admin-actions' && (
                     <div className="admin-actions-section">
-                        <h3>🛡️ إجراءات الأدمن</h3>
+                        <h3>⚙️ إجراءات الأدمن</h3>
 
                         {/* Current Status Overview */}
                         <div className="admin-status-overview">
@@ -1645,6 +2170,76 @@ function UserDetail({ userId, onBack }) {
                     <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
                         <button className="lightbox-close" onClick={() => setLightboxImage(null)}>✕</button>
                         <img src={lightboxImage} alt="صورة كاملة" className="lightbox-image" />
+                    </div>
+                </div>
+            )}
+
+            {/* 🛡️ Official Warning Modal */}
+            {showWarningModal && selectedTemplate && (
+                <div className="modal-overlay" onClick={() => !actionLoading && setShowWarningModal(false)}>
+                    <div className="modal-content" style={{maxWidth:540}} onClick={(e)=>e.stopPropagation()}>
+                        <div className="modal-header" style={{borderBottom:'1px solid #e5e7eb',paddingBottom:12}}>
+                            <h3 style={{margin:0}}>{selectedTemplate.icon} {selectedTemplate.label}</h3>
+                            <button className="close-btn" onClick={() => !actionLoading && setShowWarningModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body" style={{padding:'16px 0'}}>
+                            <div style={{padding:12,background:'#eff6ff',borderRadius:10,marginBottom:16,fontSize:13,color:'#1e40af'}}>
+                                💡 سيظهر التنبيه للمستخدم كـ <strong>Modal إجباري</strong> داخل التطبيق + Push notification + إشعار داخلي
+                            </div>
+
+                            <div className="form-group">
+                                <label>العنوان</label>
+                                <input
+                                    type="text"
+                                    value={warningForm.customTitle}
+                                    onChange={(e) => setWarningForm({...warningForm, customTitle: e.target.value})}
+                                    disabled={selectedTemplate.key !== 'custom'}
+                                    placeholder={selectedTemplate.key === 'custom' ? 'عنوان التنبيه' : ''}
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>نص الرسالة</label>
+                                <textarea
+                                    value={warningForm.customBody}
+                                    onChange={(e) => setWarningForm({...warningForm, customBody: e.target.value})}
+                                    rows={5}
+                                    placeholder={selectedTemplate.key === 'custom' ? 'اكتب نص التنبيه...' : ''}
+                                    style={{width:'100%',direction:'rtl'}}
+                                />
+                                <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>
+                                    {selectedTemplate.key !== 'custom' ? 'يمكنك تعديل النص أو تركه كما هو' : 'مطلوب'}
+                                </div>
+                            </div>
+
+                            <div style={{display:'flex',gap:12,marginTop:12,flexWrap:'wrap'}}>
+                                <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13}}>
+                                    <input
+                                        type="checkbox"
+                                        checked={warningForm.isBlocking}
+                                        onChange={(e) => setWarningForm({...warningForm, isBlocking: e.target.checked})}
+                                    />
+                                    <span>🔒 إجباري (Modal لا يُغلق حتى الضغط على "فهمت")</span>
+                                </label>
+                            </div>
+                            <div style={{display:'flex',gap:12,marginTop:6,flexWrap:'wrap'}}>
+                                <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:13}}>
+                                    <input
+                                        type="checkbox"
+                                        checked={warningForm.recordViolation}
+                                        onChange={(e) => setWarningForm({...warningForm, recordViolation: e.target.checked})}
+                                        disabled={selectedTemplate.key === 'custom'}
+                                    />
+                                    <span>📋 تسجيل في سجل المخالفات</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowWarningModal(false)} disabled={actionLoading}>إلغاء</button>
+                            <button className="submit-btn" onClick={handleSendWarning} disabled={actionLoading} style={{background:'#dc2626'}}>
+                                {actionLoading ? 'جاري الإرسال...' : `📤 إرسال التنبيه`}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

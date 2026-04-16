@@ -182,6 +182,28 @@ const protect = async (req, res, next) => {
                 });
             }
 
+            // ✅ تحديث بصمة الجهاز تلقائياً عند وصولها من التطبيق المحدّث
+            // (نقرأ من headers أولاً، ثم body — بدون تعطيل الـ request)
+            const incomingFp = (req.headers['x-device-fingerprint'] || (req.body && req.body.deviceFingerprint) || '').toString().trim();
+            const incomingKt = (req.headers['x-keychain-token'] || (req.body && req.body.keychainToken) || '').toString().trim();
+            if (incomingFp || incomingKt) {
+                // نقرأ القيم الحالية من DB (select: false تمنع الوصول عبر req.user)
+                User.findById(req.user._id).select('+deviceFingerprint +keychainToken lastFingerprintUpdate')
+                    .then(full => {
+                        if (!full) return;
+                        const updates = {};
+                        if (incomingFp && full.deviceFingerprint !== incomingFp) updates.deviceFingerprint = incomingFp;
+                        if (incomingKt && full.keychainToken !== incomingKt) updates.keychainToken = incomingKt;
+                        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                        const needsTimestamp = !full.lastFingerprintUpdate || full.lastFingerprintUpdate < dayAgo;
+                        if (Object.keys(updates).length > 0 || needsTimestamp) {
+                            updates.lastFingerprintUpdate = new Date();
+                            User.findByIdAndUpdate(req.user._id, updates).exec().catch(() => {});
+                        }
+                    })
+                    .catch(() => {});
+            }
+
             next();
         } catch (error) {
             console.error('خطأ في التحقق من Token:', error.message);
