@@ -205,7 +205,7 @@ const userLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    validate: { ipAddress: false },
+    validate: false,
 });
 app.use('/api/mobile', userLimiter);
 
@@ -226,7 +226,7 @@ const messageLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    validate: { ipAddress: false },
+    validate: false,
 });
 app.use('/api/mobile/messages/send', messageLimiter);
 app.use('/api/v1/mobile/messages/send', messageLimiter);
@@ -250,7 +250,7 @@ const swipeLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    validate: { ipAddress: false },
+    validate: false,
 });
 app.use('/api/swipes', swipeLimiter);
 
