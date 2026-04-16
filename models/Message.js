@@ -60,6 +60,25 @@ const messageSchema = new mongoose.Schema({
     deletedAt: {
         type: Date
     },
+    deletedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    // ✅ تشفير الرسالة كنجوم (من الأدمن) — النص يتحول لـ ★★★★
+    isCensored: {
+        type: Boolean,
+        default: false
+    },
+    censoredAt: {
+        type: Date,
+        default: null
+    },
+    censoredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
     // ✅ مصدر الصورة (كاميرا أو معرض)
     imageSource: {
         type: String,

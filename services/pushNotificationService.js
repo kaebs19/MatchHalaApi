@@ -42,14 +42,15 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
             });
         }
 
-        // إذا لم يكن لدى المستخدم FCM Token، نرجع نجاح (تم الحفظ فقط)
-        if (!user.deviceToken) {
+        // ✅ استخدام deviceToken أو fcmToken (fallback)
+        const pushToken = user.deviceToken || user.fcmToken;
+        if (!pushToken) {
             // No FCM token — skip push silently
-            return { success: true, saved: true, pushed: false };
+            return { success: true, saved: true, pushed: false, reason: 'no_token' };
         }
 
         // إرسال Push Notification
-        const result = await sendToDevice(user.deviceToken, notification, {
+        const result = await sendToDevice(pushToken, notification, {
             ...data,
             userId: userId.toString()
         });

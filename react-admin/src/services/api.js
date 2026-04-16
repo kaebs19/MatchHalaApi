@@ -675,3 +675,10 @@ export const deleteUserMessage = async (userId, messageId) => {
     const response = await api.delete(`/users/${userId}/messages/${messageId}`);
     return response.data;
 };
+
+/// تشفير رسائل المستخدم كنجوم (admin)
+/// scope: 'all' = كل المحادثات، 'sent' = فقط الرسائل التي أرسلها هذا المستخدم
+export const censorUserMessages = async (userId, scope = 'all') => {
+    const response = await api.put(`/users/${userId}/conversations/censor`, { scope });
+    return response.data;
+};

@@ -646,8 +646,13 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
 
         // إحصائيات المحادثات والرسائل
         const [userConversations, userMessages] = await Promise.all([
-            Conversation.find({ participants: userId }).populate('lastMessage').populate('participants', 'name email profileImage halaId isOnline lastLogin'),
+            Conversation.find({ participants: userId })
+                .populate('lastMessage')
+                .populate('participants', 'name email profileImage halaId isOnline lastLogin')
+                .sort({ updatedAt: -1 }),  // ✅ الأحدث أولاً
             Message.find({ sender: userId, isDeleted: false })
+                .sort({ createdAt: -1 })   // ✅ الأحدث أولاً (بدل insertion order)
+                .limit(50)                 // قيد سريع للأداء
         ]);
 
         // إحصائيات السوايب
@@ -2389,7 +2394,7 @@ router.get('/violations/recent', protect, adminOnly, async (req, res) => {
 });
 
 // @route   DELETE /api/users/:id/conversations/bulk
-// @desc    حذف جميع محادثات المستخدم + رسائلها (soft delete للمحادثات + hard delete للرسائل)
+// @desc    حذف جميع محادثات المستخدم + رسائلها (hard delete — يظهر التأثير فوراً في التطبيق)
 // @access  Private/Admin
 router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) => {
     try {
@@ -2397,8 +2402,8 @@ router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) =>
         const Message = require('../models/Message');
         const userId = req.params.id;
 
-        // جلب كل المحادثات التي يشارك فيها
-        const conversations = await Conversation.find({ participants: userId }).select('_id');
+        // جلب كل المحادثات + المشاركين (للـ socket)
+        const conversations = await Conversation.find({ participants: userId }).select('_id participants');
         const convIds = conversations.map(c => c._id);
 
         if (convIds.length === 0) {
@@ -2411,12 +2416,31 @@ router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) =>
         // حذف المحادثات
         const convResult = await Conversation.deleteMany({ _id: { $in: convIds } });
 
-        // Socket.IO — إبلاغ كل المشاركين
+        // Socket.IO — إبلاغ كل المشاركين بإزالة المحادثات من التطبيق فوراً
         if (global.io) {
-            convIds.forEach(cId => {
-                global.io.to(`conv:${cId}`).emit('conversation-deleted', { conversationId: String(cId), by: 'admin' });
+            conversations.forEach(conv => {
+                const cId = String(conv._id);
+                // إلى غرفة المحادثة
+                global.io.to(`conversation-${cId}`).emit('conversation-deleted', {
+                    conversationId: cId, by: 'admin'
+                });
+                // إلى كل مشارك (user room) — حتى اللي مو في غرفة المحادثة
+                (conv.participants || []).forEach(pid => {
+                    global.io.to(`user:${pid}`).emit('conversation-deleted', {
+                        conversationId: cId, by: 'admin'
+                    });
+                });
             });
         }
+
+        // إشعار للمستخدم الذي تم حذف محادثاته
+        try {
+            const pushService = require('../services/pushNotificationService');
+            await pushService.sendNotificationToUser(userId, {
+                title: 'تم مسح محادثاتك',
+                body: `قامت الإدارة بحذف جميع محادثاتك (${convResult.deletedCount} محادثة) بسبب مخالفة سياسة الاستخدام.`
+            }, { type: 'conversations_wiped', adminAction: 'bulk_delete', deletedCount: convResult.deletedCount });
+        } catch (e) { console.error('notify user wipe error:', e.message); }
 
         res.json({
             success: true,
@@ -2428,6 +2452,90 @@ router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) =>
         });
     } catch (error) {
         console.error('bulk delete conversations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/conversations/censor
+// @desc    تشفير جميع رسائل المستخدم (استبدال النص بـ نجوم *)
+//          الرسائل تبقى موجودة لكن المحتوى مخفي — يظهر التأثير فوراً في التطبيق
+// @access  Private/Admin
+router.put('/:id/conversations/censor', protect, adminOnly, async (req, res) => {
+    try {
+        const Conversation = require('../models/Conversation');
+        const Message = require('../models/Message');
+        const userId = req.params.id;
+
+        const { scope = 'all' } = req.body; // 'all' = كل محادثاته، 'sent' = رسائله فقط
+        const CENSOR_TEXT = '★★★★★★';
+
+        // جلب كل المحادثات
+        const conversations = await Conversation.find({ participants: userId }).select('_id participants');
+        const convIds = conversations.map(c => c._id);
+
+        if (convIds.length === 0) {
+            return res.json({ success: true, message: 'لا توجد محادثات', data: { censoredMessages: 0 } });
+        }
+
+        // بناء الـ filter حسب scope
+        const messageFilter = { conversation: { $in: convIds }, type: 'text' };
+        if (scope === 'sent') {
+            messageFilter.sender = userId;  // فقط الرسائل التي أرسلها هذا المستخدم
+        }
+
+        // تشفير الرسائل (نُحتفظ بـ content الأصلي في metadata للمرجع الإداري)
+        const result = await Message.updateMany(
+            messageFilter,
+            {
+                $set: {
+                    content: CENSOR_TEXT,
+                    isCensored: true,
+                    censoredAt: new Date(),
+                    censoredBy: req.user._id
+                }
+            }
+        );
+
+        // Socket.IO — إبلاغ المشاركين فوراً
+        if (global.io) {
+            conversations.forEach(conv => {
+                const cId = String(conv._id);
+                (conv.participants || []).forEach(pid => {
+                    global.io.to(`user:${pid}`).emit('messages-censored', {
+                        conversationId: cId,
+                        scope,
+                        targetUserId: String(userId)
+                    });
+                });
+                global.io.to(`conversation-${cId}`).emit('messages-censored', {
+                    conversationId: cId,
+                    scope,
+                    targetUserId: String(userId)
+                });
+            });
+        }
+
+        // إشعار للمستخدم نفسه
+        try {
+            const pushService = require('../services/pushNotificationService');
+            await pushService.sendNotificationToUser(userId, {
+                title: 'تم إخفاء محتوى رسائلك',
+                body: scope === 'sent'
+                    ? `قامت الإدارة بإخفاء محتوى رسائلك (${result.modifiedCount} رسالة) بسبب مخالفة سياسة الاستخدام.`
+                    : `قامت الإدارة بإخفاء محتوى محادثاتك (${result.modifiedCount} رسالة) بسبب مخالفة سياسة الاستخدام.`
+            }, { type: 'conversations_censored', scope, censoredCount: result.modifiedCount });
+        } catch (e) { /* ignore */ }
+
+        res.json({
+            success: true,
+            message: `تم تشفير ${result.modifiedCount} رسالة (${scope === 'sent' ? 'المرسلة فقط' : 'كل المحادثات'})`,
+            data: {
+                censoredMessages: result.modifiedCount,
+                scope
+            }
+        });
+    } catch (error) {
+        console.error('censor messages error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
@@ -2447,7 +2555,7 @@ router.delete('/:id/messages/:messageId', protect, adminOnly, async (req, res) =
 
         // Socket.IO
         if (global.io && msg.conversation) {
-            global.io.to(`conv:${msg.conversation}`).emit('message-deleted', {
+            global.io.to(`conversation-${msg.conversation}`).emit('message-deleted', {
                 messageId: String(msg._id),
                 conversationId: String(msg.conversation),
                 by: 'admin'

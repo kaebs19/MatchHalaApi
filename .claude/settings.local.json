@@ -28,7 +28,10 @@
       "Bash(xcodebuild -project DatingHala.xcodeproj -scheme DatingHala -destination 'generic/platform=iOS Simulator' -configuration Debug build)",
       "Bash(find /Volumes/me/MatchHalaApi/routes -name \"*.js\" -exec grep -l \"photo\\\\|image\\\\|profile\" {} \\\\;)",
       "Bash(node -c routes/auth.js)",
-      "Bash(node -c config/firebase.js)"
+      "Bash(node -c config/firebase.js)",
+      "Bash(node -c models/Message.js)",
+      "Bash(node -c models/Notification.js)",
+      "Bash(node -c services/pushNotificationService.js)"
     ]
   }
 }

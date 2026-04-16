@@ -17,7 +17,8 @@ import { userBioAction,
     dismissWarning,
     fetchViolationEvidenceBlob,
     deleteAllUserConversations,
-    deleteUserMessage
+    deleteUserMessage,
+    censorUserMessages
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -399,6 +400,25 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
             }
         } catch (e) {
             showToast(e.response?.data?.message || 'فشل في الحذف', 'error');
+        }
+    };
+
+    // ========== تشفير الرسائل كنجوم ==========
+    const handleCensorMessages = async (scope) => {
+        const scopeText = scope === 'sent' ? 'رسائل هذا المستخدم فقط' : 'كل رسائل جميع محادثاته';
+        if (!window.confirm(`⭐ تشفير ${scopeText} كنجوم (★)؟\n\nالرسائل ستبقى موجودة لكن محتواها يتحوّل لنجوم. يظهر التأثير فوراً في التطبيق لكل المشاركين.`)) return;
+
+        try {
+            setActionLoading(true);
+            const res = await censorUserMessages(userId, scope);
+            if (res.success) {
+                showToast(`✅ ${res.message}`, 'success');
+                fetchUserActivity();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في التشفير', 'error');
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -1169,6 +1189,47 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:16}}>
                             <h3 style={{margin:0}}>📨 آخر الرسائل ({recentMessages.length})</h3>
                             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                {/* تشفير رسائل هذا المستخدم فقط */}
+                                <button
+                                    onClick={() => handleCensorMessages('sent')}
+                                    disabled={actionLoading || !conversations?.length}
+                                    style={{
+                                        padding:'8px 14px',
+                                        background:'#fef3c7',
+                                        border:'1px solid #f59e0b',
+                                        color:'#78350f',
+                                        borderRadius:10,
+                                        fontSize:13,
+                                        fontWeight:600,
+                                        cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
+                                        opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
+                                    }}
+                                    title="استبدال نص رسائل هذا المستخدم بنجوم ★ (يبقى السجل لكن المحتوى مخفي)"
+                                >
+                                    ★ تشفير رسائله
+                                </button>
+
+                                {/* تشفير كل الرسائل في كل المحادثات */}
+                                <button
+                                    onClick={() => handleCensorMessages('all')}
+                                    disabled={actionLoading || !conversations?.length}
+                                    style={{
+                                        padding:'8px 14px',
+                                        background:'#fde68a',
+                                        border:'1px solid #d97706',
+                                        color:'#78350f',
+                                        borderRadius:10,
+                                        fontSize:13,
+                                        fontWeight:600,
+                                        cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
+                                        opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
+                                    }}
+                                    title="تشفير كل رسائل جميع محادثاته (من الطرفين) — يظهر فوراً في التطبيق"
+                                >
+                                    ★★ تشفير كل المحادثات
+                                </button>
+
+                                {/* حذف كل المحادثات */}
                                 <button
                                     onClick={handleDeleteAllConversations}
                                     disabled={actionLoading || !conversations?.length}
@@ -1183,7 +1244,7 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                         cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
                                         opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
                                     }}
-                                    title="حذف جميع محادثات المستخدم ورسائله"
+                                    title="حذف جميع محادثات المستخدم ورسائله نهائياً"
                                 >
                                     🗑️ مسح كل المحادثات ({conversations?.length || 0})
                                 </button>
@@ -1223,6 +1284,7 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                                     {msg.status === 'sent' && '○ مرسلة'}
                                                 </span>
                                                 {msg.isDeleted && <span style={{fontSize:11,color:'#ef4444'}}>❌ محذوفة</span>}
+                                                {msg.isCensored && <span style={{fontSize:11,color:'#d97706',background:'#fef3c7',padding:'2px 6px',borderRadius:6}}>★ مشفّرة</span>}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDeleteSingleMessage(msg._id); }}
                                                     disabled={msg.isDeleted}
