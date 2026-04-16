@@ -14,7 +14,21 @@
       "Bash(node -c models/User.js)",
       "Bash(node -c middleware/fingerprintUpdater.js)",
       "Bash(node -e ' *)",
-      "Bash(node -c server.js)"
+      "Bash(node -c server.js)",
+      "Bash(ssh contabo *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gem list *)",
+      "Bash(ruby --version)",
+      "Bash(sudo gem *)",
+      "Bash(gem install *)",
+      "Bash(xcodebuild -project DatingHala.xcodeproj -scheme DatingHala -destination 'generic/platform=iOS Simulator' -configuration Debug build-for-testing)",
+      "Bash(xcodebuild -project DatingHala.xcodeproj -scheme DatingHala -destination 'generic/platform=iOS Simulator' -configuration Debug build)",
+      "Bash(find /Volumes/me/MatchHalaApi/routes -name \"*.js\" -exec grep -l \"photo\\\\|image\\\\|profile\" {} \\\\;)",
+      "Bash(node -c routes/auth.js)",
+      "Bash(node -c config/firebase.js)"
     ]
   }
 }

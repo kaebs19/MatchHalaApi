@@ -661,3 +661,17 @@ export const fetchViolationEvidenceBlob = async (userId, filename) => {
     });
     return URL.createObjectURL(response.data);
 };
+
+// ============ Conversations/Messages Management ============
+
+/// حذف جميع محادثات المستخدم + رسائلها (admin)
+export const deleteAllUserConversations = async (userId) => {
+    const response = await api.delete(`/users/${userId}/conversations/bulk`);
+    return response.data;
+};
+
+/// حذف رسالة فردية (admin)
+export const deleteUserMessage = async (userId, messageId) => {
+    const response = await api.delete(`/users/${userId}/messages/${messageId}`);
+    return response.data;
+};

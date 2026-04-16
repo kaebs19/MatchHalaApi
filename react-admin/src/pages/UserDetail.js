@@ -15,7 +15,9 @@ import { userBioAction,
     getUserWarnings,
     sendOfficialWarning,
     dismissWarning,
-    fetchViolationEvidenceBlob
+    fetchViolationEvidenceBlob,
+    deleteAllUserConversations,
+    deleteUserMessage
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -24,7 +26,7 @@ import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
 
-function UserDetail({ userId, onBack }) {
+function UserDetail({ userId, onBack, onNavigateToUser }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('info');
@@ -337,6 +339,66 @@ function UserDetail({ userId, onBack }) {
             }
         } catch (e) {
             showToast('فشل في إخفاء التنبيه', 'error');
+        }
+    };
+
+    // ========== Quick actions on related accounts ==========
+    const handleQuickSuspendRelated = async (uid, uname) => {
+        if (!window.confirm(`تعليق ${uname} لمدة 3 أيام؟`)) return;
+        try {
+            const res = await suspendUser(uid, '3d', 'حساب مرتبط بمستخدم مخالف');
+            if (res.success) {
+                showToast(`✅ تم تعليق ${uname} 3 أيام`, 'success');
+                fetchRelatedAccounts();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في التعليق', 'error');
+        }
+    };
+
+    const handleQuickBanRelated = async (uid, uname) => {
+        if (!window.confirm(`🚫 حظر نهائي لـ ${uname} + حظر الجهاز؟\n\nلا يمكن التراجع.`)) return;
+        try {
+            const res = await suspendUser(uid, 'permanent', 'حساب مرتبط بمستخدم مخالف — حظر شبكة');
+            if (res.success) {
+                showToast(`✅ تم حظر ${uname} نهائياً`, 'success');
+                fetchRelatedAccounts();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في الحظر', 'error');
+        }
+    };
+
+    // ========== حذف كل محادثات المستخدم ==========
+    const handleDeleteAllConversations = async () => {
+        if (!window.confirm(`⚠️ حذف جميع محادثات ${user.name}؟\n\nسيتم حذف كل المحادثات والرسائل نهائياً. لا يمكن التراجع.`)) return;
+        if (!window.confirm('هل أنت متأكد 100%؟ الرسائل ستُحذف من جميع المشاركين.')) return;
+
+        try {
+            setActionLoading(true);
+            const res = await deleteAllUserConversations(userId);
+            if (res.success) {
+                showToast(`✅ ${res.message}`, 'success');
+                fetchUserActivity();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في الحذف', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // ========== حذف رسالة واحدة ==========
+    const handleDeleteSingleMessage = async (messageId) => {
+        if (!window.confirm('حذف هذه الرسالة؟')) return;
+        try {
+            const res = await deleteUserMessage(userId, messageId);
+            if (res.success) {
+                showToast('✅ تم حذف الرسالة', 'success');
+                fetchUserActivity();
+            }
+        } catch (e) {
+            showToast(e.response?.data?.message || 'فشل في الحذف', 'error');
         }
     };
 
@@ -1021,9 +1083,16 @@ function UserDetail({ userId, onBack }) {
                                     <div key={conv._id} className="conversation-item clickable">
                                         <div className="conversation-header">
                                             <h4>{conv.title}</h4>
-                                            <span className={`conv-type ${conv.type}`}>
-                                                {conv.type === 'private' ? 'خاصة' : 'جماعية'}
-                                            </span>
+                                            <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                                                <span className={`conv-type ${conv.type}`}>
+                                                    {conv.type === 'private' ? 'خاصة' : 'جماعية'}
+                                                </span>
+                                                {conv.violationsCount > 0 && (
+                                                    <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11,fontWeight:700}} title="عدد المخالفات في هذه المحادثة">
+                                                        ⚠️ {conv.violationsCount} مخالفة
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="conversation-meta">
                                             <p>👥 {conv.metadata.totalParticipants} مشارك</p>
@@ -1032,7 +1101,42 @@ function UserDetail({ userId, onBack }) {
                                                 {conv.isActive ? '● نشطة' : '○ غير نشطة'}
                                             </p>
                                         </div>
-                                        <p className="conversation-date">
+
+                                        {/* المشاركون — قابلين للنقر */}
+                                        {conv.participants?.length > 0 && (
+                                            <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                {conv.participants.map(p => (
+                                                    <button
+                                                        key={p._id}
+                                                        onClick={() => p._id !== userId && onNavigateToUser && onNavigateToUser(p._id)}
+                                                        disabled={p._id === userId}
+                                                        style={{
+                                                            display:'flex',
+                                                            alignItems:'center',
+                                                            gap:6,
+                                                            padding:'4px 10px',
+                                                            background: p._id === userId ? '#e5e7eb' : '#eef2ff',
+                                                            border: p._id === userId ? 'none' : '1px solid #6366f1',
+                                                            borderRadius:20,
+                                                            fontSize:12,
+                                                            cursor: p._id === userId ? 'default' : 'pointer',
+                                                            color: p._id === userId ? '#6b7280' : '#4338ca'
+                                                        }}
+                                                    >
+                                                        <img
+                                                            src={getImageUrl(p.profileImage) || getDefaultAvatar(p.name)}
+                                                            alt=""
+                                                            style={{width:20,height:20,borderRadius:'50%'}}
+                                                            onError={e=>{e.target.src=getDefaultAvatar(p.name)}}
+                                                        />
+                                                        <span>{p.name}{p._id === userId ? ' (هذا المستخدم)' : ''}</span>
+                                                        {p.isOnline && <span style={{width:8,height:8,borderRadius:'50%',background:'#10b981'}}/>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <p className="conversation-date" style={{marginTop:8}}>
                                             آخر تحديث: {formatDate(conv.updatedAt)}
                                         </p>
                                         <div className="conversation-actions-row">
@@ -1062,13 +1166,48 @@ function UserDetail({ userId, onBack }) {
                 {/* Messages Tab */}
                 {activeTab === 'messages' && (
                     <div className="messages-section">
-                        <h3>📨 آخر الرسائل ({recentMessages.length})</h3>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12,marginBottom:16}}>
+                            <h3 style={{margin:0}}>📨 آخر الرسائل ({recentMessages.length})</h3>
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                <button
+                                    onClick={handleDeleteAllConversations}
+                                    disabled={actionLoading || !conversations?.length}
+                                    style={{
+                                        padding:'8px 14px',
+                                        background:'#fee2e2',
+                                        border:'1px solid #ef4444',
+                                        color:'#7f1d1d',
+                                        borderRadius:10,
+                                        fontSize:13,
+                                        fontWeight:600,
+                                        cursor: (actionLoading || !conversations?.length) ? 'not-allowed' : 'pointer',
+                                        opacity: (actionLoading || !conversations?.length) ? 0.5 : 1
+                                    }}
+                                    title="حذف جميع محادثات المستخدم ورسائله"
+                                >
+                                    🗑️ مسح كل المحادثات ({conversations?.length || 0})
+                                </button>
+                            </div>
+                        </div>
+
                         {recentMessages.length === 0 ? (
                             <p className="empty-message">لا توجد رسائل حديثة</p>
                         ) : (
                             <div className="messages-list">
                                 {recentMessages.map((msg) => (
-                                    <div key={msg._id} className="message-item enhanced">
+                                    <div
+                                        key={msg._id}
+                                        className="message-item enhanced"
+                                        style={{cursor: msg.conversation ? 'pointer' : 'default', transition:'all 0.15s'}}
+                                        onClick={() => {
+                                            if (msg.conversation) {
+                                                setViewingConversationId(msg.conversation);
+                                                setViewingConversationMessages(true);
+                                            }
+                                        }}
+                                        onMouseEnter={e => { if (msg.conversation) e.currentTarget.style.background='#f3f4f6'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background=''; }}
+                                    >
                                         <div className="message-header">
                                             <span className={`message-type ${msg.type}`}>
                                                 {msg.type === 'text' && '📝 نص'}
@@ -1077,11 +1216,29 @@ function UserDetail({ userId, onBack }) {
                                                 {msg.type === 'audio' && '🎵 صوت'}
                                                 {msg.type === 'video' && '🎥 فيديو'}
                                             </span>
-                                            <span className={`message-status ${msg.status}`}>
-                                                {msg.status === 'read' && '✓✓ مقروءة'}
-                                                {msg.status === 'delivered' && '✓ مُوصلة'}
-                                                {msg.status === 'sent' && '○ مرسلة'}
-                                            </span>
+                                            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                                                <span className={`message-status ${msg.status}`}>
+                                                    {msg.status === 'read' && '✓✓ مقروءة'}
+                                                    {msg.status === 'delivered' && '✓ مُوصلة'}
+                                                    {msg.status === 'sent' && '○ مرسلة'}
+                                                </span>
+                                                {msg.isDeleted && <span style={{fontSize:11,color:'#ef4444'}}>❌ محذوفة</span>}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteSingleMessage(msg._id); }}
+                                                    disabled={msg.isDeleted}
+                                                    title="حذف هذه الرسالة"
+                                                    style={{
+                                                        padding:'2px 8px',
+                                                        fontSize:11,
+                                                        background:'transparent',
+                                                        border:'1px solid #ef4444',
+                                                        color:'#ef4444',
+                                                        borderRadius:6,
+                                                        cursor: msg.isDeleted ? 'not-allowed' : 'pointer',
+                                                        opacity: msg.isDeleted ? 0.4 : 1
+                                                    }}
+                                                >🗑️</button>
+                                            </div>
                                         </div>
                                         {msg.content && <p className="message-content">{msg.content}</p>}
                                         {msg.type === 'image' && msg.mediaUrl && (
@@ -1090,12 +1247,15 @@ function UserDetail({ userId, onBack }) {
                                                     src={getImageUrl(msg.mediaUrl)}
                                                     alt="صورة"
                                                     className="message-image-preview"
+                                                    onClick={(e) => { e.stopPropagation(); setLightboxImage(getImageUrl(msg.mediaUrl)); }}
+                                                    style={{cursor:'zoom-in'}}
                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                 />
                                             </div>
                                         )}
-                                        <p className="message-date">
-                                            {formatDate(msg.createdAt)}
+                                        <p className="message-date" style={{marginTop:6,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11,color:'#6b7280'}}>
+                                            <span>{formatDate(msg.createdAt)}</span>
+                                            {msg.conversation && <span style={{color:'#6366f1'}}>اضغط لفتح المحادثة →</span>}
                                         </p>
                                     </div>
                                 ))}
@@ -1373,7 +1533,13 @@ function UserDetail({ userId, onBack }) {
                                         <h4 style={{marginBottom:12}}>🔗 حسابات مرتبطة بنفس الجهاز ({relatedAccounts.uniqueRelated.length})</h4>
                                         <div style={{display:'flex',flexDirection:'column',gap:10}}>
                                             {relatedAccounts.uniqueRelated.map(u => (
-                                                <div key={u._id} style={{display:'flex',alignItems:'center',gap:12,padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+                                                <div
+                                                    key={u._id}
+                                                    onClick={() => onNavigateToUser && onNavigateToUser(u._id)}
+                                                    style={{display:'flex',alignItems:'center',gap:12,padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,cursor:'pointer',transition:'all 0.15s'}}
+                                                    onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.background='#eef2ff';}}
+                                                    onMouseLeave={e=>{e.currentTarget.style.borderColor='#e5e7eb';e.currentTarget.style.background='#fff';}}
+                                                >
                                                     <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt={u.name} style={{width:48,height:48,borderRadius:'50%',objectFit:'cover'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
                                                     <div style={{flex:1}}>
                                                         <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -1384,7 +1550,23 @@ function UserDetail({ userId, onBack }) {
                                                         <div style={{fontSize:12,color:'#6b7280'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
                                                         <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
                                                     </div>
-                                                    <button className="btn-secondary" style={{padding:'6px 12px',fontSize:12}} onClick={() => { onBack && onBack(); setTimeout(() => window.location.hash = `#user/${u._id}`, 100); }}>فتح →</button>
+                                                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                        {/* أزرار إجراءات سريعة inline (لا تفتح UserDetail) */}
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleQuickSuspendRelated(u._id, u.name); }}
+                                                            title="تعليق سريع 3 أيام"
+                                                            style={{padding:'6px 10px',fontSize:12,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:8,color:'#78350f',cursor:'pointer'}}
+                                                        >⛔ تعليق</button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleQuickBanRelated(u._id, u.name); }}
+                                                            title="حظر نهائي + حظر الجهاز"
+                                                            style={{padding:'6px 10px',fontSize:12,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:8,color:'#7f1d1d',cursor:'pointer'}}
+                                                        >🚫 حظر</button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onNavigateToUser && onNavigateToUser(u._id); }}
+                                                            style={{padding:'6px 10px',fontSize:12,background:'#eef2ff',border:'1px solid #6366f1',borderRadius:8,color:'#4338ca',cursor:'pointer'}}
+                                                        >فتح →</button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -1397,7 +1579,13 @@ function UserDetail({ userId, onBack }) {
                                         <h4 style={{marginBottom:12}}>🌐 نفس عنوان IP ({relatedAccounts.byIP.length})</h4>
                                         <div style={{display:'flex',flexDirection:'column',gap:8}}>
                                             {relatedAccounts.byIP.slice(0,10).map(u => (
-                                                <div key={u._id} style={{display:'flex',alignItems:'center',gap:10,padding:10,background:'#f9fafb',borderRadius:10,fontSize:13}}>
+                                                <div
+                                                    key={u._id}
+                                                    onClick={() => onNavigateToUser && onNavigateToUser(u._id)}
+                                                    style={{display:'flex',alignItems:'center',gap:10,padding:10,background:'#f9fafb',borderRadius:10,fontSize:13,cursor:'pointer'}}
+                                                    onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+                                                    onMouseLeave={e=>e.currentTarget.style.background='#f9fafb'}
+                                                >
                                                     <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt="" style={{width:32,height:32,borderRadius:'50%'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
                                                     <span style={{flex:1}}>{u.name} • {u.email}</span>
                                                     <span style={{fontSize:11,color:'#6b7280'}}>{formatDate(u.lastLogin)}</span>

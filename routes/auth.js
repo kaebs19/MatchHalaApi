@@ -827,18 +827,20 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
             }
         }
 
-        // ✅ فحص cooldown تغيير الصورة (مرة كل 24 ساعة)
+        // ✅ cooldown قصير لمنع spam (60 ثانية بين التغييرات)
+        // (تم إلغاء الحد الطويل 24 ساعة — كان يزعج المستخدمين)
         if (user.lastPhotoChange) {
-            const hoursSinceChange = (Date.now() - new Date(user.lastPhotoChange).getTime()) / (1000 * 60 * 60);
-            if (hoursSinceChange < 24) {
+            const secondsSinceChange = (Date.now() - new Date(user.lastPhotoChange).getTime()) / 1000;
+            const MIN_INTERVAL_SECONDS = 60;
+            if (secondsSinceChange < MIN_INTERVAL_SECONDS) {
                 fs.unlinkSync(req.file.path);
-                const remainingHours = Math.ceil(24 - hoursSinceChange);
+                const remainingSeconds = Math.ceil(MIN_INTERVAL_SECONDS - secondsSinceChange);
                 return res.status(429).json({
                     success: false,
-                    message: `يمكنك تغيير الصورة مرة كل 24 ساعة. متبقي ${remainingHours} ساعة`,
-                    messageEn: `You can change your photo once every 24 hours. ${remainingHours} hours remaining`,
+                    message: `انتظر ${remainingSeconds} ثانية قبل تغيير الصورة مجدداً`,
+                    messageEn: `Please wait ${remainingSeconds} seconds before changing photo again`,
                     code: 'PHOTO_COOLDOWN',
-                    remainingHours
+                    remainingSeconds
                 });
             }
         }
@@ -901,6 +903,64 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
             success: false,
             message: error.message || 'خطأ في السيرفر'
         });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+// @route   DELETE /api/auth/profile-image
+// @desc    حذف الصورة الشخصية (المستخدم نفسه) — تُنقل لمجلد محمي بدل الحذف النهائي
+// @access  Private
+// ══════════════════════════════════════════════════════════
+router.delete('/profile-image', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // فحص قيود الأدمن
+        if (user.restrictions?.photoBlocked) {
+            if (!user.restrictions.photoBlockedUntil || user.restrictions.photoBlockedUntil > new Date()) {
+                const until = user.restrictions.photoBlockedUntil
+                    ? new Date(user.restrictions.photoBlockedUntil).toLocaleDateString('ar-SA')
+                    : 'غير محدد';
+                return res.status(403).json({
+                    success: false,
+                    message: `تم منعك من تغيير الصورة حتى: ${until}. السبب: ${user.restrictions.photoBlockedReason || 'مخالفة'}`,
+                    code: 'PHOTO_BLOCKED'
+                });
+            }
+        }
+
+        if (!user.profileImage) {
+            return res.json({ success: true, message: 'لا توجد صورة لحذفها', data: { profileImage: null } });
+        }
+
+        const oldImage = user.profileImage;
+
+        // حذف الملف الفعلي (مش مخالفة، ارسي من المستخدم نفسه)
+        if (!oldImage.includes('/defaults/')) {
+            const filePath = path.join(__dirname, '..', oldImage);
+            if (fs.existsSync(filePath)) {
+                try { fs.unlinkSync(filePath); } catch(e) { /* ignore */ }
+            }
+        }
+
+        user.profileImage = null;
+        user.lastPhotoChange = new Date();
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'تم حذف الصورة الشخصية',
+            data: {
+                profileImage: null,
+                user
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في حذف الصورة الشخصية:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
     }
 });
 

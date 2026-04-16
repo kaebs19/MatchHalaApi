@@ -704,13 +704,29 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
             spamReportsCount
         };
 
+        // ✅ عدد مخالفات لكل محادثة (banned_word violations)
+        const Violation = require('../models/Violation');
+        const convIds = userConversations.map(c => c._id);
+        const violationCountsByConv = await Violation.aggregate([
+            { $match: { user: user._id, 'evidence.conversationId': { $in: convIds } } },
+            { $group: { _id: '$evidence.conversationId', count: { $sum: 1 } } }
+        ]);
+        const violationMap = {};
+        violationCountsByConv.forEach(v => { violationMap[String(v._id)] = v.count; });
+
+        const conversationsWithViolations = userConversations.map(c => {
+            const obj = c.toObject ? c.toObject() : c;
+            obj.violationsCount = violationMap[String(c._id)] || 0;
+            return obj;
+        });
+
         res.status(200).json({
             success: true,
             data: {
                 user,
                 stats,
-                conversations: userConversations,
-                recentMessages: userMessages.slice(0, 10),
+                conversations: conversationsWithViolations,
+                recentMessages: userMessages.slice(0, 30),  // ✅ زيادة من 10 إلى 30
                 recentReportsReceived,
                 appeals
             }
@@ -2368,6 +2384,79 @@ router.get('/violations/recent', protect, adminOnly, async (req, res) => {
         res.json({ success: true, data: { violations: items } });
     } catch (error) {
         console.error('recent violations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/users/:id/conversations/bulk
+// @desc    حذف جميع محادثات المستخدم + رسائلها (soft delete للمحادثات + hard delete للرسائل)
+// @access  Private/Admin
+router.delete('/:id/conversations/bulk', protect, adminOnly, async (req, res) => {
+    try {
+        const Conversation = require('../models/Conversation');
+        const Message = require('../models/Message');
+        const userId = req.params.id;
+
+        // جلب كل المحادثات التي يشارك فيها
+        const conversations = await Conversation.find({ participants: userId }).select('_id');
+        const convIds = conversations.map(c => c._id);
+
+        if (convIds.length === 0) {
+            return res.json({ success: true, message: 'لا توجد محادثات لحذفها', data: { deletedConversations: 0, deletedMessages: 0 } });
+        }
+
+        // حذف الرسائل (hard delete)
+        const msgResult = await Message.deleteMany({ conversation: { $in: convIds } });
+
+        // حذف المحادثات
+        const convResult = await Conversation.deleteMany({ _id: { $in: convIds } });
+
+        // Socket.IO — إبلاغ كل المشاركين
+        if (global.io) {
+            convIds.forEach(cId => {
+                global.io.to(`conv:${cId}`).emit('conversation-deleted', { conversationId: String(cId), by: 'admin' });
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `تم حذف ${convResult.deletedCount} محادثة و ${msgResult.deletedCount} رسالة`,
+            data: {
+                deletedConversations: convResult.deletedCount,
+                deletedMessages: msgResult.deletedCount
+            }
+        });
+    } catch (error) {
+        console.error('bulk delete conversations error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   DELETE /api/users/:id/messages/:messageId
+// @desc    حذف رسالة واحدة من محادثات المستخدم (admin)
+// @access  Private/Admin
+router.delete('/:id/messages/:messageId', protect, adminOnly, async (req, res) => {
+    try {
+        const Message = require('../models/Message');
+        const msg = await Message.findByIdAndUpdate(
+            req.params.messageId,
+            { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id },
+            { new: true }
+        );
+        if (!msg) return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+
+        // Socket.IO
+        if (global.io && msg.conversation) {
+            global.io.to(`conv:${msg.conversation}`).emit('message-deleted', {
+                messageId: String(msg._id),
+                conversationId: String(msg.conversation),
+                by: 'admin'
+            });
+        }
+
+        res.json({ success: true, message: 'تم حذف الرسالة', data: { message: msg } });
+    } catch (error) {
+        console.error('delete message error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

@@ -332,7 +332,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':
-                return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} />;
+                return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} />;
             default:
                 return <Dashboard user={user} onPageChange={setCurrentPage} />;
         }

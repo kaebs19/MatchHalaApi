@@ -23,6 +23,9 @@ const messaging = admin.messaging();
 const sendToDevice = async (token, notification, data = {}) => {
     try {
         const collapseId = data.conversationId || data.type || 'general';
+        // ⚠️ إزالة content-available:1 من regular notifications
+        // لأنها تحوّلها إلى silent push ولا يظهر banner.
+        // نبقي mutable-content:1 لتفعيل Notification Service Extension.
         const message = {
             token,
             notification: { title: notification.title, body: notification.body },
@@ -30,13 +33,14 @@ const sendToDevice = async (token, notification, data = {}) => {
             apns: {
                 headers: {
                     'apns-priority': '10',
-                    'apns-collapse-id': collapseId
+                    'apns-collapse-id': collapseId,
+                    'apns-push-type': 'alert'
                 },
                 payload: {
                     aps: {
+                        alert: { title: notification.title, body: notification.body },
                         badge: data.badge ? parseInt(data.badge) : 1,
                         sound: 'default',
-                        'content-available': 1,
                         'mutable-content': 1,
                         'thread-id': collapseId
                     },
@@ -78,13 +82,14 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
             apns: {
                 headers: {
                     'apns-priority': '10',
-                    'apns-collapse-id': collapseId
+                    'apns-collapse-id': collapseId,
+                    'apns-push-type': 'alert'
                 },
                 payload: {
                     aps: {
+                        alert: { title: notification.title, body: notification.body },
                         badge: 1,
                         sound: 'default',
-                        'content-available': 1,
                         'mutable-content': 1,
                         'thread-id': collapseId
                     }
