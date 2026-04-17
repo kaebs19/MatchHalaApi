@@ -2013,7 +2013,7 @@ router.post('/search', protect, adminOnly, async (req, res) => {
 router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
     try {
         const { type, duration, reason } = req.body;
-        // type: 'photo' | 'name'
+        // type: 'photo' | 'name' | 'messaging_new' | 'messaging_all'
         // duration: '7d' | '30d' | '90d' | 'permanent'
 
         const user = await User.findById(req.params.id);
@@ -2027,32 +2027,43 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
 
         const durationTextAr = duration === '7d' ? '7 أيام' : duration === '30d' ? '30 يوم' : duration === '90d' ? '90 يوم' : 'دائم';
 
+        let typeAr;
         if (type === 'photo') {
             user.restrictions = user.restrictions || {};
             user.restrictions.photoBlocked = true;
             user.restrictions.photoBlockedUntil = until;
             user.restrictions.photoBlockedReason = reason || 'صورة مخالفة';
+            typeAr = 'تغيير الصورة';
         } else if (type === 'name') {
             user.restrictions = user.restrictions || {};
             user.restrictions.nameBlocked = true;
             user.restrictions.nameBlockedUntil = until;
             user.restrictions.nameBlockedReason = reason || 'اسم مخالف';
+            typeAr = 'تغيير الاسم';
+        } else if (type === 'messaging_new' || type === 'messaging_all') {
+            user.restrictions = user.restrictions || {};
+            user.restrictions.messagingRestricted = true;
+            user.restrictions.messagingRestrictedUntil = until;
+            user.restrictions.messagingRestrictedLevel = type === 'messaging_new' ? 'new_only' : 'all';
+            user.restrictions.restrictionReason = reason || 'مخالفة سياسة المراسلة';
+            typeAr = type === 'messaging_new' ? 'بدء محادثات جديدة' : 'المراسلة بشكل كامل';
         } else {
-            return res.status(400).json({ success: false, message: 'نوع القيد غير صحيح (photo أو name)' });
+            return res.status(400).json({ success: false, message: 'نوع القيد غير صحيح' });
         }
 
-        // تسجيل كمخالفة
-        if (!user.photoRemovals) user.photoRemovals = [];
-        user.photoRemovals.push({
-            reason: `قيد ${type === 'photo' ? 'صورة' : 'اسم'}: ${reason || 'مخالفة'} (${durationTextAr})`,
-            removedBy: req.user._id,
-            removedAt: new Date()
-        });
+        // تسجيل كمخالفة (للصور والأسماء فقط — المراسلة نتركها في restrictions)
+        if (type === 'photo' || type === 'name') {
+            if (!user.photoRemovals) user.photoRemovals = [];
+            user.photoRemovals.push({
+                reason: `قيد ${typeAr}: ${reason || 'مخالفة'} (${durationTextAr})`,
+                removedBy: req.user._id,
+                removedAt: new Date()
+            });
+        }
 
         await user.save();
 
         // إشعار المستخدم
-        const typeAr = type === 'photo' ? 'تغيير الصورة' : 'تغيير الاسم';
         const notifTitle = `⛔ تم منعك من ${typeAr}`;
         const notifBody = `تم منعك من ${typeAr} لمدة ${durationTextAr}.\nالسبب: ${reason || 'مخالفة سياسة الاستخدام'}`;
 

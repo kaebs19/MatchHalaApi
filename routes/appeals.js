@@ -108,21 +108,31 @@ router.get('/', protect, adminOnly, async (req, res) => {
         if (status) filter.status = status;
 
         const appeals = await Appeal.find(filter)
-            .populate('user', 'name email avatar profileImage halaId createdAt isActive isPremium suspension restrictions warnings country birthDate gender lastLogin isOnline deviceFingerprint')
+            .populate('user', 'name email avatar profileImage halaId createdAt isActive isPremium suspension restrictions warnings bannedWords country birthDate gender lastLogin isOnline deviceFingerprint')
             .populate('resolvedBy', 'name')
-            .sort({ createdAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit);
+            .sort({ createdAt: -1 });
 
-        const count = await Appeal.countDocuments(filter);
+        // ✅ فلترة: إخفاء الاستئنافات لمستخدمين محظورين بشكل كامل أو محذوفين
+        // "محظور بشكل كامل" = bannedWords.isBanned || !isActive → الأدمن أغلق الحساب فعلاً
+        const visibleAppeals = appeals.filter(appeal => {
+            if (!appeal.user) return false; // حساب محذوف
+            if (appeal.user.bannedWords?.isBanned) return false;
+            if (appeal.user.isActive === false) return false;
+            return true;
+        });
+
+        // pagination بعد الفلترة لضمان دقة العدد
+        const totalFiltered = visibleAppeals.length;
+        const startIdx = (page - 1) * limit;
+        const pagedAppeals = visibleAppeals.slice(startIdx, startIdx + Number(limit));
 
         res.status(200).json({
             success: true,
             data: {
-                appeals,
-                totalPages: Math.ceil(count / limit),
+                appeals: pagedAppeals,
+                totalPages: Math.ceil(totalFiltered / limit),
                 currentPage: Number(page),
-                total: count
+                total: totalFiltered
             }
         });
 

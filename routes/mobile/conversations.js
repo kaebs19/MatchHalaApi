@@ -9,7 +9,7 @@ const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
-const { getFullUrl, getBestUserImage } = require('./helpers');
+const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned } = require('./helpers');
 const { conversationLimitMiddleware } = require('../../middleware/conversationLimits');
 
 // ==========================================
@@ -678,18 +678,22 @@ router.get('/conversations', protect, async (req, res) => {
         res.set('Last-Modified', lastModified.toUTCString());
 
         const conversations = await Conversation.find(convFilter)
-            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified')
+            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
             .populate('lastMessage')
             .select('+creator')
             .sort({ updatedAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit)
-            .lean(); // استخدام lean للتعديل على النتائج
+            .lean();
 
-        // تحويل صور المشاركين إلى thumbnails
+        // تحويل صور المشاركين إلى thumbnails + قناع المحظورين
         for (const conv of conversations) {
             if (conv.participants) {
-                for (const p of conv.participants) {
+                conv.participants = conv.participants.map(p => {
+                    // إذا محظور بشكل كامل → قناع (اسم/صورة)
+                    if (isUserFullyBanned(p)) {
+                        return maskBannedUser(p);
+                    }
                     const mainPhoto = p.photos && p.photos.length > 0
                         ? (p.photos.find(ph => ph.order === 0) || p.photos[0])
                         : null;
@@ -697,7 +701,11 @@ router.get('/conversations', protect, async (req, res) => {
                         ? getFullUrl(mainPhoto.thumbnail)
                         : getFullUrl(p.profileImage);
                     delete p.photos;
-                }
+                    delete p.bannedWords;
+                    delete p.suspension;
+                    delete p.isActive;
+                    return p;
+                });
             }
         }
 

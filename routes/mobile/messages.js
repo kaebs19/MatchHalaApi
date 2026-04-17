@@ -11,7 +11,7 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
 
 // ==========================================
 // نظام الرسائل
@@ -69,7 +69,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
         // التحقق من المحادثة
         const conversation = await Conversation.findById(conversationId)
-            .populate('participants', 'name email deviceToken');
+            .populate('participants', 'name email deviceToken isActive bannedWords suspension');
 
         if (!conversation) {
             return res.status(404).json({
@@ -87,6 +87,18 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             return res.status(403).json({
                 success: false,
                 message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // ✅ منع إرسال/الرد لمستخدم موقوف بشكل كامل
+        const anyRecipientBanned = conversation.participants.some(
+            p => p._id.toString() !== req.user._id.toString() && isUserFullyBanned(p)
+        );
+        if (anyRecipientBanned) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن إرسال رسالة — المستخدم موقوف',
+                code: 'RECIPIENT_SUSPENDED'
             });
         }
 

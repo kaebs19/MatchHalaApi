@@ -8,7 +8,7 @@ const Notification = require('../../models/Notification');
 const ProfileView = require('../../models/ProfileView');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
-const { getFullUrl, getBestUserImage, getUserImage } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, isUserFullyBanned } = require('./helpers');
 
 // ==========================================
 // Batch Home Endpoint - طلب واحد لكل بيانات الصفحة الرئيسية
@@ -234,8 +234,13 @@ router.get('/users/search', protect, async (req, res) => {
         // بناء الفلتر
         const filter = {
             _id: { $ne: req.user._id },
-            isActive: true
-            // Stealth Mode لا يخفي من الاكتشاف — فقط يمنع تسجيل زيارات البروفايل ويخفي آخر ظهور
+            isActive: true,
+            // ✅ إخفاء المستخدمين المحظورين بشكل كامل من الاستكشاف
+            'bannedWords.isBanned': { $ne: true },
+            $or: [
+                { 'suspension.isSuspended': { $ne: true } },
+                { 'suspension.level': { $lt: 5 } }
+            ]
         };
 
         // استثناء المستخدمين المحظورين
@@ -427,7 +432,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive bannedWords suspension'
         ).lean();
 
         if (!user) {
@@ -437,6 +442,28 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         // تحقق إذا الطالب محظور
         if (user.blockedUsers && user.blockedUsers.some(blockedId => blockedId.toString() === req.user._id.toString())) {
             return res.status(403).json({ success: false, message: 'لا يمكنك عرض هذا البروفايل' });
+        }
+
+        // ✅ مستخدم موقوف بشكل كامل → رجّع بيانات مقنّعة
+        if (isUserFullyBanned(user)) {
+            return res.json({
+                success: true,
+                data: {
+                    user: {
+                        _id: user._id,
+                        name: 'مستخدم موقوف',
+                        profileImage: null,
+                        photos: [],
+                        bio: '',
+                        isOnline: false,
+                        isPremium: false,
+                        isActive: false,
+                        isSuspendedAccount: true,
+                        verification: { isVerified: false, status: 'none' },
+                        distance: null
+                    }
+                }
+            });
         }
 
         // حساب المسافة إذا كلا المستخدمين لديهم موقع حقيقي (مو [0,0])

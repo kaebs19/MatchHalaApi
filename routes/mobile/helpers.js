@@ -37,6 +37,36 @@ const getUserImage = (user, size = 'original') => {
     return null;
 };
 
+// Helper: هل المستخدم محظور بشكل كامل؟
+// (للإخفاء من البحث/الاستكشاف/إظهار الاسم/الصورة عبر التطبيق)
+const isUserFullyBanned = (user) => {
+    if (!user) return false;
+    if (user.isActive === false) return true;
+    if (user.bannedWords?.isBanned) return true;
+    // تعليق دائم (level 5)
+    if (user.suspension?.isSuspended && user.suspension?.level >= 5) return true;
+    return false;
+};
+
+// Helper: قناع بيانات المستخدم المحظور — يحافظ على _id لكن يخفي الاسم/الصورة
+// يستخدم في الـ list endpoints ورسائل المحادثات لإظهار "مستخدم موقوف"
+const maskBannedUser = (user) => {
+    if (!user) return user;
+    // lean objects أو mongoose documents
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    if (!isUserFullyBanned(userObj)) return userObj;
+
+    userObj.name = 'مستخدم موقوف';
+    userObj.profileImage = null;
+    userObj.photos = [];
+    userObj.bio = '';
+    userObj.isSuspendedAccount = true; // flag للتطبيق لعرض أيقونة
+    userObj.isOnline = false;
+    userObj.isPremium = false;
+    if (userObj.verification) userObj.verification = { isVerified: false };
+    return userObj;
+};
+
 // إعداد multer لرفع صور الرسائل
 const messagesUploadDir = path.join(__dirname, '..', '..', 'uploads', 'messages');
 if (!fs.existsSync(messagesUploadDir)) {
@@ -133,6 +163,8 @@ module.exports = {
     getFullUrl,
     getBestUserImage,
     getUserImage,
+    isUserFullyBanned,
+    maskBannedUser,
     uploadMessageImage,
     uploadMessageAudio,
     uploadVerificationSelfie
