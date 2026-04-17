@@ -153,30 +153,18 @@ router.post('/reports', protect, async (req, res) => {
                 }
             });
 
-            // إرسال Push Notifications للأدمن الأوفلاين
-            for (const admin of admins) {
-                // Socket.IO للأدمن المتصلين
-                if (global.io) {
-                    global.io.to(`user:${admin._id}`).emit('notification', {
-                        type: 'report',
-                        title: `بلاغ جديد ${reportProgress}`,
-                        body: `${req.user.name} أبلغ عن ${targetUser.name}`,
-                        data: { reportId: report._id.toString() }
-                    });
-                }
-
-                // Push للأدمن الأوفلاين
-                if (!admin.isOnline && admin.deviceToken) {
-                    await notificationService.sendPush(
-                        admin.deviceToken,
-                        `بلاغ جديد ${reportProgress}`,
-                        `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`,
-                        {
-                            type: 'new_report',
-                            reportId: report._id.toString()
-                        }
-                    );
-                }
+            // ✅ Socket.IO للوحة الأدمن فقط (room منفصل) — لا يوصل لجهاز الأدمن الشخصي
+            // لا نرسل Push للأدمن: البلاغات يتم إدارتها من لوحة التحكم فقط
+            if (global.io) {
+                global.io.to('admin-dashboard').emit('new-report', {
+                    reportId: report._id.toString(),
+                    reportedUserId: reportedUser,
+                    reportedUserName: targetUser.name,
+                    reporterName: req.user.name,
+                    reason: reasonArabic,
+                    priority,
+                    uniqueReportersCount
+                });
             }
         } catch (notifError) {
             console.error('خطأ في إرسال إشعار البلاغ:', notifError);
