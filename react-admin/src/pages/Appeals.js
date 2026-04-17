@@ -90,6 +90,58 @@ function Appeals({ onViewUserDetail }) {
         }
     };
 
+    // ✅ فك التقييد عن صاحب الاستئناف مباشرة من المودال
+    const handleUnrestrictFromAppeal = async () => {
+        if (!selectedAppeal || !selectedAppeal.user) return;
+        const userId = selectedAppeal.user._id || selectedAppeal.user;
+        if (!window.confirm("فك جميع القيود (تعليق + تقييد مراسلة) وإشعار المستخدم؟")) return;
+
+        try {
+            setSaving(true);
+            const token = localStorage.getItem("token");
+            const response = await fetch(config.API_URL + "/users/" + userId + "/suspend", {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer " + token
+                },
+                body: JSON.stringify({
+                    duration: "unrestrict",
+                    reason: adminNote || "قبول الاستئناف - فك التقييد",
+                    notify: true
+                })
+            });
+            const data = await response.json();
+            if (data.success) {
+                // إذا الاستئناف ما زال pending → حدّث حالته لـ approved تلقائياً
+                if (selectedAppeal.status === "pending" || selectedAppeal.status === "under_review") {
+                    await fetch(config.API_URL + "/appeals/" + selectedAppeal._id + "/status", {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: "Bearer " + token
+                        },
+                        body: JSON.stringify({
+                            status: "approved",
+                            adminNote: adminNote || "تم فك التقييد وقبول الاستئناف"
+                        })
+                    });
+                }
+                showToast("تم فك التقييد وإشعار المستخدم", "success");
+                setShowDetailModal(false);
+                setSelectedAppeal(null);
+                fetchAppeals();
+            } else {
+                showToast(data.message || "فشل فك التقييد", "error");
+            }
+        } catch (error) {
+            showToast("فشل فك التقييد", "error");
+            console.error("Error unrestricting user:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const getStatusBadge = (status) => {
         const map = {
             pending: { label: "قيد الانتظار", cls: "badge-pending" },
@@ -374,6 +426,17 @@ function Appeals({ onViewUserDetail }) {
                                     disabled={saving}
                                 >
                                     {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+                                </button>
+
+                                {/* ✅ زر فك التقييد السريع — يفكّ + يقبل الاستئناف + يُشعر */}
+                                <button
+                                    className="save-btn"
+                                    style={{ background: "#4CAF50", marginTop: 8 }}
+                                    onClick={handleUnrestrictFromAppeal}
+                                    disabled={saving}
+                                    title="فك جميع القيود + قبول الاستئناف + إشعار المستخدم"
+                                >
+                                    {saving ? "جاري..." : "🔓 فك التقييد + قبول الاستئناف"}
                                 </button>
                             </div>
                         </div>

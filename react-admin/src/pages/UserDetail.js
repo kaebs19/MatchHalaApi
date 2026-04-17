@@ -2080,6 +2080,33 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                 🔒 تقييد جزائي
                             </button>
 
+                            {/* ✅ فك التقييد (سريع) — يظهر فقط لو المستخدم مقيّد فعلاً */}
+                            {(user.restrictions?.messagingRestricted || user.suspension?.isSuspended) && (
+                                <button
+                                    className="admin-action-btn"
+                                    style={{background:"#4CAF50",color:"#fff",border:"none"}}
+                                    onClick={async () => {
+                                        if (!window.confirm("فك جميع القيود عن " + user.name + " وإشعاره؟")) return;
+                                        try {
+                                            setActionLoading(true);
+                                            const { suspendUser } = await import("../services/api");
+                                            const res = await suspendUser(user._id, "unrestrict", "فك التقييد من الأدمن", true);
+                                            if (res.success) {
+                                                showToast(res.message || "تم فك التقييد", "success");
+                                                fetchUserActivity();
+                                            }
+                                        } catch(e) {
+                                            showToast(e.response?.data?.message || "فشل فك التقييد", "error");
+                                        } finally {
+                                            setActionLoading(false);
+                                        }
+                                    }}
+                                    disabled={actionLoading}
+                                >
+                                    🔓 فك التقييد
+                                </button>
+                            )}
+
                             {/* ✅ حظر الجهاز */}
                             <button className="admin-action-btn" style={{background:"#9C27B0",color:"#fff",border:"none"}} onClick={async () => {
                                 if (!window.confirm("هل أنت متأكد من حظر جهاز " + user.name + "؟ هذا إجراء نهائي!")) return;
