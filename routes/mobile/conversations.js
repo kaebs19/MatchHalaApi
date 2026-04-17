@@ -724,6 +724,41 @@ router.get('/conversations', protect, async (req, res) => {
             unreadMap[item._id.toString()] = item.count;
         }
 
+        // ✅ جلب أول رسالة من المُرسل للطلبات المعلقة فقط (لعرضها في شاشة القبول)
+        const pendingConvIds = conversations
+            .filter(c => c.status === 'pending' && c.creator && c.creator.toString() !== userId.toString())
+            .map(c => c._id);
+        const initialMessageMap = new Map();
+        if (pendingConvIds.length > 0) {
+            const initialMessages = await Message.aggregate([
+                {
+                    $match: {
+                        conversation: { $in: pendingConvIds },
+                        type: 'text',
+                        isDeleted: { $ne: true }
+                    }
+                },
+                { $sort: { createdAt: 1 } },
+                {
+                    $group: {
+                        _id: '$conversation',
+                        content: { $first: '$content' },
+                        sender: { $first: '$sender' },
+                        createdAt: { $first: '$createdAt' }
+                    }
+                }
+            ]);
+            for (const m of initialMessages) {
+                const conv = conversations.find(c => c._id.toString() === m._id.toString());
+                if (conv && conv.creator && m.sender.toString() === conv.creator.toString()) {
+                    initialMessageMap.set(m._id.toString(), {
+                        content: m.content,
+                        createdAt: m.createdAt
+                    });
+                }
+            }
+        }
+
         const conversationsWithUnread = conversations.map(conv => {
             // إضافة isRead + isDelivered لآخر رسالة
             if (conv.lastMessage && conv.lastMessage.sender) {
@@ -740,7 +775,11 @@ router.get('/conversations', protect, async (req, res) => {
                 }
             }
 
-            return { ...conv, unreadCount: unreadMap[conv._id.toString()] || 0 };
+            return {
+                ...conv,
+                unreadCount: unreadMap[conv._id.toString()] || 0,
+                initialMessage: initialMessageMap.get(conv._id.toString()) || null
+            };
         });
 
         const total = await Conversation.countDocuments(convFilter);
