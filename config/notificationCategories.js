@@ -58,6 +58,8 @@ const NOTIFICATION_TYPES = {
     'comment':              { category: 'social', groupable: true, adminOnly: false },
     'conversation_request': { category: 'social', groupable: false, adminOnly: false },
     'conversation_accepted':{ category: 'social', groupable: false, adminOnly: false },
+    'conversation_reminder':{ category: 'social', groupable: false, adminOnly: false },
+    'conversation_expired': { category: 'personal', groupable: false, adminOnly: false },
 
     // ===== Admin — لا تظهر في تطبيق المستخدم العادي ولا الأدمن =====
     'flagged_message':      { category: 'admin', groupable: false, adminOnly: true },
