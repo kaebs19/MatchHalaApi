@@ -2459,6 +2459,8 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                 <select value={restrictForm.type} onChange={(e) => setRestrictForm({...restrictForm, type: e.target.value})}>
                                     <option value="photo">📷 منع تغيير الصورة</option>
                                     <option value="name">📛 منع تغيير الاسم</option>
+                                    <option value="messaging_new">💬 منع بدء محادثات جديدة (يمكنه الرد)</option>
+                                    <option value="messaging_all">🚫 منع جميع المراسلة (لا بدء ولا رد)</option>
                                 </select>
                             </div>
                             <div className="form-group">
