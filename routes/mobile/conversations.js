@@ -481,10 +481,43 @@ router.get('/conversations/pending', protect, async (req, res) => {
         }).lean();
         const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
 
+        // جلب أول رسالة نصية من المُرسل لكل طلب (رسالة الطلب الأولية)
+        const conversationIds = conversations.map(c => c._id);
+        const initialMessages = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: conversationIds },
+                    type: 'text',
+                    isDeleted: { $ne: true }
+                }
+            },
+            { $sort: { createdAt: 1 } },
+            {
+                $group: {
+                    _id: '$conversation',
+                    content: { $first: '$content' },
+                    sender: { $first: '$sender' },
+                    createdAt: { $first: '$createdAt' }
+                }
+            }
+        ]);
+        const initialMessageMap = new Map();
+        initialMessages.forEach(m => {
+            // نتأكد أن الرسالة من المُرسل (منشئ الطلب)
+            const conv = conversations.find(c => c._id.toString() === m._id.toString());
+            if (conv && m.sender.toString() === conv.creator._id.toString()) {
+                initialMessageMap.set(m._id.toString(), {
+                    content: m.content,
+                    createdAt: m.createdAt
+                });
+            }
+        });
+
         const enrichedConversations = conversations.map(conv => {
             const convObj = { ...conv };
             convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
             convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
+            convObj.initialMessage = initialMessageMap.get(conv._id.toString()) || null;
             return convObj;
         });
 
