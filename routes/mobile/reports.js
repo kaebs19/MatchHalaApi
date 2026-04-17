@@ -59,6 +59,41 @@ router.post('/reports', protect, async (req, res) => {
             });
         }
 
+        // ✅ منع التكرار — لا تسمح ببلاغين pending/reviewing من نفس المُبلّغ ضد نفس المستخدم
+        // (نعتبر بلاغاً واحداً لكل مستخدم — بغض النظر عن السبب)
+        const existingActive = await Report.findOne({
+            reportedBy: req.user._id,
+            reportedUser: reportedUser,
+            status: { $in: ['pending', 'reviewing'] }
+        }).lean();
+
+        if (existingActive) {
+            return res.status(200).json({
+                success: true,
+                message: 'تم استلام بلاغك سابقاً وهو قيد المراجعة',
+                code: 'REPORT_ALREADY_EXISTS',
+                data: { report: { _id: existingActive._id, status: existingActive.status } }
+            });
+        }
+
+        // ✅ cooldown إضافي: منع أي بلاغ جديد من نفس المُبلّغ ضد نفس المستخدم خلال 24 ساعة
+        // (حتى لو السابق انغلق — يمنع "إعادة الفتح" فوراً)
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentClosed = await Report.findOne({
+            reportedBy: req.user._id,
+            reportedUser: reportedUser,
+            createdAt: { $gte: dayAgo }
+        }).lean();
+
+        if (recentClosed && !existingActive) {
+            return res.status(429).json({
+                success: false,
+                message: 'أبلغت عن هذا المستخدم مؤخراً. حاول لاحقاً',
+                code: 'REPORT_COOLDOWN',
+                data: { retryAfter: 24 * 60 * 60 }
+            });
+        }
+
         // تحديد الأولوية بناء على السبب
         const highPriorityReasons = ['harassment', 'inappropriate'];
         const priority = highPriorityReasons.includes(reason) ? 'high' : 'medium';
