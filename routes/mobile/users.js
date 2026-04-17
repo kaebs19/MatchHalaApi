@@ -237,6 +237,8 @@ router.get('/users/search', protect, async (req, res) => {
             isActive: true,
             // ✅ إخفاء المستخدمين المحظورين بشكل كامل من الاستكشاف
             'bannedWords.isBanned': { $ne: true },
+            // ✅ إخفاء المقيّدين من المراسلة (جزئي أو كامل) — ما يظهروا في الاستكشاف
+            'restrictions.messagingRestricted': { $ne: true },
             $or: [
                 { 'suspension.isSuspended': { $ne: true } },
                 { 'suspension.level': { $lt: 5 } }
