@@ -112,12 +112,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('resolvedBy', 'name')
             .sort({ createdAt: -1 });
 
-        // ✅ فلترة: إخفاء الاستئنافات لمستخدمين محظورين بشكل كامل أو محذوفين
-        // "محظور بشكل كامل" = bannedWords.isBanned || !isActive → الأدمن أغلق الحساب فعلاً
+        // ✅ فلترة: إخفاء استئنافات المحظورين بشكل كامل فقط (bannedWords)
+        // ملاحظة: المعلّقون يمتلكون isActive=false لكنهم يحتاجون تقديم استئناف — لا نخفيهم
         const visibleAppeals = appeals.filter(appeal => {
-            if (!appeal.user) return false; // حساب محذوف
-            if (appeal.user.bannedWords?.isBanned) return false;
-            if (appeal.user.isActive === false) return false;
+            if (!appeal.user) return false; // حساب محذوف فعلاً
+            if (appeal.user.bannedWords?.isBanned) return false; // محظور نهائياً
             return true;
         });
 
