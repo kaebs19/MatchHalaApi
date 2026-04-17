@@ -68,6 +68,36 @@ const uploadMessageImage = multer({
     }
 });
 
+// إعداد multer لرفع الرسائل الصوتية
+const audioUploadDir = path.join(__dirname, '..', '..', 'uploads', 'audio');
+if (!fs.existsSync(audioUploadDir)) {
+    fs.mkdirSync(audioUploadDir, { recursive: true });
+}
+
+const audioStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, audioUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.m4a';
+        const uniqueName = `voice-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${ext}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadMessageAudio = multer({
+    storage: audioStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB كحد أقصى
+    fileFilter: (req, file, cb) => {
+        const allowedMimes = /audio\/(m4a|mp4|mpeg|aac|x-m4a|wav|webm)/;
+        if (allowedMimes.test(file.mimetype) || /\.(m4a|mp3|wav|aac)$/i.test(file.originalname)) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط ملفات الصوت مسموحة'));
+        }
+    }
+});
+
 // إعداد multer لرفع صور التوثيق (Verification Selfies)
 const verificationsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'verifications');
 if (!fs.existsSync(verificationsUploadDir)) {
@@ -104,5 +134,6 @@ module.exports = {
     getBestUserImage,
     getUserImage,
     uploadMessageImage,
+    uploadMessageAudio,
     uploadVerificationSelfie
 };

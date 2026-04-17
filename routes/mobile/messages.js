@@ -11,7 +11,7 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio } = require('./helpers');
 
 // ==========================================
 // نظام الرسائل
@@ -500,6 +500,183 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
         res.status(500).json({
             success: false,
             message: 'حدث خطأ في إرسال الصورة',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/mobile/messages/send-audio
+// @desc    إرسال رسالة صوتية (multipart/form-data)
+// @access  Private
+router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'), async (req, res) => {
+    try {
+        const { conversationId, duration, waveform, replyTo } = req.body;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'لم يتم رفع ملف صوتي' });
+        }
+
+        if (!conversationId) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(400).json({ success: false, message: 'conversationId مطلوب' });
+        }
+
+        // ✅ فحص تقييد المراسلة
+        if (req.user.restrictions?.messagingRestricted) {
+            const now = new Date();
+            const until = req.user.restrictions.messagingRestrictedUntil;
+            if (!until || now < until) {
+                const level = req.user.restrictions.messagingRestrictedLevel;
+                if (level === 'all') {
+                    try { fs.unlinkSync(req.file.path); } catch (e) {}
+                    return res.status(403).json({
+                        success: false,
+                        message: 'حسابك مقيّد من إرسال الرسائل مؤقتاً',
+                        code: 'MESSAGING_RESTRICTED'
+                    });
+                }
+            }
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email deviceToken');
+
+        if (!conversation) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === senderId.toString()
+        );
+        if (!isParticipant) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+
+        // ✅ منع إرسال الرسائل في المحادثات المعلّقة
+        if (conversation.status === 'pending') {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن إرسال رسالة قبل قبول الطلب',
+                code: 'CONVERSATION_PENDING'
+            });
+        }
+
+        // فحص حظر الكلمات (الرسائل الصوتية لا نفحصها نصياً — لكن نحترم ban)
+        if (req.user.bannedWords?.isBanned) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة',
+                code: 'USER_BANNED'
+            });
+        }
+
+        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+        const mediaUrl = `${baseUrl}/uploads/audio/${req.file.filename}`;
+
+        // parse duration + waveform
+        const audioDuration = duration ? parseInt(duration, 10) : null;
+        let audioWaveform;
+        if (waveform) {
+            try {
+                audioWaveform = typeof waveform === 'string' ? JSON.parse(waveform) : waveform;
+                if (!Array.isArray(audioWaveform)) audioWaveform = undefined;
+            } catch (e) {
+                audioWaveform = undefined;
+            }
+        }
+
+        const messageData = {
+            conversation: conversationId,
+            sender: senderId,
+            type: 'audio',
+            mediaUrl,
+            content: '',
+            status: 'sent',
+            audioDuration,
+            audioWaveform
+        };
+
+        if (replyTo && mongoose.Types.ObjectId.isValid(replyTo)) {
+            messageData.replyTo = replyTo;
+        }
+
+        const message = await Message.create(messageData);
+
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl',
+                populate: { path: 'sender', select: 'name' }
+            })
+            .lean();
+
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: populatedMessage
+            });
+        }
+
+        // Push notifications
+        const recipients = conversation.participants.filter(
+            p => p._id.toString() !== senderId.toString()
+        );
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            if (!isOnline && recipient.deviceToken) {
+                try {
+                    await pushNotificationService.sendNewMessageNotification(
+                        recipient._id,
+                        req.user.name,
+                        '🎤 رسالة صوتية',
+                        conversationId,
+                        getBestUserImage(req.user),
+                        req.user._id
+                    );
+                } catch (pushErr) {
+                    console.error('Push error (audio):', pushErr.message);
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                message: {
+                    _id: populatedMessage._id,
+                    conversationId,
+                    sender: populatedMessage.sender?._id || senderId,
+                    senderUser: populatedMessage.sender,
+                    content: populatedMessage.content,
+                    type: populatedMessage.type,
+                    mediaUrl: populatedMessage.mediaUrl,
+                    audioDuration: populatedMessage.audioDuration,
+                    audioWaveform: populatedMessage.audioWaveform,
+                    replyTo: populatedMessage.replyTo,
+                    isRead: false,
+                    createdAt: populatedMessage.createdAt,
+                    updatedAt: populatedMessage.updatedAt
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Send audio error:', error);
+        if (req.file) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+        }
+        res.status(500).json({
+            success: false,
+            message: 'حدث خطأ في إرسال الرسالة الصوتية',
             error: error.message
         });
     }
