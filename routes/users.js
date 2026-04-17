@@ -2021,11 +2021,16 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
 
-        const durationMap = { '7d': 7, '30d': 30, '90d': 90 };
+        const durationMap = { '24h': 1, '48h': 2, '7d': 7, '30d': 30, '90d': 90 };
         const days = durationMap[duration];
         const until = days ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null;
 
-        const durationTextAr = duration === '7d' ? '7 أيام' : duration === '30d' ? '30 يوم' : duration === '90d' ? '90 يوم' : 'دائم';
+        const durationTextAr = duration === '24h' ? '24 ساعة'
+            : duration === '48h' ? '48 ساعة'
+            : duration === '7d' ? '7 أيام'
+            : duration === '30d' ? '30 يوم'
+            : duration === '90d' ? '90 يوم'
+            : 'دائم';
 
         let typeAr;
         if (type === 'photo') {

@@ -43,6 +43,8 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
     const [showViolationsModal, setShowViolationsModal] = useState(false);
     const [showPhotoDeleteModal, setShowPhotoDeleteModal] = useState(false);
     const [showRestrictModal, setShowRestrictModal] = useState(false);
+    const [showPartialModal, setShowPartialModal] = useState(false);
+    const [partialForm, setPartialForm] = useState({ action: 'messaging_new', duration: '24h', reason: '', notify: true });
 
     // Suspend form
     const [suspendForm, setSuspendForm] = useState({ duration: 'auto', customDays: 7, reason: '' });
@@ -222,6 +224,41 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
             }
         } catch (error) {
             showToast(error.response?.data?.message || 'فشل في تطبيق القيد', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // ✅ تقييد جزائي موحّد — تطبيق / إلغاء
+    const handlePartialAction = async () => {
+        try {
+            setActionLoading(true);
+            let res;
+            if (partialForm.action === 'unrestrict') {
+                // suspendUser يدعم duration="unrestrict" لفك التقييد + إشعار
+                res = await suspendUser(
+                    userId,
+                    'unrestrict',
+                    partialForm.reason || 'إلغاء التقييد من الأدمن',
+                    partialForm.notify
+                );
+            } else {
+                // restrictUser يدعم messaging_new / messaging_all + مدة مخصصة
+                res = await restrictUser(
+                    userId,
+                    partialForm.action,            // messaging_new | messaging_all
+                    partialForm.duration,          // 24h | 48h | 7d | 30d | 90d | permanent
+                    partialForm.reason
+                );
+            }
+            if (res.success) {
+                showToast(res.message || 'تم بنجاح', 'success');
+                setShowPartialModal(false);
+                setPartialForm({ action: 'messaging_new', duration: '24h', reason: '', notify: true });
+                fetchUserActivity();
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل تنفيذ الإجراء', 'error');
         } finally {
             setActionLoading(false);
         }
@@ -2033,35 +2070,15 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                 } catch(e) { showToast("فشل التصعيد", "error"); }
                             }} disabled={actionLoading}>🔄 تصعيد تلقائي</button>
 
-                            {/* ✅ تقييد جزئي */}
-                            <button className="admin-action-btn" style={{background:"#FF9800",color:"#fff",border:"none"}} onClick={async () => {
-                                try {
-                                    const { restrictUser } = await import("../services/api");
-                                    const { suspendUser } = await import("../services/api");
-                                    const res = await suspendUser(user._id, "restrict-new", "تقييد جزئي من الأدمن");
-                                    if (res.success) { showToast(res.message || "تم التقييد الجزئي", "success"); fetchUser(); }
-                                } catch(e) { showToast(e.response?.data?.message || "فشل التقييد", "error"); }
-                            }} disabled={actionLoading}>🔒 تقييد جزئي 24س</button>
-
-                            {/* ✅ تقييد كامل */}
-                            <button className="admin-action-btn" style={{background:"#f44336",color:"#fff",border:"none"}} onClick={async () => {
-                                try {
-                                    const { restrictUser } = await import("../services/api");
-                                    const { suspendUser } = await import("../services/api");
-                                    const res = await suspendUser(user._id, "restrict-all", "تقييد كامل من الأدمن");
-                                    if (res.success) { showToast(res.message || "تم التقييد الكامل", "success"); fetchUser(); }
-                                } catch(e) { showToast(e.response?.data?.message || "فشل التقييد", "error"); }
-                            }} disabled={actionLoading}>⛔ تقييد كامل 48س</button>
-
-                            {/* ✅ إلغاء التقييد */}
-                            <button className="admin-action-btn" style={{background:"#4CAF50",color:"#fff",border:"none"}} onClick={async () => {
-                                try {
-                                    const { unrestrictUser } = await import("../services/api");
-                                    const { suspendUser } = await import("../services/api");
-                                    const res = await suspendUser(user._id, "unrestrict", "إلغاء تقييد من الأدمن");
-                                    if (res.success) { showToast(res.message || "تم إلغاء التقييد", "success"); fetchUser(); }
-                                } catch(e) { showToast(e.response?.data?.message || "فشل إلغاء التقييد", "error"); }
-                            }} disabled={actionLoading}>🔓 إلغاء التقييد</button>
+                            {/* ✅ تقييد جزائي — مودال موحّد */}
+                            <button
+                                className="admin-action-btn"
+                                style={{background:"#FF9800",color:"#fff",border:"none"}}
+                                onClick={() => setShowPartialModal(true)}
+                                disabled={actionLoading}
+                            >
+                                🔒 تقييد جزائي
+                            </button>
 
                             {/* ✅ حظر الجهاز */}
                             <button className="admin-action-btn" style={{background:"#9C27B0",color:"#fff",border:"none"}} onClick={async () => {
@@ -2491,6 +2508,90 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                     </div>
                 </div>
             )}
+
+            {/* ✅ Partial Restriction Modal (تقييد جزائي موحّد) */}
+            {showPartialModal && (
+                <div className="modal-overlay" onClick={() => setShowPartialModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>🔒 تقييد جزائي</h3>
+                            <button className="close-modal-btn" onClick={() => setShowPartialModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>الإجراء</label>
+                                <select
+                                    value={partialForm.action}
+                                    onChange={(e) => setPartialForm({ ...partialForm, action: e.target.value })}
+                                >
+                                    <option value="messaging_new">💬 منع بدء محادثات جديدة (يمكنه الرد)</option>
+                                    <option value="messaging_all">🚫 منع جميع المراسلة (لا بدء ولا رد)</option>
+                                    <option value="unrestrict">🔓 إلغاء التقييد الجزائي</option>
+                                </select>
+                            </div>
+
+                            {partialForm.action !== 'unrestrict' && (
+                                <div className="form-group">
+                                    <label>المدة</label>
+                                    <select
+                                        value={partialForm.duration}
+                                        onChange={(e) => setPartialForm({ ...partialForm, duration: e.target.value })}
+                                    >
+                                        <option value="24h">24 ساعة</option>
+                                        <option value="48h">48 ساعة</option>
+                                        <option value="7d">7 أيام</option>
+                                        <option value="30d">30 يوم</option>
+                                        <option value="90d">90 يوم</option>
+                                        <option value="permanent">دائم</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            <div className="form-group">
+                                <label>
+                                    {partialForm.action === 'unrestrict' ? 'ملاحظة (اختياري)' : 'السبب (سيُرسل للمستخدم)'}
+                                </label>
+                                <textarea
+                                    value={partialForm.reason}
+                                    onChange={(e) => setPartialForm({ ...partialForm, reason: e.target.value })}
+                                    placeholder={partialForm.action === 'unrestrict'
+                                        ? 'سيُرسل إشعار للمستخدم بفك القيود...'
+                                        : 'مخالفة سياسة المراسلة...'}
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input
+                                    type="checkbox"
+                                    id="partialNotify"
+                                    checked={partialForm.notify}
+                                    onChange={(e) => setPartialForm({ ...partialForm, notify: e.target.checked })}
+                                />
+                                <label htmlFor="partialNotify" style={{ margin: 0 }}>
+                                    {partialForm.action === 'unrestrict'
+                                        ? '🔔 إشعار المستخدم بفك التقييد'
+                                        : '🔔 إشعار المستخدم بالتقييد'}
+                                </label>
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowPartialModal(false)} disabled={actionLoading}>إلغاء</button>
+                            <button
+                                className="submit-btn"
+                                style={{ background: partialForm.action === 'unrestrict' ? '#4CAF50' : '#FF9800' }}
+                                onClick={handlePartialAction}
+                                disabled={actionLoading}
+                            >
+                                {actionLoading
+                                    ? 'جاري التنفيذ...'
+                                    : partialForm.action === 'unrestrict' ? '🔓 فك التقييد' : '🔒 تطبيق التقييد'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Photo Lightbox */}
             {lightboxImage && (
                 <div className="lightbox-overlay" onClick={() => setLightboxImage(null)}>
