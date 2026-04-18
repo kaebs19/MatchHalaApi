@@ -48,7 +48,6 @@ function PremiumUsers() {
 
     useEffect(() => {
         fetchPremiumUsers();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPage, filterPlan, filterStatus, filterSignup, sortBy, search]);
 
     const fetchPremiumUsers = async () => {
