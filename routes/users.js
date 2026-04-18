@@ -146,18 +146,41 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
         if (premiumPlan !== undefined) user.premiumPlan = premiumPlan;
         if (premiumExpiresAt) user.premiumExpiresAt = new Date(premiumExpiresAt);
 
-        // إذا تم إلغاء Premium
+        // ✅ إذا تم إلغاء Premium → مسح كل مميزات الاشتراك (نفس سلوك auto-expire في auth middleware)
         if (isPremium === false) {
             user.premiumPlan = null;
             user.premiumExpiresAt = null;
             user.stealthMode = false;
+            user.nameColor = null;
+            if (user.privacySettings) {
+                user.privacySettings.invisibleRead = false;
+                user.privacySettings.stealthMode = false;
+                user.privacySettings.premiumOnlyRequests = false;
+            }
         }
 
         await user.save();
 
+        // ✅ إشعار المستخدم بإلغاء اشتراكه
+        if (isPremium === false) {
+            try {
+                const pushNotificationService = require('../services/pushNotificationService');
+                await pushNotificationService.sendNotificationToUser(user._id, {
+                    title: 'انتهى اشتراكك المميز',
+                    body: 'تم إلغاء اشتراكك المميز. المميزات الإضافية لم تعد متاحة.'
+                }, { type: 'system' });
+
+                if (global.io) {
+                    global.io.to(`user:${user._id}`).emit('premium-expired');
+                }
+            } catch (e) {
+                console.error('Premium expiry notification error:', e.message);
+            }
+        }
+
         res.json({
             success: true,
-            message: 'تم تحديث الاشتراك بنجاح',
+            message: isPremium === false ? 'تم إلغاء الاشتراك وإزالة جميع المميزات' : 'تم تحديث الاشتراك بنجاح',
             data: {
                 _id: user._id,
                 name: user.name,
