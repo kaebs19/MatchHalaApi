@@ -31,6 +31,9 @@ const { checkBannedWords } = require('./bannedWords');
 const BannedDevice = require('../models/BannedDevice');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 
+// ✅ إثراء الملف الشخصي (برج، رتبة، عيد ميلاد)
+const { getZodiacSign, computeUserRank, isBirthdayToday } = require('../utils/profileEnrichment');
+
 // Google Auth — iOS + Web clients
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -418,6 +421,12 @@ router.get('/me', protect, async (req, res) => {
                 return getFullUrl(imgPath);
             }).filter(Boolean);
         }
+
+        // ✅ حقول محسوبة: برج + رتبة + عيد ميلاد + تاريخ الانضمام
+        userObj.joinDate = userObj.createdAt;
+        userObj.zodiacSign = getZodiacSign(userObj.birthDate);
+        userObj.userRank = computeUserRank(userObj);
+        userObj.isBirthdayToday = isBirthdayToday(userObj.birthDate);
 
         res.status(200).json({
             success: true,
