@@ -29,6 +29,7 @@ const { checkBannedWords } = require('./bannedWords');
 
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
+const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 
 // Google Auth — iOS + Web clients
 const { OAuth2Client } = require('google-auth-library');
@@ -1304,7 +1305,7 @@ router.delete('/delete-account', protect, async (req, res) => {
 // @route   POST /api/auth/google
 // @desc    تسجيل/دخول عبر Google
 // @access  Public
-router.post('/google', async (req, res) => {
+router.post('/google', bannedDeviceCheck, async (req, res) => {
     try {
         const { idToken, deviceToken, deviceInfo, googleUserInfo } = req.body;
 
@@ -1442,7 +1443,7 @@ router.post('/google', async (req, res) => {
 // @route   POST /api/auth/apple
 // @desc    تسجيل/دخول عبر Apple
 // @access  Public
-router.post('/apple', async (req, res) => {
+router.post('/apple', bannedDeviceCheck, async (req, res) => {
     try {
         const { identityToken, authorizationCode, fullName, email: appleEmail, deviceToken, deviceInfo } = req.body;
 
