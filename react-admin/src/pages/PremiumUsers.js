@@ -13,11 +13,19 @@ import './PremiumUsers.css';
 
 function PremiumUsers() {
     const [users, setUsers] = useState([]);
-    const [stats, setStats] = useState({ total: 0, active: 0, expired: 0, weekly: 0, monthly: 0, quarterly: 0 });
+    const [stats, setStats] = useState({
+        total: 0, active: 0, expired: 0,
+        expiringSoon: 0, newThisWeek: 0, newThisMonth: 0,
+        weekly: 0, monthly: 0, quarterly: 0
+    });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [filterPlan, setFilterPlan] = useState('all');
-    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('all');      // all | active | expired | expiringSoon
+    const [filterSignup, setFilterSignup] = useState('all');      // all | week | month
+    const [sortBy, setSortBy] = useState('expiry-desc');
+    const [searchInput, setSearchInput] = useState('');
+    const [search, setSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
@@ -29,16 +37,32 @@ function PremiumUsers() {
     const [userToRemove, setUserToRemove] = useState(null);
     const toast = useToast();
 
+    // debounce البحث (400ms) قبل إرساله للـ backend
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setSearch(searchInput.trim());
+            setCurrentPage(1);
+        }, 400);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
     useEffect(() => {
         fetchPremiumUsers();
-    }, [currentPage, filterPlan, filterStatus]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, filterPlan, filterStatus, filterSignup, sortBy, search]);
 
     const fetchPremiumUsers = async () => {
         try {
             setLoading(true);
-            const params = { page: currentPage, limit: 10 };
+            const params = { page: currentPage, limit: 10, sort: sortBy };
             if (filterPlan !== 'all') params.plan = filterPlan;
-            if (filterStatus !== 'all') params.expired = filterStatus === 'expired';
+            if (filterStatus === 'expiringSoon') {
+                params.expiringSoon = true;
+            } else if (filterStatus !== 'all') {
+                params.expired = filterStatus === 'expired';
+            }
+            if (filterSignup !== 'all') params.signupPeriod = filterSignup;
+            if (search) params.search = search;
 
             const response = await getPremiumUsers(params);
             if (response.success) {
@@ -53,6 +77,16 @@ function PremiumUsers() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const resetFilters = () => {
+        setFilterPlan('all');
+        setFilterStatus('all');
+        setFilterSignup('all');
+        setSortBy('expiry-desc');
+        setSearchInput('');
+        setSearch('');
+        setCurrentPage(1);
     };
 
     const isExpired = (dateString) => {
@@ -189,11 +223,24 @@ function PremiumUsers() {
                 </StatCard>
                 <StatCard icon="✅" value={stats.active} label="نشط" color="green" />
                 <StatCard icon="⏰" value={stats.expired} label="منتهي" color="orange" />
+                <StatCard icon="⚠️" value={stats.expiringSoon} label="ينتهي خلال 7 أيام" color="red" />
+                <StatCard icon="✨" value={stats.newThisWeek} label="جدد هذا الأسبوع" color="blue">
+                    <div className="plan-breakdown">
+                        <span className="plan-tag monthly">{stats.newThisMonth} هذا الشهر</span>
+                    </div>
+                </StatCard>
             </div>
 
             {/* Filters */}
             <div className="premium-filters">
                 <div className="filter-group">
+                    <input
+                        type="text"
+                        className="premium-search-input"
+                        placeholder="🔍 بحث بالاسم أو البريد..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                    />
                     <select value={filterPlan} onChange={(e) => { setFilterPlan(e.target.value); setCurrentPage(1); }}>
                         <option value="all">جميع الخطط</option>
                         <option value="weekly">أسبوعي</option>
@@ -203,8 +250,22 @@ function PremiumUsers() {
                     <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}>
                         <option value="all">جميع الحالات</option>
                         <option value="active">نشط فقط</option>
+                        <option value="expiringSoon">ينتهي خلال 7 أيام</option>
                         <option value="expired">منتهي فقط</option>
                     </select>
+                    <select value={filterSignup} onChange={(e) => { setFilterSignup(e.target.value); setCurrentPage(1); }}>
+                        <option value="all">كل المشتركين</option>
+                        <option value="week">جدد هذا الأسبوع</option>
+                        <option value="month">جدد هذا الشهر</option>
+                    </select>
+                    <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}>
+                        <option value="expiry-desc">الأبعد انتهاءً</option>
+                        <option value="expiry-asc">الأقرب انتهاءً</option>
+                        <option value="created-desc">الأحدث اشتراكاً</option>
+                        <option value="created-asc">الأقدم اشتراكاً</option>
+                        <option value="name-asc">الاسم (أ-ي)</option>
+                    </select>
+                    <button type="button" className="filter-reset-btn" onClick={resetFilters} title="مسح الفلاتر">✖ مسح</button>
                 </div>
             </div>
 

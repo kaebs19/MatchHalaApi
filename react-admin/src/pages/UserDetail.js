@@ -712,9 +712,21 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                         ) : (
                             <span className="online-status-badge offline">آخر ظهور: {getTimeSince(user.lastLogin)}</span>
                         )}
-                        {(user.isPremium || user.subscription?.isActive) && (
-                            <span className="premium-badge">⭐ Premium</span>
-                        )}
+                        {(() => {
+                            const expiryValid = user.premiumExpiresAt
+                                ? new Date(user.premiumExpiresAt) > new Date()
+                                : false;
+                            const subActive = user.subscription?.isActive;
+                            const isActivePremium = (user.isPremium && expiryValid) || subActive;
+                            const isExpiredPremium = user.isPremium && !expiryValid && !subActive;
+                            if (isActivePremium) {
+                                return <span className="premium-badge">⭐ Premium</span>;
+                            }
+                            if (isExpiredPremium) {
+                                return <span className="premium-badge premium-expired" title="اشتراك منتهي — سيتم إلغاؤه تلقائياً">⏰ Premium (منتهي)</span>;
+                            }
+                            return null;
+                        })()}
                         {(reportsCount?.totalReports > 0 || userData?.reportsCount > 0) && (
                             <span className="reports-badge">🚨 {reportsCount?.totalReports || userData?.reportsCount || 0} بلاغ</span>
                         )}

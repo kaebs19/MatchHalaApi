@@ -82,23 +82,66 @@ router.get('/', protect, adminOnly, async (req, res) => {
 // @access  Private/Admin
 router.get('/premium', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, plan, expired } = req.query;
+        const {
+            page = 1,
+            limit = 20,
+            plan,
+            expired,
+            search,
+            sort = 'expiry-desc',
+            signupPeriod,      // 'week' | 'month' | 'all'
+            expiringSoon       // 'true' = ينتهي خلال 7 أيام
+        } = req.query;
+
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
+        const now = new Date();
+        const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
         const filter = { isPremium: true };
+
         if (plan && ['weekly', 'monthly', 'quarterly'].includes(plan)) {
             filter.premiumPlan = plan;
         }
-        if (expired === 'true') {
-            filter.premiumExpiresAt = { $lt: new Date() };
+
+        // حالة الاشتراك — expiringSoon يتقدم على expired/active لو أُرسل
+        if (expiringSoon === 'true') {
+            filter.premiumExpiresAt = { $gte: now, $lte: in7days };
+        } else if (expired === 'true') {
+            filter.premiumExpiresAt = { $lt: now };
         } else if (expired === 'false') {
-            filter.premiumExpiresAt = { $gte: new Date() };
+            filter.premiumExpiresAt = { $gte: now };
         }
+
+        // فترة الاشتراك (الجدد)
+        if (signupPeriod === 'week') {
+            filter.createdAt = { $gte: weekAgo };
+        } else if (signupPeriod === 'month') {
+            filter.createdAt = { $gte: monthAgo };
+        }
+
+        // بحث بالاسم/البريد
+        if (search && search.trim()) {
+            const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escaped, 'i');
+            filter.$or = [{ name: regex }, { email: regex }];
+        }
+
+        const sortMap = {
+            'expiry-desc':  { premiumExpiresAt: -1 },
+            'expiry-asc':   { premiumExpiresAt: 1 },
+            'created-desc': { createdAt: -1 },
+            'created-asc':  { createdAt: 1 },
+            'name-asc':     { name: 1 }
+        };
+        const sortQuery = sortMap[sort] || sortMap['expiry-desc'];
 
         const users = await User.find(filter)
             .select('name email profileImage isPremium premiumPlan premiumExpiresAt verification.isVerified createdAt lastLogin')
-            .sort({ premiumExpiresAt: -1 })
+            .sort(sortQuery)
             .limit(limitNum)
             .skip((pageNum - 1) * limitNum);
 
@@ -106,12 +149,15 @@ router.get('/premium', protect, adminOnly, async (req, res) => {
 
         // إحصائيات
         const stats = {
-            total: await User.countDocuments({ isPremium: true }),
-            active: await User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: new Date() } }),
-            expired: await User.countDocuments({ isPremium: true, premiumExpiresAt: { $lt: new Date() } }),
-            weekly: await User.countDocuments({ isPremium: true, premiumPlan: 'weekly' }),
-            monthly: await User.countDocuments({ isPremium: true, premiumPlan: 'monthly' }),
-            quarterly: await User.countDocuments({ isPremium: true, premiumPlan: 'quarterly' })
+            total:         await User.countDocuments({ isPremium: true }),
+            active:        await User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: now } }),
+            expired:       await User.countDocuments({ isPremium: true, premiumExpiresAt: { $lt: now } }),
+            expiringSoon:  await User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: now, $lte: in7days } }),
+            newThisWeek:   await User.countDocuments({ isPremium: true, createdAt: { $gte: weekAgo } }),
+            newThisMonth:  await User.countDocuments({ isPremium: true, createdAt: { $gte: monthAgo } }),
+            weekly:        await User.countDocuments({ isPremium: true, premiumPlan: 'weekly' }),
+            monthly:       await User.countDocuments({ isPremium: true, premiumPlan: 'monthly' }),
+            quarterly:     await User.countDocuments({ isPremium: true, premiumPlan: 'quarterly' })
         };
 
         res.json({
@@ -151,7 +197,7 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
             user.premiumPlan = null;
             user.premiumExpiresAt = null;
             user.stealthMode = false;
-            user.nameColor = null;
+            user.customNameColor = null;
             if (user.privacySettings) {
                 user.privacySettings.invisibleRead = false;
                 user.privacySettings.stealthMode = false;

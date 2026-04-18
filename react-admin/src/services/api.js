@@ -441,6 +441,10 @@ export const getPremiumUsers = async (params = {}) => {
     if (params.limit) queryParams.append('limit', params.limit);
     if (params.plan) queryParams.append('plan', params.plan);
     if (params.expired !== undefined) queryParams.append('expired', params.expired);
+    if (params.expiringSoon !== undefined) queryParams.append('expiringSoon', params.expiringSoon);
+    if (params.signupPeriod) queryParams.append('signupPeriod', params.signupPeriod);
+    if (params.search) queryParams.append('search', params.search);
+    if (params.sort) queryParams.append('sort', params.sort);
     const response = await api.get(`/users/premium?${queryParams}`);
     return response.data;
 };

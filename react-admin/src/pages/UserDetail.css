@@ -1429,6 +1429,14 @@
     box-shadow: 0 2px 8px rgba(245, 166, 35, 0.3);
 }
 
+/* Premium Badge — expired state */
+.premium-badge.premium-expired {
+    background: linear-gradient(135deg, #b0b0b0, #868686) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(134, 134, 134, 0.3);
+    cursor: help;
+}
+
 /* Reports Badge */
 .reports-badge {
     background: linear-gradient(135deg, #ff6b6b, #ee5a24) !important;

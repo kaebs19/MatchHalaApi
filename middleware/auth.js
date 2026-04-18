@@ -151,7 +151,7 @@ const protect = async (req, res, next) => {
                         'privacySettings.invisibleRead': false,
                         'privacySettings.stealthMode': false,
                         'privacySettings.premiumOnlyRequests': false,
-                        nameColor: null
+                        customNameColor: null
                     });
                     req.user.isPremium = false;
                     req.user.premiumPlan = null;

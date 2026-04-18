@@ -34,12 +34,14 @@ async function expirePremiumSubscriptions() {
             await User.findByIdAndUpdate(user._id, {
                 isPremium: false,
                 premiumPlan: null,
+                premiumExpiresAt: null,
+                stealthMode: false,
                 // إلغاء ميزات Premium
                 'privacySettings.invisibleRead': false,
                 'privacySettings.stealthMode': false,
                 'privacySettings.premiumOnlyRequests': false,
                 // إعادة لون الاسم للافتراضي
-                nameColor: null,
+                customNameColor: null,
             });
 
             // إشعار المستخدم بانتهاء الاشتراك

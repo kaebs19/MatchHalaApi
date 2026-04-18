@@ -15,10 +15,13 @@
 
 .premium-filters .filter-group {
     display: flex;
-    gap: 15px;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
-.premium-filters .filter-group select {
+.premium-filters .filter-group select,
+.premium-filters .filter-group .premium-search-input {
     padding: 12px 15px;
     border: 2px solid #e0e0e0;
     border-radius: 10px;
@@ -29,9 +32,34 @@
     min-width: 150px;
 }
 
-.premium-filters .filter-group select:focus {
+.premium-filters .filter-group .premium-search-input {
+    cursor: text;
+    min-width: 240px;
+    flex: 1 1 240px;
+}
+
+.premium-filters .filter-group select:focus,
+.premium-filters .filter-group .premium-search-input:focus {
     outline: none;
     border-color: #667eea;
+}
+
+.premium-filters .filter-reset-btn {
+    padding: 12px 18px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    background: #fff;
+    color: #666;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.premium-filters .filter-reset-btn:hover {
+    border-color: #dc3545;
+    color: #dc3545;
+    background: #fff5f5;
 }
 
 /* Table Controls */
