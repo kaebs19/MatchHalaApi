@@ -9,7 +9,7 @@ const ProfileView = require('../../models/ProfileView');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, getBestUserImage, getUserImage, isUserFullyBanned } = require('./helpers');
-const { getZodiacSign, computeUserRank, isBirthdayToday } = require('../../utils/profileEnrichment');
+const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadgeSource } = require('../../utils/profileEnrichment');
 
 // ==========================================
 // Batch Home Endpoint - طلب واحد لكل بيانات الصفحة الرئيسية
@@ -435,7 +435,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive bannedWords suspension createdAt stats'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats'
         ).lean();
 
         if (!user) {
@@ -517,7 +517,9 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             joinDate: user.createdAt,
             zodiacSign: getZodiacSign(user.birthDate),
             userRank: computeUserRank(user),
-            isBirthdayToday: isBirthdayToday(user.birthDate)
+            isBirthdayToday: isBirthdayToday(user.birthDate),
+            hasVipBadge: hasVipBadge(user),
+            vipBadgeSource: getVipBadgeSource(user)
         };
 
         res.json({ success: true, data: { user: profileData } });

@@ -242,6 +242,14 @@ const userSchema = new mongoose.Schema({
         reviewedAt: { type: Date, default: null }
     },
 
+    // ✅ شارة VIP (X-style) — تُمنح من الأدمن يدوياً أو تلقائياً للمشتركين
+    vipBadge: {
+        grantedByAdmin: { type: Boolean, default: false }, // الأدمن منحها يدوياً (تبقى حتى بعد انتهاء الاشتراك)
+        grantedByAdminAt: { type: Date, default: null },
+        grantedByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        note: { type: String, default: null }              // ملاحظة الأدمن (سبب المنح)
+    },
+
     // Super Likes
     superLikes: {
         daily: { type: Number, default: 0 },

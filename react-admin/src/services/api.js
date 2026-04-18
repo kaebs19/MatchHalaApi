@@ -538,6 +538,12 @@ export const restrictUser = async (userId, type, duration, reason) => {
     return response.data;
 };
 
+// ✅ منح/سحب شارة VIP (X)
+export const setVipBadge = async (userId, grant, note) => {
+    const response = await api.put(`/users/${userId}/vip-badge`, { grant, note });
+    return response.data;
+};
+
 // ============ ✅ التحكم بالإصدارات ============
 
 // الحصول على إعدادات الإصدار

@@ -2080,6 +2080,38 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                 🔒 تقييد جزائي
                             </button>
 
+                            {/* ✅ شارة VIP (X) */}
+                            <button
+                                className="admin-action-btn"
+                                style={{
+                                    background: user.vipBadge?.grantedByAdmin ? "#8E8E93" : "linear-gradient(135deg,#1DA1F2,#0077D4)",
+                                    color: "#fff",
+                                    border: "none"
+                                }}
+                                onClick={async () => {
+                                    const isGranted = user.vipBadge?.grantedByAdmin;
+                                    const action = isGranted ? "سحب" : "منح";
+                                    if (!window.confirm(`هل تريد ${action} شارة VIP لـ ${user.name}؟`)) return;
+                                    const note = isGranted ? null : window.prompt("ملاحظة (اختياري)") || null;
+                                    try {
+                                        setActionLoading(true);
+                                        const { setVipBadge } = await import("../services/api");
+                                        const res = await setVipBadge(user._id, !isGranted, note);
+                                        if (res.success) {
+                                            showToast(res.message, "success");
+                                            fetchUserActivity();
+                                        }
+                                    } catch(e) {
+                                        showToast(e.response?.data?.message || `فشل ${action} VIP`, "error");
+                                    } finally {
+                                        setActionLoading(false);
+                                    }
+                                }}
+                                disabled={actionLoading}
+                            >
+                                {user.vipBadge?.grantedByAdmin ? "⏸ سحب VIP" : "✕ منح VIP"}
+                            </button>
+
                             {/* ✅ فك التقييد (سريع) — يظهر فقط لو المستخدم مقيّد فعلاً */}
                             {(user.restrictions?.messagingRestricted || user.suspension?.isSuspended) && (
                                 <button

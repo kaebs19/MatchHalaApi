@@ -195,6 +195,58 @@ router.put('/:id/premium', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/vip-badge
+// @desc    منح/سحب شارة VIP (X) يدوياً من الأدمن
+// @access  Private/Admin
+router.put('/:id/vip-badge', protect, adminOnly, async (req, res) => {
+    try {
+        const { grant, note } = req.body; // grant: true | false
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        user.vipBadge = user.vipBadge || {};
+
+        if (grant) {
+            user.vipBadge.grantedByAdmin = true;
+            user.vipBadge.grantedByAdminAt = new Date();
+            user.vipBadge.grantedByAdminId = req.user._id;
+            user.vipBadge.note = note || null;
+        } else {
+            user.vipBadge.grantedByAdmin = false;
+            user.vipBadge.grantedByAdminAt = null;
+            user.vipBadge.grantedByAdminId = null;
+            user.vipBadge.note = null;
+        }
+
+        await user.save();
+
+        // إشعار المستخدم
+        try {
+            const pushNotificationService = require('../services/pushNotificationService');
+            await pushNotificationService.sendNotificationToUser(user._id, {
+                title: grant ? '✨ تهانينا — حصلت على شارة VIP' : 'تم سحب شارة VIP',
+                body: grant
+                    ? 'منحتك الإدارة شارة VIP المميّزة — ستظهر على ملفك الشخصي.'
+                    : 'تم سحب شارة VIP من حسابك.'
+            }, { type: 'system' });
+        } catch (e) {
+            console.error('VIP badge notification error:', e.message);
+        }
+
+        res.json({
+            success: true,
+            message: grant ? `تم منح VIP لـ ${user.name}` : `تم سحب VIP من ${user.name}`,
+            data: { vipBadge: user.vipBadge }
+        });
+    } catch (error) {
+        console.error('VIP badge error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/users/stats/devices
 // @desc    إحصائيات الأجهزة والمواقع
 // @access  Private/Admin

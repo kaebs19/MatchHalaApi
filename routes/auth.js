@@ -31,8 +31,8 @@ const { checkBannedWords } = require('./bannedWords');
 const BannedDevice = require('../models/BannedDevice');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 
-// ✅ إثراء الملف الشخصي (برج، رتبة، عيد ميلاد)
-const { getZodiacSign, computeUserRank, isBirthdayToday } = require('../utils/profileEnrichment');
+// ✅ إثراء الملف الشخصي (برج، رتبة، عيد ميلاد، VIP)
+const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadgeSource } = require('../utils/profileEnrichment');
 
 // Google Auth — iOS + Web clients
 const { OAuth2Client } = require('google-auth-library');
@@ -422,11 +422,13 @@ router.get('/me', protect, async (req, res) => {
             }).filter(Boolean);
         }
 
-        // ✅ حقول محسوبة: برج + رتبة + عيد ميلاد + تاريخ الانضمام
+        // ✅ حقول محسوبة: برج + رتبة + عيد ميلاد + VIP + تاريخ الانضمام
         userObj.joinDate = userObj.createdAt;
         userObj.zodiacSign = getZodiacSign(userObj.birthDate);
         userObj.userRank = computeUserRank(userObj);
         userObj.isBirthdayToday = isBirthdayToday(userObj.birthDate);
+        userObj.hasVipBadge = hasVipBadge(userObj);
+        userObj.vipBadgeSource = getVipBadgeSource(userObj);
 
         res.status(200).json({
             success: true,

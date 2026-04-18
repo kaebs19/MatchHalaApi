@@ -100,6 +100,31 @@ function computeUserRank(user) {
 }
 
 /**
+ * هل المستخدم يمتلك شارة VIP — إما من الأدمن أو من الاشتراك الفعّال
+ */
+function hasVipBadge(user) {
+    if (!user) return false;
+    // منحها الأدمن يدوياً → تبقى حتى لو انتهى الاشتراك
+    if (user.vipBadge?.grantedByAdmin) return true;
+    // مشترك فعّال (لم ينتهِ)
+    if (user.isPremium && user.premiumExpiresAt) {
+        const now = new Date();
+        if (new Date(user.premiumExpiresAt) > now) return true;
+    } else if (user.isPremium && !user.premiumExpiresAt) {
+        // مشترك بدون تاريخ انتهاء (دائم)
+        return true;
+    }
+    return false;
+}
+
+function getVipBadgeSource(user) {
+    if (!user) return null;
+    if (user.vipBadge?.grantedByAdmin) return 'admin';
+    if (user.isPremium) return 'premium';
+    return null;
+}
+
+/**
  * يُضيف الحقول المحسوبة إلى كائن مستخدم (lean أو document)
  */
 function enrichProfile(user) {
@@ -113,7 +138,9 @@ function enrichProfile(user) {
         zodiacSign: zodiac,
         userRank: rank,
         isBirthdayToday: birthday,
-        joinDate: user.createdAt || null
+        joinDate: user.createdAt || null,
+        hasVipBadge: hasVipBadge(user),
+        vipBadgeSource: getVipBadgeSource(user)
     };
 }
 
@@ -121,5 +148,7 @@ module.exports = {
     getZodiacSign,
     isBirthdayToday,
     computeUserRank,
+    hasVipBadge,
+    getVipBadgeSource,
     enrichProfile
 };
