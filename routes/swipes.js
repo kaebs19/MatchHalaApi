@@ -876,31 +876,31 @@ router.get('/admin/list', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.get('/stats', protect, adminOnly, async (req, res) => {
     try {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        const { get, set } = require('../utils/cache');
+        const CACHE_KEY = 'swipes_stats';
+        const cached = get(CACHE_KEY);
+        if (cached) return res.json(cached);
 
-        const totalSwipes = await Swipe.countDocuments();
-        const totalLikes = await Swipe.countDocuments({ type: 'like' });
-        const totalDislikes = await Swipe.countDocuments({ type: 'dislike' });
-        const totalSuperlikes = await Swipe.countDocuments({ type: 'superlike' });
-        const swipesLast7Days = await Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-        // نسبة اللايكات
+        const [totalSwipes, totalLikes, totalDislikes, totalSuperlikes, swipesLast7Days] = await Promise.all([
+            Swipe.countDocuments(),
+            Swipe.countDocuments({ type: 'like' }),
+            Swipe.countDocuments({ type: 'dislike' }),
+            Swipe.countDocuments({ type: 'superlike' }),
+            Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } })
+        ]);
+
         const likeRate = totalSwipes > 0
             ? Math.round(((totalLikes + totalSuperlikes) / totalSwipes) * 100)
             : 0;
 
-        res.json({
+        const payload = {
             success: true,
-            data: {
-                totalSwipes,
-                totalLikes,
-                totalDislikes,
-                totalSuperlikes,
-                swipesLast7Days,
-                likeRate
-            }
-        });
+            data: { totalSwipes, totalLikes, totalDislikes, totalSuperlikes, swipesLast7Days, likeRate }
+        };
+        set(CACHE_KEY, payload, 60); // cache 60s
+        res.json(payload);
 
     } catch (error) {
         console.error('خطأ في جلب إحصائيات السوايب:', error);

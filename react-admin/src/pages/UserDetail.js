@@ -1718,43 +1718,90 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                     <div style={{marginTop:20}}>
                                         <h4 style={{marginBottom:12}}>🔗 حسابات مرتبطة بنفس الجهاز ({relatedAccounts.uniqueRelated.length})</h4>
                                         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                                            {relatedAccounts.uniqueRelated.map(u => (
-                                                <div
-                                                    key={u._id}
-                                                    onClick={() => onNavigateToUser && onNavigateToUser(u._id)}
-                                                    style={{display:'flex',alignItems:'center',gap:12,padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12,cursor:'pointer',transition:'all 0.15s'}}
-                                                    onMouseEnter={e=>{e.currentTarget.style.borderColor='#6366f1';e.currentTarget.style.background='#eef2ff';}}
-                                                    onMouseLeave={e=>{e.currentTarget.style.borderColor='#e5e7eb';e.currentTarget.style.background='#fff';}}
-                                                >
-                                                    <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt={u.name} style={{width:48,height:48,borderRadius:'50%',objectFit:'cover'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
-                                                    <div style={{flex:1}}>
-                                                        <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                                                            {u.name}
-                                                            {u.suspension?.isSuspended && <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11}}>⛔ معلّق</span>}
-                                                            {!u.isActive && <span style={{background:'#f3f4f6',color:'#6b7280',padding:'2px 8px',borderRadius:10,fontSize:11}}>غير مفعّل</span>}
+                                            {relatedAccounts.uniqueRelated.map(u => {
+                                                const isBanned = u.bannedWords?.isBanned;
+                                                const isSuspended = u.suspension?.isSuspended;
+                                                const isDeviceBanned = u.deviceBanned;
+                                                const isInactive = !u.isActive;
+
+                                                // أولوية الألوان: بان > تعليق > جهاز محظور > غير مفعّل > عادي
+                                                let borderColor = '#e5e7eb';
+                                                let bgColor = '#fff';
+                                                let hoverBg = '#eef2ff';
+                                                let hoverBorder = '#6366f1';
+
+                                                if (isBanned) {
+                                                    borderColor = '#ef4444';
+                                                    bgColor = '#fef2f2';
+                                                    hoverBg = '#fee2e2';
+                                                    hoverBorder = '#dc2626';
+                                                } else if (isSuspended) {
+                                                    borderColor = '#f59e0b';
+                                                    bgColor = '#fffbeb';
+                                                    hoverBg = '#fef3c7';
+                                                    hoverBorder = '#d97706';
+                                                } else if (isDeviceBanned) {
+                                                    borderColor = '#a855f7';
+                                                    bgColor = '#faf5ff';
+                                                    hoverBg = '#f3e8ff';
+                                                    hoverBorder = '#9333ea';
+                                                } else if (isInactive) {
+                                                    borderColor = '#d1d5db';
+                                                    bgColor = '#f9fafb';
+                                                }
+
+                                                return (
+                                                    <div
+                                                        key={u._id}
+                                                        onClick={() => onNavigateToUser && onNavigateToUser(u._id)}
+                                                        style={{display:'flex',alignItems:'center',gap:12,padding:12,background:bgColor,border:`2px solid ${borderColor}`,borderRadius:12,cursor:'pointer',transition:'all 0.15s'}}
+                                                        onMouseEnter={e=>{e.currentTarget.style.borderColor=hoverBorder;e.currentTarget.style.background=hoverBg;}}
+                                                        onMouseLeave={e=>{e.currentTarget.style.borderColor=borderColor;e.currentTarget.style.background=bgColor;}}
+                                                    >
+                                                        <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt={u.name} style={{width:48,height:48,borderRadius:'50%',objectFit:'cover',opacity: isBanned || isInactive ? 0.7 : 1}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
+                                                        <div style={{flex:1}}>
+                                                            <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                                                <span style={{textDecoration: isBanned ? 'line-through' : 'none', color: isBanned ? '#991b1b' : 'inherit'}}>{u.name}</span>
+                                                                {isBanned && (
+                                                                    <span title={u.bannedWords?.banReason || ''} style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:10,fontSize:11,fontWeight:700}}>🚫 محظور</span>
+                                                                )}
+                                                                {isSuspended && !isBanned && (
+                                                                    <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11}}>⛔ معلّق</span>
+                                                                )}
+                                                                {isDeviceBanned && !isBanned && (
+                                                                    <span title="هذا المستخدم هو صاحب الجهاز المحظور الأصلي" style={{background:'#f3e8ff',color:'#6b21a8',padding:'2px 8px',borderRadius:10,fontSize:11}}>📵 صاحب جهاز محظور</span>
+                                                                )}
+                                                                {isInactive && !isBanned && (
+                                                                    <span style={{background:'#f3f4f6',color:'#6b7280',padding:'2px 8px',borderRadius:10,fontSize:11}}>غير مفعّل</span>
+                                                                )}
+                                                            </div>
+                                                            <div style={{fontSize:12,color:'#6b7280'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
+                                                            <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
                                                         </div>
-                                                        <div style={{fontSize:12,color:'#6b7280'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
-                                                        <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
+                                                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                            {/* أزرار إجراءات سريعة inline */}
+                                                            {!isBanned && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleQuickSuspendRelated(u._id, u.name); }}
+                                                                        title="تعليق سريع 3 أيام"
+                                                                        style={{padding:'6px 10px',fontSize:12,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:8,color:'#78350f',cursor:'pointer'}}
+                                                                    >⛔ تعليق</button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleQuickBanRelated(u._id, u.name); }}
+                                                                        title="حظر نهائي + حظر الجهاز"
+                                                                        style={{padding:'6px 10px',fontSize:12,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:8,color:'#7f1d1d',cursor:'pointer'}}
+                                                                    >🚫 حظر</button>
+                                                                </>
+                                                            )}
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); onNavigateToUser && onNavigateToUser(u._id); }}
+                                                                style={{padding:'6px 10px',fontSize:12,background:'#eef2ff',border:'1px solid #6366f1',borderRadius:8,color:'#4338ca',cursor:'pointer'}}
+                                                            >فتح →</button>
+                                                        </div>
                                                     </div>
-                                                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                                                        {/* أزرار إجراءات سريعة inline (لا تفتح UserDetail) */}
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleQuickSuspendRelated(u._id, u.name); }}
-                                                            title="تعليق سريع 3 أيام"
-                                                            style={{padding:'6px 10px',fontSize:12,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:8,color:'#78350f',cursor:'pointer'}}
-                                                        >⛔ تعليق</button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleQuickBanRelated(u._id, u.name); }}
-                                                            title="حظر نهائي + حظر الجهاز"
-                                                            style={{padding:'6px 10px',fontSize:12,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:8,color:'#7f1d1d',cursor:'pointer'}}
-                                                        >🚫 حظر</button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); onNavigateToUser && onNavigateToUser(u._id); }}
-                                                            style={{padding:'6px 10px',fontSize:12,background:'#eef2ff',border:'1px solid #6366f1',borderRadius:8,color:'#4338ca',cursor:'pointer'}}
-                                                        >فتح →</button>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

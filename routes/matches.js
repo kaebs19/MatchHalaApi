@@ -251,33 +251,39 @@ router.delete('/:id', protect, async (req, res) => {
 // @access  Admin
 router.get('/admin/stats', protect, adminOnly, async (req, res) => {
     try {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        const { get, set } = require('../utils/cache');
+        const CACHE_KEY = 'matches_admin_stats';
+        const cached = get(CACHE_KEY);
+        if (cached) return res.json(cached);
 
-        const totalMatches = await Match.countDocuments();
-        const activeMatches = await Match.countDocuments({ isActive: true });
-        const unmatchedCount = await Match.countDocuments({ isActive: false });
-        const matchesLast7Days = await Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-        const matchesLast30Days = await Match.countDocuments({ createdAt: { $gte: thirtyDaysAgo } });
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-        // نسبة التحويل: سوايبات → تطابقات
-        const totalLikes = await Swipe.countDocuments({ type: { $in: ['like', 'superlike'] } });
+        const [
+            totalMatches, activeMatches, unmatchedCount,
+            matchesLast7Days, matchesLast30Days, totalLikes
+        ] = await Promise.all([
+            Match.countDocuments(),
+            Match.countDocuments({ isActive: true }),
+            Match.countDocuments({ isActive: false }),
+            Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+            Match.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+            Swipe.countDocuments({ type: { $in: ['like', 'superlike'] } })
+        ]);
+
         const matchRate = totalLikes > 0
             ? Math.round((totalMatches / totalLikes) * 100)
             : 0;
 
-        res.json({
+        const payload = {
             success: true,
             data: {
-                totalMatches,
-                activeMatches,
-                unmatchedCount,
-                matchesLast7Days,
-                matchesLast30Days,
-                matchRate
+                totalMatches, activeMatches, unmatchedCount,
+                matchesLast7Days, matchesLast30Days, matchRate
             }
-        });
+        };
+        set(CACHE_KEY, payload, 60); // cache 60s
+        res.json(payload);
 
     } catch (error) {
         console.error('خطأ في جلب إحصائيات التطابقات:', error);

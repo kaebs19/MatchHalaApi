@@ -30,114 +30,112 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
         const now = new Date();
         const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
         const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
-        // ============ إحصائيات المستخدمين ============
-        const totalUsers = await User.countDocuments();
-        const activeUsers = await User.countDocuments({ isActive: true });
-        const newUsers = await User.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-        const recentLogins = await User.countDocuments({ lastLogin: { $gte: oneDayAgo } });
+        // ✅ كل الاستعلامات بالتوازي (Promise.all) بدل تسلسل 40+ await
+        const [
+            totalUsers, activeUsers, newUsers, recentLogins,
+            latestUsers,
+            premiumTotal, premiumActive, premiumExpired,
+            premiumWeekly, premiumMonthly, premiumQuarterly,
+            totalSuperLikes, superLikesLast7Days,
+            stealthModeUsers,
+            totalConversations, activeConversations, totalMessages,
+            totalSwipes, swipesLast7Days, totalLikes, totalDislikes, totalSwipeSuperLikes,
+            totalMatches, activeMatches, matchesLast7Days,
+            suspendedNow, bannedNow, reportsToday, reportsPending,
+            onlineNow,
+            bannedDevicesCount, bannedDevicesToday,
+            appealsPending, appealsApproved, appealsRejected, appealsLast7Days,
+            growthAgg,
+            topReported
+        ] = await Promise.all([
+            User.countDocuments(),
+            User.countDocuments({ isActive: true }),
+            User.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+            User.countDocuments({ lastLogin: { $gte: oneDayAgo } }),
 
-        // أحدث المستخدمين (آخر 5)
-        const latestUsers = await User.find({})
-            .select('name email createdAt profileImage')
-            .sort({ createdAt: -1 })
-            .limit(5)
-            .lean();
+            User.find({}).select('name email createdAt profileImage').sort({ createdAt: -1 }).limit(5).lean(),
 
-        // ============ إحصائيات Premium ============
-        const premiumTotal = await User.countDocuments({ isPremium: true });
-        const premiumActive = await User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: now } });
-        const premiumExpired = await User.countDocuments({ isPremium: true, premiumExpiresAt: { $lt: now } });
-        const premiumWeekly = await User.countDocuments({ isPremium: true, premiumPlan: 'weekly', premiumExpiresAt: { $gte: now } });
-        const premiumMonthly = await User.countDocuments({ isPremium: true, premiumPlan: 'monthly', premiumExpiresAt: { $gte: now } });
-        const premiumQuarterly = await User.countDocuments({ isPremium: true, premiumPlan: 'quarterly', premiumExpiresAt: { $gte: now } });
+            User.countDocuments({ isPremium: true }),
+            User.countDocuments({ isPremium: true, premiumExpiresAt: { $gte: now } }),
+            User.countDocuments({ isPremium: true, premiumExpiresAt: { $lt: now } }),
+            User.countDocuments({ isPremium: true, premiumPlan: 'weekly', premiumExpiresAt: { $gte: now } }),
+            User.countDocuments({ isPremium: true, premiumPlan: 'monthly', premiumExpiresAt: { $gte: now } }),
+            User.countDocuments({ isPremium: true, premiumPlan: 'quarterly', premiumExpiresAt: { $gte: now } }),
 
-        // إيراد تقديري شهري (بالريال السعودي)
+            SuperLike.countDocuments(),
+            SuperLike.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+
+            User.countDocuments({ stealthMode: true, isPremium: true }),
+
+            Conversation.countDocuments(),
+            Conversation.countDocuments({ isActive: true }),
+            Message.countDocuments({ isDeleted: false }),
+
+            Swipe.countDocuments(),
+            Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+            Swipe.countDocuments({ type: 'like' }),
+            Swipe.countDocuments({ type: 'dislike' }),
+            Swipe.countDocuments({ type: 'superlike' }),
+
+            Match.countDocuments(),
+            Match.countDocuments({ isActive: true }),
+            Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+
+            User.countDocuments({ 'suspension.isSuspended': true }),
+            User.countDocuments({ 'bannedWords.isBanned': true }),
+            Report.countDocuments({ createdAt: { $gte: oneDayAgo } }),
+            Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } }),
+
+            User.countDocuments({
+                $or: [
+                    { isOnline: true },
+                    { lastLogin: { $gte: fiveMinAgo } }
+                ]
+            }),
+
+            BannedDevice.countDocuments({ isActive: true }),
+            BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: oneDayAgo } }),
+
+            Appeal.countDocuments({ status: 'pending' }),
+            Appeal.countDocuments({ status: 'approved' }),
+            Appeal.countDocuments({ status: 'rejected' }),
+            Appeal.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+
+            User.aggregate([
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                { $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    count: { $sum: 1 }
+                }},
+                { $sort: { _id: 1 } }
+            ]),
+
+            Report.aggregate([
+                { $match: { status: { $in: ['pending', 'reviewing'] } } },
+                { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 5 },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+                { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+                { $project: { _id: 1, count: 1, name: '$user.name', email: '$user.email' } }
+            ])
+        ]);
+
+        // إيراد تقديري شهري
         const prices = { weekly: 9.99, monthly: 29.99, quarterly: 69.99 };
         const estimatedMonthlyRevenue =
             (premiumWeekly * prices.weekly * 4) +
             (premiumMonthly * prices.monthly) +
             (premiumQuarterly * (prices.quarterly / 3));
 
-        // ============ إحصائيات Super Like ============
-        const totalSuperLikes = await SuperLike.countDocuments();
-        const superLikesLast7Days = await SuperLike.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-
-        // ============ إحصائيات Stealth Mode ============
-        const stealthModeUsers = await User.countDocuments({ stealthMode: true, isPremium: true });
-
-        // ============ إحصائيات المحادثات ============
-        const totalConversations = await Conversation.countDocuments();
-        const activeConversations = await Conversation.countDocuments({ isActive: true });
-        const totalMessages = await Message.countDocuments({ isDeleted: false });
-
-        // ============ إحصائيات Swipes ============
-        const totalSwipes = await Swipe.countDocuments();
-        const swipesLast7Days = await Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-        const totalLikes = await Swipe.countDocuments({ type: 'like' });
-        const totalDislikes = await Swipe.countDocuments({ type: 'dislike' });
-        const totalSwipeSuperLikes = await Swipe.countDocuments({ type: 'superlike' });
-
-        // ============ إحصائيات Matches ============
-        const totalMatches = await Match.countDocuments();
-        const activeMatches = await Match.countDocuments({ isActive: true });
-        const matchesLast7Days = await Match.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-
-        // ============ إحصائيات الإشراف والتعليقات ============
-        const suspendedNow = await User.countDocuments({ 'suspension.isSuspended': true });
-        const bannedNow = await User.countDocuments({ 'bannedWords.isBanned': true });
-        const reportsToday = await Report.countDocuments({ createdAt: { $gte: oneDayAgo } });
-        const reportsPending = await Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } });
-
-        // ============ إحصائيات جديدة ============
-        // المستخدمون أونلاين الآن (آخر 5 دقائق)
-        const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
-        const onlineNow = await User.countDocuments({
-            $or: [
-                { isOnline: true },
-                { lastLogin: { $gte: fiveMinAgo } }
-            ]
-        });
-
-        // الأجهزة المحظورة
-        const bannedDevicesCount = await BannedDevice.countDocuments({ isActive: true });
-        const bannedDevicesToday = await BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: oneDayAgo } });
-
-        // الاستئنافات
-        const appealsStats = await Promise.all([
-            Appeal.countDocuments({ status: 'pending' }),
-            Appeal.countDocuments({ status: 'approved' }),
-            Appeal.countDocuments({ status: 'rejected' }),
-            Appeal.countDocuments({ createdAt: { $gte: sevenDaysAgo } })
-        ]);
         const appeals = {
-            pending: appealsStats[0],
-            approved: appealsStats[1],
-            rejected: appealsStats[2],
-            last7Days: appealsStats[3]
+            pending: appealsPending,
+            approved: appealsApproved,
+            rejected: appealsRejected,
+            last7Days: appealsLast7Days
         };
-
-        // نمو المستخدمين 7 أيام (مخطط)
-        const growthAgg = await User.aggregate([
-            { $match: { createdAt: { $gte: sevenDaysAgo } } },
-            { $group: {
-                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                count: { $sum: 1 }
-            }},
-            { $sort: { _id: 1 } }
-        ]);
-
-        // أكثر المستخدمين بلاغاً (أعلى 5)
-        const topReported = await Report.aggregate([
-            { $match: { status: { $in: ['pending', 'reviewing'] } } },
-            { $group: { _id: '$reportedUser', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 5 },
-            { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
-            { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-            { $project: { _id: 1, count: 1, name: '$user.name', email: '$user.email' } }
-        ]);
 
         const responseData = {
             success: true,

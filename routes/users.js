@@ -2418,53 +2418,54 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
             byBannedDevice: []
         };
 
-        // 1) نفس deviceFingerprint
-        if (mainUser.deviceFingerprint) {
-            results.byDeviceFingerprint = await User.find({
-                _id: { $ne: mainUser._id },
-                deviceFingerprint: mainUser.deviceFingerprint
-            })
-            .select('+deviceFingerprint name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
-            .limit(50)
-            .lean();
-        }
-
-        // 2) نفس keychainToken
-        if (mainUser.keychainToken) {
-            results.byKeychainToken = await User.find({
-                _id: { $ne: mainUser._id },
-                keychainToken: mainUser.keychainToken
-            })
-            .select('+keychainToken name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
-            .limit(50)
-            .lean();
-        }
-
-        // 3) نفس lastIP
-        if (mainUser.lastIP) {
-            results.byIP = await User.find({
-                _id: { $ne: mainUser._id },
-                lastIP: mainUser.lastIP
-            })
-            .select('+lastIP name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended')
-            .limit(30)
-            .lean();
-        }
-
-        // 4) الأجهزة المحظورة بنفس البصمة
         const BannedDevice = require('../models/BannedDevice');
-        if (mainUser.deviceFingerprint || mainUser.keychainToken) {
-            const bannedMatch = await BannedDevice.find({
-                isActive: true,
-                $or: [
-                    ...(mainUser.deviceFingerprint ? [{ deviceFingerprint: mainUser.deviceFingerprint }] : []),
-                    ...(mainUser.keychainToken ? [{ keychainToken: mainUser.keychainToken }] : [])
-                ]
-            })
-            .populate('originalUserId', 'name email halaId profileImage')
-            .lean();
-            results.byBannedDevice = bannedMatch;
-        }
+        const SELECT_FIELDS = '+deviceFingerprint +keychainToken +lastIP name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended bannedWords.isBanned bannedWords.banReason';
+
+        // ✅ استعلامات مرتبطة بالتوازي
+        const [byFingerprint, byKeychain, byIP, bannedDevices] = await Promise.all([
+            mainUser.deviceFingerprint
+                ? User.find({ _id: { $ne: mainUser._id }, deviceFingerprint: mainUser.deviceFingerprint })
+                    .select(SELECT_FIELDS).limit(50).lean()
+                : Promise.resolve([]),
+            mainUser.keychainToken
+                ? User.find({ _id: { $ne: mainUser._id }, keychainToken: mainUser.keychainToken })
+                    .select(SELECT_FIELDS).limit(50).lean()
+                : Promise.resolve([]),
+            mainUser.lastIP
+                ? User.find({ _id: { $ne: mainUser._id }, lastIP: mainUser.lastIP })
+                    .select(SELECT_FIELDS).limit(30).lean()
+                : Promise.resolve([]),
+            (mainUser.deviceFingerprint || mainUser.keychainToken)
+                ? BannedDevice.find({
+                    isActive: true,
+                    $or: [
+                        ...(mainUser.deviceFingerprint ? [{ deviceFingerprint: mainUser.deviceFingerprint }] : []),
+                        ...(mainUser.keychainToken ? [{ keychainToken: mainUser.keychainToken }] : [])
+                    ]
+                }).populate('originalUserId', 'name email halaId profileImage').lean()
+                : Promise.resolve([])
+        ]);
+
+        results.byDeviceFingerprint = byFingerprint;
+        results.byKeychainToken = byKeychain;
+        results.byIP = byIP;
+        results.byBannedDevice = bannedDevices;
+
+        // ✅ علم deviceBanned: المستخدم هو صاحب جهاز محظور (originalUserId)
+        const bannedOriginalIds = new Set(
+            bannedDevices
+                .map(b => b.originalUserId?._id && String(b.originalUserId._id))
+                .filter(Boolean)
+        );
+
+        const enrich = (arr) => arr.map(u => ({
+            ...u,
+            deviceBanned: bannedOriginalIds.has(String(u._id))
+        }));
+
+        results.byDeviceFingerprint = enrich(results.byDeviceFingerprint);
+        results.byKeychainToken = enrich(results.byKeychainToken);
+        results.byIP = enrich(results.byIP);
 
         // dedupe: إذا نفس المستخدم ظهر في byDeviceFingerprint و byKeychainToken
         const seen = new Set();

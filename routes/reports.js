@@ -99,6 +99,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
 // @access  Private/Admin
 router.get('/stats', protect, adminOnly, async (req, res) => {
     try {
+        const { get, set } = require('../utils/cache');
+        const CACHE_KEY = 'reports_stats';
+        const cached = get(CACHE_KEY);
+        if (cached) return res.status(200).json(cached);
+
         const [
             totalReports, pendingReports, reviewingReports, resolvedReports, urgentReports,
             reportsByType, reportsByCategory
@@ -112,7 +117,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             Report.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }])
         ]);
 
-        res.status(200).json({
+        const payload = {
             success: true,
             data: {
                 totalReports,
@@ -123,7 +128,9 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
                 reportsByType,
                 reportsByCategory
             }
-        });
+        };
+        set(CACHE_KEY, payload, 60); // cache 60s
+        res.status(200).json(payload);
 
     } catch (error) {
         console.error('خطأ في جلب إحصائيات البلاغات:', error);

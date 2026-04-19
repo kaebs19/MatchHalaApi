@@ -83,79 +83,66 @@ function Dashboard({ user, onPageChange }) {
         try {
             setLoading(true);
 
-            // جلب إحصائيات المستخدمين + الإحصائيات المتقدمة
-            const userStatsResponse = await getDashboardStats();
-            if (userStatsResponse.success) {
-                setStats(userStatsResponse.data.stats);
-                setLatestUsers(userStatsResponse.data.latestUsers);
-                if (userStatsResponse.data.premium) setPremiumStats(userStatsResponse.data.premium);
-                if (userStatsResponse.data.superLikes) setSuperLikeStats(userStatsResponse.data.superLikes);
-                if (userStatsResponse.data.stealthMode) setStealthStats(userStatsResponse.data.stealthMode);
-                if (userStatsResponse.data.moderation) setModerationStats(userStatsResponse.data.moderation);
+            // ✅ كل الـ endpoints بالتوازي (Promise.allSettled عشان فشل واحد ما يوقف الباقي)
+            const [
+                userStatsRes,
+                convStatsRes,
+                reportsRes,
+                swipesRes,
+                matchesRes
+            ] = await Promise.allSettled([
+                getDashboardStats(),
+                getConversationsStats(),
+                getReportsStats(),
+                getSwipesStats(),
+                getMatchesStats()
+            ]);
+
+            // Dashboard stats (الأساسي)
+            if (userStatsRes.status === 'fulfilled' && userStatsRes.value?.success) {
+                const d = userStatsRes.value.data;
+                setStats(d.stats);
+                setLatestUsers(d.latestUsers);
+                if (d.premium) setPremiumStats(d.premium);
+                if (d.superLikes) setSuperLikeStats(d.superLikes);
+                if (d.stealthMode) setStealthStats(d.stealthMode);
+                if (d.moderation) setModerationStats(d.moderation);
                 setLiveStats({
-                    onlineNow: userStatsResponse.data.onlineNow || 0,
-                    bannedDevices: userStatsResponse.data.bannedDevices || { total: 0, today: 0 },
-                    appeals: userStatsResponse.data.appeals || { pending: 0, approved: 0, rejected: 0, last7Days: 0 },
-                    growth: userStatsResponse.data.growth || []
+                    onlineNow: d.onlineNow || 0,
+                    bannedDevices: d.bannedDevices || { total: 0, today: 0 },
+                    appeals: d.appeals || { pending: 0, approved: 0, rejected: 0, last7Days: 0 },
+                    growth: d.growth || []
                 });
-                if (userStatsResponse.data.conversations) {
+                if (d.conversations) {
                     setConversationStats(prev => ({
                         ...prev,
-                        totalConversations: userStatsResponse.data.conversations.total || prev.totalConversations,
-                        activeConversations: userStatsResponse.data.conversations.active || prev.activeConversations,
-                        totalMessages: userStatsResponse.data.conversations.totalMessages || prev.totalMessages
+                        totalConversations: d.conversations.total || prev.totalConversations,
+                        activeConversations: d.conversations.active || prev.activeConversations,
+                        totalMessages: d.conversations.totalMessages || prev.totalMessages
                     }));
                 }
             }
 
-            // جلب إحصائيات المحادثات
-            try {
-                const convStatsResponse = await getConversationsStats();
-                if (convStatsResponse.success) {
-                    setConversationStats(convStatsResponse.data);
-                }
-            } catch (convErr) {
-                console.log('تخطي إحصائيات المحادثات');
+            if (convStatsRes.status === 'fulfilled' && convStatsRes.value?.success) {
+                setConversationStats(convStatsRes.value.data);
+            }
+            if (reportsRes.status === 'fulfilled' && reportsRes.value?.success) {
+                setReportsStats(reportsRes.value.data);
+            }
+            if (swipesRes.status === 'fulfilled' && swipesRes.value?.success) {
+                setSwipesStats(swipesRes.value.data);
+            }
+            if (matchesRes.status === 'fulfilled' && matchesRes.value?.success) {
+                setMatchesStatsData(matchesRes.value.data);
             }
 
-            // جلب إحصائيات البلاغات
-            try {
-                const reportsResponse = await getReportsStats();
-                if (reportsResponse.success) {
-                    setReportsStats(reportsResponse.data);
-                }
-            } catch (reportsErr) {
-                console.log('تخطي إحصائيات البلاغات');
-            }
-
-            // جلب إحصائيات Swipes
-            try {
-                const swipesResponse = await getSwipesStats();
-                if (swipesResponse.success) {
-                    setSwipesStats(swipesResponse.data);
-                }
-            } catch (swipesErr) {
-                console.log('تخطي إحصائيات Swipes');
-            }
-
-            // جلب إحصائيات Matches
-            try {
-                const matchesResponse = await getMatchesStats();
-                if (matchesResponse.success) {
-                    setMatchesStatsData(matchesResponse.data);
-                }
-            } catch (matchesErr) {
-                console.log('تخطي إحصائيات Matches');
+            // لو الـ dashboard الأساسي فشل تماماً، نظهر خطأ
+            if (userStatsRes.status !== 'fulfilled' || !userStatsRes.value?.success) {
+                setError('فشل تحميل البيانات الأساسية');
             }
         } catch (err) {
             console.error('خطأ في جلب البيانات:', err);
             setError('فشل تحميل البيانات');
-            setStats({
-                totalUsers: 5,
-                activeUsers: 4,
-                newUsers: 2,
-                recentLogins: 1
-            });
         } finally {
             setLoading(false);
         }
@@ -310,7 +297,28 @@ function Dashboard({ user, onPageChange }) {
                             <div className="stats-grid">
                                 <StatCard icon="⏳" value={reportsStats.pending || 0} label="بلاغات معلقة" color="yellow" onClick={() => onPageChange && onPageChange('reports')} />
                                 <StatCard icon="✅" value={reportsStats.resolved || 0} label="بلاغات تم حلها" color="light-green" onClick={() => onPageChange && onPageChange('reports')} />
+                                <StatCard icon="📅" value={moderationStats.reportsToday || 0} label="بلاغات اليوم" color="blue" onClick={() => onPageChange && onPageChange('reports')} />
+                                <StatCard icon="🚫" value={moderationStats.bannedNow || 0} label="محظور حالياً" color="red" onClick={() => onPageChange && onPageChange('users')} />
                             </div>
+                            {moderationStats.topReported && moderationStats.topReported.length > 0 && (
+                                <div style={{ marginTop: 12 }}>
+                                    <h4 style={{ fontSize: 14, color: '#7f8c8d', marginBottom: 8 }}>🚨 الأكثر بلاغاً</h4>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        {moderationStats.topReported.map((u, i) => (
+                                            <span key={i} style={{
+                                                padding: '4px 10px',
+                                                borderRadius: 12,
+                                                fontSize: 12,
+                                                background: u.count >= 5 ? '#fef2f2' : '#fef9c3',
+                                                color: u.count >= 5 ? '#dc2626' : '#a16207',
+                                                border: `1px solid ${u.count >= 5 ? '#fecaca' : '#fde68a'}`
+                                            }}>
+                                                {u.name || 'مجهول'} ({u.count} بلاغ)
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -387,48 +395,6 @@ function Dashboard({ user, onPageChange }) {
                     )}
                 </>
             )}
-
-            {/* ✅ إحصائيات الإشراف */}
-            <div className="section-card">
-                <h3>🛡️ الإشراف والتعليقات</h3>
-                <div className="stats-grid">
-                    <div className="stat-card" style={{ borderRight: '4px solid #e67e22' }}>
-                        <span className="stat-number">{moderationStats.suspendedNow}</span>
-                        <span className="stat-label">معلّق حالياً</span>
-                    </div>
-                    <div className="stat-card" style={{ borderRight: '4px solid #e74c3c' }}>
-                        <span className="stat-number">{moderationStats.bannedNow}</span>
-                        <span className="stat-label">محظور حالياً</span>
-                    </div>
-                    <div className="stat-card" style={{ borderRight: '4px solid #3498db' }}>
-                        <span className="stat-number">{moderationStats.reportsToday}</span>
-                        <span className="stat-label">بلاغات اليوم</span>
-                    </div>
-                    <div className="stat-card" style={{ borderRight: '4px solid #f39c12' }}>
-                        <span className="stat-number">{moderationStats.reportsPending}</span>
-                        <span className="stat-label">بلاغات معلّقة</span>
-                    </div>
-                </div>
-                {moderationStats.topReported && moderationStats.topReported.length > 0 && (
-                    <div style={{ marginTop: '12px' }}>
-                        <h4 style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '8px' }}>🚨 الأكثر بلاغاً</h4>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {moderationStats.topReported.map((u, i) => (
-                                <span key={i} style={{
-                                    padding: '4px 10px',
-                                    borderRadius: '12px',
-                                    fontSize: '12px',
-                                    background: u.count >= 5 ? '#fef2f2' : '#fef9c3',
-                                    color: u.count >= 5 ? '#dc2626' : '#a16207',
-                                    border: `1px solid ${u.count >= 5 ? '#fecaca' : '#fde68a'}`
-                                }}>
-                                    {u.name || 'مجهول'} ({u.count} بلاغ)
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
 
             {/* أحدث المستخدمين */}
             {latestUsers.length > 0 && (

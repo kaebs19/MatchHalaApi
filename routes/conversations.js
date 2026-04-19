@@ -138,6 +138,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
 // @access  Private/Admin
 router.get('/stats/overview', protect, adminOnly, async (req, res) => {
     try {
+        const { get, set } = require('../utils/cache');
+        const CACHE_KEY = 'conversations_stats_overview';
+        const cached = get(CACHE_KEY);
+        if (cached) return res.status(200).json(cached);
+
         const FlaggedMessage = require('../models/FlaggedMessage');
         const [
             totalConversations, activeConversations, totalMessages,
@@ -159,14 +164,16 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
             })
         ]);
 
-        res.status(200).json({
+        const payload = {
             success: true,
             data: {
                 totalConversations, activeConversations, totalMessages,
                 privateConversations, groupConversations, pendingConversations,
                 lockedConversations, totalImages, flaggedMessagesCount, todayMessages
             }
-        });
+        };
+        set(CACHE_KEY, payload, 60); // cache 60s
+        res.status(200).json(payload);
     } catch (error) {
         console.error('خطأ في جلب الإحصائيات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
