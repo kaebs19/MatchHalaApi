@@ -194,38 +194,10 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
 });
 
 // @route   GET /api/appeals/:id
-// @desc    جلب استئناف واحد مع رسائله (للمستخدم صاحبه)
-// @access  Private
-router.get('/:id', protect, async (req, res) => {
-    try {
-        const appeal = await Appeal.findOne({ _id: req.params.id, user: req.user._id });
-        if (!appeal) {
-            return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
-        }
-
-        // تعليم كل رسائل الأدمن كمقروءة + صفر عداد
-        let changed = false;
-        appeal.messages.forEach(m => {
-            if (m.sender === 'admin' && !m.readByUser) {
-                m.readByUser = true;
-                changed = true;
-            }
-        });
-        if (changed || appeal.unreadForUser > 0) {
-            appeal.unreadForUser = 0;
-            await appeal.save();
-        }
-
-        res.json({ success: true, data: appeal });
-    } catch (error) {
-        console.error('خطأ في جلب الاستئناف:', error);
-        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
-    }
-});
-
 // @route   GET /api/appeals/my
 // @desc    جلب استئنافات المستخدم
 // @access  Private
+// ⚠️ يجب أن يأتي هذا المسار **قبل** /:id وإلا Express يطابق "my" كـ id
 router.get('/my', protect, async (req, res) => {
     try {
         const appeals = await Appeal.find({ user: req.user._id })
@@ -242,6 +214,40 @@ router.get('/my', protect, async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر'
         });
+    }
+});
+
+// @route   GET /api/appeals/:id
+// @desc    جلب استئناف واحد مع رسائله (للمستخدم صاحبه)
+// @access  Private
+router.get('/:id', protect, async (req, res) => {
+    try {
+        // فحص صحة الـ ObjectId قبل الاستعلام (مثلاً "my" ليس ObjectId)
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const appeal = await Appeal.findOne({ _id: req.params.id, user: req.user._id });
+        if (!appeal) {
+            return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
+        }
+
+        // تعليم كل رسائل الأدمن كمقروءة + صفر عداد
+        let changed = false;
+        (appeal.messages || []).forEach(m => {
+            if (m.sender === 'admin' && !m.readByUser) {
+                m.readByUser = true;
+                changed = true;
+            }
+        });
+        if (changed || appeal.unreadForUser > 0) {
+            appeal.unreadForUser = 0;
+            await appeal.save();
+        }
+
+        res.json({ success: true, data: appeal });
+    } catch (error) {
+        console.error('خطأ في جلب الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
