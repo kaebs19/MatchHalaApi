@@ -135,14 +135,15 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
             return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
         }
 
-        appeal.messages.push({
+        const newMessage = {
             sender: 'admin',
             authorId: req.user._id,
             content: content.trim(),
             readByUser: false,
             readByAdmin: true,
             createdAt: new Date()
-        });
+        };
+        appeal.messages.push(newMessage);
         appeal.unreadForUser = (appeal.unreadForUser || 0) + 1;
         // النقل التلقائي: pending → under_review عند أول رد من الأدمن
         if (appeal.status === 'pending') {
@@ -155,6 +156,23 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
             });
         }
         await appeal.save();
+
+        // ✅ Real-time: بث رسالة الأدمن عبر Socket للمستخدم (فورية بدون push)
+        if (global.io) {
+            const savedMsg = appeal.messages[appeal.messages.length - 1];
+            global.io.to(`user:${appeal.user.toString()}`).emit('appeal-message', {
+                appealId: appeal._id.toString(),
+                message: {
+                    _id: savedMsg._id?.toString(),
+                    sender: savedMsg.sender,
+                    authorId: savedMsg.authorId?.toString(),
+                    content: savedMsg.content,
+                    createdAt: savedMsg.createdAt
+                },
+                status: appeal.status,
+                unreadForUser: appeal.unreadForUser
+            });
+        }
 
         // إشعار + push
         try {
