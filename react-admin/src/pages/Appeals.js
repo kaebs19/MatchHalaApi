@@ -22,7 +22,21 @@ function Appeals({ onViewUserDetail }) {
     const [newStatus, setNewStatus] = useState("");
     const [adminNote, setAdminNote] = useState("");
     const [saving, setSaving] = useState(false);
+    const [replyText, setReplyText] = useState("");
+    const [sendingReply, setSendingReply] = useState(false);
     const { showToast } = useToast();
+
+    // ✅ قوالب رسائل سريعة للأدمن
+    const QUICK_REPLIES = [
+        { icon: "👀", label: "استلام", text: "تم استلام طلبك وسنراجعه خلال 24 ساعة." },
+        { icon: "📋", label: "طلب تفاصيل", text: "الرجاء تزويدنا بمزيد من التفاصيل حول اعتراضك لنتمكن من مساعدتك." },
+        { icon: "❗", label: "توضيح المخالفة", text: "التقييد تم بسبب مخالفة سياسة المحادثات. لا يمكن رفعه خلال فترة التقييد." },
+        { icon: "⏳", label: "قيد المراجعة", text: "شكراً لصبرك، طلبك قيد المراجعة من الفريق المختص وسنعود إليك قريباً." },
+        { icon: "⚠️", label: "تحذير", text: "يرجى الالتزام بسياسة الاستخدام لتجنب إجراءات أشد في المستقبل." },
+        { icon: "✅", label: "قبول", text: "تم قبول استئنافك. تم فك التقييد عن حسابك، مرحباً بك مجدداً." },
+        { icon: "❌", label: "رفض", text: "للأسف، تم رفض استئنافك بعد المراجعة. يمكنك تقديم استئناف جديد لاحقاً." },
+        { icon: "🛡️", label: "سياسة المحتوى", text: "المحتوى الذي تم نشره يخالف سياسة المحتوى في التطبيق. يرجى مراجعة الشروط." }
+    ];
 
     useEffect(() => {
         fetchAppeals();
@@ -57,7 +71,43 @@ function Appeals({ onViewUserDetail }) {
         setSelectedAppeal(appeal);
         setNewStatus(appeal.status || "pending");
         setAdminNote("");
+        setReplyText("");
         setShowDetailModal(true);
+    };
+
+    // ✅ إرسال رسالة من الأدمن في محادثة الاستئناف
+    const handleSendAdminReply = async (text) => {
+        const content = (text || "").trim();
+        if (!selectedAppeal || !content) return;
+        try {
+            setSendingReply(true);
+            const token = localStorage.getItem("token");
+            const response = await fetch(config.API_URL + "/appeals/" + selectedAppeal._id + "/admin-reply", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer " + token
+                },
+                body: JSON.stringify({ content })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showToast("تم إرسال الرد", "success");
+                setReplyText("");
+                // تحديث الـ appeal في القائمة + في المودال بالبيانات الجديدة
+                if (data.data) {
+                    setSelectedAppeal(data.data);
+                    setAppeals(prev => prev.map(a => a._id === data.data._id ? data.data : a));
+                }
+            } else {
+                showToast(data.message || "فشل الإرسال", "error");
+            }
+        } catch (error) {
+            showToast("فشل الإرسال", "error");
+            console.error("Error sending admin reply:", error);
+        } finally {
+            setSendingReply(false);
+        }
     };
 
     const handleSaveStatus = async () => {
@@ -375,6 +425,139 @@ function Appeals({ onViewUserDetail }) {
                         <div className="appeal-reason-section">
                             <h4>سبب الاستئناف</h4>
                             <div className="appeal-reason-text">{selectedAppeal.reason || "-"}</div>
+                        </div>
+
+                        {/* ✅ Chat Messages — محادثة ثنائية مع المستخدم */}
+                        <div className="appeal-chat-section">
+                            <h4>💬 محادثة الاستئناف
+                                {selectedAppeal.unreadForAdmin > 0 && (
+                                    <span style={{ background: "#ff3b30", color: "white", padding: "2px 8px", borderRadius: 10, fontSize: 11, marginInlineStart: 8 }}>
+                                        {selectedAppeal.unreadForAdmin} جديد
+                                    </span>
+                                )}
+                            </h4>
+                            <div className="appeal-chat-messages" style={{ maxHeight: 320, overflowY: "auto", padding: 12, background: "#f7f7fa", borderRadius: 10, marginBottom: 12 }}>
+                                {(!selectedAppeal.messages || selectedAppeal.messages.length === 0) ? (
+                                    <p style={{ color: "#999", textAlign: "center", margin: "20px 0" }}>لا توجد رسائل بعد</p>
+                                ) : (
+                                    selectedAppeal.messages.map((msg, idx) => {
+                                        const isAdmin = msg.sender === "admin";
+                                        return (
+                                            <div
+                                                key={msg._id || idx}
+                                                style={{
+                                                    display: "flex",
+                                                    justifyContent: isAdmin ? "flex-end" : "flex-start",
+                                                    marginBottom: 10
+                                                }}
+                                            >
+                                                <div
+                                                    style={{
+                                                        maxWidth: "72%",
+                                                        padding: "10px 14px",
+                                                        borderRadius: 14,
+                                                        background: isAdmin ? "#667eea" : "#ffffff",
+                                                        color: isAdmin ? "#ffffff" : "#222",
+                                                        border: isAdmin ? "none" : "1px solid #e0e0e6",
+                                                        boxShadow: isAdmin ? "0 2px 6px rgba(102,126,234,0.25)" : "0 1px 3px rgba(0,0,0,0.04)"
+                                                    }}
+                                                >
+                                                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, opacity: 0.7 }}>
+                                                        {isAdmin ? "🛡️ الإدارة" : "👤 المستخدم"}
+                                                    </div>
+                                                    <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                        {msg.content}
+                                                    </div>
+                                                    <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4, textAlign: isAdmin ? "left" : "right" }}>
+                                                        {formatDateTime(msg.createdAt)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {/* Quick Replies */}
+                            <div style={{ marginBottom: 10 }}>
+                                <small style={{ color: "#666", display: "block", marginBottom: 6 }}>ردود سريعة بالمخالفات:</small>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {QUICK_REPLIES.map((q, idx) => (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => setReplyText(q.text)}
+                                            disabled={sendingReply}
+                                            style={{
+                                                padding: "6px 10px",
+                                                borderRadius: 16,
+                                                border: "1px solid #d0d7e5",
+                                                background: "#fff",
+                                                fontSize: 12,
+                                                cursor: "pointer",
+                                                transition: "all 0.15s",
+                                                color: "#333"
+                                            }}
+                                            title={q.text}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = "#667eea";
+                                                e.currentTarget.style.color = "#fff";
+                                                e.currentTarget.style.borderColor = "#667eea";
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = "#fff";
+                                                e.currentTarget.style.color = "#333";
+                                                e.currentTarget.style.borderColor = "#d0d7e5";
+                                            }}
+                                        >
+                                            {q.icon} {q.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Reply Input */}
+                            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                                <textarea
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    placeholder="اكتب رداً للمستخدم... (Cmd/Ctrl + Enter للإرسال)"
+                                    rows={3}
+                                    disabled={sendingReply}
+                                    onKeyDown={(e) => {
+                                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                            e.preventDefault();
+                                            handleSendAdminReply(replyText);
+                                        }
+                                    }}
+                                    style={{
+                                        flex: 1,
+                                        padding: 10,
+                                        borderRadius: 10,
+                                        border: "1px solid #d0d7e5",
+                                        fontSize: 14,
+                                        fontFamily: "inherit",
+                                        resize: "vertical"
+                                    }}
+                                />
+                                <button
+                                    onClick={() => handleSendAdminReply(replyText)}
+                                    disabled={sendingReply || !replyText.trim()}
+                                    style={{
+                                        padding: "10px 18px",
+                                        borderRadius: 10,
+                                        border: "none",
+                                        background: replyText.trim() ? "#667eea" : "#c5cde0",
+                                        color: "#fff",
+                                        fontWeight: 700,
+                                        cursor: replyText.trim() ? "pointer" : "not-allowed",
+                                        fontSize: 14,
+                                        whiteSpace: "nowrap"
+                                    }}
+                                >
+                                    {sendingReply ? "جاري..." : "📨 إرسال"}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Status History Timeline */}
