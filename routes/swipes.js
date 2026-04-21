@@ -583,6 +583,9 @@ router.get('/cards', protect, async (req, res) => {
                 : null;
             const activityScore = calculateActivityScore(u);
             const distScore = distanceKm !== null ? calculateDistanceScore(distanceKm) : 0;
+            // ✅ احترام إعداد showDistance — الـ scoring ما زال يستخدم القيمة الحقيقية،
+            // لكن الرد للعميل يحمل null إذا المستخدم اختار إخفاءها
+            const hideDistance = u.showDistance === false;
             return {
                 _id: u._id,
                 name: u.name,
@@ -597,7 +600,7 @@ router.get('/cards', protect, async (req, res) => {
                 isPremium: u.isPremium,
                 isVerified: u.verification?.isVerified || false,
                 lastLogin: u.lastLogin,
-                distance: distanceKm,
+                distance: hideDistance ? null : distanceKm,
                 _score: activityScore + distScore
             };
         };
@@ -621,7 +624,7 @@ router.get('/cards', protect, async (req, res) => {
                         name: 1, profileImage: 1, photos: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1,
                         isPremium: 1, distance: 1, lastLogin: 1,
-                        createdAt: 1, updatedAt: 1, verification: 1
+                        createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1
                     }
                 },
                 { $limit: fetchLimit }

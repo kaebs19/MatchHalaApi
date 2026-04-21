@@ -333,7 +333,8 @@ router.get('/users/search', protect, async (req, res) => {
                     $project: {
                         name: 1, email: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
-                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1
+                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1,
+                        showDistance: 1
                     }
                 },
                 { $sort: { isOnline: -1, distance: 1 } },
@@ -343,17 +344,19 @@ router.get('/users/search', protect, async (req, res) => {
 
             users = await User.aggregate(pipeline);
 
-            // حساب distanceLabel + إخفاء lastLogin للمتخفين
+            // حساب distanceLabel + إخفاء lastLogin للمتخفين + احترام showDistance
             users = users.map(u => {
+                const hideDistance = u.showDistance === false;
                 const result = {
                     ...u,
-                    distance: Math.round(u.distance / 100) / 10,
-                    distanceLabel: getDistanceLabel(u.distance),
+                    distance: hideDistance ? null : Math.round(u.distance / 100) / 10,
+                    distanceLabel: hideDistance ? null : getDistanceLabel(u.distance),
                     lastActive: u.stealthMode ? null : u.lastLogin
                 };
                 result.profileImage = getFullUrl(u.profileImage);
                 delete result.lastLogin;
                 delete result.stealthMode;
+                delete result.showDistance;
                 return result;
             });
 
@@ -435,7 +438,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance'
         ).lean();
 
         if (!user) {
@@ -486,6 +489,11 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                 Math.sin(dLng / 2) ** 2;
             distance = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+        }
+
+        // ✅ احترام إعداد showDistance — المستخدم اختار إخفاء المسافة في بروفايله
+        if (user.showDistance === false) {
+            distance = null;
         }
 
         const profileData = {
