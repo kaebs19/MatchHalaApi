@@ -44,6 +44,30 @@ const appealSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // ✅ رسائل الاستئناف — محادثة ثنائية بين المستخدم والإدارة
+    messages: [{
+        sender: {
+            type: String,
+            enum: ['user', 'admin'],
+            required: true
+        },
+        authorId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        content: {
+            type: String,
+            required: true,
+            maxlength: 2000,
+            trim: true
+        },
+        readByUser: { type: Boolean, default: false },
+        readByAdmin: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now }
+    }],
+    // ✅ مؤشرات سريعة للعدّ بدون حساب
+    unreadForUser: { type: Number, default: 0 },
+    unreadForAdmin: { type: Number, default: 0 },
     actionType: {
         type: String,
         enum: ['suspension', 'ban', 'device_ban', 'restriction'],

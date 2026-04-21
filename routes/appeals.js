@@ -53,7 +53,17 @@ router.post('/', protect, async (req, res) => {
                 status: 'pending',
                 note: 'تم إنشاء الاستئناف',
                 changedAt: new Date()
-            }]
+            }],
+            // ✅ أول رسالة في المحادثة = سبب الاستئناف
+            messages: [{
+                sender: 'user',
+                authorId: req.user._id,
+                content: reason.trim(),
+                readByUser: true,
+                readByAdmin: false,
+                createdAt: new Date()
+            }],
+            unreadForAdmin: 1
         });
 
         res.status(201).json({
@@ -68,6 +78,148 @@ router.post('/', protect, async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر'
         });
+    }
+});
+
+// @route   POST /api/appeals/:id/reply
+// @desc    رد المستخدم على استئنافه (رسالة جديدة في المحادثة)
+// @access  Private
+router.post('/:id/reply', protect, async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content || !content.trim()) {
+            return res.status(400).json({ success: false, message: 'محتوى الرسالة مطلوب' });
+        }
+        if (content.length > 2000) {
+            return res.status(400).json({ success: false, message: 'الرسالة طويلة جداً (حد 2000 حرف)' });
+        }
+
+        const appeal = await Appeal.findOne({ _id: req.params.id, user: req.user._id });
+        if (!appeal) {
+            return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
+        }
+        if (appeal.status === 'approved' || appeal.status === 'rejected') {
+            return res.status(400).json({ success: false, message: 'تم إغلاق هذا الاستئناف' });
+        }
+
+        appeal.messages.push({
+            sender: 'user',
+            authorId: req.user._id,
+            content: content.trim(),
+            readByUser: true,
+            readByAdmin: false,
+            createdAt: new Date()
+        });
+        appeal.unreadForAdmin = (appeal.unreadForAdmin || 0) + 1;
+        await appeal.save();
+
+        res.json({ success: true, data: appeal });
+    } catch (error) {
+        console.error('خطأ في رد المستخدم على الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   POST /api/appeals/:id/admin-reply
+// @desc    رد الإدارة في محادثة الاستئناف (+ push للمستخدم)
+// @access  Private/Admin
+router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content || !content.trim()) {
+            return res.status(400).json({ success: false, message: 'محتوى الرسالة مطلوب' });
+        }
+
+        const appeal = await Appeal.findById(req.params.id);
+        if (!appeal) {
+            return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
+        }
+
+        appeal.messages.push({
+            sender: 'admin',
+            authorId: req.user._id,
+            content: content.trim(),
+            readByUser: false,
+            readByAdmin: true,
+            createdAt: new Date()
+        });
+        appeal.unreadForUser = (appeal.unreadForUser || 0) + 1;
+        // النقل التلقائي: pending → under_review عند أول رد من الأدمن
+        if (appeal.status === 'pending') {
+            appeal.status = 'under_review';
+            appeal.statusHistory.push({
+                status: 'under_review',
+                note: 'بدأت المراجعة',
+                changedBy: req.user._id,
+                changedAt: new Date()
+            });
+        }
+        await appeal.save();
+
+        // إشعار + push
+        try {
+            const title = 'رد جديد على استئنافك';
+            const body = content.trim().length > 80 ? content.trim().slice(0, 80) + '…' : content.trim();
+            await Notification.create({
+                title,
+                body,
+                type: 'system',
+                recipients: 'specific',
+                targetUsers: [appeal.user],
+                sender: req.user._id,
+                status: 'sent',
+                priority: 'high',
+                sentAt: new Date(),
+                sentCount: 1
+            });
+
+            const targetUser = await User.findById(appeal.user);
+            if (targetUser && (targetUser.deviceToken || targetUser.fcmToken)) {
+                await notificationService.sendPush(
+                    targetUser.deviceToken || targetUser.fcmToken,
+                    title,
+                    body,
+                    { type: 'appeal_reply', appealId: appeal._id.toString() }
+                );
+            }
+        } catch (notifErr) {
+            console.error('خطأ في إرسال إشعار رد الاستئناف:', notifErr);
+        }
+
+        res.json({ success: true, data: appeal });
+    } catch (error) {
+        console.error('خطأ في رد الإدارة على الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/appeals/:id
+// @desc    جلب استئناف واحد مع رسائله (للمستخدم صاحبه)
+// @access  Private
+router.get('/:id', protect, async (req, res) => {
+    try {
+        const appeal = await Appeal.findOne({ _id: req.params.id, user: req.user._id });
+        if (!appeal) {
+            return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
+        }
+
+        // تعليم كل رسائل الأدمن كمقروءة + صفر عداد
+        let changed = false;
+        appeal.messages.forEach(m => {
+            if (m.sender === 'admin' && !m.readByUser) {
+                m.readByUser = true;
+                changed = true;
+            }
+        });
+        if (changed || appeal.unreadForUser > 0) {
+            appeal.unreadForUser = 0;
+            await appeal.save();
+        }
+
+        res.json({ success: true, data: appeal });
+    } catch (error) {
+        console.error('خطأ في جلب الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
