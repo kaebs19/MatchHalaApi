@@ -64,6 +64,24 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             });
         }
 
+        // ✅ Privacy: المستخدم المستهدف أوقف استقبال الطلبات
+        if (targetUser.acceptingRequests === false) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم لا يستقبل طلبات محادثة جديدة حالياً',
+                code: 'NOT_ACCEPTING_REQUESTS'
+            });
+        }
+
+        // ✅ Privacy: المستخدم المستهدف يقبل من Premium فقط
+        if (targetUser.premiumOnlyRequests === true && !req.user.isPremium) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم يستقبل طلبات من المشتركين فقط',
+                code: 'PREMIUM_ONLY_REQUESTS'
+            });
+        }
+
         // التحقق من عدم وجود محادثة سابقة
         const existingConversation = await Conversation.findOne({
             type: 'private',

@@ -101,7 +101,7 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
 router.get('/privacy/settings', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('privacySettings showDistance stealthMode').lean();
+            .select('privacySettings showDistance stealthMode acceptingRequests premiumOnlyRequests').lean();
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -114,12 +114,38 @@ router.get('/privacy/settings', protect, async (req, res) => {
                 showLastSeen: user.privacySettings?.showLastSeen ?? true,
                 notificationSound: user.privacySettings?.notificationSound ?? true,
                 showDistance: user.showDistance ?? true,
-                stealthMode: user.stealthMode || false
+                stealthMode: user.stealthMode || false,
+                acceptingRequests: user.acceptingRequests ?? true,
+                premiumOnlyRequests: user.premiumOnlyRequests ?? false
             }
         });
     } catch (error) {
         console.error('خطأ في جلب إعدادات الخصوصية:', error);
         res.status(500).json({ success: false, message: 'حدث خطأ في الخادم' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/accepting-requests
+// @desc    تفعيل/تعطيل استقبال طلبات المحادثة
+// @access  Private
+router.patch('/privacy/accepting-requests', protect, async (req, res) => {
+    try {
+        const { acceptingRequests } = req.body;
+
+        if (typeof acceptingRequests !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { acceptingRequests });
+
+        res.json({
+            success: true,
+            message: acceptingRequests ? 'تم تفعيل استقبال الطلبات' : 'تم إيقاف استقبال الطلبات',
+            data: { acceptingRequests }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد استقبال الطلبات:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });
 
