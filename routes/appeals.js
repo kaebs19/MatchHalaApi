@@ -10,6 +10,113 @@ const Notification = require('../models/Notification');
 const { protect, adminOnly } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 
+// ════════════════════════════════════════════════════════════════
+// @route   POST /api/appeals/public/device-ban
+// @desc    استئناف عام لحظر الجهاز — بدون auth (لأن المستخدم لا يقدر يسجل دخول)
+// @access  Public (rate-limited)
+// ════════════════════════════════════════════════════════════════
+
+// rate limit بسيط: 3 محاولات / ساعة لكل deviceFingerprint
+const deviceAppealRateLimit = new Map();
+function checkDeviceAppealLimit(fp) {
+    const now = Date.now();
+    const record = deviceAppealRateLimit.get(fp) || { count: 0, resetAt: now + 3600000 };
+    if (now >= record.resetAt) {
+        record.count = 0;
+        record.resetAt = now + 3600000;
+    }
+    if (record.count >= 3) return false;
+    record.count += 1;
+    deviceAppealRateLimit.set(fp, record);
+    return true;
+}
+
+router.post('/public/device-ban', async (req, res) => {
+    try {
+        const { email, deviceFingerprint, deviceToken, reason } = req.body;
+
+        if (!reason || !reason.trim()) {
+            return res.status(400).json({ success: false, message: 'سبب الاستئناف مطلوب' });
+        }
+        if (reason.length > 1000) {
+            return res.status(400).json({ success: false, message: 'الرسالة طويلة جداً (حد 1000 حرف)' });
+        }
+        if (!deviceFingerprint && !deviceToken) {
+            return res.status(400).json({ success: false, message: 'بيانات الجهاز مطلوبة' });
+        }
+
+        // rate limit
+        const fpKey = deviceFingerprint || deviceToken;
+        if (!checkDeviceAppealLimit(fpKey)) {
+            return res.status(429).json({
+                success: false,
+                message: 'لقد تجاوزت الحد المسموح لتقديم الاستئنافات. حاول بعد ساعة.'
+            });
+        }
+
+        // فحص: هل الجهاز فعلاً محظور؟
+        const bannedDevice = await BannedDevice.findOne({
+            isActive: true,
+            $or: [
+                ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
+                ...(deviceToken ? [{ keychainToken: deviceToken }] : [])
+            ]
+        });
+
+        if (!bannedDevice) {
+            return res.status(404).json({
+                success: false,
+                message: 'هذا الجهاز غير محظور. جرّب تسجيل الدخول مباشرة.'
+            });
+        }
+
+        // منع استئناف مكرر قيد المراجعة على نفس الجهاز
+        const existing = await Appeal.findOne({
+            user: bannedDevice.originalUserId,
+            actionType: 'device_ban',
+            status: { $in: ['pending', 'forwarded', 'under_review'] }
+        });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: 'لديك استئناف قيد المراجعة بالفعل لهذا الجهاز',
+                appealId: existing._id.toString()
+            });
+        }
+
+        // إنشاء الاستئناف مرتبط بـ originalUserId
+        const firstContent = (email ? `البريد: ${email}\n\n` : '') + reason.trim();
+        const appeal = await Appeal.create({
+            user: bannedDevice.originalUserId,
+            reason: reason.trim(),
+            actionType: 'device_ban',
+            statusHistory: [{
+                status: 'pending',
+                note: 'استئناف عام من جهاز محظور',
+                changedAt: new Date()
+            }],
+            messages: [{
+                sender: 'user',
+                authorId: bannedDevice.originalUserId,
+                content: firstContent,
+                readByUser: true,
+                readByAdmin: false,
+                createdAt: new Date()
+            }],
+            unreadForAdmin: 1
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إرسال الاستئناف. سيتم مراجعته والرد عبر التطبيق عند الحاجة.',
+            data: { appealId: appeal._id.toString() }
+        });
+    } catch (error) {
+        console.error('خطأ في استئناف حظر الجهاز (public):', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/appeals
 // @desc    إنشاء استئناف جديد
 // @access  Private
