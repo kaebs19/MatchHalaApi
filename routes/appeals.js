@@ -96,6 +96,25 @@ router.post('/public/device-ban', async (req, res) => {
             });
         }
 
+        // ✅ cooldown 7 أيام بعد آخر رفض — منع نزاع لا ينتهي
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const recentlyRejected = await Appeal.findOne({
+            user: bannedDevice.originalUserId,
+            actionType: 'device_ban',
+            status: 'rejected',
+            resolvedAt: { $gte: sevenDaysAgo }
+        });
+        if (recentlyRejected) {
+            const resolvedAt = recentlyRejected.resolvedAt || recentlyRejected.updatedAt;
+            const daysLeft = Math.ceil((sevenDaysAgo.getTime() + 7 * 86400000 - resolvedAt.getTime()) / 86400000);
+            return res.status(400).json({
+                success: false,
+                code: 'APPEAL_COOLDOWN',
+                message: `تم رفض استئنافك مؤخراً. يمكنك تقديم استئناف جديد بعد ${Math.max(1, daysLeft)} يوم.`,
+                data: { daysLeft: Math.max(1, daysLeft), resolvedAt }
+            });
+        }
+
         // إنشاء الاستئناف مرتبط بـ originalUserId
         const trimmedEmail = email && typeof email === 'string' ? email.trim().toLowerCase() : null;
         const appeal = await Appeal.create({

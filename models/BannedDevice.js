@@ -56,12 +56,18 @@ const bannedDeviceSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
-    // محاولات التسجيل من هذا الجهاز بعد الحظر
+    // محاولات التسجيل/الدخول من هذا الجهاز بعد الحظر
     rejectedAttempts: [{
         attemptedAt: { type: Date, default: Date.now },
         email: String,
         name: String,
-        ip: String
+        ip: String,
+        // ✅ نوع المحاولة — يساعد الأدمن يرى نية التهرب (register متكرر = نية)
+        action: {
+            type: String,
+            enum: ['login', 'register', 'google', 'apple'],
+            default: 'login'
+        }
     }]
 }, {
     timestamps: true

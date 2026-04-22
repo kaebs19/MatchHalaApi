@@ -181,9 +181,9 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             });
 
             if (bannedDevice) {
-                // تسجيل محاولة التسجيل المرفوضة
+                // تسجيل محاولة التسجيل المرفوضة (action: register)
                 bannedDevice.rejectedAttempts.push({
-                    email, name, ip: getClientIP(req)
+                    email, name, ip: getClientIP(req), action: 'register'
                 });
                 await bannedDevice.save();
 
@@ -294,7 +294,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 
             if (bannedDevice) {
                 bannedDevice.rejectedAttempts.push({
-                    email, ip: getClientIP(req)
+                    email, ip: getClientIP(req), action: 'login'
                 });
                 await bannedDevice.save();
 

@@ -42,12 +42,19 @@ const bannedDeviceCheck = async (req, res, next) => {
             const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
                        req.headers['x-real-ip'] ||
                        req.socket?.remoteAddress;
+            // ✅ استنتاج نوع المحاولة من المسار
+            const route = req.originalUrl || req.path || '';
+            let action = 'login';
+            if (route.includes('/google')) action = 'google';
+            else if (route.includes('/apple')) action = 'apple';
+            else if (route.includes('/register')) action = 'register';
+
             bannedDevice.rejectedAttempts.push({
                 email: req.body?.email || req.body?.appleEmail || null,
                 name: req.body?.name || req.body?.fullName || null,
                 ip,
                 attemptedAt: new Date(),
-                route: req.originalUrl || req.path
+                action
             });
             // حد أقصى 100 محاولة لتجنّب التضخّم
             if (bannedDevice.rejectedAttempts.length > 100) {
