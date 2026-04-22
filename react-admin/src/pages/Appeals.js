@@ -251,7 +251,24 @@ function Appeals({ onViewUserDetail }) {
     const columns = [
         { key: "user", label: "المستخدم", render: (row) => renderUserCell(row) },
         { key: "reason", label: "السبب", render: (row) => <span title={row.reason}>{truncate(row.reason, 50)}</span> },
-        { key: "actionType", label: "نوع الإجراء", render: (row) => <span className="action-type-cell">{getActionTypeLabel(row.actionType)}</span> },
+        { key: "actionType", label: "نوع الإجراء", render: (row) => (
+            <span className="action-type-cell">
+                {getActionTypeLabel(row.actionType)}
+                {row.isPublicAppeal && (
+                    <span style={{
+                        marginInlineStart: 6,
+                        background: "linear-gradient(135deg,#667eea,#764ba2)",
+                        color: "white",
+                        padding: "2px 6px",
+                        borderRadius: 8,
+                        fontSize: 10,
+                        fontWeight: 700
+                    }} title={row.publicEmail || "استئناف عام"}>
+                        📱 عام
+                    </span>
+                )}
+            </span>
+        )},
         { key: "status", label: "الحالة", render: (row) => getStatusBadge(row.status) },
         { key: "date", label: "التاريخ", render: (row) => formatDateTime(row.createdAt) },
         {
@@ -403,12 +420,45 @@ function Appeals({ onViewUserDetail }) {
                             </div>
                         )}
 
+                        {/* ✅ Badge للاستئناف العام (جهاز محظور - بدون login) */}
+                        {selectedAppeal.isPublicAppeal && (
+                            <div style={{
+                                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                color: "white",
+                                padding: "12px 16px",
+                                borderRadius: 10,
+                                marginBottom: 14,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10
+                            }}>
+                                <span style={{ fontSize: 20 }}>📱</span>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 700, fontSize: 14 }}>استئناف عام — جهاز محظور</div>
+                                    <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+                                        قُدِّم بدون تسجيل دخول (المستخدم محظور الجهاز)
+                                        {selectedAppeal.publicEmail && (
+                                            <span> • البريد: <strong>{selectedAppeal.publicEmail}</strong></span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Appeal Info */}
                         <div className="appeal-info-section">
                             <div className="appeal-info-row">
                                 <span className="info-label">نوع الإجراء:</span>
                                 <span className="info-value">{getActionTypeLabel(selectedAppeal.actionType)}</span>
                             </div>
+                            {selectedAppeal.publicEmail && (
+                                <div className="appeal-info-row">
+                                    <span className="info-label">📧 بريد الاستئناف:</span>
+                                    <span className="info-value" style={{ direction: "ltr", color: "#667eea", fontWeight: 600 }}>
+                                        {selectedAppeal.publicEmail}
+                                    </span>
+                                </div>
+                            )}
                             {selectedAppeal.suspensionLevel && (
                                 <div className="appeal-info-row">
                                     <span className="info-label">مستوى الإيقاف:</span>

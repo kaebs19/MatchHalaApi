@@ -9,6 +9,8 @@ const BannedDevice = require('../models/BannedDevice');
 const Notification = require('../models/Notification');
 const { protect, adminOnly } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const { checkBannedWords } = require('./bannedWords');
+const { sendAppealUpdate } = require('../services/emailService');
 
 // ════════════════════════════════════════════════════════════════
 // @route   POST /api/appeals/public/device-ban
@@ -54,6 +56,16 @@ router.post('/public/device-ban', async (req, res) => {
             });
         }
 
+        // ✅ فلترة الألفاظ البذيئة — يرفض الاستئناف إذا احتوى كلمات ممنوعة
+        const bannedCheck = await checkBannedWords(reason.trim());
+        if (bannedCheck && bannedCheck.hasBannedWord) {
+            return res.status(400).json({
+                success: false,
+                code: 'BANNED_CONTENT',
+                message: 'المحتوى يحتوي ألفاظاً غير لائقة. يُرجى صياغة الاستئناف باحترام.'
+            });
+        }
+
         // فحص: هل الجهاز فعلاً محظور؟
         const bannedDevice = await BannedDevice.findOne({
             isActive: true,
@@ -85,20 +97,22 @@ router.post('/public/device-ban', async (req, res) => {
         }
 
         // إنشاء الاستئناف مرتبط بـ originalUserId
-        const firstContent = (email ? `البريد: ${email}\n\n` : '') + reason.trim();
+        const trimmedEmail = email && typeof email === 'string' ? email.trim().toLowerCase() : null;
         const appeal = await Appeal.create({
             user: bannedDevice.originalUserId,
             reason: reason.trim(),
             actionType: 'device_ban',
+            isPublicAppeal: true,
+            publicEmail: trimmedEmail,
             statusHistory: [{
                 status: 'pending',
-                note: 'استئناف عام من جهاز محظور',
+                note: 'استئناف عام من جهاز محظور' + (trimmedEmail ? ` (${trimmedEmail})` : ''),
                 changedAt: new Date()
             }],
             messages: [{
                 sender: 'user',
                 authorId: bannedDevice.originalUserId,
-                content: firstContent,
+                content: reason.trim(),
                 readByUser: true,
                 readByAdmin: false,
                 createdAt: new Date()
@@ -279,6 +293,17 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
                 status: appeal.status,
                 unreadForUser: appeal.unreadForUser
             });
+        }
+
+        // ✅ email للاستئناف العام (لا يوجد push لأن المستخدم ليس له token)
+        if (appeal.isPublicAppeal && appeal.publicEmail) {
+            try {
+                await sendAppealUpdate(appeal.publicEmail, {
+                    status: 'reply',
+                    adminMessage: content.trim(),
+                    appealId: appeal._id.toString()
+                });
+            } catch (e) { console.error('Appeal email error:', e.message); }
         }
 
         // إشعار + push
@@ -539,6 +564,17 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
                     notifBody,
                     { type: 'appeal_update', appealId: appeal._id.toString(), status }
                 );
+            }
+
+            // ✅ email للاستئناف العام (المستخدم بدون auth token)
+            if (appeal.isPublicAppeal && appeal.publicEmail && (status === 'approved' || status === 'rejected')) {
+                try {
+                    await sendAppealUpdate(appeal.publicEmail, {
+                        status,
+                        adminMessage: adminNote || null,
+                        appealId: appeal._id.toString()
+                    });
+                } catch (e) { console.error('Appeal email error:', e.message); }
             }
         } catch (notifErr) {
             console.error('خطأ في إرسال إشعار الاستئناف:', notifErr);

@@ -44,6 +44,18 @@ const appealSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // ✅ email خارجي لمن قدّم استئناف عام (جهاز محظور، لا login)
+    publicEmail: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        default: null
+    },
+    // ✅ هل الاستئناف قُدّم عبر المسار العام (بدون auth)
+    isPublicAppeal: {
+        type: Boolean,
+        default: false
+    },
     // ✅ رسائل الاستئناف — محادثة ثنائية بين المستخدم والإدارة
     messages: [{
         sender: {
