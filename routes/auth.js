@@ -31,6 +31,41 @@ const { checkBannedWords } = require('./bannedWords');
 const BannedDevice = require('../models/BannedDevice');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 
+// ════════════════════════════════════════════════════════════════
+// @route   POST /api/auth/check-device-ban
+// @desc    فحص إن كان الجهاز محظور — public، بدون auth token
+// @access  Public
+// يحل مشكلة: iOS لا يستطيع استخدام /auth/me لأنه يحتاج token
+// ════════════════════════════════════════════════════════════════
+router.post('/check-device-ban', async (req, res) => {
+    try {
+        const { deviceFingerprint, deviceToken } = req.body;
+        if (!deviceFingerprint && !deviceToken) {
+            return res.status(400).json({ success: false, message: 'بيانات الجهاز مطلوبة' });
+        }
+
+        const bannedDevice = await BannedDevice.findOne({
+            isActive: true,
+            $or: [
+                ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
+                ...(deviceToken ? [{ keychainToken: deviceToken }] : [])
+            ]
+        }).select('_id reason reasonDetails bannedBy createdAt');
+
+        res.json({
+            success: true,
+            data: {
+                banned: !!bannedDevice,
+                bannedDeviceId: bannedDevice?._id.toString() || null,
+                reason: bannedDevice?.reasonDetails || null
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في فحص حظر الجهاز:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // ✅ إثراء الملف الشخصي (برج، رتبة، عيد ميلاد، VIP)
 const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadgeSource } = require('../utils/profileEnrichment');
 
