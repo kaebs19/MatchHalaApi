@@ -20,14 +20,28 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const queryFilter = {};
         if (search && search.trim().length >= 1) {
             const q = search.trim();
+            const qEsc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const orConditions = [
-                { name: { $regex: q, $options: 'i' } },
-                { email: { $regex: q, $options: 'i' } },
-                { halaId: { $regex: q, $options: 'i' } }
+                { name: { $regex: qEsc, $options: 'i' } },
+                { email: { $regex: qEsc, $options: 'i' } },
+                { halaId: { $regex: qEsc, $options: 'i' } }
             ];
             // البحث بالمعرف الكامل (MongoDB ObjectId)
             if (q.match(/^[0-9a-fA-F]{24}$/)) {
                 orConditions.push({ _id: q });
+            }
+            // ✅ البحث بآخر حروف ObjectId — المعرف الظاهر في التطبيق (آخر 6 hex)
+            // مثال: ينسخ المستخدم "ecce12" من بروفايله → يتطابق مع user._id ينتهي بـ "ecce12"
+            if (q.match(/^[0-9a-fA-F]{4,23}$/)) {
+                orConditions.push({
+                    $expr: {
+                        $regexMatch: {
+                            input: { $toString: '$_id' },
+                            regex: qEsc + '$',
+                            options: 'i'
+                        }
+                    }
+                });
             }
             queryFilter.$or = orConditions;
         }
@@ -1833,6 +1847,16 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
 
         await user.save();
         invalidateUsers();
+
+        // ✅ Socket event — التطبيق يُحدّث اسم المستخدم فوراً
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('profile-updated', {
+                userId: user._id.toString(),
+                name: user.name,
+                nameStatus: user.nameStatus,
+                action
+            });
+        }
 
         // ✅ تسجيل Violation (سجل موحّد) عند تعليق/حظر الاسم
         if (action === 'suspend' || action === 'ban') {
