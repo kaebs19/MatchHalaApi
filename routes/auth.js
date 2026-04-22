@@ -1126,8 +1126,10 @@ router.post('/reset-account', protect, async (req, res) => {
             }
             const isMatch = await user.comparePassword(password);
             if (!isMatch) {
-                return res.status(401).json({
+                // ✅ 400 بدل 401 لمنع iOS interceptor من retry auto token refresh
+                return res.status(400).json({
                     success: false,
+                    code: 'WRONG_PASSWORD',
                     message: 'كلمة المرور غير صحيحة'
                 });
             }
@@ -1269,8 +1271,10 @@ router.delete('/delete-account', protect, async (req, res) => {
             }
             const isMatch = await user.comparePassword(password);
             if (!isMatch) {
-                return res.status(401).json({
+                // ✅ 400 بدل 401 لمنع iOS interceptor من retry auto token refresh loop
+                return res.status(400).json({
                     success: false,
+                    code: 'WRONG_PASSWORD',
                     message: 'كلمة المرور غير صحيحة'
                 });
             }
