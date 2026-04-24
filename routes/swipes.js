@@ -578,9 +578,14 @@ router.get('/cards', protect, async (req, res) => {
 
         // Helper: تحويل مستخدم إلى كرت
         const mapUserToCard = (u, distanceKm) => {
-            const mainPhoto = u.photos && u.photos.length > 0
-                ? (u.photos.find(p => p.order === 0) || u.photos[0])
-                : null;
+            const sortedPhotos = (u.photos || [])
+                .slice()
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const mainPhoto = sortedPhotos[0] || null;
+            const photoUrls = sortedPhotos
+                .map(p => p.medium || p.original || p.thumbnail)
+                .filter(Boolean)
+                .map(getFullUrl);
             const activityScore = calculateActivityScore(u);
             const distScore = distanceKm !== null ? calculateDistanceScore(distanceKm) : 0;
             // ✅ احترام إعداد showDistance — الـ scoring ما زال يستخدم القيمة الحقيقية،
@@ -592,6 +597,7 @@ router.get('/cards', protect, async (req, res) => {
                 profileImage: mainPhoto && (mainPhoto.medium || mainPhoto.original || mainPhoto.thumbnail)
                     ? getFullUrl(mainPhoto.medium || mainPhoto.original || mainPhoto.thumbnail)
                     : getFullUrl(u.profileImage),
+                photos: photoUrls,
                 birthDate: u.birthDate,
                 gender: u.gender,
                 country: u.country,

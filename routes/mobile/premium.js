@@ -28,10 +28,65 @@ router.post('/super-like', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'لا يمكن إرسال Super Like لنفسك' });
         }
 
+        // ✅ فحص تقييد المراسلة — محادثات جديدة محظورة لـ new_only و all
+        if (req.user.restrictions?.messagingRestricted) {
+            const now = new Date();
+            const until = req.user.restrictions.messagingRestrictedUntil;
+            if (!until || now < until) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'حسابك مقيّد من بدء محادثات جديدة مؤقتاً',
+                    code: 'MESSAGING_RESTRICTED',
+                    data: {
+                        level: req.user.restrictions.messagingRestrictedLevel,
+                        until: until?.toISOString(),
+                        reason: req.user.restrictions.restrictionReason
+                    }
+                });
+            }
+        }
+
         // التحقق من وجود المستخدم المستهدف
         const targetUser = await User.findById(targetUserId).lean();
         if (!targetUser) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        if (!targetUser.isActive) {
+            return res.status(400).json({ success: false, message: 'المستخدم غير نشط' });
+        }
+
+        // ✅ Privacy: المستخدم المستهدف أوقف استقبال الطلبات
+        if (targetUser.acceptingRequests === false) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم لا يستقبل طلبات محادثة جديدة حالياً',
+                code: 'NOT_ACCEPTING_REQUESTS'
+            });
+        }
+
+        // ✅ Privacy: Premium-only (Super Like يبقى مسموح للمشتركين فقط لو targetUser فعّلها)
+        if (targetUser.premiumOnlyRequests === true && !req.user.isPremium) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم يستقبل طلبات من المشتركين فقط',
+                code: 'PREMIUM_ONLY_REQUESTS'
+            });
+        }
+
+        // ✅ فحص الحظر (ثنائي الاتجاه)
+        const senderBlocked = (req.user.blockedUsers || []).some(
+            id => id.toString() === targetUserId.toString()
+        );
+        const targetBlocked = (targetUser.blockedUsers || []).some(
+            id => id.toString() === senderId.toString()
+        );
+        if (senderBlocked || targetBlocked) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن إرسال Super Like لهذا المستخدم',
+                code: 'USER_BLOCKED'
+            });
         }
 
         // التحقق من الحد اليومي
