@@ -4,6 +4,25 @@
 const { body, param, query } = require('express-validator');
 
 /**
+ * يحوّل الأرقام العربية والفارسية للأرقام اللاتينية
+ * "٢٠٠٨-٠٤-٠١" → "2008-04-01"
+ */
+function normalizeDigits(value) {
+    if (typeof value !== 'string') return value;
+    const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+    const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+    let out = '';
+    for (const ch of value) {
+        const ar = arabicDigits.indexOf(ch);
+        if (ar !== -1) { out += String(ar); continue; }
+        const pe = persianDigits.indexOf(ch);
+        if (pe !== -1) { out += String(pe); continue; }
+        out += ch;
+    }
+    return out;
+}
+
+/**
  * قواعد التحقق لتسجيل مستخدم جديد
  */
 const registerValidation = [
@@ -65,6 +84,7 @@ const updateProfileValidation = [
 
     body('birthDate')
         .optional()
+        .customSanitizer(normalizeDigits)
         .isISO8601().withMessage('تاريخ الميلاد غير صالح'),
 
     body('gender')
