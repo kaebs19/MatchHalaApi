@@ -681,4 +681,68 @@ router.get('/profile-views', protect, async (req, res) => {
     }
 });
 
+// ==========================================
+// Activity Stats + Streak — البطاقة في شاشة "ملفي"
+// ==========================================
+
+// @route   GET /api/mobile/stats
+// @desc    إحصائيات نشاط المستخدم (زوار/إعجابات/محادثات + streak)
+// @access  Protected
+router.get('/stats', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { updateUserStreak } = require('../../utils/streakHelper');
+
+        // ✅ تحديث streak تلقائياً عند طلب الإحصائيات
+        // (هذا الـ endpoint يُستدعى عند فتح شاشة الملف الشخصي)
+        const user = await User.findById(userId).select('streak blockedUsers');
+        const streakStatus = await updateUserStreak(user);
+
+        // قائمة المحظورين — لاستبعادهم من العدّ
+        const blockedIds = (user.blockedUsers || []).map(id => id.toString());
+
+        // عدّ ثلاثة بالتوازي
+        const [visitorsCount, likesCount, conversationsCount] = await Promise.all([
+            // 👁️ زوار البروفايل (غير المخفيين، غير المحظورين)
+            ProfileView.countDocuments({
+                viewed: userId,
+                isHidden: { $ne: true },
+                viewer: { $nin: blockedIds }
+            }),
+
+            // 💕 الإعجابات (Super Likes المستلمة، غير المحظورين)
+            SuperLike.countDocuments({
+                receiver: userId,
+                sender: { $nin: blockedIds }
+            }),
+
+            // 💬 المحادثات النشطة (status=accepted، غير مخفية)
+            Conversation.countDocuments({
+                participants: userId,
+                status: 'accepted',
+                isActive: true,
+                'hiddenFor.user': { $ne: userId }
+            })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                visitors: visitorsCount,
+                likes: likesCount,
+                conversations: conversationsCount,
+                streak: {
+                    current: streakStatus.current,
+                    longest: streakStatus.longest,
+                    increased: streakStatus.increased,  // اليوم زادت؟ (لـ celebration animation في iOS)
+                    reset: streakStatus.reset            // اليوم انكسرت سلسلة سابقة؟
+                }
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الإحصائيات:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب الإحصائيات' });
+    }
+});
+
 module.exports = router;

@@ -41,6 +41,12 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // ✅ Streak — أيام متواصلة بفتح التطبيق
+    streak: {
+        current: { type: Number, default: 0 },     // العداد الحالي
+        longest: { type: Number, default: 0 },     // أطول streak في تاريخ المستخدم
+        lastActiveDate: { type: Date, default: null } // آخر يوم نشاط (00:00:00 UTC)
+    },
     // حقول إعادة تعيين كلمة المرور
     resetPasswordToken: {
         type: String,
