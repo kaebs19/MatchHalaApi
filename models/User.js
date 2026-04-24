@@ -301,6 +301,8 @@ const userSchema = new mongoose.Schema({
     // ✅ آخر تغيير للصورة والاسم (cooldown)
     lastPhotoChange: { type: Date, default: null },
     lastNameChange: { type: Date, default: null },
+    // ✅ سجل تواريخ تغيير الاسم في آخر 30 يوم (3 مرات كحد أقصى)
+    nameChangeHistory: { type: [Date], default: [] },
 
     // ✅ سجل حذف الصور (من الأدمن)
     photoRemovals: [{

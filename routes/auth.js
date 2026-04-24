@@ -515,21 +515,42 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             }
         }
 
-        // ✅ فحص cooldown تغيير الاسم (مرة كل 30 يوم)
+        // ✅ فحص cooldown تغيير الاسم (3 مرات كل 30 يوم)
+        const NAME_CHANGE_WINDOW_DAYS = 30;
+        const NAME_CHANGE_MAX = 3;
         if (name && name !== user.name) {
-            if (user.lastNameChange) {
-                const daysSinceChange = (Date.now() - new Date(user.lastNameChange).getTime()) / (1000 * 60 * 60 * 24);
-                if (daysSinceChange < 30) {
-                    const remainingDays = Math.ceil(30 - daysSinceChange);
-                    return res.status(429).json({
-                        success: false,
-                        message: `يمكنك تغيير الاسم مرة كل 30 يوم. متبقي ${remainingDays} يوم`,
-                        messageEn: `You can change your name once every 30 days. ${remainingDays} days remaining`,
-                        code: 'NAME_COOLDOWN',
-                        remainingDays
-                    });
-                }
+            const windowMs = NAME_CHANGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+            const cutoff = new Date(Date.now() - windowMs);
+
+            // فلترة التاريخ → احتفظ فقط بالتعديلات داخل النافذة
+            let history = (user.nameChangeHistory || [])
+                .map(d => new Date(d))
+                .filter(d => d > cutoff);
+
+            // Migration: إذا الـ history فاضي + lastNameChange قديم داخل النافذة → ضمّه
+            if (history.length === 0 && user.lastNameChange) {
+                const last = new Date(user.lastNameChange);
+                if (last > cutoff) history = [last];
             }
+
+            if (history.length >= NAME_CHANGE_MAX) {
+                // أقدم تعديل في النافذة + 30 يوم = متى تتوفر محاولة جديدة
+                const oldest = new Date(Math.min(...history.map(d => d.getTime())));
+                const nextAvailable = new Date(oldest.getTime() + windowMs);
+                const remainingDays = Math.max(1, Math.ceil((nextAvailable - Date.now()) / (24 * 60 * 60 * 1000)));
+                return res.status(429).json({
+                    success: false,
+                    message: `يمكنك تغيير الاسم ${NAME_CHANGE_MAX} مرات كل ${NAME_CHANGE_WINDOW_DAYS} يوم. استنفدت المحاولات — تتوفر محاولة جديدة بعد ${remainingDays} يوم`,
+                    messageEn: `You can change your name ${NAME_CHANGE_MAX} times every ${NAME_CHANGE_WINDOW_DAYS} days. Limit reached — new attempt available in ${remainingDays} days`,
+                    code: 'NAME_COOLDOWN',
+                    remainingDays,
+                    used: history.length,
+                    max: NAME_CHANGE_MAX
+                });
+            }
+
+            // مرّر الـ history المنظّف للأمام لاستخدامه عند الحفظ
+            req._nameChangeHistory = history;
         }
 
         // فحص الاسم ضد الكلمات المحظورة
@@ -573,7 +594,11 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         // تحديث الحقول الأساسية
         if (name && name !== user.name) {
             user.name = name;
-            user.lastNameChange = new Date();
+            const now = new Date();
+            user.lastNameChange = now;
+            // ✅ سجّل التعديل في الـ history (احتفظ بالأخير NAME_CHANGE_MAX فقط)
+            const cleanHistory = req._nameChangeHistory || [];
+            user.nameChangeHistory = [...cleanHistory, now].slice(-NAME_CHANGE_MAX);
         }
         if (email) user.email = email;
 
@@ -1226,6 +1251,7 @@ router.post('/reset-account', protect, async (req, res) => {
             user.country = null;
             user.lastPhotoChange = null;
             user.lastNameChange = null;
+            user.nameChangeHistory = [];
 
             results.profileReset = true;
         }
