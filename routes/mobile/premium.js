@@ -330,4 +330,58 @@ router.get('/subscription/status', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/subscription/verify-expiration
+// @desc    إعادة فحص انتهاء الاشتراك فوراً (بدل انتظار الـ cron الساعي)
+//         iOS يستدعيه عند فتح التطبيق + بعد restore purchases
+// @access  Protected
+router.post('/subscription/verify-expiration', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('isPremium premiumPlan premiumExpiresAt stealthMode customNameColor privacySettings');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const now = new Date();
+        const expiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
+        const isExpired = user.isPremium && (!expiresAt || expiresAt <= now);
+
+        if (isExpired) {
+            // ✅ تنظيف فوري — لا ننتظر الـ cron
+            user.isPremium = false;
+            user.premiumPlan = null;
+            user.stealthMode = false;
+            user.customNameColor = null;
+            if (user.privacySettings) {
+                user.privacySettings.invisibleRead = false;
+            }
+            await user.save();
+
+            return res.json({
+                success: true,
+                data: {
+                    isPremium: false,
+                    expired: true,
+                    message: 'انتهى اشتراكك — تم إيقاف الميزات المدفوعة'
+                }
+            });
+        }
+
+        // الاشتراك نشط
+        res.json({
+            success: true,
+            data: {
+                isPremium: !!user.isPremium && !!expiresAt && expiresAt > now,
+                expired: false,
+                plan: user.premiumPlan,
+                expiresAt: expiresAt ? expiresAt.toISOString() : null
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في فحص انتهاء الاشتراك:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 module.exports = router;

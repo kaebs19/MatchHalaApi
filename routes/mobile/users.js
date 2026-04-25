@@ -496,6 +496,11 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             distance = null;
         }
 
+        // ✅ isPremium محسوب لحظياً — لا نرجع المخزن stale
+        const nowDate = new Date();
+        const userExpiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
+        const userIsPremiumValid = !!(user.isPremium && userExpiresAt && userExpiresAt > nowDate);
+
         const profileData = {
             _id: user._id,
             name: user.name,
@@ -514,7 +519,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             bio: user.bio,
             isOnline: user.isOnline,
             lastLogin: user.lastLogin,
-            isPremium: user.isPremium,
+            isPremium: userIsPremiumValid,
             isActive: user.isActive,
             verification: {
                 isVerified: user.verification?.isVerified || false,

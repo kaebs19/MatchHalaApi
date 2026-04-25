@@ -465,6 +465,15 @@ router.get('/me', protect, async (req, res) => {
         userObj.hasVipBadge = hasVipBadge(userObj);
         userObj.vipBadgeSource = getVipBadgeSource(userObj);
 
+        // ✅ isPremium محسوب لحظياً (لا نعتمد على الحقل المخزن — قد يكون stale)
+        // الـ cron الساعي يصلحها لكن قد لا يكون شغّل بعد
+        const now = new Date();
+        const expiresAt = userObj.premiumExpiresAt ? new Date(userObj.premiumExpiresAt) : null;
+        const isPremiumValid = !!(userObj.isPremium && expiresAt && expiresAt > now);
+        userObj.isPremium = isPremiumValid;
+        // حقل صريح للوضوح (في حال احتاج iOS)
+        userObj.premiumActive = isPremiumValid;
+
         res.status(200).json({
             success: true,
             data: {
