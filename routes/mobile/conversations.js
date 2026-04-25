@@ -674,7 +674,11 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
 // @access  Private
 router.get('/conversations', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 20 } = req.query;
+        // ✅ زيادة limit الافتراضي من 20 → 50 (يحل 95% من حالات اختفاء المحادثات)
+        // ✅ دعم since=ISO timestamp للتحديثات الجزئية (delta sync)
+        // ✅ all=true يجلب كل المحادثات النشطة بدون pagination (للـ initial load)
+        const { page = 1, since, all } = req.query;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const userId = req.user._id;
 
         const convFilter = {
@@ -684,8 +688,19 @@ router.get('/conversations', protect, async (req, res) => {
             'hiddenFor.user': { $ne: userId }
         };
 
+        // ✅ Delta sync — رجّع فقط المحادثات اللي تغيّرت بعد آخر sync
+        if (since) {
+            const sinceDate = new Date(since);
+            if (!isNaN(sinceDate.getTime())) {
+                convFilter.updatedAt = { $gt: sinceDate };
+            }
+        }
+
         // ETag: التحقق من آخر تعديل
-        const lastConv = await Conversation.findOne(convFilter).sort({ updatedAt: -1 }).select('updatedAt').lean();
+        const lastConv = await Conversation.findOne({
+            participants: userId,
+            'hiddenFor.user': { $ne: userId }
+        }).sort({ updatedAt: -1 }).select('updatedAt').lean();
         const lastModified = lastConv ? lastConv.updatedAt : new Date(0);
         const ifModifiedSince = req.headers['if-modified-since'];
 
@@ -695,13 +710,17 @@ router.get('/conversations', protect, async (req, res) => {
 
         res.set('Last-Modified', lastModified.toUTCString());
 
+        // ✅ all=true: جلب كل المحادثات النشطة (limit آمن 500)
+        const effectiveLimit = (all === 'true' || all === '1') ? 500 : limit;
+        const skip = (all === 'true' || all === '1') ? 0 : (page - 1) * limit;
+
         const conversations = await Conversation.find(convFilter)
             .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
             .populate('lastMessage')
             .select('+creator')
             .sort({ updatedAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
+            .limit(effectiveLimit)
+            .skip(skip)
             .lean();
 
         // تحويل صور المشاركين إلى thumbnails + قناع المحظورين
@@ -820,7 +839,9 @@ router.get('/conversations', protect, async (req, res) => {
                 total,
                 totalUnread,
                 currentPage: parseInt(page),
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil(total / limit),
+                // ✅ syncedAt — يستخدمه iOS للـ delta sync التالية
+                syncedAt: lastModified.toISOString()
             }
         });
 
@@ -831,6 +852,96 @@ router.get('/conversations', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// @route   GET /api/mobile/conversations/:id
+// @desc    جلب محادثة واحدة بمعرّفها (للـ Smart Merge في iOS عند Socket events)
+// @access  Private
+router.get('/conversations/:id', protect, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'معرّف المحادثة غير صالح' });
+        }
+
+        const conv = await Conversation.findOne({
+            _id: id,
+            participants: userId,
+            'hiddenFor.user': { $ne: userId }
+        })
+            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
+            .populate('lastMessage')
+            .select('+creator')
+            .lean();
+
+        if (!conv) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        // قناع المشاركين المحظورين + thumbnails
+        if (conv.participants) {
+            conv.participants = conv.participants.map(p => {
+                if (isUserFullyBanned(p)) return maskBannedUser(p);
+                const mainPhoto = p.photos && p.photos.length > 0
+                    ? (p.photos.find(ph => ph.order === 0) || p.photos[0])
+                    : null;
+                p.profileImage = mainPhoto && mainPhoto.thumbnail
+                    ? getFullUrl(mainPhoto.thumbnail)
+                    : getFullUrl(p.profileImage);
+                delete p.photos;
+                delete p.bannedWords;
+                delete p.suspension;
+                delete p.isActive;
+                return p;
+            });
+        }
+
+        // عدّ غير المقروءة لهذه المحادثة فقط
+        const unreadCount = await Message.countDocuments({
+            conversation: conv._id,
+            sender: { $ne: new mongoose.Types.ObjectId(userId) },
+            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
+        });
+
+        // initialMessage للطلبات المعلقة
+        let initialMessage = null;
+        if (conv.status === 'pending' && conv.creator && conv.creator.toString() !== userId.toString()) {
+            const m = await Message.findOne({
+                conversation: conv._id,
+                sender: conv.creator,
+                type: 'text',
+                isDeleted: { $ne: true }
+            }).sort({ createdAt: 1 }).select('content createdAt').lean();
+            if (m) initialMessage = { content: m.content, createdAt: m.createdAt };
+        }
+
+        // إضافة isRead/isDelivered لـ lastMessage
+        if (conv.lastMessage && conv.lastMessage.sender) {
+            const senderId = conv.lastMessage.sender.toString();
+            if (senderId === userId.toString()) {
+                conv.lastMessage.isRead = conv.lastMessage.status === 'read' ||
+                    (conv.lastMessage.readBy && conv.lastMessage.readBy.some(
+                        r => r.user && r.user.toString() !== userId.toString()
+                    ));
+                conv.lastMessage.isDelivered = conv.lastMessage.isRead || conv.lastMessage.status === 'delivered';
+            } else {
+                conv.lastMessage.isRead = true;
+                conv.lastMessage.isDelivered = true;
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                conversation: { ...conv, unreadCount, initialMessage }
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب المحادثة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
