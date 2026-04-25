@@ -1778,6 +1778,7 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
         }
 
         const originalName = user.nameStatus?.originalName || user.name;
+        const previousName = user.name; // للسجل التفصيلي
         let displayName = user.name;
         let statusMessage = '';
 
@@ -1854,6 +1855,22 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
             const currentV = user.bannedWords?.violations || 0;
             user.set('bannedWords.violations', currentV + 1);
             user.set('bannedWords.lastViolationDate', new Date());
+        }
+
+        // ✅ تسجيل في الـ audit log (nameHistory) — لو تغيّر الاسم فعلاً
+        if (user.name !== previousName) {
+            if (!user.nameHistory) user.nameHistory = [];
+            user.nameHistory.push({
+                from: previousName || '',
+                to: user.name,
+                changedAt: new Date(),
+                source: 'admin',
+                changedBy: req.user._id,
+                reason: reason || `Admin action: ${action}`
+            });
+            if (user.nameHistory.length > 50) {
+                user.nameHistory = user.nameHistory.slice(-50);
+            }
         }
 
         await user.save();
@@ -2805,6 +2822,57 @@ router.get('/:id/violation-evidence/:filename', protect, adminOnly, async (req, 
         res.sendFile(filePath);
     } catch (error) {
         console.error('violation evidence error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/name-history
+// @desc    سجل تغييرات الاسم (للأدمن فقط) — يدعم pagination
+// @access  Private/Admin
+router.get('/:id/name-history', protect, adminOnly, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+
+        const user = await User.findById(id)
+            .select('name nameHistory nameChangeHistory lastNameChange')
+            .populate('nameHistory.changedBy', 'name email role')
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // ترتيب من الأحدث للأقدم + limit
+        const history = (user.nameHistory || [])
+            .slice()
+            .sort((a, b) => new Date(b.changedAt) - new Date(a.changedAt))
+            .slice(0, limit);
+
+        // إحصائيات سريعة
+        const userChanges = history.filter(h => h.source === 'user').length;
+        const adminChanges = history.filter(h => h.source === 'admin').length;
+        const last30d = history.filter(h => {
+            const days = (Date.now() - new Date(h.changedAt).getTime()) / (1000 * 60 * 60 * 24);
+            return days <= 30;
+        }).length;
+
+        res.json({
+            success: true,
+            data: {
+                currentName: user.name,
+                lastNameChange: user.lastNameChange,
+                totalChanges: (user.nameHistory || []).length,
+                stats: {
+                    userInitiated: userChanges,
+                    adminInitiated: adminChanges,
+                    last30Days: last30d
+                },
+                history
+            }
+        });
+    } catch (error) {
+        console.error('name history error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

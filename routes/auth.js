@@ -602,12 +602,28 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
         // تحديث الحقول الأساسية
         if (name && name !== user.name) {
+            const oldName = user.name;
             user.name = name;
             const now = new Date();
             user.lastNameChange = now;
-            // ✅ سجّل التعديل في الـ history (احتفظ بالأخير NAME_CHANGE_MAX فقط)
+            // ✅ سجّل التعديل في الـ rate-limit history (تواريخ فقط)
             const cleanHistory = req._nameChangeHistory || [];
             user.nameChangeHistory = [...cleanHistory, now].slice(-NAME_CHANGE_MAX);
+
+            // ✅ سجّل في الـ audit log التفصيلي (للأدمن)
+            if (!user.nameHistory) user.nameHistory = [];
+            user.nameHistory.push({
+                from: oldName || '',
+                to: name,
+                changedAt: now,
+                source: 'user',
+                changedBy: null,
+                reason: null
+            });
+            // الاحتفاظ بآخر 50 entry فقط (تجنب النمو غير المحدود)
+            if (user.nameHistory.length > 50) {
+                user.nameHistory = user.nameHistory.slice(-50);
+            }
         }
         if (email) user.email = email;
 
