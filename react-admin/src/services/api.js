@@ -516,6 +516,12 @@ export const userNameAction = async (userId, action, reason, newName) => {
     return response.data;
 };
 
+// 📜 سجل تغييرات الاسم — Audit Log
+export const getUserNameHistory = async (userId, limit = 50) => {
+    const response = await api.get(`/users/${userId}/name-history`, { params: { limit } });
+    return response.data;
+};
+
 // حذف صورة مستخدم
 export const deleteUserPhoto = async (userId, photoIndex, reason) => {
     const response = await api.delete(`/users/${userId}/photo`, {

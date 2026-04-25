@@ -18,7 +18,8 @@ import { userBioAction,
     fetchViolationEvidenceBlob,
     deleteAllUserConversations,
     deleteUserMessage,
-    censorUserMessages
+    censorUserMessages,
+    getUserNameHistory
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -52,6 +53,10 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
     const [restrictForm, setRestrictForm] = useState({ type: 'photo', duration: '7d', reason: '' });
     // Name action form
     const [nameForm, setNameForm] = useState({ action: 'suspend', reason: '', newName: '' });
+    // ✅ Name history modal
+    const [showNameHistoryModal, setShowNameHistoryModal] = useState(false);
+    const [nameHistoryData, setNameHistoryData] = useState(null);
+    const [loadingNameHistory, setLoadingNameHistory] = useState(false);
     // Notification form
     const [notifyForm, setNotifyForm] = useState({ title: '', body: '' });
     // Violations form
@@ -192,6 +197,23 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
             showToast(error.response?.data?.message || 'فشل في تنفيذ إجراء الاسم', 'error');
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    // ✅ عرض سجل تغييرات الاسم
+    const handleViewNameHistory = async () => {
+        try {
+            setLoadingNameHistory(true);
+            setShowNameHistoryModal(true);
+            const res = await getUserNameHistory(userId, 50);
+            if (res.success) {
+                setNameHistoryData(res.data);
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل في جلب السجل', 'error');
+            setShowNameHistoryModal(false);
+        } finally {
+            setLoadingNameHistory(false);
         }
     };
 
@@ -2453,10 +2475,130 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                             </div>
                         </div>
                         <div className="modal-actions">
+                            <button
+                                className="cancel-btn"
+                                onClick={handleViewNameHistory}
+                                disabled={actionLoading}
+                                style={{background:'#eef2ff',color:'#4338ca',border:'1px solid #c7d2fe',marginLeft:'auto'}}
+                            >
+                                📜 عرض سجل التغييرات
+                            </button>
                             <button className="cancel-btn" onClick={() => setShowNameModal(false)} disabled={actionLoading}>إلغاء</button>
                             <button className="submit-btn danger" onClick={handleNameAction} disabled={actionLoading}>
                                 {actionLoading ? 'جاري التنفيذ...' : 'تنفيذ الإجراء'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Name History Modal */}
+            {showNameHistoryModal && (
+                <div className="modal-overlay" onClick={() => setShowNameHistoryModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{maxWidth:'720px',maxHeight:'85vh'}}>
+                        <div className="modal-header">
+                            <h3>📜 سجل تغييرات الاسم</h3>
+                            <button className="close-modal-btn" onClick={() => setShowNameHistoryModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body" style={{overflowY:'auto',maxHeight:'70vh'}}>
+                            {loadingNameHistory ? (
+                                <div style={{textAlign:'center',padding:'40px'}}>⏳ جاري التحميل...</div>
+                            ) : !nameHistoryData ? (
+                                <div style={{textAlign:'center',padding:'40px',color:'#6b7280'}}>لا توجد بيانات</div>
+                            ) : (
+                                <div>
+                                    {/* الإحصائيات */}
+                                    <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'10px',marginBottom:'18px'}}>
+                                        <div style={{padding:'10px',background:'#f3f4f6',borderRadius:'8px',textAlign:'center'}}>
+                                            <div style={{fontSize:'20px',fontWeight:'bold',color:'#1f2937'}}>{nameHistoryData.totalChanges}</div>
+                                            <div style={{fontSize:'11px',color:'#6b7280'}}>إجمالي التغييرات</div>
+                                        </div>
+                                        <div style={{padding:'10px',background:'#dbeafe',borderRadius:'8px',textAlign:'center'}}>
+                                            <div style={{fontSize:'20px',fontWeight:'bold',color:'#1e40af'}}>{nameHistoryData.stats.userInitiated}</div>
+                                            <div style={{fontSize:'11px',color:'#1e40af'}}>من المستخدم</div>
+                                        </div>
+                                        <div style={{padding:'10px',background:'#fef3c7',borderRadius:'8px',textAlign:'center'}}>
+                                            <div style={{fontSize:'20px',fontWeight:'bold',color:'#92400e'}}>{nameHistoryData.stats.adminInitiated}</div>
+                                            <div style={{fontSize:'11px',color:'#92400e'}}>من الأدمن</div>
+                                        </div>
+                                        <div style={{padding:'10px',background:'#fce7f3',borderRadius:'8px',textAlign:'center'}}>
+                                            <div style={{fontSize:'20px',fontWeight:'bold',color:'#9d174d'}}>{nameHistoryData.stats.last30Days}</div>
+                                            <div style={{fontSize:'11px',color:'#9d174d'}}>آخر 30 يوم</div>
+                                        </div>
+                                    </div>
+
+                                    {/* الاسم الحالي */}
+                                    <div style={{padding:'12px',background:'#ecfdf5',borderRadius:'8px',marginBottom:'14px',border:'1px solid #6ee7b7'}}>
+                                        <span style={{fontSize:'12px',color:'#047857'}}>الاسم الحالي:</span>{' '}
+                                        <strong style={{fontSize:'15px',color:'#064e3b'}}>{nameHistoryData.currentName}</strong>
+                                    </div>
+
+                                    {/* السجل */}
+                                    {nameHistoryData.history.length === 0 ? (
+                                        <div style={{textAlign:'center',padding:'24px',color:'#6b7280',background:'#f9fafb',borderRadius:'8px'}}>
+                                            لم يتم تسجيل أي تغييرات لهذا المستخدم
+                                            <div style={{fontSize:'11px',marginTop:'6px'}}>
+                                                (السجل التفصيلي يبدأ من تاريخ تفعيل الميزة)
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                                            {nameHistoryData.history.map((entry, idx) => {
+                                                const isAdmin = entry.source === 'admin';
+                                                const date = new Date(entry.changedAt);
+                                                const dateStr = date.toLocaleString('ar-SA', {
+                                                    year: 'numeric', month: 'short', day: 'numeric',
+                                                    hour: '2-digit', minute: '2-digit'
+                                                });
+                                                return (
+                                                    <div key={idx} style={{
+                                                        padding:'12px',
+                                                        background: isAdmin ? '#fffbeb' : '#f8fafc',
+                                                        borderLeft: `3px solid ${isAdmin ? '#f59e0b' : '#3b82f6'}`,
+                                                        borderRadius:'6px'
+                                                    }}>
+                                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
+                                                            <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                                                                <span style={{
+                                                                    padding:'2px 8px',
+                                                                    borderRadius:'4px',
+                                                                    fontSize:'10px',
+                                                                    fontWeight:'bold',
+                                                                    background: isAdmin ? '#f59e0b' : '#3b82f6',
+                                                                    color:'white'
+                                                                }}>
+                                                                    {isAdmin ? '🛡️ أدمن' : '👤 المستخدم'}
+                                                                </span>
+                                                                {isAdmin && entry.changedBy && (
+                                                                    <span style={{fontSize:'12px',color:'#92400e'}}>
+                                                                        بواسطة: <strong>{entry.changedBy.name || entry.changedBy.email || '?'}</strong>
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span style={{fontSize:'11px',color:'#6b7280'}}>{dateStr}</span>
+                                                        </div>
+                                                        <div style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'14px'}}>
+                                                            <span style={{color:'#dc2626',textDecoration:'line-through'}}>
+                                                                {entry.from || '(فارغ)'}
+                                                            </span>
+                                                            <span style={{color:'#6b7280'}}>←</span>
+                                                            <strong style={{color:'#16a34a'}}>{entry.to}</strong>
+                                                        </div>
+                                                        {entry.reason && (
+                                                            <div style={{marginTop:'6px',fontSize:'12px',color:'#6b7280',fontStyle:'italic'}}>
+                                                                السبب: {entry.reason}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowNameHistoryModal(false)}>إغلاق</button>
                         </div>
                     </div>
                 </div>
