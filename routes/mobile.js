@@ -4653,17 +4653,13 @@ router.get('/best-friends', protect, async (req, res) => {
     try {
         const userId = req.user._id;
 
-        // Premium check
+        // ✅ المجاني: 3 أصدقاء | Premium: حتى 20
         const me = await User.findById(userId).select('isPremium premiumExpiresAt');
-        if (!me || !me.isPremium || (me.premiumExpiresAt && new Date(me.premiumExpiresAt) < new Date())) {
-            return res.status(403).json({
-                success: false,
-                message: 'هذه الميزة للمشتركين فقط',
-                premiumRequired: true
-            });
-        }
-
-        const limit = Math.min(parseInt(req.query.limit) || 8, 20);
+        const isPremium = !!(me && me.isPremium && (!me.premiumExpiresAt || new Date(me.premiumExpiresAt) > new Date()));
+        const FREE_LIMIT = 3;
+        const PREMIUM_MAX = 20;
+        const requested = parseInt(req.query.limit) || (isPremium ? 8 : FREE_LIMIT);
+        const limit = isPremium ? Math.min(requested, PREMIUM_MAX) : FREE_LIMIT;
 
         // 1. جلب كل المحادثات النشطة للمستخدم
         const conversations = await Conversation.find({
@@ -4719,7 +4715,7 @@ router.get('/best-friends', protect, async (req, res) => {
         }
 
         // 3. ترتيب المحادثات حسب الـ score
-        const ranked = conversations
+        const allRanked = conversations
             .map(conv => {
                 const stats = scoreMap[conv._id.toString()] || { score: 0, messageCount: 0, lastMessageAt: null };
                 const otherId = conv.participants.find(p => p.toString() !== userId.toString());
@@ -4732,11 +4728,17 @@ router.get('/best-friends', protect, async (req, res) => {
                 };
             })
             .filter(c => c.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, limit);
+            .sort((a, b) => b.score - a.score);
+
+        // إجمالي المتوفرين (لإظهار "+ N أصدقاء آخرين" للمجاني)
+        const totalAvailable = allRanked.length;
+        const ranked = allRanked.slice(0, limit);
 
         if (ranked.length === 0) {
-            return res.json({ success: true, data: { friends: [] } });
+            return res.json({
+                success: true,
+                data: { friends: [], totalAvailable: 0, isPremium, freeLimit: FREE_LIMIT }
+            });
         }
 
         // 4. جلب بيانات المستخدمين
@@ -4782,7 +4784,13 @@ router.get('/best-friends', protect, async (req, res) => {
 
         res.json({
             success: true,
-            data: { friends, totalCount: friends.length }
+            data: {
+                friends,
+                totalCount: friends.length,
+                totalAvailable,           // ✅ إجمالي المتوفرين (قد يكون > friends.length)
+                isPremium,                // ✅ حالة الاشتراك للعميل
+                freeLimit: FREE_LIMIT     // ✅ الحد المجاني (3)
+            }
         });
     } catch (error) {
         console.error('best-friends error:', error);
