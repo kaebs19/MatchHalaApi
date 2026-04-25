@@ -224,6 +224,31 @@ router.delete('/notifications/:id', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/mobile/notifications/unread-count
+// @desc    عدد الإشعارات غير المقروءة فقط (خفيف — بدون جلب القائمة)
+// @access  Private
+router.get('/notifications/unread-count', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const filter = buildUserNotificationsFilter({
+            userId: userId.toString(),
+            role: req.user.role || 'user',
+            filter: 'unread'
+        });
+
+        const unreadCount = await Notification.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: { unreadCount }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب عدد الإشعارات غير المقروءة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 // @route   DELETE /api/mobile/notifications
 // @desc    حذف جميع إشعارات المستخدم
 // @access  Private
