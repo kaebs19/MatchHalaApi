@@ -438,7 +438,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance acceptingRequests premiumOnlyRequests'
         ).lean();
 
         if (!user) {
@@ -527,7 +527,10 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             userRank: computeUserRank(user),
             isBirthdayToday: isBirthdayToday(user.birthDate),
             hasVipBadge: hasVipBadge(user),
-            vipBadgeSource: getVipBadgeSource(user)
+            vipBadgeSource: getVipBadgeSource(user),
+            // ✅ إعدادات الخصوصية للعرض الشرطي في iOS (تعطيل زر الإرسال مسبقاً)
+            acceptingRequests: user.acceptingRequests !== false, // افتراضي true
+            premiumOnlyRequests: user.premiumOnlyRequests === true
         };
 
         res.json({ success: true, data: { user: profileData } });
