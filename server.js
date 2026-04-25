@@ -469,7 +469,9 @@ io.on('connection', async (socket) => {
         try {
             const conversation = await Conversation.findById(conversationId, 'participants').lean();
             if (!conversation) {
-                return socket.emit('error', { message: 'المحادثة غير موجودة' });
+                // ✅ event مخصّص بدل error مزعج —
+                // يخبر iOS بحذف هذه المحادثة من الكاش (انتهت أو حُذفت)
+                return socket.emit('conversation:not-found', { conversationId });
             }
 
             const isMember = conversation.participants.some(
