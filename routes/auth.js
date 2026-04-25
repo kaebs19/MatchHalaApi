@@ -607,7 +607,24 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (birthDate !== undefined) user.birthDate = birthDate;
         if (gender !== undefined) user.gender = gender;
         if (country !== undefined) user.country = country;
-        if (bio !== undefined) user.bio = bio;
+
+        // ✅ فحص الكلمات المحظورة على النبذة قبل الحفظ
+        if (bio !== undefined && bio !== user.bio) {
+            const trimmedBio = (bio || '').trim();
+            if (trimmedBio.length > 0) {
+                const bioCheck = await checkBannedWords(trimmedBio);
+                if (bioCheck.hasBannedWords) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'النبذة تحتوي على كلمات غير مسموح بها',
+                        code: 'BANNED_BIO',
+                        words: bioCheck.matchedWords || []
+                    });
+                }
+            }
+            user.bio = bio;
+        }
+
         if (interests !== undefined) user.interests = interests;
 
         // دعم الصور الافتراضية (avatar_1 إلى avatar_13)

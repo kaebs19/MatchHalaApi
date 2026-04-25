@@ -709,6 +709,17 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
+        // ✅ Socket event يُبلغ iOS فوراً → يُحدّث البروفايل في كل الشاشات
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('profile-updated', {
+                type: 'bio',
+                action: action,                  // 'ban' أو 'restore'
+                bio: user.bio,
+                bioStatus: user.bioStatus,
+                reason: reason || null
+            });
+        }
+
         res.status(200).json({
             success: true,
             message: action === 'ban' ? 'تم حظر النبذة بنجاح' : 'تم إعادة النبذة بنجاح',
