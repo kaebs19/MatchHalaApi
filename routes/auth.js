@@ -30,6 +30,7 @@ const { checkBannedWords } = require('./bannedWords');
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
+const { isStrictDeviceVersion } = require('../utils/strictDeviceMode');
 
 // ════════════════════════════════════════════════════════════════
 // @route   POST /api/auth/check-device-ban
@@ -39,8 +40,8 @@ const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 // ════════════════════════════════════════════════════════════════
 router.post('/check-device-ban', async (req, res) => {
     try {
-        const { deviceFingerprint, deviceToken } = req.body;
-        if (!deviceFingerprint && !deviceToken) {
+        const { deviceFingerprint, deviceToken, vendorId } = req.body;
+        if (!deviceFingerprint && !deviceToken && !vendorId) {
             return res.status(400).json({ success: false, message: 'بيانات الجهاز مطلوبة' });
         }
 
@@ -48,7 +49,8 @@ router.post('/check-device-ban', async (req, res) => {
             isActive: true,
             $or: [
                 ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
-                ...(deviceToken ? [{ keychainToken: deviceToken }] : [])
+                ...(deviceToken ? [{ keychainToken: deviceToken }] : []),
+                ...(vendorId ? [{ vendorId }] : [])
             ]
         }).select('_id reason reasonDetails bannedBy createdAt');
 
@@ -121,20 +123,23 @@ const saveLoginRecord = async (user, req) => {
     // ✅ حفظ بصمة الجهاز (Anti-Abuse)
     const deviceFingerprint = req.body.deviceFingerprint || req.headers['x-device-fingerprint'];
     const deviceToken = req.body.deviceToken || req.headers['x-device-token'];
+    const vendorId = req.body.vendorId || req.headers['x-vendor-id'];
     // Fingerprint debug removed — production
     if (deviceFingerprint) updateData.deviceFingerprint = deviceFingerprint;
     if (deviceToken) updateData.keychainToken = deviceToken;
+    if (vendorId) updateData.vendorId = vendorId;
     if (appVersion) updateData['deviceInfo.appVersion'] = appVersion;
 
     await User.findByIdAndUpdate(user._id, updateData);
 
     // ✅ ربط pending bans على هذا المستخدم بالـ fingerprint الجديد
     // (حالة: حُظر الجهاز قبل ما يكون له fingerprint، الآن وصلت بصمة)
-    if ((deviceFingerprint || deviceToken)) {
+    if ((deviceFingerprint || deviceToken || vendorId)) {
         try {
             const setFields = { pendingFingerprint: false };
             if (deviceFingerprint) setFields.deviceFingerprint = deviceFingerprint;
             if (deviceToken) setFields.keychainToken = deviceToken;
+            if (vendorId) setFields.vendorId = vendorId;
             await BannedDevice.updateMany(
                 { originalUserId: user._id, pendingFingerprint: true },
                 { $set: setFields }
@@ -153,11 +158,13 @@ const recordDeviceBanForUser = async (user, req, reason = 'manual', details = ''
     try {
         const fp = req.body?.deviceFingerprint || req.headers['x-device-fingerprint'] || user?.deviceFingerprint;
         const kt = req.body?.deviceToken || req.headers['x-device-token'] || user?.keychainToken;
-        if (!fp && !kt) return; // لا بصمة → لا شيء نسجّله الآن
+        const vid = req.body?.vendorId || req.headers['x-vendor-id'] || user?.vendorId;
+        if (!fp && !kt && !vid) return; // لا بصمة → لا شيء نسجّله الآن
 
         const orConditions = [];
         if (fp) orConditions.push({ deviceFingerprint: fp });
         if (kt) orConditions.push({ keychainToken: kt });
+        if (vid) orConditions.push({ vendorId: vid });
         if (user?._id) orConditions.push({ originalUserId: user._id });
 
         const setOnInsert = {
@@ -170,10 +177,11 @@ const recordDeviceBanForUser = async (user, req, reason = 'manual', details = ''
         };
         if (req.body?.deviceInfo) setOnInsert.deviceInfo = req.body.deviceInfo;
 
-        // ضمان أن fp/kt يُكتبا حتى لو كان السجل موجود بدون أحدهما
+        // ضمان أن fp/kt/vid يُكتبا حتى لو كان السجل موجود بدون أحدهم
         const setFields = { isActive: true, pendingFingerprint: false };
         if (fp) setFields.deviceFingerprint = fp;
         if (kt) setFields.keychainToken = kt;
+        if (vid) setFields.vendorId = vid;
 
         await BannedDevice.findOneAndUpdate(
             { $or: orConditions },
@@ -227,13 +235,24 @@ router.post('/register', registerValidation, validate, async (req, res) => {
         }
 
         // ✅ فحص حظر الجهاز (Device Ban Check)
-        const { deviceFingerprint, deviceToken, deviceInfo } = req.body;
-        if (deviceFingerprint || deviceToken) {
+        const { deviceFingerprint, deviceToken, deviceInfo, vendorId } = req.body;
+
+        // ✅ Strict Mode للنسخ ≥ 5.4 — إلزام بصمة الجهاز
+        if (isStrictDeviceVersion(req) && !deviceFingerprint && !deviceToken && !vendorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'بيانات الجهاز مطلوبة لإنشاء الحساب',
+                code: 'MISSING_DEVICE_INFO'
+            });
+        }
+
+        if (deviceFingerprint || deviceToken || vendorId) {
             const bannedDevice = await BannedDevice.findOne({
                 isActive: true,
                 $or: [
                     ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
-                    ...(deviceToken ? [{ keychainToken: deviceToken }] : [])
+                    ...(deviceToken ? [{ keychainToken: deviceToken }] : []),
+                    ...(vendorId ? [{ vendorId }] : [])
                 ]
             });
 
@@ -269,9 +288,10 @@ router.post('/register', registerValidation, validate, async (req, res) => {
         });
 
         // ✅ حفظ بصمة الجهاز في سجل المستخدم
-        if (deviceFingerprint || deviceToken) {
+        if (deviceFingerprint || deviceToken || vendorId) {
             user.deviceFingerprint = deviceFingerprint;
             user.keychainToken = deviceToken;
+            user.vendorId = vendorId;
             if (deviceInfo) user.deviceDetails = deviceInfo;
             await user.save();
         }
@@ -339,13 +359,24 @@ router.post('/login', loginValidation, validate, async (req, res) => {
         }
 
         // ✅ فحص حظر الجهاز عند تسجيل الدخول
-        const { deviceFingerprint, deviceToken } = req.body;
-        if (deviceFingerprint || deviceToken) {
+        const { deviceFingerprint, deviceToken, vendorId } = req.body;
+
+        // ✅ Strict Mode للنسخ ≥ 5.4 — إلزام بصمة الجهاز
+        if (isStrictDeviceVersion(req) && !deviceFingerprint && !deviceToken && !vendorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'بيانات الجهاز مطلوبة لتسجيل الدخول',
+                code: 'MISSING_DEVICE_INFO'
+            });
+        }
+
+        if (deviceFingerprint || deviceToken || vendorId) {
             const bannedDevice = await BannedDevice.findOne({
                 isActive: true,
                 $or: [
                     ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
-                    ...(deviceToken ? [{ keychainToken: deviceToken }] : [])
+                    ...(deviceToken ? [{ keychainToken: deviceToken }] : []),
+                    ...(vendorId ? [{ vendorId }] : [])
                 ]
             });
 
@@ -365,6 +396,7 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             // تحديث بصمة الجهاز
             user.deviceFingerprint = deviceFingerprint;
             user.keychainToken = deviceToken;
+            if (vendorId) user.vendorId = vendorId;
         }
 
         // ✅ فحص الحظر والتعليق قبل isActive (لأنهم يغيّرون isActive=false)

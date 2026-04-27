@@ -3,10 +3,13 @@
 // يُطبَّق على: /auth/register, /auth/login, /auth/google, /auth/apple
 
 const BannedDevice = require('../models/BannedDevice');
+const { isStrictDeviceVersion } = require('../utils/strictDeviceMode');
 
 /**
- * يقرأ deviceFingerprint + deviceToken من body أو headers
+ * يقرأ deviceFingerprint + deviceToken + vendorId من body أو headers
  * لو متطابقين مع جهاز محظور → يرفض بـ 403 DEVICE_BANNED
+ *
+ * Strict Mode: نسخ التطبيق ≥ 5.4 ملزمة بإرسال البصمة (تسد ثغرة fail-open)
  */
 const bannedDeviceCheck = async (req, res, next) => {
     try {
@@ -17,16 +20,28 @@ const bannedDeviceCheck = async (req, res, next) => {
         const deviceToken =
             req.body?.deviceToken ||
             req.headers['x-device-token'];
+        const vendorId =
+            req.body?.vendorId ||
+            req.headers['x-vendor-id'];
 
-        // لا fingerprint ولا token → ندع الطلب يمر
-        // (ملاحظة: يمكن تغيير هذا لسياسة صارمة تتطلب الـ token)
-        if (!deviceFingerprint && !deviceToken) {
+        // ✅ Strict Mode للنسخ ≥ 5.4 — إلزام إرسال البصمة
+        if (isStrictDeviceVersion(req) && !deviceFingerprint && !deviceToken && !vendorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'بيانات الجهاز مطلوبة',
+                code: 'MISSING_DEVICE_INFO'
+            });
+        }
+
+        // النسخ القديمة بدون بصمة → ندع الطلب يمر (للتوافق)
+        if (!deviceFingerprint && !deviceToken && !vendorId) {
             return next();
         }
 
         const orConditions = [];
         if (deviceFingerprint) orConditions.push({ deviceFingerprint });
         if (deviceToken) orConditions.push({ keychainToken: deviceToken });
+        if (vendorId) orConditions.push({ vendorId });
 
         const bannedDevice = await BannedDevice.findOne({
             isActive: true,

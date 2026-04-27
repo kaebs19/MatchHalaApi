@@ -19,6 +19,12 @@ const bannedDeviceSchema = new mongoose.Schema({
         type: String,
         index: true
     },
+    // ✅ identifierForVendor — طبقة ثالثة ضد التجاوز
+    // يبقى ثابتًا حتى لو حُذفت Keychain، ما لم يُحذف كل تطبيقات vendor
+    vendorId: {
+        type: String,
+        index: true
+    },
     // المستخدم الأصلي اللي انحظر
     originalUserId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -83,6 +89,7 @@ const bannedDeviceSchema = new mongoose.Schema({
 // Index مركب للبحث السريع
 bannedDeviceSchema.index({ deviceFingerprint: 1, isActive: 1 });
 bannedDeviceSchema.index({ keychainToken: 1, isActive: 1 });
+bannedDeviceSchema.index({ vendorId: 1, isActive: 1 });
 bannedDeviceSchema.index({ originalUserId: 1, isActive: 1 });
 bannedDeviceSchema.index({ isActive: 1, createdAt: -1 });
 

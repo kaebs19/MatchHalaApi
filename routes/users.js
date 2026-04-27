@@ -1480,7 +1480,7 @@ router.post("/:id/escalate", protect, adminOnly, async (req, res) => {
 router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
     try {
         const BannedDevice = require('../models/BannedDevice');
-        const user = await User.findById(req.params.id).select('+deviceFingerprint +keychainToken +deviceDetails');
+        const user = await User.findById(req.params.id).select('+deviceFingerprint +keychainToken +vendorId +deviceDetails');
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -1490,11 +1490,12 @@ router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
 
         // ✅ لا يوجد fingerprint → نُنشئ سجل pending مرتبط بالمستخدم
         // عند تسجيل الدخول التالي، الـ login handler يربط الـ fingerprint تلقائيًا
-        const hasFingerprint = !!(user.deviceFingerprint || user.keychainToken);
+        const hasFingerprint = !!(user.deviceFingerprint || user.keychainToken || user.vendorId);
 
         const matchConditions = [{ originalUserId: user._id }];
         if (user.deviceFingerprint) matchConditions.push({ deviceFingerprint: user.deviceFingerprint });
         if (user.keychainToken) matchConditions.push({ keychainToken: user.keychainToken });
+        if (user.vendorId) matchConditions.push({ vendorId: user.vendorId });
 
         const setFields = {
             originalUserId: user._id,
@@ -1508,6 +1509,7 @@ router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
         };
         if (user.deviceFingerprint) setFields.deviceFingerprint = user.deviceFingerprint;
         if (user.keychainToken) setFields.keychainToken = user.keychainToken;
+        if (user.vendorId) setFields.vendorId = user.vendorId;
 
         const bannedDevice = await BannedDevice.findOneAndUpdate(
             { $or: matchConditions },
