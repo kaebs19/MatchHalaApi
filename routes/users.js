@@ -1586,12 +1586,19 @@ router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
 router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
     try {
         const BannedDevice = require('../models/BannedDevice');
-        const { search = '', page = 1, limit = 50 } = req.query;
+        const { search = '', page = 1, limit = 50, source = 'all' } = req.query;
         const skip = (Number(page) - 1) * Number(limit);
 
-        // ✅ بناء الفلتر مع البحث
+        // ✅ بناء الفلتر مع البحث + مصدر الحظر
         let filter = { isActive: true };
         let userIds = null;
+
+        // ✅ فلتر مصدر الحظر (manual/admin أو auto/spam_system)
+        if (source === 'manual') {
+            filter.bannedBy = 'admin';
+        } else if (source === 'auto') {
+            filter.bannedBy = { $in: ['auto', 'spam_system'] };
+        }
 
         if (search && search.trim()) {
             const cleanSearch = search.trim().replace(/[^a-zA-Z0-9@.\-\s\u0600-\u06FF]/g, "");
@@ -1618,16 +1625,18 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-        const [totalActive, today, thisWeek, thisMonth, totalCount] = await Promise.all([
+        const [totalActive, today, thisWeek, thisMonth, manualCount, autoCount, totalCount] = await Promise.all([
             BannedDevice.countDocuments({ isActive: true }),
             BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: dayAgo } }),
             BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: weekAgo } }),
             BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: monthAgo } }),
+            BannedDevice.countDocuments({ isActive: true, bannedBy: 'admin' }),
+            BannedDevice.countDocuments({ isActive: true, bannedBy: { $in: ['auto', 'spam_system'] } }),
             BannedDevice.countDocuments(filter)
         ]);
 
         const devices = await BannedDevice.find(filter)
-            .populate('originalUserId', 'name email profileImage halaId')
+            .populate('originalUserId', 'name email profileImage halaId gender country city age createdAt lastLogin isPremium suspension bannedWords')
             .populate('adminId', 'name')
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -1644,16 +1653,20 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
                     totalActive,
                     today,
                     thisWeek,
-                    thisMonth
+                    thisMonth,
+                    manualCount,
+                    autoCount
                 },
                 devices: devices.map(d => ({
                     id: d._id,
                     fingerprint: d.deviceFingerprint?.substring(0, 16) + '...',
                     fullFingerprint: d.deviceFingerprint,
                     user: d.originalUserId,
+                    deviceInfo: d.deviceInfo,
                     reason: d.reason,
                     reasonDetails: d.reasonDetails,
                     bannedBy: d.bannedBy,
+                    pendingFingerprint: d.pendingFingerprint || false,
                     admin: d.adminId,
                     rejectedAttempts: d.rejectedAttempts?.length || 0,
                     lastAttempt: d.rejectedAttempts?.slice(-1)[0],
@@ -1663,6 +1676,95 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         });
     } catch (error) {
         console.error('banned-devices/list error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+// @route   POST /api/users/banned-devices/unban-bulk
+// @desc    فك حظر جماعي حسب المصدر (auto فقط أو الكل)
+// @access  Private/Admin
+// ══════════════════════════════════════════════════════════
+router.post('/banned-devices/unban-bulk', protect, adminOnly, async (req, res) => {
+    try {
+        const BannedDevice = require('../models/BannedDevice');
+        const { source = 'auto' } = req.body;
+
+        if (!['auto', 'all'].includes(source)) {
+            return res.status(400).json({
+                success: false,
+                message: 'المصدر غير صالح — auto أو all فقط'
+            });
+        }
+
+        const filter = { isActive: true };
+        if (source === 'auto') {
+            filter.bannedBy = { $in: ['auto', 'spam_system'] };
+        }
+
+        // قائمة المستخدمين المتأثرين قبل التعطيل (لإرسال إشعارات + فك تعليق)
+        const affectedDevices = await BannedDevice.find(filter)
+            .select('originalUserId')
+            .lean();
+        const affectedUserIds = [...new Set(
+            affectedDevices.map(d => d.originalUserId).filter(Boolean).map(String)
+        )];
+
+        // تعطيل سجلات BannedDevice
+        const result = await BannedDevice.updateMany(filter, { $set: { isActive: false } });
+
+        // فك تعليق المستخدمين المتأثرين
+        let unsuspended = 0;
+        if (affectedUserIds.length > 0) {
+            const userResult = await User.updateMany(
+                {
+                    _id: { $in: affectedUserIds },
+                    'suspension.isSuspended': true
+                },
+                {
+                    $set: {
+                        isActive: true,
+                        'suspension.isSuspended': false,
+                        'suspension.suspendedUntil': null,
+                        'suspension.reason': null
+                    }
+                }
+            );
+            unsuspended = userResult.modifiedCount;
+            invalidateUsers();
+
+            // Socket events لكل المستخدمين المتأثرين
+            if (global.io) {
+                affectedUserIds.forEach(uid => {
+                    global.io.to(`user:${uid}`).emit('account-unsuspended');
+                });
+            }
+
+            // إشعارات push (best-effort)
+            try {
+                const pushNotificationService = require('../services/pushNotificationService');
+                affectedUserIds.forEach(uid => {
+                    pushNotificationService.sendNotificationToUser(uid, {
+                        title: 'تم فك الحظر',
+                        body: 'تم فك حظر حسابك وجهازك. مرحباً بعودتك!'
+                    }, { type: 'account_unsuspended' }).catch(() => {});
+                });
+            } catch (e) { /* fail-silent */ }
+        }
+
+        res.json({
+            success: true,
+            message: source === 'auto'
+                ? `تم فك حظر ${result.modifiedCount} جهاز تلقائي + ${unsuspended} حساب`
+                : `تم فك حظر ${result.modifiedCount} جهاز + ${unsuspended} حساب`,
+            data: {
+                unbannedDevices: result.modifiedCount,
+                unsuspendedUsers: unsuspended,
+                source
+            }
+        });
+    } catch (error) {
+        console.error('Bulk unban error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
 });

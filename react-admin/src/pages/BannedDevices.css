@@ -205,9 +205,9 @@
 /* ====== Stats Cards ====== */
 .banned-stats-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
 }
 
 .banned-stat-card {
@@ -238,16 +238,152 @@
 }
 
 .banned-stat-card.total .stat-icon { background: linear-gradient(135deg, #fee2e2, #fecaca); }
-.banned-stat-card.today .stat-icon { background: linear-gradient(135deg, #fef3c7, #fde68a); }
-.banned-stat-card.week .stat-icon { background: linear-gradient(135deg, #dbeafe, #bfdbfe); }
+.banned-stat-card.manual .stat-icon { background: linear-gradient(135deg, #dbeafe, #bfdbfe); }
+.banned-stat-card.auto .stat-icon { background: linear-gradient(135deg, #fef3c7, #fde68a); }
+.banned-stat-card.today .stat-icon { background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
+.banned-stat-card.week .stat-icon { background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
 .banned-stat-card.month .stat-icon { background: linear-gradient(135deg, #e0e7ff, #c7d2fe); }
 
-.banned-stat-card .stat-info { flex: 1; }
-.banned-stat-card .stat-value { font-size: 28px; font-weight: 700; color: #1a1a1a; line-height: 1; }
-.banned-stat-card .stat-label { font-size: 13px; color: #6b7280; margin-top: 4px; }
+.banned-stat-card .stat-icon { font-size: 24px; width: 44px; height: 44px; }
+.banned-stat-card .stat-info { flex: 1; min-width: 0; }
+.banned-stat-card .stat-value { font-size: 22px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+.banned-stat-card .stat-label { font-size: 12px; color: #6b7280; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.banned-stat-card { padding: 14px; gap: 10px; }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+    .banned-stats-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 700px) {
     .banned-stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ====== Filter Tabs + Bulk Action ====== */
+.banned-filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.source-tabs {
+    display: flex;
+    gap: 6px;
+    background: #f3f4f6;
+    padding: 4px;
+    border-radius: 12px;
+}
+
+.source-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    transition: all 0.15s;
+}
+
+.source-tab:hover { color: #374151; }
+
+.source-tab.active {
+    background: #fff;
+    color: #ef4444;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.bulk-unban-btn {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    transition: all 0.15s;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.bulk-unban-btn:hover:not(:disabled) {
+    transform: scale(1.03);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.bulk-unban-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* ====== User Meta Chips ====== */
+.user-meta-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed #f0f0f0;
+}
+
+.user-meta-chip {
+    background: #f9fafb;
+    color: #4b5563;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid #f0f0f0;
+}
+
+.user-meta-chip.suspended {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.user-meta-chip.banned {
+    background: #fef3c7;
+    color: #a16207;
+    border-color: #fde68a;
+}
+
+.premium-badge {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 11px;
+}
+
+.hala-id {
+    color: #9ca3af !important;
+    font-size: 10px !important;
+    font-family: monospace;
+    margin-top: 2px;
+}
+
+/* ====== Device Actions ====== */
+.device-actions {
+    gap: 8px;
+}
+
+.view-user-btn {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+
+.view-user-btn:hover {
+    background: #e5e7eb;
+    color: #1f2937;
 }
 
 /* ====== Search Bar ====== */

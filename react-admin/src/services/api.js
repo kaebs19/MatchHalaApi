@@ -628,6 +628,12 @@ export const unbanDevice = async (userId) => {
     return response.data;
 };
 
+// ✅ فك حظر جماعي — auto: التلقائي فقط | all: كل الأجهزة المحظورة
+export const unbanBulkDevices = async (source = 'auto') => {
+    const response = await api.post('/users/banned-devices/unban-bulk', { source });
+    return response.data;
+};
+
 // ============ Violations APIs ============
 
 export const getUserViolations = async (userId, params = {}) => {
