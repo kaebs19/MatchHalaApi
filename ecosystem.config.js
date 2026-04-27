@@ -3,6 +3,8 @@ module.exports = {
     {
       name: 'matchhala-api',
       script: 'server.js',
+      instances: 4,
+      exec_mode: 'cluster',
       max_memory_restart: '400M',
       node_args: '--max-old-space-size=512',
       env: {
