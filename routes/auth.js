@@ -338,6 +338,15 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             });
         }
 
+        // ✅ Strict Mode للنسخ ≥ 5.4 — إلزام بصمة الجهاز قبل أي شيء
+        if (isStrictDeviceVersion(req) && !req.body.deviceFingerprint && !req.body.deviceToken && !req.body.vendorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'بيانات الجهاز مطلوبة لتسجيل الدخول',
+                code: 'MISSING_DEVICE_INFO'
+            });
+        }
+
         // البحث عن المستخدم (مع كلمة المرور)
         const user = await User.findOne({ email }).select('+password');
 
@@ -360,15 +369,6 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 
         // ✅ فحص حظر الجهاز عند تسجيل الدخول
         const { deviceFingerprint, deviceToken, vendorId } = req.body;
-
-        // ✅ Strict Mode للنسخ ≥ 5.4 — إلزام بصمة الجهاز
-        if (isStrictDeviceVersion(req) && !deviceFingerprint && !deviceToken && !vendorId) {
-            return res.status(400).json({
-                success: false,
-                message: 'بيانات الجهاز مطلوبة لتسجيل الدخول',
-                code: 'MISSING_DEVICE_INFO'
-            });
-        }
 
         if (deviceFingerprint || deviceToken || vendorId) {
             const bannedDevice = await BannedDevice.findOne({
