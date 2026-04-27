@@ -56,6 +56,13 @@ const bannedDeviceSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // ✅ علامة الحظر المُنتظِر للبصمة — يُستخدم لحسابات قديمة بدون deviceFingerprint
+    // عند تسجيل الدخول التالي من نفس الحساب، يتم ربط الـ fingerprint تلقائيًا
+    pendingFingerprint: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
     // محاولات التسجيل/الدخول من هذا الجهاز بعد الحظر
     rejectedAttempts: [{
         attemptedAt: { type: Date, default: Date.now },

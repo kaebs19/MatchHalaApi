@@ -1488,31 +1488,30 @@ router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
 
         const { reason = 'manual', details = '' } = req.body;
 
-        if (!user.deviceFingerprint && !user.keychainToken) {
-            return res.status(400).json({
-                success: false,
-                message: 'لا توجد بصمة جهاز لهذا المستخدم — لم يسجل دخول من التطبيق المحدّث'
-            });
-        }
+        // ✅ لا يوجد fingerprint → نُنشئ سجل pending مرتبط بالمستخدم
+        // عند تسجيل الدخول التالي، الـ login handler يربط الـ fingerprint تلقائيًا
+        const hasFingerprint = !!(user.deviceFingerprint || user.keychainToken);
+
+        const matchConditions = [{ originalUserId: user._id }];
+        if (user.deviceFingerprint) matchConditions.push({ deviceFingerprint: user.deviceFingerprint });
+        if (user.keychainToken) matchConditions.push({ keychainToken: user.keychainToken });
+
+        const setFields = {
+            originalUserId: user._id,
+            deviceInfo: user.deviceDetails || {},
+            reason,
+            reasonDetails: details,
+            bannedBy: 'admin',
+            adminId: req.user._id,
+            isActive: true,
+            pendingFingerprint: !hasFingerprint
+        };
+        if (user.deviceFingerprint) setFields.deviceFingerprint = user.deviceFingerprint;
+        if (user.keychainToken) setFields.keychainToken = user.keychainToken;
 
         const bannedDevice = await BannedDevice.findOneAndUpdate(
-            {
-                $or: [
-                    ...(user.deviceFingerprint ? [{ deviceFingerprint: user.deviceFingerprint }] : []),
-                    ...(user.keychainToken ? [{ keychainToken: user.keychainToken }] : [])
-                ]
-            },
-            {
-                deviceFingerprint: user.deviceFingerprint,
-                keychainToken: user.keychainToken,
-                originalUserId: user._id,
-                deviceInfo: user.deviceDetails || {},
-                reason,
-                reasonDetails: details,
-                bannedBy: 'admin',
-                adminId: req.user._id,
-                isActive: true
-            },
+            { $or: matchConditions },
+            { $set: setFields },
             { upsert: true, returnDocument: "after" }
         );
 
@@ -1557,12 +1556,17 @@ router.post('/:id/ban-device', protect, adminOnly, async (req, res) => {
 
         res.json({
             success: true,
-            message: `تم حظر جهاز ${user.name} + إيقاف الحساب + طرد فوري`,
+            message: hasFingerprint
+                ? `تم حظر جهاز ${user.name} + إيقاف الحساب + طرد فوري`
+                : `تم إيقاف الحساب + جهاز قيد الانتظار (سيُحظر عند تسجيل الدخول التالي)`,
             data: {
                 bannedDevice: {
                     id: bannedDevice._id,
-                    fingerprint: bannedDevice.deviceFingerprint?.substring(0, 12) + '...',
-                    reason: bannedDevice.reason
+                    fingerprint: bannedDevice.deviceFingerprint
+                        ? bannedDevice.deviceFingerprint.substring(0, 12) + '...'
+                        : '(pending)',
+                    reason: bannedDevice.reason,
+                    pendingFingerprint: bannedDevice.pendingFingerprint
                 }
             }
         });

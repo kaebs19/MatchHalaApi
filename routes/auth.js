@@ -127,6 +127,63 @@ const saveLoginRecord = async (user, req) => {
     if (appVersion) updateData['deviceInfo.appVersion'] = appVersion;
 
     await User.findByIdAndUpdate(user._id, updateData);
+
+    // ✅ ربط pending bans على هذا المستخدم بالـ fingerprint الجديد
+    // (حالة: حُظر الجهاز قبل ما يكون له fingerprint، الآن وصلت بصمة)
+    if ((deviceFingerprint || deviceToken)) {
+        try {
+            const setFields = { pendingFingerprint: false };
+            if (deviceFingerprint) setFields.deviceFingerprint = deviceFingerprint;
+            if (deviceToken) setFields.keychainToken = deviceToken;
+            await BannedDevice.updateMany(
+                { originalUserId: user._id, pendingFingerprint: true },
+                { $set: setFields }
+            );
+        } catch (e) { /* fail-silent */ }
+    }
+};
+
+// ════════════════════════════════════════════════════════════════
+// ✅ Helper: تسجيل/تحديث BannedDevice عند رفض الدخول لحساب موقوف
+// يُستدعى في كل نقاط الرفض في /login و /google و /apple
+// الهدف: سدّ ثغرة الحسابات القديمة — لو موقوف ودخل من تطبيق محدّث
+// نسجّل بصمة جهازه فورًا، حتى لو حاول إنشاء حساب جديد لا يقدر.
+// ════════════════════════════════════════════════════════════════
+const recordDeviceBanForUser = async (user, req, reason = 'manual', details = '') => {
+    try {
+        const fp = req.body?.deviceFingerprint || req.headers['x-device-fingerprint'] || user?.deviceFingerprint;
+        const kt = req.body?.deviceToken || req.headers['x-device-token'] || user?.keychainToken;
+        if (!fp && !kt) return; // لا بصمة → لا شيء نسجّله الآن
+
+        const orConditions = [];
+        if (fp) orConditions.push({ deviceFingerprint: fp });
+        if (kt) orConditions.push({ keychainToken: kt });
+        if (user?._id) orConditions.push({ originalUserId: user._id });
+
+        const setOnInsert = {
+            originalUserId: user?._id || null,
+            reason,
+            reasonDetails: details || `auto-recorded on suspended login (${reason})`,
+            bannedBy: 'auto',
+            isActive: true,
+            pendingFingerprint: false
+        };
+        if (req.body?.deviceInfo) setOnInsert.deviceInfo = req.body.deviceInfo;
+
+        // ضمان أن fp/kt يُكتبا حتى لو كان السجل موجود بدون أحدهما
+        const setFields = { isActive: true, pendingFingerprint: false };
+        if (fp) setFields.deviceFingerprint = fp;
+        if (kt) setFields.keychainToken = kt;
+
+        await BannedDevice.findOneAndUpdate(
+            { $or: orConditions },
+            { $set: setFields, $setOnInsert: setOnInsert },
+            { upsert: true, new: true }
+        );
+    } catch (e) {
+        console.error('⚠️ recordDeviceBanForUser error:', e.message);
+        // fail-silent — ما نُعطّل رفض الدخول
+    }
 };
 
 // @route   POST /api/auth/register
@@ -327,6 +384,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 });
                 // فُكّ الحظر — يتابع تسجيل الدخول
             } else {
+                // ✅ سدّ ثغرة الحسابات القديمة — سجّل/حدّث جهاز الموقوف
+                await recordDeviceBanForUser(user, req, 'violation', user.bannedWords.banReason || 'banned_words');
                 return res.status(403).json({
                     success: false,
                     message: 'تم حظر حسابك بسبب مخالفات متكررة للكلمات المحظورة. تواصل مع الإدارة',
@@ -351,6 +410,10 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 const untilFormatted = user.suspension.suspendedUntil
                     ? user.suspension.suspendedUntil.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                     : 'غير محدد';
+                // ✅ تعليق دائم (suspendedUntil = null) → احظر الجهاز تلقائيًا
+                if (!user.suspension.suspendedUntil) {
+                    await recordDeviceBanForUser(user, req, 'manual', user.suspension.reason || 'permanent_suspension');
+                }
                 return res.status(403).json({
                     success: false,
                     message: user.suspension.suspendedUntil ? `تم تعليق حسابك حتى ${untilFormatted}` : 'تم تعليق حسابك بشكل دائم',
@@ -373,6 +436,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
 
         // التحقق من أن الحساب مفعل
         if (!user.isActive) {
+            // ✅ حساب معطّل بالكامل (admin أو نظام) → احظر الجهاز
+            await recordDeviceBanForUser(user, req, 'manual', 'inactive_account');
             return res.status(401).json({
                 success: false,
                 message: 'الحساب غير مفعل، تواصل مع الإدارة'
@@ -1515,10 +1580,39 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
 
         // فحص الحظر
         if (!isNewUser && user.bannedWords?.isBanned) {
+            await recordDeviceBanForUser(user, req, 'violation', user.bannedWords.banReason || 'banned_words');
             return res.status(403).json({
                 success: false,
                 message: 'تم حظر حسابك بسبب مخالفات متكررة. تواصل مع الإدارة',
                 code: 'ACCOUNT_BANNED'
+            });
+        }
+
+        // ✅ فحص التعليق + isActive (كان مفقودًا في /google!)
+        if (!isNewUser && user.suspension?.isSuspended) {
+            const now = new Date();
+            const stillSuspended = !user.suspension.suspendedUntil || now < user.suspension.suspendedUntil;
+            if (stillSuspended) {
+                if (!user.suspension.suspendedUntil) {
+                    await recordDeviceBanForUser(user, req, 'manual', user.suspension.reason || 'permanent_suspension');
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: user.suspension.suspendedUntil ? 'تم تعليق حسابك مؤقتًا' : 'تم تعليق حسابك بشكل دائم',
+                    code: 'ACCOUNT_SUSPENDED',
+                    data: {
+                        reason: user.suspension.reason,
+                        suspendedUntil: user.suspension.suspendedUntil,
+                        level: user.suspension.level || 0
+                    }
+                });
+            }
+        }
+        if (!isNewUser && user.isActive === false) {
+            await recordDeviceBanForUser(user, req, 'manual', 'inactive_account');
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير مفعل، تواصل مع الإدارة'
             });
         }
 
@@ -1652,10 +1746,39 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
 
         // فحص الحظر
         if (!isNewUser && user.bannedWords?.isBanned) {
+            await recordDeviceBanForUser(user, req, 'violation', user.bannedWords.banReason || 'banned_words');
             return res.status(403).json({
                 success: false,
                 message: 'تم حظر حسابك بسبب مخالفات متكررة. تواصل مع الإدارة',
                 code: 'ACCOUNT_BANNED'
+            });
+        }
+
+        // ✅ فحص التعليق + isActive (كان مفقودًا في /apple!)
+        if (!isNewUser && user.suspension?.isSuspended) {
+            const now = new Date();
+            const stillSuspended = !user.suspension.suspendedUntil || now < user.suspension.suspendedUntil;
+            if (stillSuspended) {
+                if (!user.suspension.suspendedUntil) {
+                    await recordDeviceBanForUser(user, req, 'manual', user.suspension.reason || 'permanent_suspension');
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: user.suspension.suspendedUntil ? 'تم تعليق حسابك مؤقتًا' : 'تم تعليق حسابك بشكل دائم',
+                    code: 'ACCOUNT_SUSPENDED',
+                    data: {
+                        reason: user.suspension.reason,
+                        suspendedUntil: user.suspension.suspendedUntil,
+                        level: user.suspension.level || 0
+                    }
+                });
+            }
+        }
+        if (!isNewUser && user.isActive === false) {
+            await recordDeviceBanForUser(user, req, 'manual', 'inactive_account');
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير مفعل، تواصل مع الإدارة'
             });
         }
 
