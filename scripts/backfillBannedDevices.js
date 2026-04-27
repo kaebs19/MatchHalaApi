@@ -94,17 +94,15 @@ async function backfill() {
                 continue;
             }
 
-            const result = await BannedDevice.findOneAndUpdate(
+            // نفحص الوجود قبل الـ upsert لمعرفة إن كان جديدًا أم محدّثًا
+            const wasExisting = !!existing;
+            await BannedDevice.findOneAndUpdate(
                 { $or: matchConditions },
                 { $set: setFields },
-                { upsert: true, new: false, rawResult: true }
+                { upsert: true }
             );
-
-            if (result.lastErrorObject?.updatedExisting) {
-                stats.updated++;
-            } else {
-                stats.created++;
-            }
+            if (wasExisting) stats.updated++;
+            else stats.created++;
         } catch (e) {
             stats.errors++;
             console.error(`❌ خطأ على ${u.email}: ${e.message}`);
