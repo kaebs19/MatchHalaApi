@@ -23,18 +23,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
-            id: 'swipes',
-            name: 'Swipes',
-            icon: '👆',
-            adminOnly: true
-        },
-        {
-            id: 'matches',
-            name: 'التطابقات',
-            icon: '💕',
-            adminOnly: true
-        },
-        {
             id: 'reports',
             name: 'البلاغات',
             icon: '⚠️',
@@ -53,18 +41,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             adminOnly: true
         },
         {
-            id: 'super-likes',
-            name: 'Super Likes',
-            icon: '⚡',
-            adminOnly: true
-        },
-        {
-            id: 'verification-requests',
-            name: 'طلبات التوثيق',
-            icon: '✅',
-            adminOnly: true
-        },
-        {
             id: 'analytics',
             name: 'التحليلات',
             icon: '🔍',
@@ -80,12 +56,6 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
             id: 'banned-words',
             name: 'الكلمات المحظورة',
             icon: '🚫',
-            adminOnly: true
-        },
-        {
-            id: 'maintenance',
-            name: 'وضع الصيانة',
-            icon: '🔧',
             adminOnly: true
         },
         {

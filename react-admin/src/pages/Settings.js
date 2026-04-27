@@ -6,12 +6,13 @@ import {
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
+import MaintenancePage from './MaintenancePage';
 import './Settings.css';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('profile'); // profile, password, pages, app, version, banned-names
+    const [activeTab, setActiveTab] = useState('profile'); // profile, password, pages, app, version, banned-names, maintenance
     const { showToast } = useToast();
 
     // بيانات المستخدم
@@ -409,6 +410,12 @@ function Settings() {
                     onClick={() => { setActiveTab('banned-names'); fetchBannedNames(); }}
                 >
                     🚫 أسماء محظورة
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'maintenance' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('maintenance')}
+                >
+                    🔧 وضع الصيانة
                 </button>
             </div>
 
@@ -838,6 +845,13 @@ function Settings() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+
+                {/* تبويب وضع الصيانة */}
+                {activeTab === 'maintenance' && (
+                    <div className="settings-section">
+                        <MaintenancePage />
                     </div>
                 )}
             </div>
