@@ -263,6 +263,34 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
             });
         }
 
+        // ✅ Idempotent: لو سبق وقُبل → ارجع 200 بدون تغيير (يمنع تكرار العملية)
+        if (conversation.status === 'accepted') {
+            return res.status(200).json({
+                success: true,
+                message: 'الطلب مقبول بالفعل',
+                code: 'ALREADY_ACCEPTED',
+                data: { conversation }
+            });
+        }
+
+        // ✅ لو مرفوض سابقًا → 400 برمز واضح
+        if (conversation.status === 'rejected') {
+            return res.status(400).json({
+                success: false,
+                message: 'الطلب رُفض سابقًا',
+                code: 'ALREADY_REJECTED'
+            });
+        }
+
+        // ✅ لو حالة غير متوقعة (ليست pending) → ارفض بوضوح
+        if (conversation.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: 'الطلب لم يعد قيد الانتظار',
+                code: 'INVALID_STATUS'
+            });
+        }
+
         // ✅ منع قبول طلب من مستخدم موقوف/محظور
         const creatorUser = conversation.participants.find(
             p => p._id.toString() === conversation.creator.toString()
@@ -542,43 +570,49 @@ router.get('/conversations/pending', protect, async (req, res) => {
         }).lean();
         const superLikeSet = new Set(superLikes.map(sl => sl.sender.toString()));
 
-        // جلب أول رسالة نصية من المُرسل لكل طلب (رسالة الطلب الأولية)
+        // جلب آخر 5 رسائل من المُرسل لكل طلب (لعرضها كـ chat preview قبل القبول)
         const conversationIds = conversations.map(c => c._id);
-        const initialMessages = await Message.aggregate([
-            {
-                $match: {
-                    conversation: { $in: conversationIds },
-                    type: 'text',
-                    isDeleted: { $ne: true }
-                }
-            },
-            { $sort: { createdAt: 1 } },
-            {
-                $group: {
-                    _id: '$conversation',
-                    content: { $first: '$content' },
-                    sender: { $first: '$sender' },
-                    createdAt: { $first: '$createdAt' }
-                }
-            }
-        ]);
-        const initialMessageMap = new Map();
-        initialMessages.forEach(m => {
-            // نتأكد أن الرسالة من المُرسل (منشئ الطلب)
-            const conv = conversations.find(c => c._id.toString() === m._id.toString());
-            if (conv && m.sender.toString() === conv.creator._id.toString()) {
-                initialMessageMap.set(m._id.toString(), {
-                    content: m.content,
-                    createdAt: m.createdAt
-                });
-            }
-        });
+        const allInitialMsgs = await Message.find({
+            conversation: { $in: conversationIds },
+            isDeleted: { $ne: true }
+        })
+            .sort({ createdAt: 1 })  // الأقدم أولاً
+            .lean();
+
+        // group by conversation + filter من المُرسل فقط + max 5
+        const messagesMap = new Map();
+        for (const conv of conversations) {
+            const creatorId = conv.creator._id.toString();
+            const convId = conv._id.toString();
+            const fromCreator = allInitialMsgs.filter(m =>
+                m.conversation.toString() === convId &&
+                m.sender.toString() === creatorId
+            );
+            // آخر 5 (الأحدث) — لكن نبقي الترتيب الزمني
+            const last5 = fromCreator.slice(-5).map(m => ({
+                content: m.content || '',
+                type: m.type || 'text',
+                mediaUrl: m.mediaUrl || null,
+                createdAt: m.createdAt
+            }));
+            messagesMap.set(convId, {
+                messages: last5,
+                totalCount: fromCreator.length
+            });
+        }
 
         const enrichedConversations = conversations.map(conv => {
             const convObj = { ...conv };
             convObj.isSuperLike = superLikeSet.has(conv.creator._id.toString());
             convObj.creator.isVerified = conv.creator.verification?.isVerified || false;
-            convObj.initialMessage = initialMessageMap.get(conv._id.toString()) || null;
+            const m = messagesMap.get(conv._id.toString());
+            // ✅ كائن initialMessage القديم (للتوافق مع التطبيقات القديمة): أول رسالة فقط
+            convObj.initialMessage = m && m.messages.length > 0
+                ? { content: m.messages[0].content, createdAt: m.messages[0].createdAt }
+                : null;
+            // ✅ المصفوفة الجديدة (التطبيقات الجديدة)
+            convObj.initialMessages = m?.messages || [];
+            convObj.initialMessagesTotal = m?.totalCount || 0;
             return convObj;
         });
 
@@ -669,11 +703,24 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
 
         const conv = await Conversation.findById(req.params.id);
         if (!conv) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
-        if (conv.status !== 'pending') {
-            return res.status(400).json({ success: false, message: 'الطلب ليس قيد الانتظار' });
-        }
         if (!conv.participants.some(p => p.toString() === userId.toString())) {
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        // ✅ Idempotent على الحالات النهائية
+        if (conv.status === 'accepted') {
+            return res.status(200).json({
+                success: true,
+                message: 'الطلب مقبول بالفعل',
+                code: 'ALREADY_ACCEPTED',
+                data: { conversation: conv }
+            });
+        }
+        if (conv.status === 'rejected') {
+            return res.status(400).json({ success: false, message: 'الطلب رُفض سابقًا', code: 'ALREADY_REJECTED' });
+        }
+        if (conv.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'الطلب ليس قيد الانتظار', code: 'INVALID_STATUS' });
         }
 
         // ✅ منع قبول طلب من مستخدم موقوف/محظور
