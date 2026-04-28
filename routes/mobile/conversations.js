@@ -234,7 +234,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
 router.put('/conversations/:id/accept', protect, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('participants', 'name email deviceToken');
+            .populate('participants', 'name email deviceToken isActive suspension bannedWords');
 
         if (!conversation) {
             return res.status(404).json({
@@ -260,6 +260,27 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: 'ليس لديك صلاحية لهذه المحادثة'
+            });
+        }
+
+        // ✅ منع قبول طلب من مستخدم موقوف/محظور
+        const creatorUser = conversation.participants.find(
+            p => p._id.toString() === conversation.creator.toString()
+        );
+        const creatorBlocked =
+            !creatorUser ||
+            creatorUser.isActive === false ||
+            creatorUser.suspension?.isSuspended === true ||
+            creatorUser.bannedWords?.isBanned === true;
+        if (creatorBlocked) {
+            // علّم الطلب كمرفوض حتى يختفي من القائمة
+            conversation.status = 'rejected';
+            conversation.isActive = false;
+            await conversation.save();
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن قبول هذا الطلب — المستخدم موقوف',
+                code: 'USER_SUSPENDED'
             });
         }
 
@@ -481,15 +502,37 @@ router.put('/conversations/:id/read', protect, async (req, res) => {
 // @access  Private
 router.get('/conversations/pending', protect, async (req, res) => {
     try {
-        const conversations = await Conversation.find({
+        const allPending = await Conversation.find({
             participants: req.user._id,
             creator: { $ne: req.user._id },
             status: 'pending'
         })
-            .populate('creator', 'name email profileImage verification.isVerified isPremium')
+            .populate('creator', 'name email profileImage verification.isVerified isPremium isActive suspension bannedWords')
             .populate('participants', 'name email profileImage lastLogin isOnline isPremium isActive verification.isVerified')
             .sort({ createdAt: -1 })
             .lean();
+
+        // ✅ استثناء الطلبات من المستخدمين الموقوفين/المحظورين
+        // (لا يجب أن يظهر طلب من مستخدم لا يستطيع المتابعة معه أصلاً)
+        const conversations = allPending.filter(c => {
+            const creator = c.creator;
+            if (!creator) return false;
+            if (creator.isActive === false) return false;
+            if (creator.suspension?.isSuspended === true) return false;
+            if (creator.bannedWords?.isBanned === true) return false;
+            return true;
+        });
+
+        // ✅ تنظيف صامت في الخلفية: حوّل الطلبات من الموقوفين إلى rejected (لا تتراكم)
+        const filteredOutIds = allPending
+            .filter(c => !conversations.some(kept => kept._id.toString() === c._id.toString()))
+            .map(c => c._id);
+        if (filteredOutIds.length > 0) {
+            Conversation.updateMany(
+                { _id: { $in: filteredOutIds } },
+                { $set: { status: 'rejected', isActive: false } }
+            ).catch(err => console.error('cleanup pending from banned creators:', err.message));
+        }
 
         // إضافة حقل isSuperLike لكل طلب
         const creatorIds = conversations.map(c => c.creator._id);
@@ -579,20 +622,31 @@ router.get('/conversations/pending-count', protect, async (req, res) => {
         const Conversation = require('../../models/Conversation');
         const userId = req.user._id;
 
-        const total = await Conversation.countDocuments({
+        // ✅ عدد بعد استثناء الموقوفين/المحظورين — يطابق ما يراه المستخدم في القائمة
+        const pending = await Conversation.find({
             participants: userId,
             creator: { $ne: userId },
             status: 'pending'
-        });
+        })
+            .populate('creator', 'isActive suspension bannedWords')
+            .select('_id creator createdAt')
+            .lean();
+
+        const isCreatorActive = (c) => {
+            const u = c.creator;
+            if (!u) return false;
+            if (u.isActive === false) return false;
+            if (u.suspension?.isSuspended === true) return false;
+            if (u.bannedWords?.isBanned === true) return false;
+            return true;
+        };
+
+        const validPending = pending.filter(isCreatorActive);
+        const total = validPending.length;
 
         // العدد الجديد (آخر 24 ساعة)
-        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const recent = await Conversation.countDocuments({
-            participants: userId,
-            creator: { $ne: userId },
-            status: 'pending',
-            createdAt: { $gte: dayAgo }
-        });
+        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+        const recent = validPending.filter(c => new Date(c.createdAt).getTime() >= dayAgo).length;
 
         res.json({
             success: true,
@@ -620,6 +674,26 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
         }
         if (!conv.participants.some(p => p.toString() === userId.toString())) {
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+
+        // ✅ منع قبول طلب من مستخدم موقوف/محظور
+        const creatorDoc = await User.findById(conv.creator)
+            .select('isActive suspension bannedWords')
+            .lean();
+        const creatorBlocked =
+            !creatorDoc ||
+            creatorDoc.isActive === false ||
+            creatorDoc.suspension?.isSuspended === true ||
+            creatorDoc.bannedWords?.isBanned === true;
+        if (creatorBlocked) {
+            conv.status = 'rejected';
+            conv.isActive = false;
+            await conv.save();
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكن قبول هذا الطلب — المستخدم موقوف',
+                code: 'USER_SUSPENDED'
+            });
         }
 
         // 1. قبول
