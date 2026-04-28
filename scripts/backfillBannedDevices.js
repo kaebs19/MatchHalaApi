@@ -25,12 +25,18 @@ async function backfill() {
     const User = require('../models/User');
     const BannedDevice = require('../models/BannedDevice');
 
-    // كل مستخدم موقوف/محظور بأي طريقة
+    // ⚠️ فقط المستخدمين بعقوبات دائمة:
+    // - تعليق دائم (suspension.suspendedUntil = null + isSuspended = true)
+    // - تعطيل حساب يدوي (isActive = false)
+    // bannedWords مؤقت 24h → لا backfill (يُعالَج في login لو سحب)
+    // suspension مؤقت → ينتهي تلقائيًا، لا backfill
     const suspendedUsers = await User.find({
         $or: [
-            { 'suspension.isSuspended': true },
-            { isActive: false },
-            { 'bannedWords.isBanned': true }
+            {
+                'suspension.isSuspended': true,
+                'suspension.suspendedUntil': null
+            },
+            { isActive: false }
         ]
     }).select('+deviceFingerprint +keychainToken +deviceDetails name email isActive suspension bannedWords').lean();
 

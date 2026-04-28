@@ -154,8 +154,35 @@ const saveLoginRecord = async (user, req) => {
 // الهدف: سدّ ثغرة الحسابات القديمة — لو موقوف ودخل من تطبيق محدّث
 // نسجّل بصمة جهازه فورًا، حتى لو حاول إنشاء حساب جديد لا يقدر.
 // ════════════════════════════════════════════════════════════════
+/**
+ * يُسجّل/يُحدّث جهاز المستخدم في BannedDevice — فقط للحظر الدائم.
+ *
+ * ⚠️ السلوك الجديد: حظر الجهاز يُسجَّل فقط في الحالات الدائمة.
+ * - تعليق دائم (suspension.suspendedUntil = null AND level >= 5)
+ * - تعطيل الحساب يدويًا من admin (isActive = false بسبب admin)
+ *
+ * الحالات المؤقتة (لا يُسجَّل فيها حظر جهاز):
+ * - bannedWords.isBanned: حظر كلامي 24 ساعة → يُلغى تلقائيًا في login
+ * - suspension.suspendedUntil != null: تعليق محدد المدة → يُلغى تلقائيًا في liftExpired cron
+ */
 const recordDeviceBanForUser = async (user, req, reason = 'manual', details = '') => {
     try {
+        // ✅ فحص: هل العقوبة دائمة فعليًا؟
+        const isPermanentSuspension =
+            user?.suspension?.isSuspended === true &&
+            !user.suspension.suspendedUntil; // null = دائم
+
+        const isInactiveByAdmin = user?.isActive === false;
+
+        // ✅ bannedWords وحدها لا تستوجب حظر جهاز (24h auto-lift)
+        // ✅ suspension مؤقت لا يستوجب حظر جهاز (سينتهي تلقائيًا)
+        const isPermanent = isPermanentSuspension || isInactiveByAdmin;
+
+        if (!isPermanent) {
+            // الحالة مؤقتة → نكتفي بحظر الحساب فقط
+            return;
+        }
+
         const fp = req.body?.deviceFingerprint || req.headers['x-device-fingerprint'] || user?.deviceFingerprint;
         const kt = req.body?.deviceToken || req.headers['x-device-token'] || user?.keychainToken;
         const vid = req.body?.vendorId || req.headers['x-vendor-id'] || user?.vendorId;
