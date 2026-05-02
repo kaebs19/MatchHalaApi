@@ -26,6 +26,18 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       }
+    },
+    {
+      // ✅ كرون لتصحيح isOnline=true الـ stale — يشتغل كل 5 دقائق
+      // لو lastLogin > 15 دقيقة → isOnline=false
+      name: 'matchhala-cleanup-stale-online',
+      script: 'scripts/cleanupStaleOnline.js',
+      cron_restart: '*/5 * * * *', // كل 5 دقائق
+      autorestart: false,
+      watch: false,
+      env: {
+        NODE_ENV: 'production'
+      }
     }
   ]
 };
