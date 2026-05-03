@@ -11,6 +11,7 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
+const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
 
 // ==========================================
@@ -120,13 +121,24 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
-        // فحص الكلمات المحظورة
+        // فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta/...)
         let censoredContent = content;
         let bannedResult = { hasBannedWords: false, matchedWords: [] };
+        let externalPromoDetected = false;
+        let externalPromoCategories = [];
         if (type === 'text' && content) {
+            // 1. كلمات محظورة (sexual/insults) — يبقى نظام الـ violations القائم
             bannedResult = await checkBannedWords(content);
             if (bannedResult.hasBannedWords) {
                 censoredContent = bannedResult.censoredText;
+            }
+
+            // 2. ترويج خارجي (Snap/Insta) — censor + علامة للـ response
+            const promo = detectExternalPromotion(censoredContent);
+            if (promo.detected) {
+                censoredContent = promo.redacted;
+                externalPromoDetected = true;
+                externalPromoCategories = promo.categories;
             }
         }
 
@@ -331,6 +343,14 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 violations: userViolations,
                 maxViolations: maxViol,
                 banned: userViolations >= maxViol
+            };
+        }
+
+        // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...)
+        if (externalPromoDetected) {
+            response.externalPromoBlocked = {
+                message: 'لا يُسمح بمشاركة حسابات خارجية — تم إخفاء المعلومة',
+                categories: externalPromoCategories
             };
         }
 

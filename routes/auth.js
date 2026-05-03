@@ -26,6 +26,7 @@ const {
 
 // فلترة الأسماء المحظورة
 const { checkBannedWords } = require('./bannedWords');
+const { detectExternalPromotion } = require('../utils/externalPromotionDetector');
 
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
@@ -757,10 +758,12 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         if (gender !== undefined) user.gender = gender;
         if (country !== undefined) user.country = country;
 
-        // ✅ فحص الكلمات المحظورة على النبذة قبل الحفظ
+        // ✅ فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta) على النبذة
+        let bioRedactedNotice = null;
         if (bio !== undefined && bio !== user.bio) {
-            const trimmedBio = (bio || '').trim();
+            let trimmedBio = (bio || '').trim();
             if (trimmedBio.length > 0) {
+                // 1. فحص كلمات محظورة (يرفض الحفظ)
                 const bioCheck = await checkBannedWords(trimmedBio);
                 if (bioCheck.hasBannedWords) {
                     return res.status(400).json({
@@ -770,8 +773,18 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                         words: bioCheck.matchedWords || []
                     });
                 }
+
+                // 2. فحص ترويج خارجي (Snap/Insta/...) — auto-redact silently
+                const promo = detectExternalPromotion(trimmedBio);
+                if (promo.detected) {
+                    trimmedBio = promo.redacted;
+                    bioRedactedNotice = {
+                        message: 'تم حذف معلومات تواصل خارجي من نبذتك',
+                        categories: promo.categories
+                    };
+                }
             }
-            user.bio = bio;
+            user.bio = trimmedBio;
         }
 
         if (interests !== undefined) user.interests = interests;
@@ -824,7 +837,8 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             success: true,
             message: 'تم تحديث البيانات بنجاح',
             data: {
-                user: userObj
+                user: userObj,
+                bioRedacted: bioRedactedNotice  // ✅ {message, categories} لو تمّ حذف ترويج خارجي
             }
         });
 
