@@ -594,9 +594,11 @@ router.get('/cards', protect, async (req, res) => {
                 .map(getFullUrl);
             const activityScore = calculateActivityScore(u);
             const distScore = distanceKm !== null ? calculateDistanceScore(distanceKm) : 0;
-            // ✅ احترام إعداد showDistance — الـ scoring ما زال يستخدم القيمة الحقيقية،
-            // لكن الرد للعميل يحمل null إذا المستخدم اختار إخفاءها
+            // ✅ احترام إعداد showDistance
             const hideDistance = u.showDistance === false;
+            // ✅ احترام إعداد showLastSeen + stealthMode (premium)
+            // لو المستخدم اختار إخفاء آخر ظهوره → نخفي lastLogin + isOnline
+            const hidePresence = u.privacySettings?.showLastSeen === false || u.stealthMode === true;
             return {
                 _id: u._id,
                 name: u.name,
@@ -608,10 +610,10 @@ router.get('/cards', protect, async (req, res) => {
                 gender: u.gender,
                 country: u.country,
                 bio: u.bio,
-                isOnline: u.isOnline,
+                isOnline: hidePresence ? false : u.isOnline,
                 isPremium: u.isPremium,
                 isVerified: u.verification?.isVerified || false,
-                lastLogin: u.lastLogin,
+                lastLogin: hidePresence ? null : u.lastLogin,
                 distance: hideDistance ? null : distanceKm,
                 _score: activityScore + distScore
             };
@@ -636,7 +638,8 @@ router.get('/cards', protect, async (req, res) => {
                         name: 1, profileImage: 1, photos: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1,
                         isPremium: 1, distance: 1, lastLogin: 1,
-                        createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1
+                        createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1,
+                        privacySettings: 1, stealthMode: 1
                     }
                 },
                 { $limit: fetchLimit }
@@ -652,7 +655,7 @@ router.get('/cards', protect, async (req, res) => {
             };
 
             const noLocationUsers = await User.find(noGeoFilter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode')
                 .limit(Math.max(0, fetchLimit - geoUsers.length));
 
             // 3) دمج النتائج
@@ -679,7 +682,7 @@ router.get('/cards', protect, async (req, res) => {
         } else {
             // بدون موقع - ترتيب بالنقاط فقط
             const rawUsers = await User.find(filter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode')
                 .limit(fetchLimit);
 
             users = rawUsers.map(u => mapUserToCard(u.toObject(), null));

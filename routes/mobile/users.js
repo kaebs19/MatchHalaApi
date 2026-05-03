@@ -438,7 +438,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance acceptingRequests premiumOnlyRequests'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode'
         ).lean();
 
         if (!user) {
@@ -496,6 +496,9 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             distance = null;
         }
 
+        // ✅ احترام إعداد showLastSeen + stealthMode — لو مخفي، نخفي lastLogin + isOnline
+        const hidePresence = user.privacySettings?.showLastSeen === false || user.stealthMode === true;
+
         // ✅ isPremium محسوب لحظياً — لا نرجع المخزن stale
         const nowDate = new Date();
         const userExpiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
@@ -517,8 +520,8 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             gender: user.gender,
             country: user.country,
             bio: user.bio,
-            isOnline: user.isOnline,
-            lastLogin: user.lastLogin,
+            isOnline: hidePresence ? false : user.isOnline,
+            lastLogin: hidePresence ? null : user.lastLogin,
             isPremium: userIsPremiumValid,
             isActive: user.isActive,
             verification: {
