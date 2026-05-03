@@ -54,9 +54,11 @@ const PATTERNS = [
     { regex: /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s,]*/gi, category: 'whatsapp_url' },
 
     // ─── Zinji (تطبيق مشاركة أرقام شائع في السعودية والخليج) ───
-    { regex: /\bzin[jq]i\b/gi, category: 'zinji' },
-    { regex: /\bzen[jq]i\b/gi, category: 'zinji' },
-    { regex: /زن[جق]ي[؀-ۿ]*/g, category: 'zinji' },
+    // يغطي: zinji, zenji, zanji, zonji + variations عربية: زنجي، زانجي، زآنجي
+    { regex: /\bz[aeio]n[jq]i\b/gi, category: 'zinji' },
+    { regex: /ز[اآ]*ن[جق]ي[؀-ۿ]*/g, category: 'zinji' },
+    // روابط Zinji بكل الـ TLDs (com, app, me, net, io)
+    { regex: /(?:https?:\/\/)?(?:www\.)?z[aeio]n[jq]i\.[a-z]{2,4}\/?[^\s,]*/gi, category: 'zinji_url' },
 
     // ─── Discord (صاعد بين الشباب) ───
     { regex: /\bdiscord\b/gi, category: 'discord' },
@@ -147,12 +149,12 @@ const EVASION_PATTERNS = [
     { regex: /\bs[\s._\-]+n[\s._\-]+a[\s._\-]+p\b/gi, category: 'snap' },
     { regex: /\bi[\s._\-]+n[\s._\-]+s[\s._\-]+t[\s._\-]+a\b/gi, category: 'instagram' },
     { regex: /\bw[\s._\-]+h[\s._\-]+a[\s._\-]+t[\s._\-]+s\b/gi, category: 'whatsapp' },
-    { regex: /\bz[\s._\-]+[ie][\s._\-]+n[\s._\-]+[jq][\s._\-]+i\b/gi, category: 'zinji' },
+    { regex: /\bz[\s._\-]+[ieao][\s._\-]+n[\s._\-]+[jq][\s._\-]+i\b/gi, category: 'zinji' },
     // Arabic spaced — س ن ا ب / ا ن س ت ا
     { regex: /س[\s._\-]+ن[\s._\-]+ا[\s._\-]+ب/g, category: 'snap' },
     { regex: /[إا][\s._\-]+ن[\s._\-]+س[\s._\-]+ت[\s._\-]+[اآ]/g, category: 'instagram' },
     { regex: /و[\s._\-]+ا[\s._\-]+ت[\s._\-]+س/g, category: 'whatsapp' },
-    { regex: /ز[\s._\-]+ن[\s._\-]+[جق][\s._\-]+ي/g, category: 'zinji' },
+    { regex: /ز[\s._\-]*[اآ]?[\s._\-]+ن[\s._\-]+[جق][\s._\-]+ي/g, category: 'zinji' },
     // Leet speak — drop \b ليلتقط !nsta و 5nap في بداية النص
     { regex: /5n[a4]p/gi, category: 'snap' },
     { regex: /[1!]nst[a4]/gi, category: 'instagram' },
