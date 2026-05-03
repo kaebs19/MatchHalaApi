@@ -1308,4 +1308,158 @@ router.get('/conversations/:conversationId/chat-mode', protect, async (req, res)
     }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// ✅ Best Friends — أفضل الأصدقاء حسب التفاعل
+// (نُقل من mobile.js القديمة — كان غير مُسجّل في الـ modular routes)
+// خوارزمية ذكية: عدد الرسائل المتبادلة + balance + recency.
+// ═══════════════════════════════════════════════════════════════
+router.get('/best-friends', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // ✅ المجاني: 3 أصدقاء | Premium: حتى 20
+        const me = await User.findById(userId).select('isPremium premiumExpiresAt');
+        const isPremium = !!(me && me.isPremium && (!me.premiumExpiresAt || new Date(me.premiumExpiresAt) > new Date()));
+        const FREE_LIMIT = 3;
+        const PREMIUM_MAX = 20;
+        const requested = parseInt(req.query.limit) || (isPremium ? 8 : FREE_LIMIT);
+        const limit = isPremium ? Math.min(requested, PREMIUM_MAX) : FREE_LIMIT;
+
+        // 1. جلب كل المحادثات النشطة للمستخدم
+        const conversations = await Conversation.find({
+            participants: userId,
+            status: 'accepted',
+            isActive: true
+        }).select('_id participants').lean();
+
+        if (conversations.length === 0) {
+            return res.json({ success: true, data: { friends: [], totalAvailable: 0, isPremium, freeLimit: FREE_LIMIT } });
+        }
+
+        const convIds = conversations.map(c => c._id);
+
+        // 2. حساب الـ score لكل محادثة (عدد الرسائل آخر 30 يوم)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const messageCounts = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: convIds },
+                    createdAt: { $gte: thirtyDaysAgo },
+                    isDeleted: false
+                }
+            },
+            {
+                $group: {
+                    _id: '$conversation',
+                    messageCount: { $sum: 1 },
+                    lastMessageAt: { $max: '$createdAt' },
+                    myMessages: {
+                        $sum: { $cond: [{ $eq: ['$sender', userId] }, 1, 0] }
+                    }
+                }
+            }
+        ]);
+
+        const scoreMap = {};
+        for (const item of messageCounts) {
+            const total = item.messageCount;
+            const mine = item.myMessages;
+            const theirs = total - mine;
+            const balance = (mine > 0 && theirs > 0) ? Math.min(mine, theirs) / Math.max(mine, theirs) : 0;
+            const recencyBonus = item.lastMessageAt
+                ? Math.max(0, 7 - Math.floor((Date.now() - new Date(item.lastMessageAt).getTime()) / (24 * 60 * 60 * 1000)))
+                : 0;
+            scoreMap[item._id.toString()] = {
+                score: Math.round((total * balance * 10) + (recencyBonus * 5)),
+                messageCount: total,
+                lastMessageAt: item.lastMessageAt
+            };
+        }
+
+        // 3. ترتيب المحادثات حسب الـ score
+        const allRanked = conversations
+            .map(conv => {
+                const stats = scoreMap[conv._id.toString()] || { score: 0, messageCount: 0, lastMessageAt: null };
+                const otherId = conv.participants.find(p => p.toString() !== userId.toString());
+                return {
+                    conversationId: conv._id,
+                    otherId,
+                    score: stats.score,
+                    messageCount: stats.messageCount,
+                    lastMessageAt: stats.lastMessageAt
+                };
+            })
+            .filter(c => c.score > 0)
+            .sort((a, b) => b.score - a.score);
+
+        const totalAvailable = allRanked.length;
+        const ranked = allRanked.slice(0, limit);
+
+        if (ranked.length === 0) {
+            return res.json({
+                success: true,
+                data: { friends: [], totalAvailable: 0, isPremium, freeLimit: FREE_LIMIT }
+            });
+        }
+
+        // 4. جلب بيانات المستخدمين (مع احترام showLastSeen + stealthMode)
+        const userIds = ranked.map(r => r.otherId);
+        const users = await User.find({ _id: { $in: userIds } })
+            .select('name profileImage photos isOnline lastLogin isPremium verification.isVerified privacySettings stealthMode')
+            .lean();
+
+        const userMap = {};
+        users.forEach(u => {
+            const mainPhoto = u.photos && u.photos.length > 0
+                ? (u.photos.find(p => p.order === 0) || u.photos[0])
+                : null;
+            const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+            const profileImage = mainPhoto && mainPhoto.thumbnail
+                ? (mainPhoto.thumbnail.startsWith('http') ? mainPhoto.thumbnail : baseUrl + mainPhoto.thumbnail)
+                : (u.profileImage ? (u.profileImage.startsWith('http') ? u.profileImage : baseUrl + u.profileImage) : null);
+
+            // ✅ احترام إعداد showLastSeen + stealthMode (Premium)
+            const hidePresence = u.privacySettings?.showLastSeen === false || u.stealthMode === true;
+
+            userMap[u._id.toString()] = {
+                _id: u._id,
+                name: u.name,
+                profileImage,
+                isOnline: hidePresence ? false : u.isOnline,
+                lastLogin: hidePresence ? null : u.lastLogin,
+                isPremium: u.isPremium,
+                isVerified: u.verification?.isVerified || false
+            };
+        });
+
+        // 5. تركيب النتيجة النهائية
+        const friends = ranked.map((r, idx) => {
+            const user = userMap[r.otherId.toString()];
+            if (!user) return null;
+            return {
+                rank: idx + 1,
+                badge: idx === 0 ? '👑' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : '⭐')),
+                conversationId: r.conversationId,
+                user,
+                score: r.score,
+                messageCount: r.messageCount
+            };
+        }).filter(Boolean);
+
+        res.json({
+            success: true,
+            data: {
+                friends,
+                totalCount: friends.length,
+                totalAvailable,
+                isPremium,
+                freeLimit: FREE_LIMIT
+            }
+        });
+    } catch (error) {
+        console.error('best-friends error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 module.exports = router;
