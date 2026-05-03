@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const BannedWord = require('../models/BannedWord');
 const FlaggedMessage = require('../models/FlaggedMessage');
 const Message = require('../models/Message');
@@ -740,6 +741,78 @@ router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, re
         });
     } catch (error) {
         console.error('external-promo unlock error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// @route   GET /api/banned-words/external-promo/user/:userId
+// @desc    سجل مخالفات الترويج الخارجي لمستخدم محدد (للأدمن)
+// @access  Admin
+router.get('/external-promo/user/:userId', protect, adminOnly, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+
+        const [logs, summary] = await Promise.all([
+            ExternalPromoLog.find({ user: userId })
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            ExternalPromoLog.aggregate([
+                { $match: { user: new mongoose.Types.ObjectId(userId) } },
+                {
+                    $group: {
+                        _id: null,
+                        total: { $sum: 1 },
+                        byCategory: { $push: '$categories' },
+                        bySource: { $push: '$source' },
+                        firstAt: { $min: '$createdAt' },
+                        lastAt: { $max: '$createdAt' }
+                    }
+                }
+            ])
+        ]);
+
+        // تجميع categories + sources بشكل مرتّب
+        const summaryDoc = summary[0] || {};
+        const categoryCounts = {};
+        (summaryDoc.byCategory || []).flat().forEach(c => {
+            categoryCounts[c] = (categoryCounts[c] || 0) + 1;
+        });
+        const sourceCounts = {};
+        (summaryDoc.bySource || []).forEach(s => {
+            sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+        });
+
+        // معلومات المستخدم الحالية
+        const user = await User.findById(userId)
+            .select('name externalPromo restrictions.messagingRestricted restrictions.messagingRestrictedUntil restrictions.restrictionReason')
+            .lean();
+
+        res.json({
+            success: true,
+            data: {
+                user: user ? {
+                    name: user.name,
+                    violations: user.externalPromo?.violations || 0,
+                    bioLockedUntil: user.externalPromo?.bioLockedUntil,
+                    lastViolationAt: user.externalPromo?.lastViolationAt,
+                    isMessagingRestricted: !!user.restrictions?.messagingRestricted,
+                    messagingRestrictedUntil: user.restrictions?.messagingRestrictedUntil,
+                    restrictionReason: user.restrictions?.restrictionReason
+                } : null,
+                summary: {
+                    total: summaryDoc.total || 0,
+                    firstAt: summaryDoc.firstAt,
+                    lastAt: summaryDoc.lastAt,
+                    byCategory: categoryCounts,
+                    bySource: sourceCounts
+                },
+                logs
+            }
+        });
+    } catch (error) {
+        console.error('external-promo user logs error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
 });

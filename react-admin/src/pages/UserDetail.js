@@ -36,6 +36,9 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const { showToast } = useToast();
 
+    // External Promo violations history
+    const [promoLogs, setPromoLogs] = useState(null);
+
     // Admin Actions State
     const [actionLoading, setActionLoading] = useState(false);
     const [showSuspendModal, setShowSuspendModal] = useState(false);
@@ -87,7 +90,21 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
         fetchUserActivity();
         fetchReportsCount();
         fetchWarningTemplates();
+        fetchPromoLogs();
     }, [userId]);
+
+    const fetchPromoLogs = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`/api/banned-words/external-promo/user/${userId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success) setPromoLogs(data.data);
+        } catch (e) {
+            console.error('promoLogs fetch failed', e);
+        }
+    };
 
     // lazy-load عند فتح التابات الجديدة
     useEffect(() => {
@@ -2257,6 +2274,61 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                                     <td style={{padding:"8px"}}>{h.reason || "—"}</td>
                                                     <td style={{padding:"8px"}}>{h.source === "auto" ? "تلقائي" : h.source === "admin_escalate" ? "تصعيد أدمن" : "أدمن"}</td>
                                                     <td style={{padding:"8px",direction:"ltr"}}>{h.suspendedAt ? new Date(h.suspendedAt).toLocaleString("ar-SA") : "—"}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ✅ سجل مخالفات الترويج الخارجي (Snap/Insta/زنجي/...) */}
+                        {promoLogs && promoLogs.summary?.total > 0 && (
+                            <div style={{marginTop:"20px",background:"#fff",borderRadius:"12px",padding:"16px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
+                                <h4 style={{margin:"0 0 12px",display:"flex",alignItems:"center",gap:"8px"}}>
+                                    🚫 محاولات الترويج الخارجي ({promoLogs.summary.total})
+                                </h4>
+
+                                {/* Summary chips */}
+                                <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom:"12px",fontSize:"12px"}}>
+                                    <span style={{background:"#fef3c7",padding:"4px 10px",borderRadius:"12px"}}>
+                                        العداد الحالي: <b>{promoLogs.user?.violations || 0}</b> / 10
+                                    </span>
+                                    {promoLogs.user?.bioLockedUntil && new Date(promoLogs.user.bioLockedUntil) > new Date() && (
+                                        <span style={{background:"#fee2e2",padding:"4px 10px",borderRadius:"12px",color:"#b91c1c"}}>
+                                            🔒 النبذة مقفولة حتى {new Date(promoLogs.user.bioLockedUntil).toLocaleString("ar-SA")}
+                                        </span>
+                                    )}
+                                    {Object.entries(promoLogs.summary.byCategory || {}).slice(0, 5).map(([cat, n]) => (
+                                        <span key={cat} style={{background:"#dbeafe",padding:"4px 10px",borderRadius:"12px"}}>
+                                            {cat}: {n}
+                                        </span>
+                                    ))}
+                                    {Object.entries(promoLogs.summary.bySource || {}).map(([src, n]) => (
+                                        <span key={src} style={{background:"#e0e7ff",padding:"4px 10px",borderRadius:"12px"}}>
+                                            {src === 'bio' ? '📝 نبذة' : src === 'message' ? '💬 رسالة' : '👤 اسم'}: {n}
+                                        </span>
+                                    ))}
+                                </div>
+
+                                {/* Logs table */}
+                                <div style={{maxHeight:"260px",overflowY:"auto"}}>
+                                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px"}}>
+                                        <thead><tr style={{background:"#f5f5f5",textAlign:"right"}}>
+                                            <th style={{padding:"6px"}}>المنصات</th>
+                                            <th style={{padding:"6px"}}>المصدر</th>
+                                            <th style={{padding:"6px"}}>النصوص المطابقة</th>
+                                            <th style={{padding:"6px"}}>التاريخ</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {promoLogs.logs.map((log, i) => (
+                                                <tr key={log._id || i} style={{borderBottom:"1px solid #eee"}}>
+                                                    <td style={{padding:"6px"}}>{(log.categories || []).join(', ')}</td>
+                                                    <td style={{padding:"6px"}}>{log.source === 'bio' ? '📝' : log.source === 'message' ? '💬' : '👤'} {log.source}</td>
+                                                    <td style={{padding:"6px",fontFamily:"monospace",fontSize:"11px",color:"#6b7280"}}>
+                                                        {(log.matchedPatterns || []).slice(0, 3).join(' · ').slice(0, 80)}
+                                                    </td>
+                                                    <td style={{padding:"6px",direction:"ltr"}}>{new Date(log.createdAt).toLocaleString("ar-SA")}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
