@@ -33,7 +33,8 @@ const PATTERNS = [
     { regex: /\binstagram\b/gi, category: 'instagram' },
     { regex: /\binsta(?:gram)?\w*\b/gi, category: 'instagram' },
     { regex: /\bigtv\b/gi, category: 'instagram' },
-    { regex: /[إا]نست[؀-ۿ]*/g, category: 'instagram' },
+    // lookbehind: ليس قبل "ا/إ" حرف عربي (يحمي "استأنست"، "استانستو"، "استئناس" من false positive)
+    { regex: /(?<![؀-ۿ])[إا]نست[؀-ۿ]*/g, category: 'instagram' },
     { regex: /(?:https?:\/\/)?(?:www\.)?instagram\.com\/[^\s,]*/gi, category: 'instagram_url' },
     { regex: /(?:https?:\/\/)?(?:www\.)?ig\.me\/[^\s,]*/gi, category: 'instagram_url' },
 
