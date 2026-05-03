@@ -26,6 +26,7 @@ const violationSchema = new mongoose.Schema({
             'inappropriate',    // محتوى غير لائق (عام)
             'spam',             // سبام
             'report',           // بلاغ من مستخدم تم قبوله
+            'external_promo',   // ✅ ترويج خارجي (Snap/Insta/زنجي/واتس/رقم/...)
             'other'
         ],
         required: true,
@@ -48,7 +49,7 @@ const violationSchema = new mongoose.Schema({
     // المصدر
     source: {
         type: String,
-        enum: ['auto', 'admin', 'user_report', 'banned_words_filter', 'spam_filter'],
+        enum: ['auto', 'admin', 'user_report', 'banned_words_filter', 'spam_filter', 'external_promo_filter'],
         default: 'admin'
     },
 

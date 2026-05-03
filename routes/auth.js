@@ -716,7 +716,8 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 await recordExternalPromoViolation(user, {
                     source: 'name',
                     categories: namePromo.categories,
-                    patterns: namePromo.patterns
+                    patterns: namePromo.patterns,
+                    originalText: name
                 });
                 return res.status(400).json({
                     success: false,
@@ -816,12 +817,14 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
                 // 2. فحص ترويج خارجي (Snap/Insta/...) — auto-redact + record violation
                 const promo = detectExternalPromotion(trimmedBio);
+                const originalBio = trimmedBio;
                 if (promo.detected) {
                     trimmedBio = promo.redacted;
                     const violationResult = await recordExternalPromoViolation(user, {
                         source: 'bio',
                         categories: promo.categories,
-                        patterns: promo.patterns
+                        patterns: promo.patterns,
+                        originalText: originalBio
                     });
                     bioRedactedNotice = {
                         message: violationResult.message

@@ -234,7 +234,7 @@ const SUSPENSION_DURATION_DAYS = 7;
  * @returns {Object} { violations, lockApplied, suspended, message }
  */
 async function recordExternalPromoViolation(user, logContext = null) {
-    // ─── Analytics log (fire-and-forget) ───
+    // ─── Analytics log + Violation record (fire-and-forget) ───
     if (logContext && logContext.source && logContext.categories?.length) {
         try {
             const ExternalPromoLog = require('../models/ExternalPromoLog');
@@ -249,9 +249,42 @@ async function recordExternalPromoViolation(user, logContext = null) {
                     console.error('⚠️ ExternalPromoLog create failed:', err.message);
                 }
             });
-        } catch (err) {
-            // فشل اختياري — لا يمنع العقوبة
-        }
+        } catch (err) {/* غير حرج */}
+
+        // ✅ سجل Violation رسمي (يظهر في admin → User → سجل المخالفات)
+        // مع الدليل (النص الأصلي + المنصات المكتشفة)
+        try {
+            const Violation = require('../models/Violation');
+            const evidenceKind =
+                logContext.source === 'message' ? 'message' :
+                logContext.source === 'bio'     ? 'bio' :
+                logContext.source === 'name'    ? 'name' : 'text';
+
+            const reasonText = `محاولة مشاركة حسابات خارجية: ${logContext.categories.join(', ')}`;
+
+            Violation.create({
+                user: user._id,
+                type: 'external_promo',
+                reason: reasonText,
+                action: 'warning',
+                source: 'external_promo_filter',
+                evidence: {
+                    kind: evidenceKind,
+                    text: logContext.originalText || (logContext.patterns || []).join(' · '),
+                    messageId: logContext.messageId || null,
+                    conversationId: logContext.conversationId || null,
+                    metadata: {
+                        categories: logContext.categories,
+                        matchedPatterns: logContext.patterns,
+                        violationCount: (user.externalPromo?.violations || 0) + 1
+                    }
+                }
+            }).catch(err => {
+                if (process.env.NODE_ENV !== 'production') {
+                    console.error('⚠️ Violation create failed:', err.message);
+                }
+            });
+        } catch (err) {/* غير حرج */}
     }
 
     const now = new Date();

@@ -148,6 +148,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
             // 2. ترويج خارجي — censor + record violation + escalation
             const promo = detectExternalPromotion(censoredContent);
+            const originalContent = content;
             if (promo.detected) {
                 censoredContent = promo.redacted;
                 externalPromoDetected = true;
@@ -156,7 +157,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     source: 'message',
                     categories: promo.categories,
                     patterns: promo.patterns,
-                    conversationId
+                    conversationId,
+                    originalText: originalContent
                 });
             }
         }
