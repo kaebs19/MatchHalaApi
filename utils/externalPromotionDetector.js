@@ -25,9 +25,7 @@
 const PATTERNS = [
     // ─── Snapchat ───
     { regex: /\bsnap(?:chat|s)?\b/gi, category: 'snap' },
-    // Arabic — يستوعب كل suffix عربي (سناب، سنابي، سنابات، سنابك...)
     { regex: /سناب[؀-ۿ]*/g, category: 'snap' },
-    // URL
     { regex: /(?:https?:\/\/)?(?:www\.)?snapchat\.com\/[^\s,]*/gi, category: 'snap_url' },
     { regex: /(?:https?:\/\/)?snap(?:chat)?\.app\.link\/[^\s,]*/gi, category: 'snap_url' },
 
@@ -35,18 +33,56 @@ const PATTERNS = [
     { regex: /\binstagram\b/gi, category: 'instagram' },
     { regex: /\binsta(?:gram)?\w*\b/gi, category: 'instagram' },
     { regex: /\bigtv\b/gi, category: 'instagram' },
-    // Arabic — يستوعب suffix عربي كامل (انستا، انستجرام، انستقرام، انستي...)
     { regex: /[إا]نست[؀-ۿ]*/g, category: 'instagram' },
-    // URL
     { regex: /(?:https?:\/\/)?(?:www\.)?instagram\.com\/[^\s,]*/gi, category: 'instagram_url' },
     { regex: /(?:https?:\/\/)?(?:www\.)?ig\.me\/[^\s,]*/gi, category: 'instagram_url' },
 
-    // ─── منصات أخرى شائعة في الـ funnel ───
+    // ─── Telegram ───
     { regex: /\btelegram\b/gi, category: 'telegram' },
-    { regex: /\btiktok\b/gi, category: 'tiktok' },
     { regex: /تلي[جغ]رام[؀-ۿ]*/g, category: 'telegram' },
-    { regex: /تيك\s*توك[؀-ۿ]*/g, category: 'tiktok' },
     { regex: /(?:https?:\/\/)?t\.me\/[^\s,]*/gi, category: 'telegram_url' },
+
+    // ─── TikTok ───
+    { regex: /\btiktok\b/gi, category: 'tiktok' },
+    { regex: /تيك\s*توك[؀-ۿ]*/g, category: 'tiktok' },
+
+    // ─── WhatsApp (الأكثر استخداماً للـ funnel-out) ───
+    { regex: /\bwhats?app\b/gi, category: 'whatsapp' },
+    { regex: /\bwhats?ap\b/gi, category: 'whatsapp' },
+    { regex: /واتس[\s]?[اآ]?ب?[؀-ۿ]*/g, category: 'whatsapp' },
+    { regex: /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s,]*/gi, category: 'whatsapp_url' },
+
+    // ─── Zinji (تطبيق مشاركة أرقام شائع في السعودية والخليج) ───
+    { regex: /\bzin[jq]i\b/gi, category: 'zinji' },
+    { regex: /\bzen[jq]i\b/gi, category: 'zinji' },
+    { regex: /زن[جق]ي[؀-ۿ]*/g, category: 'zinji' },
+
+    // ─── Discord (صاعد بين الشباب) ───
+    { regex: /\bdiscord\b/gi, category: 'discord' },
+    { regex: /ديسكورد[؀-ۿ]*/g, category: 'discord' },
+    { regex: /(?:https?:\/\/)?(?:www\.)?discord\.gg\/[^\s,]*/gi, category: 'discord_url' },
+
+    // ─── Kik / Tellonym / X (Twitter) ───
+    { regex: /\bkik\b/gi, category: 'kik' },
+    { regex: /\btwitter\b/gi, category: 'twitter' },
+    { regex: /تويتر[؀-ۿ]*/g, category: 'twitter' },
+
+    // ─── Email addresses ───
+    { regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, category: 'email' },
+
+    // ─── Phone numbers (متعددة الصيغ) ───
+    // International مع +
+    { regex: /\+\d{1,3}[\s-]?\d{2,4}[\s-]?\d{2,4}[\s-]?\d{2,4}/g, category: 'phone' },
+    // Saudi mobile (05xxxxxxxx) + variations
+    { regex: /\b05\d{8}\b/g, category: 'phone' },
+    { regex: /\b9665\d{8}\b/g, category: 'phone' },
+    // Phone with spaces/dashes (8+ digits with separators) — يكشف "050 123 4567"
+    { regex: /\b\d{2,4}[\s-]\d{2,4}[\s-]\d{2,4}(?:[\s-]\d{2,4})?\b/g, category: 'phone' },
+    // Long sequence of 10+ digits (international without +)
+    { regex: /\b\d{10,15}\b/g, category: 'phone' },
+    // Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) — 8+ متتالية أو مع spaces
+    { regex: /[٠-٩]{8,}/g, category: 'phone' },
+    { regex: /[٠-٩]{2,4}[\s-][٠-٩]{2,4}[\s-][٠-٩]{2,4}(?:[\s-][٠-٩]{2,4})?/g, category: 'phone' },
 ];
 
 /**
