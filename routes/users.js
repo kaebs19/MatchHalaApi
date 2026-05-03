@@ -1204,6 +1204,10 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             user.set('restrictions.messagingRestrictedLevel', null);
             user.set('restrictions.restrictionReason', null);
             user.set('warnings.level', 0);
+            // ✅ نظّف قيود external promo أيضاً (bio lock + counter)
+            user.set('externalPromo.bioLockedUntil', null);
+            user.set('externalPromo.violations', 0);
+            user.set('externalPromo.lastViolationAt', null);
             user.isActive = true;
             await user.save();
             invalidateUsers();
