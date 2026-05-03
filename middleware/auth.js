@@ -170,15 +170,20 @@ const protect = async (req, res, next) => {
                 });
             }
 
-            // تحديث آخر ظهور (كل 10 دقائق كحد أقصى لتقليل الحِمل)
+            // ✅ تحديث isOnline دائماً لو false — الكرون قد يكون قلبه stale
+            // (lastLogin يبقى throttled كل 10 دقائق لتقليل الحِمل)
+            const updates = {};
+            if (req.user.isOnline !== true) {
+                updates.isOnline = true;
+            }
             const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
             if (!req.user.lastLogin || req.user.lastLogin < tenMinAgo) {
-                // ✅ fire-and-forget لكن مع logging عند الخطأ
-                User.findByIdAndUpdate(req.user._id, {
-                    lastLogin: new Date(),
-                    isOnline: true
-                }).exec().catch(err => {
-                    console.error('⚠️ خطأ في تحديث lastLogin:', err.message);
+                updates.lastLogin = new Date();
+                if (!('isOnline' in updates)) updates.isOnline = true;
+            }
+            if (Object.keys(updates).length > 0) {
+                User.findByIdAndUpdate(req.user._id, updates).exec().catch(err => {
+                    console.error('⚠️ خطأ في تحديث isOnline/lastLogin:', err.message);
                 });
             }
 

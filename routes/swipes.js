@@ -424,45 +424,51 @@ router.post('/batch', protect, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// دالة حساب نقاط النشاط (v2 — بالدقائق، بدون عقوبات)
+// دالة حساب نقاط النشاط (v3 — بدون isOnline boost ضخم + randomness)
+// ═══════════════════════════════════════════════════════════════
+// تغيير v3:
+// - إزالة isOnline +60 (كان يضع كل النشطين فوراً في القمة)
+// - الاعتماد على lastLogin recency (أكثر دقة من isOnline flag)
+// - randomness ±15 يضمن variety كل refresh
 // ═══════════════════════════════════════════════════════════════
 function calculateActivityScore(user) {
     const now = new Date();
     let score = 0;
 
-    // --- 1. متصل الآن (أعلى أولوية: 60 نقطة) ---
-    if (user.isOnline) score += 60;
-
-    // --- 2. نقاط النشاط الحديث (40 نقطة كحد أقصى) ---
+    // --- 1. نقاط النشاط الحديث (40 نقطة كحد أقصى) ---
+    // الاعتماد على lastLogin فقط — أكثر دقة من isOnline flag
     const lastLogin = user.lastLogin || user.updatedAt;
     if (lastLogin) {
         const minsSince = (now - new Date(lastLogin)) / (1000 * 60);
         if (minsSince < 10) score += 40;            // يستخدم التطبيق الآن
-        else if (minsSince < 60) score += 35;        // نشط جداً
-        else if (minsSince < 180) score += 28;       // 1-3 ساعات
-        else if (minsSince < 360) score += 20;       // 3-6 ساعات
-        else if (minsSince < 720) score += 14;       // 6-12 ساعة
-        else if (minsSince < 1440) score += 8;       // 12-24 ساعة
-        else if (minsSince < 4320) score += 4;       // 1-3 أيام
-        else score += 1;                              // 3-7 أيام (على الحد)
+        else if (minsSince < 60) score += 32;        // نشط جداً
+        else if (minsSince < 180) score += 25;       // 1-3 ساعات
+        else if (minsSince < 360) score += 18;       // 3-6 ساعات
+        else if (minsSince < 720) score += 12;       // 6-12 ساعة
+        else if (minsSince < 1440) score += 7;       // 12-24 ساعة
+        else if (minsSince < 4320) score += 3;       // 1-3 أيام
+        else score += 1;                              // 3-7 أيام
     }
 
-    // --- 3. نقاط البريميوم (30 نقطة) ---
-    if (user.isPremium) score += 30;
+    // --- 2. نقاط البريميوم (25 نقطة) ---
+    if (user.isPremium) score += 25;
 
-    // --- 4. نقاط التوثيق (10 نقاط) ---
+    // --- 3. نقاط التوثيق (10 نقاط) ---
     if (user.verification?.isVerified || user.isVerified) score += 10;
 
-    // --- 5. نقاط المستخدم الجديد (أقل من 7 أيام: 15 نقطة) ---
+    // --- 4. نقاط المستخدم الجديد (أقل من 7 أيام: 15 نقطة) ---
     const createdAt = user.createdAt ? new Date(user.createdAt) : null;
     if (createdAt) {
         const daysSinceCreation = (now - createdAt) / (1000 * 60 * 60 * 24);
         if (daysSinceCreation <= 7) score += 15;
     }
 
-    // --- 6. مكافأة البروفايل الكامل (15 نقطة) ---
+    // --- 5. مكافأة البروفايل الكامل (15 نقطة) ---
     if (user.profileImage && user.profileImage !== '' && user.profileImage !== 'default.png') score += 10;
     if (user.bio && user.bio.trim().length > 0) score += 5;
+
+    // --- 6. Random jitter (±15) — يضمن variety كل refresh ---
+    score += (Math.random() - 0.5) * 30;
 
     return score;
 }
