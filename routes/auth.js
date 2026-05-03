@@ -26,7 +26,7 @@ const {
 
 // فلترة الأسماء المحظورة
 const { checkBannedWords } = require('./bannedWords');
-const { detectExternalPromotion } = require('../utils/externalPromotionDetector');
+const { detectExternalPromotion, recordExternalPromoViolation, isBioLocked } = require('../utils/externalPromotionDetector');
 
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
@@ -761,6 +761,18 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         // ✅ فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta) على النبذة
         let bioRedactedNotice = null;
         if (bio !== undefined && bio !== user.bio) {
+            // ✅ Phase 2: لو bio مقفول بسبب مخالفات متكررة → ارفض التعديل
+            if (isBioLocked(user)) {
+                const lockedUntil = user.externalPromo.bioLockedUntil;
+                const hoursLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / (60 * 60 * 1000));
+                return res.status(403).json({
+                    success: false,
+                    message: `تم تقييد تعديل النبذة لمدة ${hoursLeft} ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية`,
+                    code: 'BIO_LOCKED_PROMO',
+                    lockedUntil
+                });
+            }
+
             let trimmedBio = (bio || '').trim();
             if (trimmedBio.length > 0) {
                 // 1. فحص كلمات محظورة (يرفض الحفظ)
@@ -774,13 +786,19 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                     });
                 }
 
-                // 2. فحص ترويج خارجي (Snap/Insta/...) — auto-redact silently
+                // 2. فحص ترويج خارجي (Snap/Insta/...) — auto-redact + record violation
                 const promo = detectExternalPromotion(trimmedBio);
                 if (promo.detected) {
                     trimmedBio = promo.redacted;
+                    const violationResult = await recordExternalPromoViolation(user);
                     bioRedactedNotice = {
-                        message: 'تم حذف معلومات تواصل خارجي من نبذتك',
-                        categories: promo.categories
+                        message: violationResult.message
+                            || 'تم حذف معلومات تواصل خارجي من نبذتك',
+                        categories: promo.categories,
+                        violations: violationResult.violations,
+                        threshold: violationResult.threshold,
+                        lockApplied: violationResult.lockApplied,
+                        suspended: violationResult.suspended
                     };
                 }
             }

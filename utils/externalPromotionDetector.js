@@ -83,4 +83,103 @@ function detectExternalPromotion(text) {
     };
 }
 
-module.exports = { detectExternalPromotion };
+// ═══════════════════════════════════════════════════════════════
+// Violation Tracker — نظام تدريجي للمكررين
+// ═══════════════════════════════════════════════════════════════
+
+const SOFT_THRESHOLD = 5;     // 5 violations → bio + messaging مقفولان 24س
+const HARD_THRESHOLD = 10;    // 10 violations → suspension 7 أيام
+const DECAY_WINDOW_DAYS = 7;  // counter يتصفّر بعد 7 أيام بدون مخالفات
+const LOCK_DURATION_HOURS = 24;
+const SUSPENSION_DURATION_DAYS = 7;
+
+/**
+ * تسجيل violation للترويج الخارجي + تطبيق العقوبات التدريجية
+ * @param {Object} user - mongoose User document (يجب أن يكون قابلاً للحفظ)
+ * @returns {Object} { violations, lockApplied, suspended, message }
+ */
+async function recordExternalPromoViolation(user) {
+    const now = new Date();
+    if (!user.externalPromo) {
+        user.externalPromo = { violations: 0, lastViolationAt: null, bioLockedUntil: null, suspendedAt: null };
+    }
+
+    // Decay: لو آخر violation > 7 أيام، صفّر العداد
+    const decayCutoff = new Date(now.getTime() - DECAY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    if (!user.externalPromo.lastViolationAt || user.externalPromo.lastViolationAt < decayCutoff) {
+        user.externalPromo.violations = 0;
+    }
+
+    user.externalPromo.violations += 1;
+    user.externalPromo.lastViolationAt = now;
+
+    let lockApplied = false;
+    let suspended = false;
+    let message = null;
+
+    // HARD threshold: suspension 7 أيام
+    if (user.externalPromo.violations >= HARD_THRESHOLD) {
+        const suspensionUntil = new Date(now.getTime() + SUSPENSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+        user.suspension = user.suspension || {};
+        user.suspension.isSuspended = true;
+        user.suspension.suspendedAt = now;
+        user.suspension.suspendedUntil = suspensionUntil;
+        user.suspension.reason = 'external_promotion_repeat';
+        user.suspension.adminMessage = 'تم تعليق الحساب بسبب محاولات متكررة لمشاركة حسابات خارجية';
+        user.externalPromo.suspendedAt = now;
+        suspended = true;
+        message = 'تم تعليق حسابك 7 أيام بسبب محاولات متكررة لمشاركة حسابات خارجية';
+    }
+    // SOFT threshold: lock 24 ساعة
+    else if (user.externalPromo.violations >= SOFT_THRESHOLD) {
+        const lockUntil = new Date(now.getTime() + LOCK_DURATION_HOURS * 60 * 60 * 1000);
+        user.externalPromo.bioLockedUntil = lockUntil;
+        // Also use existing messagingRestricted flag for consistency with admin tools
+        if (!user.restrictions) user.restrictions = {};
+        user.restrictions.messagingRestricted = true;
+        user.restrictions.messagingRestrictedUntil = lockUntil;
+        user.restrictions.messagingRestrictedLevel = 'all';
+        user.restrictions.restrictionReason = 'external_promotion';
+        lockApplied = true;
+        message = 'تم تقييد حسابك 24 ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية';
+    }
+
+    await user.save();
+
+    return {
+        violations: user.externalPromo.violations,
+        threshold: SOFT_THRESHOLD,
+        lockApplied,
+        suspended,
+        message
+    };
+}
+
+/**
+ * فحص هل bio مقفول حالياً للمستخدم
+ */
+function isBioLocked(user) {
+    const now = new Date();
+    return !!(user.externalPromo?.bioLockedUntil && user.externalPromo.bioLockedUntil > now);
+}
+
+/**
+ * فحص هل messaging مقيّد بسبب external promo (مشترك مع admin restrictions)
+ */
+function isMessagingLockedByPromo(user) {
+    const now = new Date();
+    return !!(
+        user.restrictions?.messagingRestricted &&
+        user.restrictions?.messagingRestrictedUntil > now &&
+        user.restrictions?.restrictionReason === 'external_promotion'
+    );
+}
+
+module.exports = {
+    detectExternalPromotion,
+    recordExternalPromoViolation,
+    isBioLocked,
+    isMessagingLockedByPromo,
+    SOFT_THRESHOLD,
+    HARD_THRESHOLD
+};

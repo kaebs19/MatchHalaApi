@@ -11,7 +11,7 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
-const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
+const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo } = require('../../utils/externalPromotionDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
 
 // ==========================================
@@ -121,24 +121,38 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
+        // ✅ Phase 2: لو messaging مقفول بسبب external promo violations → ارفض الإرسال
+        if (isMessagingLockedByPromo(req.user)) {
+            const lockedUntil = req.user.restrictions.messagingRestrictedUntil;
+            const hoursLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / (60 * 60 * 1000));
+            return res.status(403).json({
+                success: false,
+                message: `تم تقييد المراسلة لمدة ${hoursLeft} ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية`,
+                code: 'MESSAGING_LOCKED_PROMO',
+                lockedUntil
+            });
+        }
+
         // فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta/...)
         let censoredContent = content;
         let bannedResult = { hasBannedWords: false, matchedWords: [] };
         let externalPromoDetected = false;
         let externalPromoCategories = [];
+        let externalPromoViolation = null;
         if (type === 'text' && content) {
-            // 1. كلمات محظورة (sexual/insults) — يبقى نظام الـ violations القائم
+            // 1. كلمات محظورة (sexual/insults)
             bannedResult = await checkBannedWords(content);
             if (bannedResult.hasBannedWords) {
                 censoredContent = bannedResult.censoredText;
             }
 
-            // 2. ترويج خارجي (Snap/Insta) — censor + علامة للـ response
+            // 2. ترويج خارجي — censor + record violation + escalation
             const promo = detectExternalPromotion(censoredContent);
             if (promo.detected) {
                 censoredContent = promo.redacted;
                 externalPromoDetected = true;
                 externalPromoCategories = promo.categories;
+                externalPromoViolation = await recordExternalPromoViolation(req.user);
             }
         }
 
@@ -349,8 +363,13 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...)
         if (externalPromoDetected) {
             response.externalPromoBlocked = {
-                message: 'لا يُسمح بمشاركة حسابات خارجية — تم إخفاء المعلومة',
-                categories: externalPromoCategories
+                message: externalPromoViolation?.message
+                    || 'لا يُسمح بمشاركة حسابات خارجية — تم إخفاء المعلومة',
+                categories: externalPromoCategories,
+                violations: externalPromoViolation?.violations,
+                threshold: externalPromoViolation?.threshold,
+                lockApplied: externalPromoViolation?.lockApplied,
+                suspended: externalPromoViolation?.suspended
             };
         }
 

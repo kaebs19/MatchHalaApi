@@ -374,6 +374,19 @@ const userSchema = new mongoose.Schema({
             source: { type: String, enum: ['admin', 'auto'], default: 'admin' },
             at: { type: Date, default: Date.now }
         }]
+    },
+
+    // ✅ تتبّع محاولات الترويج الخارجي (Snap/Insta/Telegram/...)
+    // النظام التدريجي:
+    //   1-4 violations  →  auto-redact + warning (Phase 1، موجود)
+    //   5+ violations   →  bio + messaging مقفولان 24 ساعة
+    //   10+ violations  →  suspension 7 أيام (تلقائي)
+    // الـ counter يتصفّر بعد 7 أيام بدون مخالفات.
+    externalPromo: {
+        violations: { type: Number, default: 0 },
+        lastViolationAt: { type: Date, default: null },
+        bioLockedUntil: { type: Date, default: null },
+        suspendedAt: { type: Date, default: null }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
