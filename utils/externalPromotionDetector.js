@@ -85,8 +85,80 @@ const PATTERNS = [
     { regex: /[٠-٩]{2,4}[\s-][٠-٩]{2,4}[\s-][٠-٩]{2,4}(?:[\s-][٠-٩]{2,4})?/g, category: 'phone' },
 ];
 
+// ═══════════════════════════════════════════════════════════════
+// Anti-evasion: Normalization + Patterns مع separators
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * كشف External Promotion في نص.
+ * تطبيع النص قبل الفحص — يكسر محاولات التخفّي:
+ * 1. Lowercase
+ * 2. NFKC normalization — يحوّل math bold/circled/fullwidth إلى ASCII عادي
+ *    (مثلاً 𝓼𝓷𝓪𝓹 → snap)
+ * 3. حذف diacritics (snáp → snap)
+ * 4. حذف zero-width chars (U+200B-200F، U+FEFF...)
+ * 5. حذف Arabic tatweel (ـ) — سـنـاب → سناب
+ * 6. Collapse repeated chars 3+ → 2 (snaaaap → snaap)
+ * 7. تحويل Arabic-Indic digits → Latin (٠٥٠ → 050) — للـ phone patterns
+ */
+function normalizeForDetection(text) {
+    if (!text) return '';
+    // NFKD يفصل الـ compatibility (math bold → ASCII) + diacritics (á → a + ̀)
+    let t = text.normalize('NFKD').toLowerCase();
+    // Strip diacritics (combining marks)
+    t = t.replace(/[̀-ͯ]/g, '');
+    // Strip zero-width + invisible separators
+    t = t.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '');
+    // Strip Arabic tatweel
+    t = t.replace(/ـ/g, '');
+    // Arabic-Indic → Latin digits
+    t = t.replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
+    t = t.replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30));
+    return t;
+}
+
+/**
+ * Normalize أكثر عدوانية للـ pass 2 (anti-evasion):
+ * - يطبّق normalizeForDetection
+ * - يحذف ALL repeated chars (snaaaap → snap)
+ * - يحذف الـ separators بين الحروف (s.n.a.p → snap)
+ * يُستخدم فقط لكشف التخفّي — أعلى false positive من النسخة العادية.
+ */
+function aggressiveNormalize(text) {
+    let t = normalizeForDetection(text);
+    t = t.replace(/(.)\1+/g, '$1');   // collapse ALL repeats to 1
+    // Strip separators BETWEEN letters فقط (Latin + Arabic) — لا تأثير على الأرقام
+    // مثلاً: s.n.a.p → snap، ا ن س ت ا → انستا (لكن 050-123 يبقى لأنه أرقام)
+    const letterPair = /([a-z؀-ۿ])[\s._\-]+([a-z؀-ۿ])/g;
+    t = t.replace(letterPair, '$1$2');
+    // كرّر لمعالجة sequences طويلة (s_n_a_p يحتاج passes متعددة)
+    t = t.replace(letterPair, '$1$2');
+    t = t.replace(letterPair, '$1$2');
+    return t;
+}
+
+/**
+ * Patterns إضافية للتخفّي بـ separators بين الحروف.
+ * مثلاً: s.n.a.p / s n a p / s_n_a_p / سـ ن ا ب
+ * نطبّقها على الـ normalized text فقط.
+ */
+const EVASION_PATTERNS = [
+    // s.n.a.p / s n a p / s-n-a-p
+    { regex: /\bs[\s._\-]+n[\s._\-]+a[\s._\-]+p\b/gi, category: 'snap' },
+    { regex: /\bi[\s._\-]+n[\s._\-]+s[\s._\-]+t[\s._\-]+a\b/gi, category: 'instagram' },
+    { regex: /\bw[\s._\-]+h[\s._\-]+a[\s._\-]+t[\s._\-]+s\b/gi, category: 'whatsapp' },
+    { regex: /\bz[\s._\-]+[ie][\s._\-]+n[\s._\-]+[jq][\s._\-]+i\b/gi, category: 'zinji' },
+    // Arabic spaced — س ن ا ب / ا ن س ت ا
+    { regex: /س[\s._\-]+ن[\s._\-]+ا[\s._\-]+ب/g, category: 'snap' },
+    { regex: /[إا][\s._\-]+ن[\s._\-]+س[\s._\-]+ت[\s._\-]+[اآ]/g, category: 'instagram' },
+    { regex: /و[\s._\-]+ا[\s._\-]+ت[\s._\-]+س/g, category: 'whatsapp' },
+    { regex: /ز[\s._\-]+ن[\s._\-]+[جق][\s._\-]+ي/g, category: 'zinji' },
+    // Leet speak — drop \b ليلتقط !nsta و 5nap في بداية النص
+    { regex: /5n[a4]p/gi, category: 'snap' },
+    { regex: /[1!]nst[a4]/gi, category: 'instagram' },
+];
+
+/**
+ * كشف External Promotion في نص (مع normalization + anti-evasion).
  * @param {string} text
  * @returns {{ detected: boolean, redacted: string, patterns: string[], categories: string[] }}
  */
@@ -99,14 +171,39 @@ function detectExternalPromotion(text) {
     const matched = [];
     const categories = new Set();
 
+    // Pass 1: مطابقة على النص الأصلي (الأنماط القياسية)
     for (const { regex, category } of PATTERNS) {
-        // reset lastIndex (regex stateful بسبب /g)
         regex.lastIndex = 0;
         const matches = text.match(regex);
         if (matches && matches.length > 0) {
             matched.push(...matches);
-            categories.add(category.replace(/_url$/, ''));   // نوحّد snap/snap_url
-            // استبدال بـ *** (نفس عدد الحروف يبدو غير منطقي للـ URLs الطويلة)
+            categories.add(category.replace(/_url$/, ''));
+            redacted = redacted.replace(regex, '***');
+        }
+    }
+
+    // Pass 2: مطابقة على النص الـ aggressive normalized (يكسر التخفّي بـ separators/repeats)
+    const aggressive = aggressiveNormalize(text);
+    if (aggressive !== text.toLowerCase()) {
+        for (const { regex, category } of PATTERNS) {
+            regex.lastIndex = 0;
+            if (regex.test(aggressive)) {
+                if (!categories.has(category.replace(/_url$/, ''))) {
+                    matched.push(`[evasion:${category}]`);
+                    categories.add(category.replace(/_url$/, ''));
+                    redacted = '***';   // النص كامل مشبوه — استبدله
+                }
+            }
+        }
+    }
+
+    // Pass 3: أنماط التخفّي بـ separators (على النص الأصلي)
+    for (const { regex, category } of EVASION_PATTERNS) {
+        regex.lastIndex = 0;
+        const matches = text.match(regex);
+        if (matches && matches.length > 0) {
+            matched.push(...matches);
+            categories.add(category.replace(/_url$/, ''));
             redacted = redacted.replace(regex, '***');
         }
     }
