@@ -182,8 +182,9 @@ const protect = async (req, res, next) => {
                 if (!('isOnline' in updates)) updates.isOnline = true;
             }
 
-            // ✅ Lazy cleanup للـ messaging restriction المنتهي تلقائياً
-            // لو messagingRestrictedUntil < الآن → نظّف الـ flags لأن الوقت انتهى
+            // ✅ Lazy cleanup للـ messaging restriction المنتهي (أي سبب)
+            // الوقت انتهى = القيد يجب أن يُلغى، بصرف النظر عن السبب
+            // (external_promotion، spam reports، admin manual، إلخ)
             const now = new Date();
             if (req.user.restrictions?.messagingRestricted &&
                 req.user.restrictions?.messagingRestrictedUntil &&
@@ -192,7 +193,6 @@ const protect = async (req, res, next) => {
                 updates['restrictions.messagingRestrictedUntil'] = null;
                 updates['restrictions.messagingRestrictedLevel'] = null;
                 updates['restrictions.restrictionReason'] = null;
-                // نظّف بصرياً في req.user عشان الـ response يعكس الحالة الجديدة
                 req.user.restrictions.messagingRestricted = false;
                 req.user.restrictions.messagingRestrictedUntil = null;
             }
