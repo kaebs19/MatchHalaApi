@@ -764,7 +764,17 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                         <span className="bw-tab-badge">{stats.flaggedMessages.pending}</span>
                     )}
                 </button>
+                <button
+                    className={`bw-tab ${activeTab === 'external-promo' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('external-promo')}
+                >
+                    🚫 الترويج الخارجي
+                </button>
             </div>
+
+            {activeTab === 'external-promo' && (
+                <ExternalPromoTab onViewUserDetail={onViewUserDetail} />
+            )}
 
             {/* ======================================================== */}
             {/* ======= تبويب الكلمات المحظورة ======= */}
@@ -1495,6 +1505,243 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// External Promo Analytics Tab
+// ═══════════════════════════════════════════════════════════════
+function ExternalPromoTab({ onViewUserDetail }) {
+    const [stats, setStats] = useState(null);
+    const [offenders, setOffenders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [days, setDays] = useState(30);
+
+    useEffect(() => {
+        loadData();
+        // eslint-disable-next-line
+    }, [days]);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const headers = { 'Authorization': `Bearer ${token}` };
+
+            const [statsRes, offendersRes] = await Promise.all([
+                fetch(`/api/banned-words/external-promo/stats?days=${days}`, { headers }).then(r => r.json()),
+                fetch(`/api/banned-words/external-promo/top-offenders?days=${days}&limit=20`, { headers }).then(r => r.json())
+            ]);
+            if (statsRes.success) setStats(statsRes.data);
+            if (offendersRes.success) setOffenders(offendersRes.data.offenders || []);
+        } catch (e) {
+            console.error('promo stats fetch failed', e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <div className="bw-section" style={{padding:'40px',textAlign:'center'}}>جارِ التحميل...</div>;
+    if (!stats) return <div className="bw-section" style={{padding:'40px',textAlign:'center'}}>تعذر التحميل</div>;
+
+    const platformColors = {
+        snap: '#FFC107', instagram: '#E91E63', whatsapp: '#25D366',
+        zinji: '#FF5722', telegram: '#0088CC', tiktok: '#000',
+        discord: '#5865F2', phone: '#9C27B0', email: '#607D8B',
+        twitter: '#1DA1F2', kik: '#7AAA00'
+    };
+    const sourceLabels = { bio: '📝 النبذة', message: '💬 الرسائل', name: '👤 الاسم' };
+    const sourceColors = { bio: '#FF9800', message: '#2196F3', name: '#9C27B0' };
+    const totalCategoryCount = stats.byCategory.reduce((s, c) => s + c.count, 0);
+    const totalSourceCount = stats.bySource.reduce((s, c) => s + c.count, 0);
+
+    return (
+        <div className="bw-section" style={{padding:'20px'}}>
+            {/* فلتر الفترة */}
+            <div style={{display:'flex',gap:'8px',marginBottom:'20px',alignItems:'center'}}>
+                <span style={{fontWeight:'600'}}>الفترة:</span>
+                {[7, 30, 90].map(d => (
+                    <button key={d}
+                        onClick={() => setDays(d)}
+                        style={{
+                            padding:'6px 14px',
+                            borderRadius:'8px',
+                            border: days === d ? '2px solid #E91E63' : '1px solid #ddd',
+                            background: days === d ? '#FCE4EC' : '#fff',
+                            cursor:'pointer',
+                            fontSize:'13px'
+                        }}>
+                        {d} يوم
+                    </button>
+                ))}
+                <button onClick={loadData}
+                    style={{marginRight:'auto',padding:'6px 14px',borderRadius:'8px',border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:'13px'}}>
+                    🔄 تحديث
+                </button>
+            </div>
+
+            {/* Hero stats */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:'12px',marginBottom:'20px'}}>
+                <StatCard label="إجمالي المحاولات" value={stats.totalAttempts} icon="🚫" color="#E91E63" />
+                <StatCard label="مستخدمون فريدون" value={stats.uniqueUsers} icon="👥" color="#2196F3" />
+                <StatCard label="المنصة الأكثر استهدافاً"
+                    value={stats.byCategory[0]?._id || '—'} subValue={stats.byCategory[0]?.count + ' محاولة'}
+                    icon="🎯" color="#FF9800" />
+                <StatCard label="المصدر الأبرز"
+                    value={sourceLabels[stats.bySource[0]?._id] || '—'} subValue={stats.bySource[0]?.count + ' محاولة'}
+                    icon="📍" color="#9C27B0" />
+            </div>
+
+            {/* Charts row */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'20px'}}>
+                {/* By Category bars */}
+                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                    <h4 style={{margin:'0 0 12px'}}>📊 المنصات الأكثر استهدافاً</h4>
+                    {stats.byCategory.slice(0, 8).map(c => {
+                        const pct = totalCategoryCount > 0 ? (c.count / totalCategoryCount * 100) : 0;
+                        return (
+                            <div key={c._id} style={{marginBottom:'10px'}}>
+                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px',fontSize:'13px'}}>
+                                    <span style={{fontWeight:'600'}}>{c._id}</span>
+                                    <span>{c.count} ({pct.toFixed(0)}%)</span>
+                                </div>
+                                <div style={{height:'8px',background:'#f0f0f0',borderRadius:'4px',overflow:'hidden'}}>
+                                    <div style={{
+                                        width: pct + '%',
+                                        height:'100%',
+                                        background: platformColors[c._id] || '#999',
+                                        borderRadius:'4px',
+                                        transition:'width 0.4s'
+                                    }} />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* By Source bars */}
+                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                    <h4 style={{margin:'0 0 12px'}}>📍 المصدر</h4>
+                    {stats.bySource.map(s => {
+                        const pct = totalSourceCount > 0 ? (s.count / totalSourceCount * 100) : 0;
+                        return (
+                            <div key={s._id} style={{marginBottom:'12px'}}>
+                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px',fontSize:'13px'}}>
+                                    <span style={{fontWeight:'600'}}>{sourceLabels[s._id] || s._id}</span>
+                                    <span>{s.count} ({pct.toFixed(0)}%)</span>
+                                </div>
+                                <div style={{height:'10px',background:'#f0f0f0',borderRadius:'5px',overflow:'hidden'}}>
+                                    <div style={{
+                                        width: pct + '%',
+                                        height:'100%',
+                                        background: sourceColors[s._id] || '#999',
+                                        borderRadius:'5px',
+                                        transition:'width 0.4s'
+                                    }} />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Daily trend */}
+            {stats.dailyTrend?.length > 0 && (
+                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',marginBottom:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                    <h4 style={{margin:'0 0 12px'}}>📈 الاتجاه اليومي (آخر 7 أيام)</h4>
+                    <div style={{display:'flex',alignItems:'flex-end',gap:'8px',height:'120px',padding:'8px 0'}}>
+                        {stats.dailyTrend.map(d => {
+                            const max = Math.max(...stats.dailyTrend.map(x => x.count), 1);
+                            const h = (d.count / max * 100);
+                            return (
+                                <div key={d._id} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'4px'}}>
+                                    <div style={{fontSize:'11px',color:'#666'}}>{d.count}</div>
+                                    <div style={{
+                                        width:'100%',
+                                        height: h + '%',
+                                        minHeight:'4px',
+                                        background:'linear-gradient(180deg, #E91E63, #9C27B0)',
+                                        borderRadius:'4px 4px 0 0'
+                                    }} />
+                                    <div style={{fontSize:'10px',color:'#999',direction:'ltr'}}>{d._id.slice(5)}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Top offenders */}
+            <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                <h4 style={{margin:'0 0 12px'}}>🏆 أكثر المخالفين</h4>
+                {offenders.length === 0 ? (
+                    <p style={{textAlign:'center',color:'#999',padding:'20px'}}>لا يوجد بيانات في هذه الفترة</p>
+                ) : (
+                    <div style={{maxHeight:'400px',overflowY:'auto'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                            <thead><tr style={{background:'#f5f5f5',textAlign:'right',position:'sticky',top:0}}>
+                                <th style={{padding:'8px'}}>#</th>
+                                <th style={{padding:'8px'}}>الاسم</th>
+                                <th style={{padding:'8px'}}>المحاولات</th>
+                                <th style={{padding:'8px'}}>المنصات</th>
+                                <th style={{padding:'8px'}}>المصدر</th>
+                                <th style={{padding:'8px'}}>آخر محاولة</th>
+                                <th style={{padding:'8px'}}></th>
+                            </tr></thead>
+                            <tbody>
+                                {offenders.map((o, i) => (
+                                    <tr key={o._id} style={{borderBottom:'1px solid #eee'}}>
+                                        <td style={{padding:'8px'}}>{i + 1}</td>
+                                        <td style={{padding:'8px',fontWeight:'600'}}>
+                                            {o.name}
+                                            {o.isPremium && <span style={{marginRight:'6px'}}>👑</span>}
+                                        </td>
+                                        <td style={{padding:'8px'}}>
+                                            <span style={{
+                                                background: o.attempts >= 10 ? '#f44336' : o.attempts >= 5 ? '#FF9800' : '#FFC107',
+                                                color:'#fff',padding:'2px 8px',borderRadius:'12px',fontSize:'11px'
+                                            }}>{o.attempts}</span>
+                                        </td>
+                                        <td style={{padding:'8px',fontSize:'11px'}}>{(o.categories || []).join(', ')}</td>
+                                        <td style={{padding:'8px',fontSize:'11px'}}>{(o.sources || []).map(s => sourceLabels[s] || s).join(', ')}</td>
+                                        <td style={{padding:'8px',direction:'ltr',fontSize:'11px'}}>
+                                            {o.lastAt ? new Date(o.lastAt).toLocaleString('ar-SA') : '—'}
+                                        </td>
+                                        <td style={{padding:'8px'}}>
+                                            {onViewUserDetail && (
+                                                <button onClick={() => onViewUserDetail(o._id)}
+                                                    style={{padding:'4px 10px',borderRadius:'6px',border:'1px solid #E91E63',background:'#fff',color:'#E91E63',cursor:'pointer',fontSize:'12px'}}>
+                                                    عرض
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function StatCard({ label, value, subValue, icon, color }) {
+    return (
+        <div style={{
+            background:'#fff',
+            borderRadius:'12px',
+            padding:'16px',
+            boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
+            borderRight: `4px solid ${color}`
+        }}>
+            <div style={{fontSize:'12px',color:'#666',marginBottom:'4px'}}>{label}</div>
+            <div style={{fontSize:'22px',fontWeight:'700',display:'flex',alignItems:'center',gap:'8px'}}>
+                <span>{icon}</span>
+                <span>{value}</span>
+            </div>
+            {subValue && <div style={{fontSize:'11px',color:'#999',marginTop:'4px'}}>{subValue}</div>}
         </div>
     );
 }
