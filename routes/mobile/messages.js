@@ -152,7 +152,12 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 censoredContent = promo.redacted;
                 externalPromoDetected = true;
                 externalPromoCategories = promo.categories;
-                externalPromoViolation = await recordExternalPromoViolation(req.user);
+                externalPromoViolation = await recordExternalPromoViolation(req.user, {
+                    source: 'message',
+                    categories: promo.categories,
+                    patterns: promo.patterns,
+                    conversationId
+                });
             }
         }
 

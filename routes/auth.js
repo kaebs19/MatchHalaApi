@@ -247,6 +247,17 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             });
         }
 
+        // ✅ فحص الاسم ضد ترويج خارجي (في التسجيل — قبل وجود user document)
+        const regNamePromo = detectExternalPromotion(name);
+        if (regNamePromo.detected) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يُسمح بأسماء تحوي معلومات تواصل خارجي',
+                code: 'NAME_EXTERNAL_PROMO',
+                categories: regNamePromo.categories
+            });
+        }
+
         // ✅ فحص الاسم ضد قائمة الأسماء المحظورة في الإعدادات
         const Settings = require('../models/Settings');
         const appSettings = await Settings.getSettings();
@@ -698,6 +709,23 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 });
             }
 
+            // ✅ فحص الاسم ضد ترويج خارجي (Snap: bob, زنجي 050..., إلخ)
+            // الاسم يُرفض كلياً (لا redact) لأنه field قصير وكل كلمة فيه ذات معنى
+            const namePromo = detectExternalPromotion(name);
+            if (namePromo.detected) {
+                await recordExternalPromoViolation(user, {
+                    source: 'name',
+                    categories: namePromo.categories,
+                    patterns: namePromo.patterns
+                });
+                return res.status(400).json({
+                    success: false,
+                    message: 'لا يُسمح بأسماء تحوي معلومات تواصل خارجي',
+                    code: 'NAME_EXTERNAL_PROMO',
+                    categories: namePromo.categories
+                });
+            }
+
             // ✅ فحص الاسم ضد قائمة الأسماء المحظورة في الإعدادات
             const Settings = require('../models/Settings');
             const appSettings = await Settings.getSettings();
@@ -790,7 +818,11 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 const promo = detectExternalPromotion(trimmedBio);
                 if (promo.detected) {
                     trimmedBio = promo.redacted;
-                    const violationResult = await recordExternalPromoViolation(user);
+                    const violationResult = await recordExternalPromoViolation(user, {
+                        source: 'bio',
+                        categories: promo.categories,
+                        patterns: promo.patterns
+                    });
                     bioRedactedNotice = {
                         message: violationResult.message
                             || 'تم حذف معلومات تواصل خارجي من نبذتك',

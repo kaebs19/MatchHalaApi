@@ -579,5 +579,121 @@ function getDefaultBannedWords() {
     return words;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// External Promo Analytics (Snap/Insta/WhatsApp/Zinji/...)
+// /api/banned-words/external-promo/* — admin only
+// ═══════════════════════════════════════════════════════════════
+
+const ExternalPromoLog = require('../models/ExternalPromoLog');
+
+// @route   GET /api/banned-words/external-promo/stats
+// @desc    إحصائيات الترويج الخارجي حسب المنصة
+// @access  Admin
+router.get('/external-promo/stats', protect, adminOnly, async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        const [byCategory, bySource, totalAttempts, uniqueUsers, dailyTrend] = await Promise.all([
+            // المنصات الأكثر استهدافاً
+            ExternalPromoLog.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $unwind: '$categories' },
+                { $group: { _id: '$categories', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+            // المصدر (bio / message / name)
+            ExternalPromoLog.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $group: { _id: '$source', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+            // الإجمالي
+            ExternalPromoLog.countDocuments({ createdAt: { $gte: since } }),
+            // مستخدمون فريدون
+            ExternalPromoLog.distinct('user', { createdAt: { $gte: since } }),
+            // اتجاه يومي (آخر 7 أيام)
+            ExternalPromoLog.aggregate([
+                { $match: { createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ])
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                periodDays: days,
+                totalAttempts,
+                uniqueUsers: uniqueUsers.length,
+                byCategory,
+                bySource,
+                dailyTrend
+            }
+        });
+    } catch (error) {
+        console.error('external-promo stats error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// @route   GET /api/banned-words/external-promo/top-offenders
+// @desc    أكثر المستخدمين محاولة (ضمن فترة)
+// @access  Admin
+router.get('/external-promo/top-offenders', protect, adminOnly, async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        const offenders = await ExternalPromoLog.aggregate([
+            { $match: { createdAt: { $gte: since } } },
+            {
+                $group: {
+                    _id: '$user',
+                    attempts: { $sum: 1 },
+                    categories: { $addToSet: '$categories' },
+                    sources: { $addToSet: '$source' },
+                    lastAt: { $max: '$createdAt' }
+                }
+            },
+            { $sort: { attempts: -1 } },
+            { $limit: limit },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'userDoc'
+                }
+            },
+            { $unwind: '$userDoc' },
+            {
+                $project: {
+                    _id: 1,
+                    attempts: 1,
+                    categories: 1,
+                    sources: 1,
+                    lastAt: 1,
+                    name: '$userDoc.name',
+                    email: '$userDoc.email',
+                    isPremium: '$userDoc.isPremium',
+                    externalPromo: '$userDoc.externalPromo'
+                }
+            }
+        ]);
+
+        res.json({ success: true, data: { offenders, periodDays: days } });
+    } catch (error) {
+        console.error('external-promo top-offenders error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 module.exports = router;
 module.exports.checkBannedWords = checkBannedWords;

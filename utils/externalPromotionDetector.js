@@ -132,9 +132,31 @@ const SUSPENSION_DURATION_DAYS = 7;
 /**
  * تسجيل violation للترويج الخارجي + تطبيق العقوبات التدريجية
  * @param {Object} user - mongoose User document (يجب أن يكون قابلاً للحفظ)
+ * @param {Object} [logContext] - { source: 'bio'|'message'|'name', categories, patterns, conversationId }
+ *                                لتسجيل تفاصيل الـ analytics — اختياري
  * @returns {Object} { violations, lockApplied, suspended, message }
  */
-async function recordExternalPromoViolation(user) {
+async function recordExternalPromoViolation(user, logContext = null) {
+    // ─── Analytics log (fire-and-forget) ───
+    if (logContext && logContext.source && logContext.categories?.length) {
+        try {
+            const ExternalPromoLog = require('../models/ExternalPromoLog');
+            ExternalPromoLog.create({
+                user: user._id,
+                source: logContext.source,
+                categories: logContext.categories,
+                matchedPatterns: logContext.patterns || [],
+                conversationId: logContext.conversationId || null
+            }).catch(err => {
+                if (process.env.NODE_ENV !== 'production') {
+                    console.error('⚠️ ExternalPromoLog create failed:', err.message);
+                }
+            });
+        } catch (err) {
+            // فشل اختياري — لا يمنع العقوبة
+        }
+    }
+
     const now = new Date();
     if (!user.externalPromo) {
         user.externalPromo = { violations: 0, lastViolationAt: null, bioLockedUntil: null, suspendedAt: null };
