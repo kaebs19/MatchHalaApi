@@ -448,6 +448,11 @@ router.get('/users/search', protect, async (req, res) => {
             filter['location.coordinates'] = { $ne: [0, 0] };
             const maxDist = parseFloat(maxDistance) * 1000; // تحويل كم إلى متر
 
+            // ✅ Multi-factor discovery score (Tinder/Bumble-style):
+            // - النشاط يعطي boost صغير (مش أولوية مطلقة)
+            // - المسافة تؤثّر بتدرّج (كلما أقرب، كلما أعلى)
+            // - randomness يضمن variety فلا تظهر نفس البطاقات بنفس الترتيب
+            // - الموثّقين + Premium + الذين لديهم صورة يحصلون على lift
             const pipeline = [
                 {
                     $geoNear: {
@@ -465,7 +470,31 @@ router.get('/users/search', protect, async (req, res) => {
                         isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1
                     }
                 },
-                { $sort: { isOnline: -1, distance: 1 } },
+                {
+                    $addFields: {
+                        discoveryScore: {
+                            $add: [
+                                // عقوبة المسافة: -1 لكل كم (gentle)
+                                { $multiply: [{ $ifNull: ['$distance', 0] }, -0.001] },
+                                // النشاط الفعلي: +10
+                                { $cond: ['$isOnline', 10, 0] },
+                                // التوثيق: +8
+                                { $cond: ['$isVerified', 8, 0] },
+                                // Premium: +6
+                                { $cond: ['$isPremium', 6, 0] },
+                                // وجود صورة: +12
+                                { $cond: [{ $and: [
+                                    { $ne: ['$profileImage', null] },
+                                    { $ne: ['$profileImage', ''] }
+                                ]}, 12, 0] },
+                                // randomness 0-35 — يضمن variety كل refresh
+                                { $multiply: [{ $rand: {} }, 35] }
+                            ]
+                        }
+                    }
+                },
+                { $sort: { discoveryScore: -1 } },
+                { $project: { discoveryScore: 0 } },
                 { $skip: skipNum },
                 { $limit: limitNum }
             ];
@@ -503,28 +532,51 @@ router.get('/users/search', protect, async (req, res) => {
             totalUsers = countResult.length > 0 ? countResult[0].total : 0;
 
         } else {
-            // بدون موقع — البحث العادي
-            users = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode')
-                .sort({ isOnline: -1, lastLogin: -1 })
-                .limit(limitNum)
-                .skip(skipNum);
+            // بدون موقع — discovery score بدون مسافة
+            const pipeline = [
+                { $match: filter },
+                {
+                    $project: {
+                        name: 1, email: 1, profileImage: 1, birthDate: 1,
+                        gender: 1, country: 1, bio: 1, isOnline: 1, isActive: 1, lastLogin: 1,
+                        isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1
+                    }
+                },
+                {
+                    $addFields: {
+                        discoveryScore: {
+                            $add: [
+                                { $cond: ['$isOnline', 10, 0] },
+                                { $cond: ['$isVerified', 8, 0] },
+                                { $cond: ['$isPremium', 6, 0] },
+                                { $cond: [{ $and: [
+                                    { $ne: ['$profileImage', null] },
+                                    { $ne: ['$profileImage', ''] }
+                                ]}, 12, 0] },
+                                { $multiply: [{ $rand: {} }, 35] }
+                            ]
+                        }
+                    }
+                },
+                { $sort: { discoveryScore: -1 } },
+                { $project: { discoveryScore: 0 } },
+                { $skip: skipNum },
+                { $limit: limitNum }
+            ];
+            users = await User.aggregate(pipeline);
 
             totalUsers = await User.countDocuments(filter);
 
-            // إخفاء lastLogin للمتخفين + إضافة distance: null + حذف stealthMode
-            users = users.map(u => {
-                const userObj = u.toObject();
-                userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
-                delete userObj.lastLogin;
-                delete userObj.stealthMode;
-                userObj.profileImage = getFullUrl(userObj.profileImage);
-                userObj.isVerified = userObj.verification?.isVerified || false;
-                delete userObj.verification;
-                userObj.distance = null;
-                userObj.distanceLabel = null;
-                return userObj;
-            });
+            // إخفاء lastLogin للمتخفين + distance: null لأن لا توجد إحداثيات
+            users = users.map(u => ({
+                ...u,
+                lastActive: u.stealthMode ? null : u.lastLogin,
+                profileImage: getFullUrl(u.profileImage),
+                distance: null,
+                distanceLabel: null,
+                lastLogin: undefined,
+                stealthMode: undefined
+            }));
         }
 
         res.status(200).json({
