@@ -181,6 +181,28 @@ const protect = async (req, res, next) => {
                 updates.lastLogin = new Date();
                 if (!('isOnline' in updates)) updates.isOnline = true;
             }
+
+            // ✅ Lazy cleanup للـ messaging restriction المنتهي تلقائياً
+            // لو messagingRestrictedUntil < الآن → نظّف الـ flags لأن الوقت انتهى
+            const now = new Date();
+            if (req.user.restrictions?.messagingRestricted &&
+                req.user.restrictions?.messagingRestrictedUntil &&
+                req.user.restrictions.messagingRestrictedUntil < now) {
+                updates['restrictions.messagingRestricted'] = false;
+                updates['restrictions.messagingRestrictedUntil'] = null;
+                updates['restrictions.messagingRestrictedLevel'] = null;
+                updates['restrictions.restrictionReason'] = null;
+                // نظّف بصرياً في req.user عشان الـ response يعكس الحالة الجديدة
+                req.user.restrictions.messagingRestricted = false;
+                req.user.restrictions.messagingRestrictedUntil = null;
+            }
+            // نفس الشيء للـ bio lock من external promo
+            if (req.user.externalPromo?.bioLockedUntil &&
+                req.user.externalPromo.bioLockedUntil < now) {
+                updates['externalPromo.bioLockedUntil'] = null;
+                req.user.externalPromo.bioLockedUntil = null;
+            }
+
             if (Object.keys(updates).length > 0) {
                 User.findByIdAndUpdate(req.user._id, updates).exec().catch(err => {
                     console.error('⚠️ خطأ في تحديث isOnline/lastLogin:', err.message);

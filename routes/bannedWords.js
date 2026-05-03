@@ -695,5 +695,93 @@ router.get('/external-promo/top-offenders', protect, adminOnly, async (req, res)
     }
 });
 
+// @route   POST /api/banned-words/external-promo/unlock/:userId
+// @desc    إلغاء تقييد المستخدم يدوياً (لأخطاء النظام أو لحالة استثنائية)
+// @access  Admin
+router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { resetCounter = false } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const updates = {};
+        // إلغاء قفل bio
+        if (user.externalPromo?.bioLockedUntil) {
+            updates['externalPromo.bioLockedUntil'] = null;
+        }
+        // إلغاء قفل messaging (فقط لو السبب external_promotion — ما نلمس قيود الأدمن)
+        if (user.restrictions?.messagingRestricted &&
+            user.restrictions?.restrictionReason === 'external_promotion') {
+            updates['restrictions.messagingRestricted'] = false;
+            updates['restrictions.messagingRestrictedUntil'] = null;
+            updates['restrictions.messagingRestrictedLevel'] = null;
+            updates['restrictions.restrictionReason'] = null;
+        }
+        // اختياري: تصفير العداد كلياً
+        if (resetCounter) {
+            updates['externalPromo.violations'] = 0;
+            updates['externalPromo.lastViolationAt'] = null;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.json({ success: true, message: 'لا توجد قيود للإلغاء', data: { unlocked: false } });
+        }
+
+        await User.findByIdAndUpdate(userId, updates);
+
+        res.json({
+            success: true,
+            message: 'تم إلغاء التقييد',
+            data: { unlocked: true, resetCounter }
+        });
+    } catch (error) {
+        console.error('external-promo unlock error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// @route   POST /api/banned-words/external-promo/cleanup-expired
+// @desc    تنظيف القيود المنتهية الصلاحية (one-shot — للـ users المعلقين بعد bug)
+// @access  Admin
+router.post('/external-promo/cleanup-expired', protect, adminOnly, async (req, res) => {
+    try {
+        const now = new Date();
+        const messagingResult = await User.updateMany(
+            {
+                'restrictions.messagingRestricted': true,
+                'restrictions.restrictionReason': 'external_promotion',
+                'restrictions.messagingRestrictedUntil': { $lt: now }
+            },
+            {
+                $set: {
+                    'restrictions.messagingRestricted': false,
+                    'restrictions.messagingRestrictedUntil': null,
+                    'restrictions.messagingRestrictedLevel': null,
+                    'restrictions.restrictionReason': null
+                }
+            }
+        );
+        const bioResult = await User.updateMany(
+            { 'externalPromo.bioLockedUntil': { $lt: now } },
+            { $set: { 'externalPromo.bioLockedUntil': null } }
+        );
+
+        res.json({
+            success: true,
+            data: {
+                messagingUnlocked: messagingResult.modifiedCount,
+                bioUnlocked: bioResult.modifiedCount
+            }
+        });
+    } catch (error) {
+        console.error('cleanup-expired error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 module.exports = router;
 module.exports.checkBannedWords = checkBannedWords;
