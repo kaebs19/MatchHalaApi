@@ -13,6 +13,8 @@ const pushNotificationService = require('../../services/pushNotificationService'
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo } = require('../../utils/externalPromotionDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
+const { clientSupports } = require('../../utils/versionCompare');
+const Settings = require('../../models/Settings');
 
 // ==========================================
 // نظام الرسائل
@@ -135,7 +137,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
         // فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta/...)
         let censoredContent = content;
-        let bannedResult = { hasBannedWords: false, matchedWords: [] };
+        let bannedResult = { hasBannedWords: false, matchedWords: [], categories: [] };
         let externalPromoDetected = false;
         let externalPromoCategories = [];
         let externalPromoViolation = null;
@@ -163,6 +165,32 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
+        // ✅ Phase 1.2: Sensitive Content — هل نحفظ النص الأصلي للكشف لاحقاً؟
+        // الشروط: الميزة مفعّلة + الكلمة من category مشمولة + ليس external promo
+        // (external promo يبقى محجوب نهائياً — قرار سياسة)
+        let sensitiveFlag = { hasFlaggedContent: false, flaggedCategory: null, originalContent: null };
+        if (bannedResult.hasBannedWords && !externalPromoDetected && bannedResult.categories?.length > 0) {
+            try {
+                const settings = await Settings.getSettings();
+                const sc = settings.sensitiveContent || {};
+                const clientVersion = req.headers['app-version'] || req.headers['x-app-version'] || null;
+                const versionOk = clientSupports(clientVersion, sc.minClientVersion || '6.3');
+                const matchedCategory = bannedResult.categories.find(c => (sc.affectedCategories || []).includes(c));
+
+                if (sc.featureEnabled && versionOk && matchedCategory) {
+                    sensitiveFlag = {
+                        hasFlaggedContent: true,
+                        flaggedCategory: matchedCategory,
+                        originalContent: content   // النص الأصلي قبل التكتيم — للكشف عند الإذن
+                    };
+                }
+                // لو الـ flag = OFF أو client قديم: نخلّي السلوك الحالي 100% (نص مُكتم بدون originalContent)
+            } catch (scErr) {
+                console.error('SensitiveContent flag check error:', scErr.message);
+                // نتجاهل ونكمل بالسلوك القديم
+            }
+        }
+
         // إنشاء الرسالة (بالمحتوى المفلتر)
         const messageData = {
             conversation: conversationId,
@@ -171,7 +199,11 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             type,
             mediaUrl: mediaUrl || null,
             mediaMetadata: mediaMetadata || null,
-            status: 'sent'
+            status: 'sent',
+            // Phase 1.2: Sensitive Content fields (additive — التطبيق القديم يتجاهلها)
+            hasFlaggedContent: sensitiveFlag.hasFlaggedContent,
+            flaggedCategory: sensitiveFlag.flaggedCategory,
+            originalContent: sensitiveFlag.originalContent
         };
         if (replyTo) messageData.replyTo = replyTo;
 

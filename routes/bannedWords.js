@@ -494,22 +494,23 @@ router.put('/flagged/:id', protect, adminOnly, async (req, res) => {
  */
 async function checkBannedWords(text) {
     if (!text || typeof text !== 'string') {
-        return { hasBannedWords: false, matchedWords: [], censoredText: text };
+        return { hasBannedWords: false, matchedWords: [], censoredText: text, categories: [] };
     }
 
-    // جلب الكلمات من الكاش أو قاعدة البيانات
-    let bannedWords = cacheGet('banned_words_list');
+    // جلب الكلمات من الكاش أو قاعدة البيانات (مع category للـ Sensitive Content feature)
+    let bannedWords = cacheGet('banned_words_list_v2');
     if (!bannedWords) {
-        bannedWords = await BannedWord.find({ isActive: true }).select('word').lean();
-        cacheSet('banned_words_list', bannedWords, 300); // 5 دقائق
+        bannedWords = await BannedWord.find({ isActive: true }).select('word category').lean();
+        cacheSet('banned_words_list_v2', bannedWords, 300); // 5 دقائق
     }
 
     if (!bannedWords || bannedWords.length === 0) {
-        return { hasBannedWords: false, matchedWords: [], censoredText: text };
+        return { hasBannedWords: false, matchedWords: [], censoredText: text, categories: [] };
     }
 
     const lowerText = text.toLowerCase();
     const matchedWords = [];
+    const categoriesSet = new Set();
     let censoredText = text;
 
     for (const bw of bannedWords) {
@@ -522,6 +523,7 @@ async function checkBannedWords(text) {
             : new RegExp(`\\b${escaped}\\b`, 'gi');
         if (regex.test(lowerText)) {
             matchedWords.push(word);
+            if (bw.category) categoriesSet.add(bw.category);
             // استبدال بنجوم
             censoredText = censoredText.replace(regex, '*'.repeat(word.length));
         }
@@ -530,7 +532,8 @@ async function checkBannedWords(text) {
     return {
         hasBannedWords: matchedWords.length > 0,
         matchedWords,
-        censoredText
+        censoredText,
+        categories: Array.from(categoriesSet)   // ✅ Phase 1.2: للـ Sensitive Content feature
     };
 }
 
