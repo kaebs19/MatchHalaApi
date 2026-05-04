@@ -88,6 +88,17 @@ function Appeals({ onViewUserDetail }) {
         setAdminNote("");
         setReplyText("");
         setShowDetailModal(true);
+
+        // ✅ تصفير unreadForAdmin (إذا في رسائل بدون قراءة)
+        if ((appeal.unreadForAdmin || 0) > 0) {
+            const token = localStorage.getItem("token");
+            fetch(config.API_URL + "/appeals/" + appeal._id + "/mark-read", {
+                method: "POST",
+                headers: { Authorization: "Bearer " + token }
+            }).catch(() => {});
+            // optimistic — أزل الـ badge فوراً
+            setAppeals(prev => prev.map(a => a._id === appeal._id ? { ...a, unreadForAdmin: 0 } : a));
+        }
     };
 
     // ✅ إرسال رسالة من الأدمن في محادثة الاستئناف
@@ -297,6 +308,7 @@ function Appeals({ onViewUserDetail }) {
     const renderUserCell = (appeal) => {
         const user = appeal.user;
         if (!user) return <span className="text-muted">-</span>;
+        const unread = appeal.unreadForAdmin || 0;
         return (
             <div className="user-cell">
                 <img
@@ -306,12 +318,19 @@ function Appeals({ onViewUserDetail }) {
                     onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
                 />
                 <div className="user-cell-info">
-                    <span
-                        className="user-link"
-                        onClick={(e) => { e.stopPropagation(); if (onViewUserDetail) onViewUserDetail(user._id); }}
-                    >
-                        {user.name}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                            className="user-link"
+                            onClick={(e) => { e.stopPropagation(); if (onViewUserDetail) onViewUserDetail(user._id); }}
+                        >
+                            {user.name}
+                        </span>
+                        {unread > 0 && (
+                            <span className="unread-reply-badge" title={`${unread} رد جديد بدون قراءة`}>
+                                💬 {unread}
+                            </span>
+                        )}
+                    </div>
                     <small dir="ltr" className="email-cell">{user.email}</small>
                 </div>
             </div>

@@ -386,6 +386,28 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   POST /api/appeals/:id/mark-read
+// @desc    تصفير unreadForAdmin عند فتح الأدمن للاستئناف
+// @access  Private/Admin
+router.post('/:id/mark-read', protect, adminOnly, async (req, res) => {
+    try {
+        const appeal = await Appeal.findById(req.params.id);
+        if (!appeal) return res.status(404).json({ success: false, message: 'الاستئناف غير موجود' });
+
+        if ((appeal.unreadForAdmin || 0) > 0) {
+            appeal.messages.forEach(m => {
+                if (m.sender === 'user' && !m.readByAdmin) m.readByAdmin = true;
+            });
+            appeal.unreadForAdmin = 0;
+            await appeal.save();
+        }
+        res.json({ success: true, data: { unreadForAdmin: 0 } });
+    } catch (error) {
+        console.error('خطأ في mark-read الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/appeals/admin/stats
 // @desc    إحصائيات سريعة للأدمن (للـ badge في Header)
 // @access  Private/Admin

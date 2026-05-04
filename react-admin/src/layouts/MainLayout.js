@@ -83,13 +83,45 @@ function MainLayout({ onLogout, user: initialUser }) {
         const token = localStorage.getItem('token');
         if (token) socketService.connect(token);
 
+        // طلب إذن الإشعارات (مرة واحدة فقط)
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
+
+        // صوت تنبيه قصير (Web Audio API — بدون ملف صوت خارجي)
+        const playBeep = (freq = 880, duration = 150) => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
+                osc.start(); osc.stop(ctx.currentTime + duration / 1000);
+            } catch (e) { /* المتصفح ربما يحجب AudioContext قبل user interaction */ }
+        };
+
+        const sendBrowserNotif = (title, body) => {
+            if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+                try {
+                    const n = new Notification(title, { body, icon: '/favicon.svg', tag: 'appeal' });
+                    n.onclick = () => { window.focus(); n.close(); };
+                } catch (e) {}
+            }
+        };
+
         const handleNewAppeal = (data) => {
             setAppealsStats(prev => ({
                 ...prev,
                 pending: prev.pending + 1,
                 total: prev.total + 1
             }));
-            showToast(`📩 استئناف جديد من ${data.userName || 'مستخدم'}`, 'info');
+            const title = `📩 استئناف جديد من ${data.userName || 'مستخدم'}`;
+            showToast(title, 'info');
+            playBeep(880, 200);                // نبضة عالية
+            sendBrowserNotif(title, data.reason || 'افتح اللوحة لرؤية التفاصيل');
         };
 
         const handleAppealReply = (data) => {
@@ -97,7 +129,11 @@ function MainLayout({ onLogout, user: initialUser }) {
                 ...prev,
                 awaitingReply: prev.awaitingReply + 1
             }));
-            showToast(`💬 رد جديد من ${data.userName || 'مستخدم'}: ${data.preview}`, 'info');
+            const title = `💬 رد جديد من ${data.userName || 'مستخدم'}`;
+            showToast(`${title}: ${data.preview}`, 'info');
+            playBeep(660, 150);                // نبضة أقل (تمييز عن استئناف جديد)
+            setTimeout(() => playBeep(880, 150), 180);   // double-beep للرد
+            sendBrowserNotif(title, data.preview || 'رسالة جديدة');
         };
 
         socketService.onNewAppeal(handleNewAppeal);
