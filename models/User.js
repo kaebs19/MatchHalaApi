@@ -182,7 +182,12 @@ const userSchema = new mongoose.Schema({
             endMinute: { type: Number, default: 0 }
         },
         // ✅ Premium: قراءة سرية — لا يخبر المرسل
-        invisibleRead: { type: Boolean, default: false }
+        invisibleRead: { type: Boolean, default: false },
+        // ✅ Sensitive Content (Phase 1) — السماح بكشف المحتوى الحساس
+        // default: false (الفلتر مفعّل للجميع)
+        allowSensitiveContent: { type: Boolean, default: false },
+        // متى فعّل المستخدم الإعداد (للسجل القانوني)
+        sensitiveContentEnabledAt: { type: Date, default: null }
     },
     // قائمة المستخدمين المحظورين
     blockedUsers: [{

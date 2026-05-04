@@ -140,6 +140,21 @@ const settingsSchema = new mongoose.Schema({
         default: 3
     },
 
+    // ✅ Sensitive Content Feature (Phase 1) — التحكم العام للأدمن
+    // default: featureEnabled = false (آمن — يجب على الأدمن تفعيلها بعد iOS deploy)
+    sensitiveContent: {
+        // الميزة مفعّلة على مستوى التطبيق كله؟ (kill switch)
+        featureEnabled: { type: Boolean, default: false },
+        // أي banned word categories تخضع للإعداد (الباقي يبقى محجوب نهائياً)
+        affectedCategories: { type: [String], default: ['sexual'] },
+        // الحد الأدنى للعمر (يجب أن يكون 18+)
+        minAge: { type: Number, default: 18 },
+        // طلب تأكيد مزدوج قبل تفعيل المستخدم للإعداد
+        requireDoubleConfirm: { type: Boolean, default: true },
+        // الحد الأدنى لإصدار التطبيق الذي يدعم الميزة (version gate)
+        minClientVersion: { type: String, default: '6.3' }
+    },
+
     // ✅ وضع الصيانة (Maintenance Mode)
     maintenanceMode: {
         enabled: { type: Boolean, default: false },

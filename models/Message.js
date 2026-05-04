@@ -113,7 +113,20 @@ const messageSchema = new mongoose.Schema({
     audioDuration: { type: Number, default: null },
     // ✅ Photo Privacy Lock — صورة مقفلة (blurred) حتى يطلب المستلم unlock
     isBlurred: { type: Boolean, default: false },
-    blurredUnlockedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    blurredUnlockedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
+    // ✅ Sensitive Content (Phase 1) — Additive only, backward-compatible
+    // إذا الرسالة تحتوي محتوى حساس (مثلاً banned word category=sexual)
+    hasFlaggedContent: { type: Boolean, default: false },
+    // فئة المحتوى الحساس (sexual فقط حالياً، قابل للتوسيع)
+    flaggedCategory: {
+        type: String,
+        enum: ['sexual', 'violence', 'hate', 'spam', 'other', null],
+        default: null
+    },
+    // النص الأصلي قبل التكتيم — محمي بـ select: false (لا يُرجع افتراضياً)
+    // يُرجع فقط عبر endpoint /reveal مع التحقق من الإذن + العمر + setting
+    originalContent: { type: String, default: null, select: false }
 }, {
     timestamps: true
 });
