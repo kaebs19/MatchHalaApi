@@ -488,23 +488,40 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const filter = {};
         if (status) filter.status = status;
 
+        // ✅ ترتيب أولوي: قيد الانتظار → قيد المراجعة → forwarded → مقبولة → مرفوضة
+        // داخل كل مجموعة: الأحدث أولاً
+        const STATUS_ORDER = { pending: 1, under_review: 2, forwarded: 3, approved: 4, rejected: 5 };
+
         const appeals = await Appeal.find(filter)
             .populate('user', 'name email avatar profileImage halaId createdAt isActive isPremium suspension restrictions warnings bannedWords country birthDate gender lastLogin isOnline deviceFingerprint')
-            .populate('resolvedBy', 'name')
-            .sort({ createdAt: -1 });
+            .populate('resolvedBy', 'name');
 
-        // ✅ فلترة: إخفاء استئنافات المحظورين بشكل كامل فقط (bannedWords)
-        // ملاحظة: المعلّقون يمتلكون isActive=false لكنهم يحتاجون تقديم استئناف — لا نخفيهم
-        const visibleAppeals = appeals.filter(appeal => {
-            if (!appeal.user) return false; // حساب محذوف فعلاً
-            if (appeal.user.bannedWords?.isBanned) return false; // محظور نهائياً
-            return true;
-        });
+        // فلترة + ترتيب يدوي (الـ count صغير، لا حاجة لـ aggregation)
+        const visibleAppeals = appeals
+            .filter(appeal => {
+                if (!appeal.user) return false;
+                if (appeal.user.bannedWords?.isBanned) return false;
+                return true;
+            })
+            .sort((a, b) => {
+                const orderA = STATUS_ORDER[a.status] || 99;
+                const orderB = STATUS_ORDER[b.status] || 99;
+                if (orderA !== orderB) return orderA - orderB;
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            });
 
-        // pagination بعد الفلترة لضمان دقة العدد
         const totalFiltered = visibleAppeals.length;
         const startIdx = (page - 1) * limit;
         const pagedAppeals = visibleAppeals.slice(startIdx, startIdx + Number(limit));
+
+        // ✅ stats من DB مباشرة (مش من الـ list — لأن visible فلتر بعض)
+        const [pending, underReview, forwarded, approved, rejected] = await Promise.all([
+            Appeal.countDocuments({ status: 'pending' }),
+            Appeal.countDocuments({ status: 'under_review' }),
+            Appeal.countDocuments({ status: 'forwarded' }),
+            Appeal.countDocuments({ status: 'approved' }),
+            Appeal.countDocuments({ status: 'rejected' })
+        ]);
 
         res.status(200).json({
             success: true,
@@ -512,7 +529,15 @@ router.get('/', protect, adminOnly, async (req, res) => {
                 appeals: pagedAppeals,
                 totalPages: Math.ceil(totalFiltered / limit),
                 currentPage: Number(page),
-                total: totalFiltered
+                total: totalFiltered,
+                stats: {
+                    total: pending + underReview + forwarded + approved + rejected,
+                    pending,
+                    forwarded,
+                    under_review: underReview,
+                    approved,
+                    rejected
+                }
             }
         });
 
