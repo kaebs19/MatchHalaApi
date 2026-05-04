@@ -25,13 +25,17 @@
 const PATTERNS = [
     // ─── Snapchat ───
     { regex: /\bsnap(?:chat|s)?\b/gi, category: 'snap' },
+    { regex: /\bsanp\b/gi, category: 'snap' },                           // typo شائع
     { regex: /سناب[؀-ۿ]*/g, category: 'snap' },
+    // اسم شعبي للـ Snapchat (الشعار أصفر) — مربوط بـ "البرنامج/التطبيق" لتجنب false positives
+    { regex: /(?:البرنامج|التطبيق|تطبيق|برنامج)\s+ال[أإا]صفر/g, category: 'snap' },
     { regex: /(?:https?:\/\/)?(?:www\.)?snapchat\.com\/[^\s,]*/gi, category: 'snap_url' },
     { regex: /(?:https?:\/\/)?snap(?:chat)?\.app\.link\/[^\s,]*/gi, category: 'snap_url' },
 
     // ─── Instagram ───
     { regex: /\binstagram\b/gi, category: 'instagram' },
     { regex: /\binsta(?:gram)?\w*\b/gi, category: 'instagram' },
+    { regex: /\binst[ae]?gr[ae]?m\b/gi, category: 'instagram' },         // typos: instgrm, instagrm, instgram
     { regex: /\bigtv\b/gi, category: 'instagram' },
     // lookbehind: ليس قبل "ا/إ" حرف عربي (يحمي "استأنست"، "استانستو"، "استئناس" من false positive)
     { regex: /(?<![؀-ۿ])[إا]نست[؀-ۿ]*/g, category: 'instagram' },
@@ -39,18 +43,21 @@ const PATTERNS = [
     { regex: /(?:https?:\/\/)?(?:www\.)?ig\.me\/[^\s,]*/gi, category: 'instagram_url' },
 
     // ─── Telegram ───
-    { regex: /\btelegram\b/gi, category: 'telegram' },
-    { regex: /تلي[جغ]رام[؀-ۿ]*/g, category: 'telegram' },
+    { regex: /\btel[ei]?gr[ae]?m\b/gi, category: 'telegram' },           // telegram, telgram, telegrm, teligram
+    // عربي شامل: تلجرام، تليجرام، تليغرام، تلقرام، تلكرام، تيليجرام
+    { regex: /ت[يى]?ل[يى]?[جغقك]رام[؀-ۿ]*/g, category: 'telegram' },
     { regex: /(?:https?:\/\/)?t\.me\/[^\s,]*/gi, category: 'telegram_url' },
 
     // ─── TikTok ───
-    { regex: /\btiktok\b/gi, category: 'tiktok' },
-    { regex: /تيك\s*توك[؀-ۿ]*/g, category: 'tiktok' },
+    { regex: /\bti[ck]\s*to[ck]\b/gi, category: 'tiktok' },              // tiktok, tictoc, tic toc
+    { regex: /\btikok\b/gi, category: 'tiktok' },                        // typo
+    { regex: /ت[يى]?ك\s*[_\-]?\s*توك[؀-ۿ]*/g, category: 'tiktok' },        // تيك توك، تك توك، تيك_توك
 
     // ─── WhatsApp (الأكثر استخداماً للـ funnel-out) ───
     { regex: /\bwhats?app\b/gi, category: 'whatsapp' },
     { regex: /\bwhats?ap\b/gi, category: 'whatsapp' },
-    { regex: /واتس[\s]?[اآ]?ب?[؀-ۿ]*/g, category: 'whatsapp' },
+    { regex: /\bwhts?app?\b/gi, category: 'whatsapp' },                  // whtsapp, whtsap typos
+    { regex: /و[اآ]?تس[\s]?[اآ]?ب?[؀-ۿ]*/g, category: 'whatsapp' },        // واتس، وتساب (ألف اختياري)
     { regex: /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s,]*/gi, category: 'whatsapp_url' },
 
     // ─── Zinji (تطبيق مشاركة أرقام شائع في السعودية والخليج) ───
@@ -61,14 +68,17 @@ const PATTERNS = [
     { regex: /(?:https?:\/\/)?(?:www\.)?z[aeio]n[jq]i\.[a-z]{2,4}\/?[^\s,]*/gi, category: 'zinji_url' },
 
     // ─── Discord (صاعد بين الشباب) ───
-    { regex: /\bdiscord\b/gi, category: 'discord' },
-    { regex: /ديسكورد[؀-ۿ]*/g, category: 'discord' },
+    { regex: /\bd[i]?sc[o]?rd?\b/gi, category: 'discord' },              // discord, dscord, discrd, dscrd, discor
+    { regex: /د[يى]?سكور[د]?[؀-ۿ]*/g, category: 'discord' },               // ديسكورد، دسكورد، دسكور
     { regex: /(?:https?:\/\/)?(?:www\.)?discord\.gg\/[^\s,]*/gi, category: 'discord_url' },
 
     // ─── Kik / Tellonym / X (Twitter) ───
     { regex: /\bkik\b/gi, category: 'kik' },
-    { regex: /\btwitter\b/gi, category: 'twitter' },
+    { regex: /\btw[ei]+t+e?r\b/gi, category: 'twitter' },                // twitter, twiter, tweeter, twitr
     { regex: /تويتر[؀-ۿ]*/g, category: 'twitter' },
+    // X (Twitter الجديد) — domain فقط، تجنب false positives لكلمات تحتوي x
+    { regex: /(?:https?:\/\/)?(?:www\.)?x\.com\/[^\s,]*/gi, category: 'twitter_url' },
+    { regex: /(?:https?:\/\/)?(?:www\.)?twitter\.com\/[^\s,]*/gi, category: 'twitter_url' },
 
     // ─── Email addresses ───
     { regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, category: 'email' },
