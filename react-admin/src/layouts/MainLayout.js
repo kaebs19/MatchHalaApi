@@ -19,8 +19,9 @@ import BannedWords from '../pages/BannedWords';
 import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import MaintenancePage from '../pages/MaintenancePage';
-import { getReportsStats, getNotifications, searchUsers, sendUserNotification } from '../services/api';
+import { getReportsStats, getAppealsStats, getNotifications, searchUsers, sendUserNotification } from '../services/api';
 import { useToast } from '../components/Toast';
+import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
 import './MainLayout.css';
 
@@ -30,6 +31,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [previousPage, setPreviousPage] = useState('users');
     const [viewingConversationFromReport, setViewingConversationFromReport] = useState(null);
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
+    const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -63,14 +65,49 @@ function MainLayout({ onLogout, user: initialUser }) {
         // Fetch reports stats every minute if admin
         if (user?.role === 'admin') {
             fetchReportsCount();
+            fetchAppealsCount();
             fetchNotificationsCount();
             const interval = setInterval(() => {
                 fetchReportsCount();
+                fetchAppealsCount();
                 fetchNotificationsCount();
             }, 60000); // Update every minute
             return () => clearInterval(interval);
         }
     }, [user]);
+
+    // ✅ Real-time socket listeners for admin appeals notifications
+    useEffect(() => {
+        if (user?.role !== 'admin') return;
+
+        const token = localStorage.getItem('token');
+        if (token) socketService.connect(token);
+
+        const handleNewAppeal = (data) => {
+            setAppealsStats(prev => ({
+                ...prev,
+                pending: prev.pending + 1,
+                total: prev.total + 1
+            }));
+            showToast(`📩 استئناف جديد من ${data.userName || 'مستخدم'}`, 'info');
+        };
+
+        const handleAppealReply = (data) => {
+            setAppealsStats(prev => ({
+                ...prev,
+                awaitingReply: prev.awaitingReply + 1
+            }));
+            showToast(`💬 رد جديد من ${data.userName || 'مستخدم'}: ${data.preview}`, 'info');
+        };
+
+        socketService.onNewAppeal(handleNewAppeal);
+        socketService.onAppealUserReply(handleAppealReply);
+
+        return () => {
+            socketService.offNewAppeal(handleNewAppeal);
+            socketService.offAppealUserReply(handleAppealReply);
+        };
+    }, [user, showToast]);
 
     // ✅ البحث عند Enter فقط — لا live search
     useEffect(() => {
@@ -211,6 +248,17 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
+    const fetchAppealsCount = async () => {
+        try {
+            const response = await getAppealsStats();
+            if (response.success) {
+                setAppealsStats(response.data);
+            }
+        } catch (error) {
+            console.error('خطأ في جلب عدد الاستئنافات:', error);
+        }
+    };
+
     const fetchNotificationsCount = async () => {
         try {
             const response = await getNotifications({ unreadOnly: true, limit: 1 });
@@ -345,6 +393,10 @@ function MainLayout({ onLogout, user: initialUser }) {
                 onPageChange={setCurrentPage}
                 user={user}
                 onProfileClick={() => setCurrentPage('profile')}
+                badges={{
+                    reports: pendingReportsCount,
+                    appeals: appealsStats.total + appealsStats.awaitingReply
+                }}
             />
             
             <div className="main-content">
@@ -450,6 +502,20 @@ function MainLayout({ onLogout, user: initialUser }) {
                             >
                                 <span className="notification-icon">⚠️</span>
                                 <span className="notification-badge warning">{pendingReportsCount}</span>
+                            </button>
+                        )}
+
+                        {/* زر الاستئنافات (جديدة + ردود مستخدمين بلا قراءة) */}
+                        {user?.role === 'admin' && (appealsStats.total > 0 || appealsStats.awaitingReply > 0) && (
+                            <button
+                                className="header-icon-btn appeals-notification-btn"
+                                onClick={() => setCurrentPage('appeals')}
+                                title={`${appealsStats.pending} جديدة · ${appealsStats.underReview} قيد المراجعة · ${appealsStats.awaitingReply} رد مستخدم بلا قراءة`}
+                            >
+                                <span className="notification-icon">📋</span>
+                                <span className="notification-badge warning">
+                                    {appealsStats.total + appealsStats.awaitingReply}
+                                </span>
                             </button>
                         )}
 

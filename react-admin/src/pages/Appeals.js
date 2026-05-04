@@ -7,6 +7,7 @@ import DataTable from "../components/DataTable";
 import { formatDateTime } from "../utils/formatters";
 import { getImageUrl, getDefaultAvatar } from "../config";
 import config from "../config";
+import socketService from "../services/socket";
 import "./Appeals.css";
 
 function Appeals({ onViewUserDetail }) {
@@ -40,6 +41,20 @@ function Appeals({ onViewUserDetail }) {
 
     useEffect(() => {
         fetchAppeals();
+    }, [currentPage, filterStatus]);
+
+    // ✅ تحديث فوري عند وصول استئناف جديد أو رد جديد من مستخدم
+    useEffect(() => {
+        const refreshIfRelevant = () => {
+            // أعد التحميل لو في الصفحة الأولى (لتفادي قفز الـ pagination)
+            if (currentPage === 1) fetchAppeals();
+        };
+        socketService.onNewAppeal(refreshIfRelevant);
+        socketService.onAppealUserReply(refreshIfRelevant);
+        return () => {
+            socketService.offNewAppeal(refreshIfRelevant);
+            socketService.offAppealUserReply(refreshIfRelevant);
+        };
     }, [currentPage, filterStatus]);
 
     const fetchAppeals = async () => {

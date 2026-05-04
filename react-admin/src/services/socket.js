@@ -135,6 +135,29 @@ class SocketService {
         }
     }
 
+    // ✅ تنبيهات الأدمن: استئناف جديد
+    // تمرّر نفس الـ callback لـ off ضروري — لتجنب حذف listeners أخرى مسجّلة على نفس الحدث
+    onNewAppeal(callback) {
+        if (this.socket) this.socket.on('admin:new-appeal', callback);
+    }
+    offNewAppeal(callback) {
+        if (this.socket) {
+            if (callback) this.socket.off('admin:new-appeal', callback);
+            else this.socket.off('admin:new-appeal');
+        }
+    }
+
+    // ✅ تنبيهات الأدمن: رد جديد من مستخدم على استئناف
+    onAppealUserReply(callback) {
+        if (this.socket) this.socket.on('admin:appeal-user-reply', callback);
+    }
+    offAppealUserReply(callback) {
+        if (this.socket) {
+            if (callback) this.socket.off('admin:appeal-user-reply', callback);
+            else this.socket.off('admin:appeal-user-reply');
+        }
+    }
+
     // التحقق من حالة الاتصال
     isConnected() {
         return this.connected;

@@ -425,6 +425,11 @@ io.on('connection', async (socket) => {
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
 
+    // ✅ الأدمن ينضم لـ admin-dashboard room — يستقبل تنبيهات (استئنافات/بلاغات/إلخ)
+    if (socket.user.role === 'admin') {
+        socket.join('admin-dashboard');
+    }
+
     // إرسال حالة الاتصال للمستخدم
     socket.emit('authenticated', {
         userId: socket.userId,

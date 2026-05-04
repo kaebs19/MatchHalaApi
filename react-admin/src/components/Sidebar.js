@@ -2,7 +2,7 @@ import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Sidebar.css';
 
-function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
+function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} }) {
     const menuItems = [
         {
             id: 'dashboard',
@@ -90,6 +90,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
                         return null;
                     }
 
+                    const badgeCount = badges[item.id] || 0;
                     return (
                         <button
                             key={item.id}
@@ -99,6 +100,9 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick }) {
                         >
                             <span className="nav-icon">{item.icon}</span>
                             <span className="nav-name">{item.name}</span>
+                            {badgeCount > 0 && (
+                                <span className="nav-badge">{badgeCount > 99 ? '99+' : badgeCount}</span>
+                            )}
                             {item.disabled && <span className="coming-soon">قريباً</span>}
                         </button>
                     );

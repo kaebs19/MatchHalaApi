@@ -206,6 +206,18 @@ router.post('/', protect, async (req, res) => {
             unreadForAdmin: 1
         });
 
+        // ✅ تنبيه فوري لكل الأدمنز المتصلين
+        if (global.io) {
+            global.io.to('admin-dashboard').emit('admin:new-appeal', {
+                appealId: appeal._id.toString(),
+                userId: req.user._id.toString(),
+                userName: req.user.name,
+                actionType: appeal.actionType,
+                reason: reason.trim().slice(0, 120),
+                createdAt: appeal.createdAt
+            });
+        }
+
         res.status(201).json({
             success: true,
             message: 'تم إرسال الاستئناف بنجاح',
@@ -252,6 +264,18 @@ router.post('/:id/reply', protect, async (req, res) => {
         });
         appeal.unreadForAdmin = (appeal.unreadForAdmin || 0) + 1;
         await appeal.save();
+
+        // ✅ تنبيه فوري لكل الأدمنز المتصلين
+        if (global.io) {
+            global.io.to('admin-dashboard').emit('admin:appeal-user-reply', {
+                appealId: appeal._id.toString(),
+                userId: req.user._id.toString(),
+                userName: req.user.name,
+                preview: content.trim().slice(0, 120),
+                unreadForAdmin: appeal.unreadForAdmin,
+                createdAt: new Date()
+            });
+        }
 
         res.json({ success: true, data: appeal });
     } catch (error) {
@@ -358,6 +382,36 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
         res.json({ success: true, data: appeal });
     } catch (error) {
         console.error('خطأ في رد الإدارة على الاستئناف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/appeals/admin/stats
+// @desc    إحصائيات سريعة للأدمن (للـ badge في Header)
+// @access  Private/Admin
+// ⚠️ يجب أن يأتي قبل /:id وإلا Express يطابق "admin" كـ id
+router.get('/admin/stats', protect, adminOnly, async (req, res) => {
+    try {
+        const [pending, underReview, awaitingReply] = await Promise.all([
+            Appeal.countDocuments({ status: 'pending' }),
+            Appeal.countDocuments({ status: 'under_review' }),
+            // ردود مستخدمين لم يقرأها الأدمن (في استئنافات مفتوحة فقط)
+            Appeal.countDocuments({
+                status: { $in: ['pending', 'forwarded', 'under_review'] },
+                unreadForAdmin: { $gt: 0 }
+            })
+        ]);
+        res.json({
+            success: true,
+            data: {
+                pending,
+                underReview,
+                awaitingReply,
+                total: pending + underReview
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إحصائيات الاستئنافات:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

@@ -186,6 +186,12 @@ export const getReportsStats = async () => {
     return response.data;
 };
 
+// الحصول على إحصائيات الاستئنافات (للـ badge)
+export const getAppealsStats = async () => {
+    const response = await api.get('/appeals/admin/stats');
+    return response.data;
+};
+
 // الحصول على بلاغ واحد
 export const getReport = async (reportId) => {
     const response = await api.get(`/reports/${reportId}`);
