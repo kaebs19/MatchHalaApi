@@ -120,22 +120,53 @@
     color: #c62828;
 }
 
-/* View button */
-.appeals-page .action-btn.btn-view {
-    padding: 6px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.3s;
+/* Quick actions container */
+.appeals-page .quick-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
-.appeals-page .action-btn.btn-view:hover {
+/* Action buttons base */
+.appeals-page .action-btn {
+    padding: 6px 10px;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.appeals-page .action-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.appeals-page .action-btn:active {
+    transform: translateY(0);
+}
+
+.appeals-page .action-btn.btn-view {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.appeals-page .action-btn.btn-review {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.appeals-page .action-btn.btn-approve {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.appeals-page .action-btn.btn-reject {
+    background: linear-gradient(135deg, #ff6a6a 0%, #ee0979 100%);
 }
 
 /* Detail Modal */
