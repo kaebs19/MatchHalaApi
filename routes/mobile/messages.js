@@ -1590,4 +1590,130 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
     }
 });
 
+// ==========================================
+// ✅ Phase 1.3: Sensitive Content Reveal
+// ==========================================
+
+// @route   POST /api/v2/mobile/messages/:id/reveal
+// @desc    كشف المحتوى الأصلي لرسالة محجوبة (sensitive content)
+// @access  Private (المستلم فقط، 18+، setting=ON)
+// @returns { content: <originalContent>, revealedAt: Date }
+router.post('/messages/:id/reveal', protect, async (req, res) => {
+    try {
+        const messageId = req.params.id;
+
+        // 1. الـ feature مفعّل من admin؟
+        const settings = await require('../../models/Settings').getSettings();
+        const sc = settings.sensitiveContent || {};
+        if (!sc.featureEnabled) {
+            return res.status(403).json({
+                success: false,
+                message: 'الميزة غير متاحة حالياً',
+                code: 'FEATURE_DISABLED'
+            });
+        }
+
+        // 2. App version >= minClientVersion?
+        const clientVersion = req.headers['app-version'] || req.headers['x-app-version'] || null;
+        if (!clientSupports(clientVersion, sc.minClientVersion || '6.3')) {
+            return res.status(426).json({
+                success: false,
+                message: 'يجب تحديث التطبيق لاستخدام هذه الميزة',
+                code: 'APP_VERSION_TOO_OLD',
+                minRequired: sc.minClientVersion || '6.3'
+            });
+        }
+
+        // 3. المستخدم فعّل الإعداد؟
+        const userAllows = req.user.privacySettings?.allowSensitiveContent === true;
+        if (!userAllows) {
+            return res.status(403).json({
+                success: false,
+                message: 'الرجاء تفعيل عرض المحتوى الحساس من إعداداتك',
+                code: 'USER_SETTING_DISABLED'
+            });
+        }
+
+        // 4. عمر المستخدم >= minAge؟
+        let userAge = null;
+        if (req.user.birthDate) {
+            const ageMs = Date.now() - new Date(req.user.birthDate).getTime();
+            userAge = Math.floor(ageMs / (365.25 * 24 * 60 * 60 * 1000));
+        }
+        const minAge = sc.minAge || 18;
+        if (userAge === null || userAge < minAge) {
+            return res.status(403).json({
+                success: false,
+                message: `هذا الخيار للبالغين فقط (${minAge}+)`,
+                code: 'AGE_RESTRICTED'
+            });
+        }
+
+        // 5. الرسالة موجودة + لها flag + المستخدم طرف فيها (مستلم)
+        // نطلب originalContent صراحة لأنه select: false
+        const message = await Message.findById(messageId).select('+originalContent conversation sender hasFlaggedContent flaggedCategory');
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة', code: 'NOT_FOUND' });
+        }
+        if (!message.hasFlaggedContent || !message.originalContent) {
+            return res.status(400).json({ success: false, message: 'لا يوجد محتوى للكشف', code: 'NOT_FLAGGED' });
+        }
+        if (message.sender.toString() === req.user._id.toString()) {
+            // المرسل لا يحتاج كشف رسالته الخاصة (يعرفها أصلاً)
+            return res.status(400).json({ success: false, message: 'لا يمكنك كشف رسالتك الخاصة', code: 'OWN_MESSAGE' });
+        }
+
+        // 6. المستخدم طرف في المحادثة؟
+        const conversation = await Conversation.findById(message.conversation).select('participants');
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة', code: 'CONVERSATION_NOT_FOUND' });
+        }
+        const isParticipant = conversation.participants.some(p => p.toString() === req.user._id.toString());
+        if (!isParticipant) {
+            return res.status(403).json({ success: false, message: 'غير مصرّح', code: 'NOT_PARTICIPANT' });
+        }
+
+        // 7. الـ category مشمولة بالإعداد؟ (سياسة)
+        const allowedCategories = sc.affectedCategories || ['sexual'];
+        if (!allowedCategories.includes(message.flaggedCategory)) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا النوع من المحتوى لا يمكن كشفه',
+                code: 'CATEGORY_NOT_ALLOWED'
+            });
+        }
+
+        // ✅ كل الفحوصات نجحت — سجّل audit log + أرجع النص الأصلي
+        try {
+            const SensitiveContentReveal = require('../../models/SensitiveContentReveal');
+            await SensitiveContentReveal.create({
+                user: req.user._id,
+                message: message._id,
+                conversation: message.conversation,
+                category: message.flaggedCategory,
+                userAgeAtReveal: userAge,
+                clientVersion,
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+            });
+        } catch (auditErr) {
+            console.error('Audit log error (non-fatal):', auditErr.message);
+            // لا نفشل الـ request — لكن نسجّل
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                messageId: message._id,
+                content: message.originalContent,
+                category: message.flaggedCategory,
+                revealedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('Sensitive content reveal error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;
