@@ -57,7 +57,12 @@ const PATTERNS = [
     { regex: /\bwhats?app\b/gi, category: 'whatsapp' },
     { regex: /\bwhats?ap\b/gi, category: 'whatsapp' },
     { regex: /\bwhts?app?\b/gi, category: 'whatsapp' },                  // whtsapp, whtsap typos
-    { regex: /و[اآ]?تس[\s]?[اآ]?ب?[؀-ۿ]*/g, category: 'whatsapp' },        // واتس، وتساب (ألف اختياري)
+    // واتس/واتساب — يجب ألا يتبعها حرف عربي (يحمي "تسبحين/تسوينها/تسويق" من false positive)
+    // ملاحظة: \b لا يعمل مع العربية في JS regex، نستخدم lookahead بدلاً منه
+    // lookbehind: ليس قبل "و" حرف عربي (يحمي من aggressive merging مثل "شنو تسوي" → "شنوتسوي")
+    { regex: /(?<![؀-ۿ])و[اآ]?تس(?:[\s]?[اآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
+    // ✅ "الواتس" / "الواتساب" — استثناء صريح للـ "ال" التعريف (lookbehind يمنعها)
+    { regex: /(?<![؀-ۿ])الو[اآ]?تس(?:[\s]?[اآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
     { regex: /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s,]*/gi, category: 'whatsapp_url' },
 
     // ─── Zinji (تطبيق مشاركة أرقام شائع في السعودية والخليج) ───
