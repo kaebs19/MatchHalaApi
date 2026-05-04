@@ -83,18 +83,18 @@ const PATTERNS = [
     // ─── Email addresses ───
     { regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, category: 'email' },
 
-    // ─── Phone numbers (متعددة الصيغ) ───
+    // ─── Phone numbers + Zinji IDs (6+ متتالية لكشف معرفات قصيرة) ───
     // International مع +
     { regex: /\+\d{1,3}[\s-]?\d{2,4}[\s-]?\d{2,4}[\s-]?\d{2,4}/g, category: 'phone' },
     // Saudi mobile (05xxxxxxxx) + variations
     { regex: /\b05\d{8}\b/g, category: 'phone' },
     { regex: /\b9665\d{8}\b/g, category: 'phone' },
-    // Phone with spaces/dashes (8+ digits with separators) — يكشف "050 123 4567"
-    { regex: /\b\d{2,4}[\s-]\d{2,4}[\s-]\d{2,4}(?:[\s-]\d{2,4})?\b/g, category: 'phone' },
-    // Long sequence of 10+ digits (international without +)
-    { regex: /\b\d{10,15}\b/g, category: 'phone' },
-    // Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) — 8+ متتالية أو مع spaces
-    { regex: /[٠-٩]{8,}/g, category: 'phone' },
+    // مع separators — مستثناة التواريخ (YYYY-MM-DD, DD-MM-YYYY, YYYY.MM.DD)
+    { regex: /\b(?!(?:19|20)\d{2}[\-\/\.]\d{1,2}[\-\/\.]\d{1,2}\b)(?!\d{1,2}[\-\/\.]\d{1,2}[\-\/\.](?:19|20)\d{2}\b)\d{2,4}[\s\-]\d{2,4}[\s\-]\d{2,4}(?:[\s\-]\d{2,4})?\b/g, category: 'phone' },
+    // ✅ 6+ digits متتالية (يكشف Zinji IDs مثل 7421886321)
+    { regex: /\b\d{6,15}\b/g, category: 'phone' },
+    // Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) — 6+ متتالية أو مع spaces
+    { regex: /[٠-٩]{6,}/g, category: 'phone' },
     { regex: /[٠-٩]{2,4}[\s-][٠-٩]{2,4}[\s-][٠-٩]{2,4}(?:[\s-][٠-٩]{2,4})?/g, category: 'phone' },
 ];
 
@@ -196,9 +196,11 @@ function detectExternalPromotion(text) {
     }
 
     // Pass 2: مطابقة على النص الـ aggressive normalized (يكسر التخفّي بـ separators/repeats)
+    // ⚠️ نستثني phone/email — لأن aggressive يحذف separators ويحوّل التواريخ/الإيميلات إلى digits/text متتالية
     const aggressive = aggressiveNormalize(text);
     if (aggressive !== text.toLowerCase()) {
         for (const { regex, category } of PATTERNS) {
+            if (category === 'phone' || category === 'email') continue;
             regex.lastIndex = 0;
             if (regex.test(aggressive)) {
                 if (!categories.has(category.replace(/_url$/, ''))) {
