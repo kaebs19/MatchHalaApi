@@ -125,65 +125,6 @@ function Appeals({ onViewUserDetail }) {
         }
     };
 
-    // ✅ تغيير سريع للحالة من الجدول مباشرة (بدون فتح modal)
-    const handleQuickStatus = async (appeal, status, options = {}) => {
-        const { confirmText, defaultNote = '', skipConfirm = false } = options;
-        if (!skipConfirm && confirmText && !window.confirm(confirmText)) return;
-        try {
-            const token = localStorage.getItem("token");
-            const response = await fetch(config.API_URL + "/appeals/" + appeal._id + "/status", {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: "Bearer " + token
-                },
-                body: JSON.stringify({ status, adminNote: defaultNote })
-            });
-            const data = await response.json();
-            if (data.success) {
-                showToast("تم تحديث الحالة", "success");
-                // optimistic update — يجنّب refetch كامل
-                setAppeals(prev => prev.map(a => a._id === appeal._id ? { ...a, status } : a));
-            } else {
-                showToast(data.message || "فشل التحديث", "error");
-            }
-        } catch (error) {
-            showToast("فشل التحديث", "error");
-            console.error("Quick status error:", error);
-        }
-    };
-
-    // ✅ قبول سريع + فك التقييد (action واحد بدلاً من خطوتين)
-    const handleQuickApproveAndUnrestrict = async (appeal) => {
-        if (!appeal?.user) return;
-        const userId = appeal.user._id || appeal.user;
-        const userName = appeal.user.name || 'المستخدم';
-        if (!window.confirm(`قبول استئناف ${userName} وفك جميع القيود؟`)) return;
-        try {
-            const token = localStorage.getItem("token");
-            const unrestrictRes = await fetch(config.API_URL + "/users/" + userId + "/suspend", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-                body: JSON.stringify({ duration: "unrestrict", reason: "قبول الاستئناف", notify: true })
-            });
-            const unrestrictData = await unrestrictRes.json();
-            if (!unrestrictData.success) {
-                showToast(unrestrictData.message || "فشل فك التقييد", "error");
-                return;
-            }
-            await fetch(config.API_URL + "/appeals/" + appeal._id + "/status", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-                body: JSON.stringify({ status: "approved", adminNote: "تم القبول وفك التقييد" })
-            });
-            showToast("تم القبول وفك التقييد ✅", "success");
-            setAppeals(prev => prev.map(a => a._id === appeal._id ? { ...a, status: 'approved' } : a));
-        } catch (error) {
-            showToast("فشل العملية", "error");
-            console.error("Quick approve error:", error);
-        }
-    };
-
     const handleSaveStatus = async () => {
         if (!selectedAppeal) return;
         try {
@@ -346,39 +287,9 @@ function Appeals({ onViewUserDetail }) {
         { key: "status", label: "الحالة", render: (row) => getStatusBadge(row.status) },
         { key: "date", label: "التاريخ", render: (row) => formatDateTime(row.createdAt) },
         {
-            key: "actions", label: "الإجراءات", render: (row) => {
-                const isOpen = ['pending', 'forwarded', 'under_review'].includes(row.status);
-                return (
-                    <div className="quick-actions">
-                        <button
-                            className="action-btn btn-view"
-                            onClick={(e) => { e.stopPropagation(); handleOpenDetail(row); }}
-                            title="عرض التفاصيل والمحادثة"
-                        >👁</button>
-                        {isOpen && (
-                            <>
-                                {row.status === 'pending' && (
-                                    <button
-                                        className="action-btn btn-review"
-                                        onClick={(e) => { e.stopPropagation(); handleQuickStatus(row, 'under_review', { skipConfirm: true, defaultNote: 'بدأت المراجعة' }); }}
-                                        title="بدء المراجعة"
-                                    >👀</button>
-                                )}
-                                <button
-                                    className="action-btn btn-approve"
-                                    onClick={(e) => { e.stopPropagation(); handleQuickApproveAndUnrestrict(row); }}
-                                    title="قبول + فك التقييد"
-                                >✅</button>
-                                <button
-                                    className="action-btn btn-reject"
-                                    onClick={(e) => { e.stopPropagation(); handleQuickStatus(row, 'rejected', { confirmText: `رفض استئناف ${row.user?.name || 'هذا المستخدم'}؟`, defaultNote: 'تم الرفض بعد المراجعة' }); }}
-                                    title="رفض"
-                                >❌</button>
-                            </>
-                        )}
-                    </div>
-                );
-            }
+            key: "actions", label: "الإجراءات", render: (row) => (
+                <button className="action-btn btn-view" onClick={(e) => { e.stopPropagation(); handleOpenDetail(row); }} title="عرض التفاصيل">عرض</button>
+            )
         }
     ];
 
