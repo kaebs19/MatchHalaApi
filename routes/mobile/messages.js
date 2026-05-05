@@ -1069,6 +1069,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                 select: 'content type sender mediaUrl',
                 populate: { path: 'sender', select: 'name' }
             })
+            .select('+originalContent')   // ✅ Phase 2: نحتاجه لإرجاع النص الأصلي للمرسل
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit)
@@ -1076,20 +1077,31 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 
         const total = await Message.countDocuments(messageQuery);
 
-        // إضافة isRead + isDelivered لكل رسالة
+        // إضافة isRead + isDelivered لكل رسالة + sensitive content للمرسل
         const userId = req.user._id.toString();
         const messagesWithReadStatus = messages.reverse().map(msg => {
             const msgObj = { ...msg };
-            if (msgObj.sender && msgObj.sender._id && msgObj.sender._id.toString() === userId) {
+            const isMine = msgObj.sender && msgObj.sender._id && msgObj.sender._id.toString() === userId;
+
+            if (isMine) {
                 // رسالتي أنا
                 msgObj.isRead = msgObj.status === 'read' ||
                     (msgObj.readBy && msgObj.readBy.some(r => r.user && r.user.toString() !== userId));
                 msgObj.isDelivered = msgObj.isRead || msgObj.status === 'delivered';
+
+                // ✅ Phase 2: لو رسالتي محتوى حساس → أرسل النص الأصلي للمرسل (يعرفه أصلاً)
+                // الفلاج hasFlaggedContent يبقى true ليعرف iOS أن يعرض شارة "محجوبة من المستلم"
+                if (msgObj.hasFlaggedContent && msgObj.originalContent) {
+                    msgObj.content = msgObj.originalContent;
+                }
             } else {
                 // رسالة الطرف الآخر
                 msgObj.isRead = true;
                 msgObj.isDelivered = true;
             }
+
+            // ✅ لا نرسل originalContent للطرف الآخر أبداً (يحصل عليه فقط عبر /reveal)
+            delete msgObj.originalContent;
             return msgObj;
         });
 
