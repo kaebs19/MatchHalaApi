@@ -210,8 +210,18 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         const message = await Message.create(messageData);
 
         // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة + تنبيه أدمن + حظر تلقائي
+        // ✅ Phase 2: استثناء — لو الميزة مفعّلة وكل الكلمات في sensitive categories
+        // → لا تُسجَّل كمخالفة (المستخدم اختار وعياً + المستلم يقدر يطفئ الكشف)
         let userViolations = 0;
-        if (bannedResult.hasBannedWords) {
+        let skipViolationTracking = false;
+        if (sensitiveFlag.hasFlaggedContent && bannedResult.hasBannedWords) {
+            const scSettings = await Settings.getSettings();
+            const allowedCats = scSettings.sensitiveContent?.affectedCategories || [];
+            // كل الكلمات الـ matched من categories مسموح بها → استثناء كامل
+            skipViolationTracking = bannedResult.categories.every(c => allowedCats.includes(c));
+        }
+
+        if (bannedResult.hasBannedWords && !skipViolationTracking) {
             // تحديد المستقبل (الطرف الآخر في المحادثة)
             const receiverId = conversation.participants.find(
                 p => p._id.toString() !== req.user._id.toString()
