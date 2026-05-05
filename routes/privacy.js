@@ -789,4 +789,65 @@ router.put('/show-country', auth, async (req, res) => {
     }
 });
 
+// ✅ Phase 2: المستخدم يفعّل/يطفئ السماح بعرض المحتوى الحساس
+// PUT /privacy/sensitive-content
+router.put('/sensitive-content', auth, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        // فحص العمر — لا يُسمح للقاصرين بتفعيل الإعداد
+        if (enabled === true) {
+            const Settings = require('../models/Settings');
+            const settings = await Settings.getSettings();
+            const sc = settings.sensitiveContent || {};
+            const minAge = sc.minAge || 18;
+
+            if (!user.birthDate) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'الرجاء إكمال تاريخ الميلاد أولاً',
+                    code: 'NO_BIRTHDATE'
+                });
+            }
+
+            const ageMs = Date.now() - new Date(user.birthDate).getTime();
+            const userAge = Math.floor(ageMs / (365.25 * 24 * 60 * 60 * 1000));
+            if (userAge < minAge) {
+                return res.status(403).json({
+                    success: false,
+                    message: `هذا الخيار للبالغين فقط (${minAge}+)`,
+                    code: 'AGE_RESTRICTED'
+                });
+            }
+
+            // فحص الميزة مفعّلة من admin
+            if (!sc.featureEnabled) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'الميزة غير متاحة حالياً',
+                    code: 'FEATURE_DISABLED'
+                });
+            }
+        }
+
+        if (!user.privacySettings) user.privacySettings = {};
+        user.privacySettings.allowSensitiveContent = !!enabled;
+        user.privacySettings.sensitiveContentEnabledAt = enabled ? new Date() : null;
+        await user.save();
+
+        res.json({
+            success: true,
+            data: {
+                allowSensitiveContent: !!enabled,
+                sensitiveContentEnabledAt: user.privacySettings.sensitiveContentEnabledAt
+            }
+        });
+    } catch (error) {
+        console.error('Update sensitive-content (user) error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 module.exports = router;
