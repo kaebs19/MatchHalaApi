@@ -19,6 +19,7 @@ import BannedWords from '../pages/BannedWords';
 import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import MaintenancePage from '../pages/MaintenancePage';
+import SensitiveContent from '../pages/SensitiveContent';
 import { getReportsStats, getAppealsStats, getNotifications, searchUsers, sendUserNotification } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
@@ -413,6 +414,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <BannedDevices onViewUserDetail={handleViewUserDetail} />;
             case 'banned-words':
                 return <BannedWords onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
+            case 'sensitive-content':
+                return <SensitiveContent onViewUserDetail={handleViewUserDetail} />;
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':

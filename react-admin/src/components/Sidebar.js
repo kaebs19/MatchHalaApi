@@ -59,6 +59,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
             adminOnly: true
         },
         {
+            id: 'sensitive-content',
+            name: 'المحتوى الحساس',
+            icon: '🔞',
+            adminOnly: true
+        },
+        {
             id: 'settings',
             name: 'الإعدادات',
             icon: '⚙️',

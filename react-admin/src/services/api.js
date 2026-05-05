@@ -192,6 +192,30 @@ export const getAppealsStats = async () => {
     return response.data;
 };
 
+// ========== Sensitive Content (Phase 1.4) ==========
+export const getSensitiveContentSettings = async () => {
+    const response = await api.get('/settings/sensitive-content');
+    return response.data;
+};
+
+export const updateSensitiveContentSettings = async (payload) => {
+    const response = await api.put('/settings/sensitive-content', payload);
+    return response.data;
+};
+
+export const getSensitiveContentStats = async (days = 30) => {
+    const response = await api.get(`/settings/sensitive-content/stats?days=${days}`);
+    return response.data;
+};
+
+export const getSensitiveContentReveals = async (page = 1, limit = 50, filters = {}) => {
+    const params = new URLSearchParams({ page, limit });
+    if (filters.category) params.append('category', filters.category);
+    if (filters.userId) params.append('userId', filters.userId);
+    const response = await api.get(`/settings/sensitive-content/reveals?${params}`);
+    return response.data;
+};
+
 // الحصول على بلاغ واحد
 export const getReport = async (reportId) => {
     const response = await api.get(`/reports/${reportId}`);

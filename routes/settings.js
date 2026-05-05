@@ -593,4 +593,190 @@ router.post('/banned-names/seed', protect, adminOnly, async (req, res) => {
     }
 });
 
+// ==========================================
+// ✅ Phase 1.4: Sensitive Content Admin API
+// ==========================================
+
+// @route   GET /api/settings/sensitive-content
+// @desc    قراءة إعدادات المحتوى الحساس (للأدمن)
+// @access  Admin
+router.get('/sensitive-content', protect, adminOnly, async (req, res) => {
+    try {
+        const settings = await Settings.getSettings();
+        const sc = settings.sensitiveContent || {};
+        res.json({
+            success: true,
+            data: {
+                featureEnabled: sc.featureEnabled ?? false,
+                affectedCategories: sc.affectedCategories ?? ['sexual'],
+                minAge: sc.minAge ?? 18,
+                requireDoubleConfirm: sc.requireDoubleConfirm ?? true,
+                minClientVersion: sc.minClientVersion ?? '6.3'
+            }
+        });
+    } catch (error) {
+        console.error('Get sensitive-content settings error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/settings/sensitive-content
+// @desc    تحديث إعدادات المحتوى الحساس
+// @access  Admin
+router.put('/sensitive-content', protect, adminOnly, async (req, res) => {
+    try {
+        const { featureEnabled, affectedCategories, minAge, requireDoubleConfirm, minClientVersion } = req.body;
+
+        // Validation
+        if (minAge !== undefined && (typeof minAge !== 'number' || minAge < 18)) {
+            return res.status(400).json({ success: false, message: 'الحد الأدنى للعمر يجب أن يكون 18 أو أكثر' });
+        }
+        if (affectedCategories !== undefined) {
+            if (!Array.isArray(affectedCategories)) {
+                return res.status(400).json({ success: false, message: 'affectedCategories يجب أن تكون مصفوفة' });
+            }
+            const validCats = ['sexual', 'violence', 'hate', 'spam', 'other'];
+            const invalid = affectedCategories.find(c => !validCats.includes(c));
+            if (invalid) {
+                return res.status(400).json({ success: false, message: `category غير صالحة: ${invalid}` });
+            }
+        }
+
+        const settings = await Settings.getSettings();
+        if (!settings.sensitiveContent) settings.sensitiveContent = {};
+
+        if (featureEnabled !== undefined) settings.sensitiveContent.featureEnabled = !!featureEnabled;
+        if (affectedCategories !== undefined) settings.sensitiveContent.affectedCategories = affectedCategories;
+        if (minAge !== undefined) settings.sensitiveContent.minAge = minAge;
+        if (requireDoubleConfirm !== undefined) settings.sensitiveContent.requireDoubleConfirm = !!requireDoubleConfirm;
+        if (minClientVersion !== undefined) settings.sensitiveContent.minClientVersion = String(minClientVersion);
+
+        settings.markModified('sensitiveContent');   // Mongoose mixed type — لازم
+        settings.lastUpdated = Date.now();
+        settings.updatedBy = req.user._id;
+        await settings.save();
+        invalidateSettings();
+
+        res.json({
+            success: true,
+            message: 'تم تحديث إعدادات المحتوى الحساس',
+            data: settings.sensitiveContent
+        });
+    } catch (error) {
+        console.error('Update sensitive-content settings error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/settings/sensitive-content/stats
+// @desc    إحصائيات المحتوى الحساس (للأدمن dashboard)
+// @access  Admin
+router.get('/sensitive-content/stats', protect, adminOnly, async (req, res) => {
+    try {
+        const days = Math.min(parseInt(req.query.days) || 30, 90);
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        const User = require('../models/User');
+        const Message = require('../models/Message');
+        const Reveal = require('../models/SensitiveContentReveal');
+
+        const [
+            usersWithSettingOn,
+            totalMessagesFlagged,
+            recentMessagesFlagged,
+            totalReveals,
+            recentReveals,
+            uniqueRevealUsers,
+            byCategoryRaw
+        ] = await Promise.all([
+            User.countDocuments({ 'privacySettings.allowSensitiveContent': true }),
+            Message.countDocuments({ hasFlaggedContent: true }),
+            Message.countDocuments({ hasFlaggedContent: true, createdAt: { $gte: since } }),
+            Reveal.countDocuments({}),
+            Reveal.countDocuments({ revealedAt: { $gte: since } }),
+            Reveal.distinct('user', { revealedAt: { $gte: since } }),
+            Reveal.aggregate([
+                { $match: { revealedAt: { $gte: since } } },
+                { $group: { _id: '$category', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ])
+        ]);
+
+        // daily trend (آخر days يوم)
+        const dailyTrend = await Reveal.aggregate([
+            { $match: { revealedAt: { $gte: since } } },
+            { $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$revealedAt' } },
+                count: { $sum: 1 }
+            }},
+            { $sort: { _id: 1 } }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                period: `last ${days} days`,
+                users: {
+                    enabledSetting: usersWithSettingOn
+                },
+                messages: {
+                    totalFlagged: totalMessagesFlagged,
+                    recentFlagged: recentMessagesFlagged
+                },
+                reveals: {
+                    total: totalReveals,
+                    recent: recentReveals,
+                    uniqueUsers: uniqueRevealUsers.length,
+                    byCategory: byCategoryRaw,
+                    dailyTrend
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Sensitive-content stats error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/settings/sensitive-content/reveals
+// @desc    سجل الكشف (audit log) — مع pagination
+// @access  Admin
+router.get('/sensitive-content/reveals', protect, adminOnly, async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const category = req.query.category;
+        const userId = req.query.userId;
+
+        const filter = {};
+        if (category) filter.category = category;
+        if (userId) filter.user = userId;
+
+        const Reveal = require('../models/SensitiveContentReveal');
+        const [items, total] = await Promise.all([
+            Reveal.find(filter)
+                .sort({ revealedAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .populate('user', 'name email halaId profileImage')
+                .lean(),
+            Reveal.countDocuments(filter)
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                reveals: items,
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error('Sensitive-content reveals error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 module.exports = router;
