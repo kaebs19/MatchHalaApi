@@ -1040,36 +1040,41 @@
 
 /* ✅ Phase 3 (inline): Screenshot في الـ row مباشرة */
 .report-screenshot-inline {
-    margin-top: 12px;
-    padding: 10px;
+    margin-top: 14px;
+    padding: 14px;
     background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px dashed #f39c12;
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .screenshot-label {
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 700;
     color: #e67e22;
-    white-space: nowrap;
+    display: block;
 }
 
 .report-screenshot-thumb {
-    max-height: 100px;
-    max-width: 150px;
-    border-radius: 8px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 600px;
+    border-radius: 10px;
     cursor: zoom-in;
-    object-fit: cover;
-    border: 1px solid #ecf0f1;
-    transition: transform 0.2s;
+    object-fit: contain;
+    background: #fff;
+    border: 2px solid #f39c12;
+    box-shadow: 0 2px 8px rgba(243, 156, 18, 0.2);
+    transition: all 0.2s;
+    display: block;
 }
 
 .report-screenshot-thumb:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
+    transform: scale(1.02);
+    box-shadow: 0 6px 18px rgba(243, 156, 18, 0.4);
+    border-color: #e67e22;
 }
 
 /* ✅ Phase 3: Quick Filter Chips */
