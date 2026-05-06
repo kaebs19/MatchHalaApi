@@ -43,12 +43,40 @@ const bannedDeviceCheck = async (req, res, next) => {
         if (deviceToken) orConditions.push({ keychainToken: deviceToken });
         if (vendorId) orConditions.push({ vendorId });
 
-        const bannedDevice = await BannedDevice.findOne({
+        // ✅ يجلب كل المرشحين، ثم يطلب تطابق ≥ 2 إشارات (anti-collision)
+        // السبب: deviceFingerprint وحده يتصادم بين أجهزة بنفس المواصفات
+        // (نفس الموديل + iOS + اللغة + التوقيت + التخزين) — شائع في الخليج.
+        // الحل: نطلب على الأقل إشارتين تتطابقان لتجنب false positives.
+        const candidates = await BannedDevice.find({
             isActive: true,
             $or: orConditions
         });
 
+        let bannedDevice = null;
+        let matchCount = 0;
+        for (const d of candidates) {
+            let count = 0;
+            if (deviceFingerprint && d.deviceFingerprint === deviceFingerprint) count++;
+            if (deviceToken && d.keychainToken === deviceToken) count++;
+            if (vendorId && d.vendorId === vendorId) count++;
+            // ✅ admin bans (manual) تبقى صارمة — مطابقة واحدة كافية
+            // ✅ auto bans تحتاج 2+ إشارات لتجنب false positives من collision
+            const requiredMatches = (d.bannedBy === 'auto') ? 2 : 1;
+            if (count >= requiredMatches && count > matchCount) {
+                bannedDevice = d;
+                matchCount = count;
+            }
+        }
+
         if (!bannedDevice) {
+            // ✅ لو في collision وحده (1 match فقط، auto-ban) — لا حظر، نسجل للمراقبة
+            if (candidates.length > 0) {
+                console.log('[bannedDeviceCheck] potential collision skipped:', {
+                    fingerprint: (deviceFingerprint || '').slice(0, 12),
+                    candidates: candidates.length,
+                    route: req.originalUrl || req.path
+                });
+            }
             return next();
         }
 
