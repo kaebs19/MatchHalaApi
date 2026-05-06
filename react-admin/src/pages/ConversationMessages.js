@@ -25,10 +25,35 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [userActionMenu, setUserActionMenu] = useState(null);
     const [showBanConfirm, setShowBanConfirm] = useState(false);
     const [banningUser, setBanningUser] = useState(null);
+    const [filter, setFilter] = useState('all');           // ✅ all | flagged | images | audio
+    const [zoomImage, setZoomImage] = useState(null);      // ✅ modal للصور
+    const [flaggedDetails, setFlaggedDetails] = useState(null); // ✅ تفاصيل المخالفة
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
     const typingDebounceRef = useRef(null);
     const { showToast } = useToast();
+
+    // ─── ✅ Helpers للـ bubbles + الفلاتر ───
+    const participantA = conversation?.participants?.[0];
+    const participantB = conversation?.participants?.[1];
+    const sideForSender = (senderId) => {
+        if (!senderId) return 'right';
+        if (participantA && senderId === participantA._id) return 'right';
+        if (participantB && senderId === participantB._id) return 'left';
+        return 'right';
+    };
+
+    const filteredMessages = React.useMemo(() => {
+        if (filter === 'all') return messages;
+        if (filter === 'flagged') return messages.filter(m => m.hasBannedWords);
+        if (filter === 'images') return messages.filter(m => m.type === 'image');
+        if (filter === 'audio') return messages.filter(m => m.type === 'audio');
+        return messages;
+    }, [messages, filter]);
+
+    const flaggedCount = messages.filter(m => m.hasBannedWords).length;
+    const imagesCount = messages.filter(m => m.type === 'image').length;
+    const audioCount = messages.filter(m => m.type === 'audio').length;
 
     // Socket.IO: الاتصال والانضمام للمحادثة
     useEffect(() => {
@@ -247,6 +272,12 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         return <LoadingSpinner text="جاري تحميل الرسائل..." />;
     }
 
+    // ─── ألوان المشاركَين (ثابتة) ───
+    const sideColors = {
+        right: { bg: '#dcf8c6', text: '#1f2937', accent: '#10b981' }, // أخضر فاتح (واتساب)
+        left:  { bg: '#e5e7eb', text: '#111827', accent: '#6366f1' }  // رمادي فاتح
+    };
+
     return (
         <div className="conversation-messages-page">
             {/* Header */}
@@ -275,17 +306,150 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 </div>
             </div>
 
-            {/* Messages Container */}
+            {/* ✅ B: رأس المحادثة — المشاركَان + إحصائيات */}
+            {(participantA || participantB) && (
+                <div style={{
+                    display: 'flex',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: 'linear-gradient(135deg, #f9fafb, #f3f4f6)',
+                    borderBottom: '1px solid #e5e7eb',
+                    alignItems: 'center',
+                    flexWrap: 'wrap'
+                }}>
+                    {[participantA, participantB].filter(Boolean).map((p, idx) => {
+                        const violations = (p.warnings?.totalCount || 0) + (p.bannedWords?.violationCount || 0) + (p.externalPromo?.violations || 0);
+                        const isHigh = violations >= 5;
+                        const side = idx === 0 ? 'right' : 'left';
+                        const accentColor = sideColors[side].accent;
+                        return (
+                            <div
+                                key={p._id}
+                                onClick={() => onViewUser && onViewUser(p._id)}
+                                style={{
+                                    display: 'flex',
+                                    gap: 10,
+                                    padding: '8px 12px',
+                                    background: '#fff',
+                                    border: `2px solid ${accentColor}`,
+                                    borderRadius: 12,
+                                    cursor: 'pointer',
+                                    minWidth: 200,
+                                    flex: '1 1 200px',
+                                    alignItems: 'center'
+                                }}
+                                title="عرض الملف الشخصي"
+                            >
+                                <img
+                                    src={p.profileImage ? getImageUrl(p.profileImage) : `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name || '?')}&background=${accentColor.slice(1)}&color=fff`}
+                                    alt={p.name}
+                                    style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+                                    onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=?&background=ccc`; }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {p.name || 'مستخدم محذوف'}
+                                        {p.isPremium && <span style={{ marginInlineStart: 4 }}>⭐</span>}
+                                    </div>
+                                    <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                        {violations > 0 ? (
+                                            <span style={{
+                                                background: isHigh ? '#fee2e2' : '#fef3c7',
+                                                color: isHigh ? '#991b1b' : '#92400e',
+                                                padding: '1px 6px',
+                                                borderRadius: 6,
+                                                fontWeight: 700
+                                            }}>
+                                                ⚠️ {violations} مخالفة
+                                            </span>
+                                        ) : (
+                                            <span style={{ background: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
+                                                ✓ نظيف
+                                            </span>
+                                        )}
+                                        {p.suspension?.isSuspended && (
+                                            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
+                                                🔒 موقوف
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <div style={{
+                        display: 'flex',
+                        gap: 14,
+                        padding: '8px 14px',
+                        background: '#fff',
+                        borderRadius: 12,
+                        border: '1px solid #e5e7eb',
+                        fontSize: 12,
+                        flexWrap: 'wrap'
+                    }}>
+                        <div><strong>{messages.length}</strong> رسالة</div>
+                        {flaggedCount > 0 && <div style={{ color: '#dc2626' }}><strong>{flaggedCount}</strong> ⚠️ مخالفة</div>}
+                        {imagesCount > 0 && <div><strong>{imagesCount}</strong> 📷 صورة</div>}
+                        {audioCount > 0 && <div><strong>{audioCount}</strong> 🎙️ صوتية</div>}
+                    </div>
+                </div>
+            )}
+
+            {/* ✅ E: شرائط الفلتر */}
+            <div style={{
+                display: 'flex',
+                gap: 6,
+                padding: '8px 16px',
+                background: '#fff',
+                borderBottom: '1px solid #e5e7eb',
+                flexWrap: 'wrap'
+            }}>
+                {[
+                    { id: 'all', label: '📋 الكل', count: messages.length, color: '#6366f1' },
+                    { id: 'flagged', label: '⚠️ مخالف', count: flaggedCount, color: '#dc2626' },
+                    { id: 'images', label: '📷 صور', count: imagesCount, color: '#3b82f6' },
+                    { id: 'audio', label: '🎙️ صوتية', count: audioCount, color: '#8b5cf6' }
+                ].map(chip => {
+                    const active = filter === chip.id;
+                    if (chip.count === 0 && chip.id !== 'all') return null;
+                    return (
+                        <button
+                            key={chip.id}
+                            onClick={() => setFilter(chip.id)}
+                            style={{
+                                padding: '4px 12px',
+                                borderRadius: 16,
+                                border: `1.5px solid ${active ? chip.color : '#e5e7eb'}`,
+                                background: active ? chip.color : '#fff',
+                                color: active ? '#fff' : '#374151',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            {chip.label} <span style={{ opacity: 0.7 }}>({chip.count})</span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Messages Container — ✅ A: WhatsApp-style bubbles */}
             <div className="messages-container">
-                {messages.length === 0 ? (
+                {filteredMessages.length === 0 ? (
                     <div className="no-messages">
-                        <p>لا توجد رسائل في هذه المحادثة 💬</p>
+                        <p>{filter === 'all' ? 'لا توجد رسائل في هذه المحادثة 💬' : 'لا توجد نتائج لهذا الفلتر'}</p>
                     </div>
                 ) : (
-                    <div className="messages-list">
-                        {messages.map((message, index) => {
+                    <div className="messages-list" style={{ padding: '12px 16px' }}>
+                        {filteredMessages.map((message, index) => {
                             const showDate = index === 0 ||
-                                formatDate(message.createdAt) !== formatDate(messages[index - 1]?.createdAt);
+                                formatDate(message.createdAt) !== formatDate(filteredMessages[index - 1]?.createdAt);
+                            const side = sideForSender(message.sender?._id);
+                            const colors = sideColors[side];
+                            const prevMsg = filteredMessages[index - 1];
+                            const sameSenderAsPrev = prevMsg && prevMsg.sender?._id === message.sender?._id && !showDate;
+                            const isFlagged = message.hasBannedWords;
 
                             return (
                                 <React.Fragment key={message._id}>
@@ -294,76 +458,134 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             <span>{formatDate(message.createdAt)}</span>
                                         </div>
                                     )}
-                                    <div className={`message-bubble ${message.isDeleted ? 'deleted' : ''} ${message.hasBannedWords ? 'flagged' : ''}`}>
-                                        <div className="message-header">
-                                            <div className="sender-info" style={{cursor: 'pointer'}} onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (message.sender?._id) {
-                                                    setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
-                                                }
-                                            }}>
-                                                <div className="sender-avatar">
-                                                    {message.sender?.name?.charAt(0) || '؟'}
+                                    {/* ─── Bubble Row (left/right) ─── */}
+                                    <div style={{
+                                        display: 'flex',
+                                        flexDirection: side === 'right' ? 'row-reverse' : 'row',
+                                        gap: 8,
+                                        marginBottom: sameSenderAsPrev ? 4 : 12,
+                                        alignItems: 'flex-end'
+                                    }}>
+                                        {/* Avatar (only on first message of group) */}
+                                        <div style={{ width: 32, flexShrink: 0 }}>
+                                            {!sameSenderAsPrev && (
+                                                <div
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (message.sender?._id) {
+                                                            setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        width: 32, height: 32, borderRadius: '50%',
+                                                        background: colors.accent, color: '#fff',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        fontWeight: 700, cursor: 'pointer', fontSize: 13,
+                                                        overflow: 'hidden'
+                                                    }}
+                                                    title={message.sender?.name || 'مستخدم'}
+                                                >
+                                                    {message.sender?.profileImage ? (
+                                                        <img src={getImageUrl(message.sender.profileImage)} alt={message.sender.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
+                                                    ) : (
+                                                        message.sender?.name?.charAt(0) || '؟'
+                                                    )}
                                                 </div>
-                                                <span className="sender-name">
+                                            )}
+                                        </div>
+
+                                        {/* Bubble */}
+                                        <div style={{
+                                            maxWidth: '70%',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: side === 'right' ? 'flex-end' : 'flex-start'
+                                        }}>
+                                            {/* Sender name (only on first of group) */}
+                                            {!sameSenderAsPrev && (
+                                                <div style={{ fontSize: 11, color: colors.accent, fontWeight: 700, marginBottom: 2, padding: '0 4px' }}>
                                                     {message.sender?.name || 'مستخدم محذوف'}
-                                                </span>
+                                                </div>
+                                            )}
+                                            <div style={{
+                                                padding: '8px 12px',
+                                                borderRadius: side === 'right' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                                                background: message.isDeleted ? '#f3f4f6' : (isFlagged ? '#fee2e2' : colors.bg),
+                                                color: colors.text,
+                                                border: isFlagged ? '2px solid #dc2626' : 'none',
+                                                position: 'relative',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                                wordBreak: 'break-word'
+                                            }}>
+                                                {/* ✅ C: شارة المخالفة الكبيرة */}
+                                                {isFlagged && !message.isDeleted && (
+                                                    <div
+                                                        onClick={() => setFlaggedDetails(message)}
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: 4,
+                                                            background: '#dc2626',
+                                                            color: '#fff',
+                                                            padding: '2px 8px',
+                                                            borderRadius: 6,
+                                                            fontSize: 11,
+                                                            fontWeight: 700,
+                                                            marginBottom: 4,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        title="عرض تفاصيل المخالفة"
+                                                    >
+                                                        ⚠️ مخالف ({message.bannedWordsFound?.length || 1})
+                                                    </div>
+                                                )}
+
+                                                {/* Message content */}
+                                                {message.isDeleted ? (
+                                                    <em style={{ color: '#6b7280', fontSize: 13 }}>تم حذف هذه الرسالة</em>
+                                                ) : (
+                                                    <>
+                                                        {message.content && <div style={{ fontSize: 14, lineHeight: 1.5 }}>{message.content}</div>}
+                                                        {/* ✅ D: صورة قابلة للتكبير */}
+                                                        {message.type === 'image' && message.mediaUrl && (
+                                                            <img
+                                                                src={getImageUrl(message.mediaUrl)}
+                                                                alt="صورة"
+                                                                onClick={() => setZoomImage(getImageUrl(message.mediaUrl))}
+                                                                style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, cursor: 'zoom-in', marginTop: message.content ? 6 : 0 }}
+                                                                onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                            />
+                                                        )}
+                                                        {message.type === 'audio' && message.mediaUrl && (
+                                                            <AudioMessageBubble message={message} />
+                                                        )}
+                                                        {message.type !== 'text' && message.type !== 'image' && message.type !== 'audio' && (
+                                                            <span style={{ fontSize: 12, opacity: 0.7 }}>
+                                                                {message.type === 'file' && '📎 ملف'}
+                                                                {message.type === 'video' && '🎥 فيديو'}
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                )}
                                             </div>
-                                            <div className="message-actions">
-                                                <span className="message-time">
+                                            {/* Time + actions */}
+                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2, padding: '0 4px' }}>
+                                                <span style={{ fontSize: 10, color: '#9ca3af' }}>
                                                     {formatTime(message.createdAt)}
                                                 </span>
                                                 {!message.isDeleted && (
                                                     <button
-                                                        className="delete-msg-btn"
                                                         onClick={() => {
                                                             setSelectedMessage(message);
                                                             setShowDeleteModal(true);
                                                         }}
+                                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, opacity: 0.5, padding: 0 }}
                                                         title="حذف الرسالة"
                                                     >
                                                         🗑️
                                                     </button>
                                                 )}
                                             </div>
-                                        </div>
-                                        <div className="message-content">
-                                            {message.isDeleted ? (
-                                                <p className="deleted-text">
-                                                    <em>تم حذف هذه الرسالة</em>
-                                                </p>
-                                            ) : (
-                                                <>
-                                                    {message.content && <p>{message.content}</p>}
-                                                    {message.type === 'image' && message.mediaUrl && (
-                                                        <div className="message-image-container">
-                                                            <img
-                                                                src={getImageUrl(message.mediaUrl)}
-                                                                alt="صورة"
-                                                                className="message-image"
-                                                                onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                            {message.type === 'audio' && message.mediaUrl && !message.isDeleted && (
-                                                <AudioMessageBubble message={message} />
-                                            )}
-                                            {message.type !== 'text' && message.type !== 'image' && message.type !== 'audio' && !message.isDeleted && (
-                                                <span className="message-type-badge">
-                                                    {message.type === 'file' && '📎 ملف'}
-                                                    {message.type === 'video' && '🎥 فيديو'}
-                                                </span>
-                                            )}
-                                            {message.hasBannedWords && message.bannedWordsFound?.length > 0 && (
-                                                <div className="banned-words-badges">
-                                                    <span className="banned-label">⚠️ كلمات محظورة:</span>
-                                                    {message.bannedWordsFound.map((w, i) => (
-                                                        <span key={i} className={`banned-word-badge ${w.severity}`}>{w.word}</span>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </React.Fragment>
@@ -486,6 +708,106 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                 setShowBanConfirm(false);
                                 setBanningUser(null);
                             }}>حظر</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ✅ D: Image Zoom Modal */}
+            {zoomImage && (
+                <div
+                    onClick={() => setZoomImage(null)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out',
+                        padding: 20
+                    }}
+                >
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setZoomImage(null); }}
+                        style={{
+                            position: 'absolute', top: 20, left: 20, background: '#fff', border: 'none',
+                            width: 40, height: 40, borderRadius: '50%', fontSize: 20, cursor: 'pointer'
+                        }}
+                        title="إغلاق"
+                    >✕</button>
+                    <a
+                        href={zoomImage}
+                        download
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute', top: 20, right: 20, background: '#fff',
+                            padding: '8px 14px', borderRadius: 8, textDecoration: 'none', color: '#111',
+                            fontSize: 13, fontWeight: 700
+                        }}
+                        title="تنزيل الصورة"
+                    >⬇️ تنزيل</a>
+                    <img
+                        src={zoomImage}
+                        alt="معاينة"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, cursor: 'default' }}
+                    />
+                </div>
+            )}
+
+            {/* ✅ C: Flagged Details Modal */}
+            {flaggedDetails && (
+                <div
+                    onClick={() => setFlaggedDetails(null)}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#fff', borderRadius: 14, padding: 20, maxWidth: 480, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <h3 style={{ margin: 0, color: '#dc2626' }}>⚠️ تفاصيل المخالفة</h3>
+                            <button onClick={() => setFlaggedDetails(null)} style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
+                        </div>
+                        <div style={{ marginBottom: 12, padding: 10, background: '#fef3c7', borderRadius: 8, fontSize: 13 }}>
+                            <strong>المرسل:</strong> {flaggedDetails.sender?.name || 'مستخدم محذوف'}<br />
+                            <strong>الوقت:</strong> {formatDate(flaggedDetails.createdAt)} {formatTime(flaggedDetails.createdAt)}
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                            <strong style={{ display: 'block', marginBottom: 6 }}>المحتوى:</strong>
+                            <div style={{ padding: 10, background: '#fee2e2', borderRadius: 8, fontSize: 13, lineHeight: 1.5, border: '1px solid #fca5a5' }}>
+                                {flaggedDetails.content || '(فارغ)'}
+                            </div>
+                        </div>
+                        {flaggedDetails.bannedWordsFound?.length > 0 && (
+                            <div style={{ marginBottom: 12 }}>
+                                <strong style={{ display: 'block', marginBottom: 6 }}>الكلمات المكتشفة:</strong>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {flaggedDetails.bannedWordsFound.map((w, i) => (
+                                        <span key={i} style={{
+                                            background: w.severity === 'high' ? '#dc2626' : (w.severity === 'medium' ? '#f59e0b' : '#9ca3af'),
+                                            color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
+                                        }}>
+                                            {w.word} {w.severity && `(${w.severity})`}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                            <button
+                                onClick={() => setFlaggedDetails(null)}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                                إغلاق
+                            </button>
+                            {flaggedDetails.sender?._id && (
+                                <button
+                                    onClick={() => {
+                                        if (onViewUser) onViewUser(flaggedDetails.sender._id);
+                                        setFlaggedDetails(null);
+                                    }}
+                                    style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                                >
+                                    👤 ملف المرسل
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
