@@ -510,6 +510,26 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                             )}
                                         </div>
                                     )}
+
+                                    {/* ✅ Phase 3: لقطة شاشة من المُبلِّغ — عرض inline */}
+                                    {report.screenshot && (
+                                        <div className="report-screenshot-inline">
+                                            <span className="screenshot-label">📸 لقطة دليل من المُبلِّغ:</span>
+                                            <a
+                                                href={getImageUrl(report.screenshot)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title="اضغط للتكبير"
+                                            >
+                                                <img
+                                                    src={getImageUrl(report.screenshot)}
+                                                    alt="screenshot"
+                                                    className="report-screenshot-thumb"
+                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                />
+                                            </a>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="report-footer">
@@ -517,6 +537,33 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                         <button title="تجاهل" className="quick-btn ignore" onClick={() => handleTakeAction_quick(report._id, 'none')}>✅</button>
                                         <button title="تحذير" className="quick-btn warn" onClick={() => handleTakeAction_quick(report._id, 'warning')}>⚠️</button>
                                         <button title="حذف الرسالة" className="quick-btn del-msg" onClick={() => handleTakeAction_quick(report._id, 'message_deleted')}>🗑️</button>
+
+                                        {/* ✅ إجراءات سريعة جديدة */}
+                                        {report.screenshot && (
+                                            <button
+                                                title="عرض لقطة الدليل"
+                                                className="quick-btn view-screenshot"
+                                                onClick={() => window.open(getImageUrl(report.screenshot), '_blank')}
+                                            >📸</button>
+                                        )}
+                                        {report.reportedConversation?._id && onViewConversation && (
+                                            <button
+                                                title="عرض الدردشة"
+                                                className="quick-btn view-chat"
+                                                onClick={() => onViewConversation(report.reportedConversation._id)}
+                                            >💬</button>
+                                        )}
+                                        {report.reportedUser?._id && (
+                                            <button
+                                                title="حظر فوري"
+                                                className="quick-btn ban-now"
+                                                onClick={() => {
+                                                    if (window.confirm(`حظر ${report.reportedUser.name} نهائياً؟`)) {
+                                                        handleTakeAction_quick(report._id, 'user_banned');
+                                                    }
+                                                }}
+                                            >🚫</button>
+                                        )}
                                     </div>
                                     <div className="report-status">
                                         <select

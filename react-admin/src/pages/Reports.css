@@ -1038,6 +1038,53 @@
     object-fit: cover;
 }
 
+/* ✅ Phase 3 (inline): Screenshot في الـ row مباشرة */
+.report-screenshot-inline {
+    margin-top: 12px;
+    padding: 10px;
+    background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
+    border-radius: 10px;
+    border: 1px dashed #f39c12;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.screenshot-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e67e22;
+    white-space: nowrap;
+}
+
+.report-screenshot-thumb {
+    max-height: 100px;
+    max-width: 150px;
+    border-radius: 8px;
+    cursor: zoom-in;
+    object-fit: cover;
+    border: 1px solid #ecf0f1;
+    transition: transform 0.2s;
+}
+
+.report-screenshot-thumb:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
+}
+
+/* ✅ Quick action buttons الجديدة */
+.quick-btn.view-screenshot {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+}
+
+.quick-btn.view-chat {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+}
+
+.quick-btn.ban-now {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
 /* ✅ Phase 3: Report Screenshot */
 .context-screenshot-box {
     margin-top: 12px;
