@@ -51,10 +51,13 @@ function Reports({ onViewUserDetail, onViewConversation }) {
     const [filterCategory, setFilterCategory] = useState('all');
     const [bulkLoading, setBulkLoading] = useState(false);
 
+    // ✅ Phase 3: Quick filters
+    const [quickFilter, setQuickFilter] = useState('all');   // all | screenshot | last24h | urgent_screenshot
+
     useEffect(() => {
         fetchReports();
         fetchStats();
-    }, [currentPage, filterStatus, filterPriority, filterType, filterCategory]);
+    }, [currentPage, filterStatus, filterPriority, filterType, filterCategory, quickFilter]);
 
     const fetchReports = async () => {
         try {
@@ -64,6 +67,14 @@ function Reports({ onViewUserDetail, onViewConversation }) {
             if (filterPriority !== 'all') filters.priority = filterPriority;
             if (filterType !== 'all') filters.type = filterType;
             if (filterCategory !== 'all') filters.category = filterCategory;
+
+            // ✅ Phase 3: quick filters
+            if (quickFilter === 'screenshot') filters.hasScreenshot = true;
+            if (quickFilter === 'last24h') filters.last24h = true;
+            if (quickFilter === 'urgent_screenshot') {
+                filters.hasScreenshot = true;
+                filters.priority = 'high';
+            }
 
             const response = await getAllReports(currentPage, 20, filters);
             if (response.success) {
@@ -363,6 +374,26 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                 </button>
             </div>
 
+            {/* ✅ Phase 3: Quick Filters (chips) */}
+            <div className="quick-filters">
+                <button
+                    className={`qf-chip ${quickFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => { setQuickFilter('all'); setCurrentPage(1); }}
+                >📋 الكل</button>
+                <button
+                    className={`qf-chip qf-screenshot ${quickFilter === 'screenshot' ? 'active' : ''}`}
+                    onClick={() => { setQuickFilter('screenshot'); setCurrentPage(1); }}
+                >📸 بلاغات بدليل</button>
+                <button
+                    className={`qf-chip qf-recent ${quickFilter === 'last24h' ? 'active' : ''}`}
+                    onClick={() => { setQuickFilter('last24h'); setCurrentPage(1); }}
+                >⏰ آخر 24 ساعة</button>
+                <button
+                    className={`qf-chip qf-urgent ${quickFilter === 'urgent_screenshot' ? 'active' : ''}`}
+                    onClick={() => { setQuickFilter('urgent_screenshot'); setCurrentPage(1); }}
+                >🚨 عاجل + دليل</button>
+            </div>
+
             {/* Bulk Actions Bar */}
             <div className="bulk-actions-bar">
                 <label className="select-all-label">
@@ -414,7 +445,12 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                 </div>
 
                                 <div className="report-body">
-                                    <p className="report-description">{report.description}</p>
+                                    {report.description && (
+                                        <div className="report-user-comment">
+                                            <span className="comment-label">💬 تعليق المُبلِّغ:</span>
+                                            <p className="comment-text">{report.description}</p>
+                                        </div>
+                                    )}
 
                                     <div className="report-users">
                                         <div className="report-user">

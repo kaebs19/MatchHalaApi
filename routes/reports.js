@@ -22,7 +22,9 @@ router.get('/', protect, adminOnly, async (req, res) => {
             status,
             priority,
             type,
-            category
+            category,
+            hasScreenshot,
+            last24h
         } = req.query;
 
         // بناء الفلتر
@@ -31,6 +33,14 @@ router.get('/', protect, adminOnly, async (req, res) => {
         if (priority) filter.priority = priority;
         if (type) filter.type = type;
         if (category) filter.category = category;
+
+        // ✅ Phase 3: Quick filters
+        if (hasScreenshot === 'true' || hasScreenshot === true) {
+            filter.screenshot = { $ne: null, $exists: true };
+        }
+        if (last24h === 'true' || last24h === true) {
+            filter.createdAt = { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+        }
 
         const limitNum = Math.min(parseInt(limit) || 20, 100);
 

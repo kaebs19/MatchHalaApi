@@ -1072,6 +1072,79 @@
     box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
 }
 
+/* ✅ Phase 3: Quick Filter Chips */
+.quick-filters {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0 20px 0;
+    flex-wrap: wrap;
+}
+
+.qf-chip {
+    padding: 8px 16px;
+    background: #ecf0f1;
+    border: 1px solid transparent;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.qf-chip:hover {
+    background: #dde4e6;
+    transform: translateY(-1px);
+}
+
+.qf-chip.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
+    box-shadow: 0 3px 8px rgba(102, 126, 234, 0.3);
+}
+
+.qf-chip.qf-screenshot.active {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    border-color: #e67e22;
+}
+
+.qf-chip.qf-recent.active {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    border-color: #2980b9;
+}
+
+.qf-chip.qf-urgent.active {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    border-color: #c0392b;
+}
+
+/* ✅ Phase 3: تعليق المُبلِّغ بشكل مميّز */
+.report-user-comment {
+    margin: 10px 0;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, #f3e5f5 0%, #ede7f6 100%);
+    border-radius: 10px;
+    border-right: 4px solid #9c27b0;
+}
+
+.comment-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #7b1fa2;
+    margin-bottom: 4px;
+}
+
+.comment-text {
+    margin: 0;
+    font-size: 14px;
+    color: #2c3e50;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
 /* ✅ Quick action buttons الجديدة */
 .quick-btn.view-screenshot {
     background: linear-gradient(135deg, #f39c12, #e67e22);
