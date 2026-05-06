@@ -122,12 +122,17 @@ function normalizeForDetection(text) {
     if (!text) return '';
     // NFKD يفصل الـ compatibility (math bold → ASCII) + diacritics (á → a + ̀)
     let t = text.normalize('NFKD').toLowerCase();
-    // Strip diacritics (combining marks)
+    // Strip diacritics — Latin (U+0300-036F) + Arabic (U+064B-065F + U+0670)
     t = t.replace(/[̀-ͯ]/g, '');
+    t = t.replace(/[ً-ٰٟ]/g, '');
     // Strip zero-width + invisible separators
     t = t.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '');
     // Strip Arabic tatweel
     t = t.replace(/ـ/g, '');
+    // ✅ توحيد الألف العربية: أ، إ، آ، ٱ → ا (يحمي ضد التحايل بالهمزات)
+    t = t.replace(/[أإآٱ]/g, 'ا');
+    // ✅ توحيد التاء المربوطة → هـ (يساعد على المطابقة الـ phonetic)
+    // ملاحظة: لا نوحّد ي/ى لأنها قد تغيّر معاني صحيحة
     // Arabic-Indic → Latin digits
     t = t.replace(/[٠-٩]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x0660 + 0x30));
     t = t.replace(/[۰-۹]/g, d => String.fromCharCode(d.charCodeAt(0) - 0x06F0 + 0x30));
@@ -174,6 +179,39 @@ const EVASION_PATTERNS = [
     { regex: /5n[a4]p/gi, category: 'snap' },
     { regex: /[1!]nst[a4]/gi, category: 'instagram' },
 ];
+
+/**
+ * Tail Censoring: يكتم اسم المستخدم بعد ذكر المنصة
+ *   "snap: ahmed_19" → "***  ***"
+ *   "تلجرام @omar.kw" → "***  ***"
+ *
+ * يتطلب username pattern مميز (digits/separators) — لا يكتم كلمات إنجليزية بريئة.
+ * مثل "snap is great" لا يُكتم.
+ */
+function censorPlatformTails(originalText, redacted) {
+    let result = redacted;
+    // username patterns: @handle، أو يحتوي . _ - أو يحتوي أرقام
+    const tailRegex = /^([\s:@>←→=|,،\-]{1,5})((?:@[A-Za-z0-9_][A-Za-z0-9._-]{2,29})|(?:[A-Za-z0-9]+[._-][A-Za-z0-9._-]+)|(?:[A-Za-z]+\d+\w*)|(?:\d+[A-Za-z]+\w*))/;
+
+    for (const { regex, category } of PATTERNS) {
+        // skip URL patterns (تشمل الـ URL كاملاً)، و phone/email (لها معالجة خاصة)
+        if (category.endsWith('_url') || category === 'phone' || category === 'email') continue;
+        regex.lastIndex = 0;
+        let m;
+        while ((m = regex.exec(originalText)) !== null) {
+            const end = m.index + m[0].length;
+            const tail = originalText.slice(end, end + 80);
+            const tailMatch = tail.match(tailRegex);
+            if (tailMatch) {
+                const fullSegment = tailMatch[0];   // separator + username
+                if (result.includes(fullSegment)) {
+                    result = result.replace(fullSegment, ' ***');
+                }
+            }
+        }
+    }
+    return result;
+}
 
 /**
  * كشف External Promotion في نص (مع normalization + anti-evasion).
@@ -226,6 +264,12 @@ function detectExternalPromotion(text) {
             categories.add(category.replace(/_url$/, ''));
             redacted = redacted.replace(regex, '***');
         }
+    }
+
+    // Pass 4: Tail censoring — يكتم اسم المستخدم بعد المنصة (snap: ahmed_19 → *** ***)
+    // فقط لو في detected match وما تم استبدال النص كاملاً (Pass 2 aggressive)
+    if (matched.length > 0 && redacted !== '***') {
+        redacted = censorPlatformTails(text, redacted);
     }
 
     return {
