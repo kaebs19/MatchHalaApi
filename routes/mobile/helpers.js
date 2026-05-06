@@ -159,6 +159,32 @@ const uploadVerificationSelfie = multer({
     }
 });
 
+// ✅ Phase 3: إعداد multer لرفع لقطات شاشة البلاغات
+const reportsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'reports');
+if (!fs.existsSync(reportsUploadDir)) {
+    fs.mkdirSync(reportsUploadDir, { recursive: true });
+}
+
+const reportStorage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, reportsUploadDir),
+    filename: (req, file, cb) => {
+        const uniqueName = `report-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const uploadReportScreenshot = multer({
+    storage: reportStorage,
+    limits: { fileSize: 2 * 1024 * 1024 },   // 2MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) cb(null, true);
+        else cb(new Error('فقط الصور مسموحة (JPEG, PNG, WEBP)'));
+    }
+});
+
 module.exports = {
     getFullUrl,
     getBestUserImage,
@@ -167,5 +193,6 @@ module.exports = {
     maskBannedUser,
     uploadMessageImage,
     uploadMessageAudio,
-    uploadVerificationSelfie
+    uploadVerificationSelfie,
+    uploadReportScreenshot
 };

@@ -8,7 +8,7 @@ const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
 const notificationService = require('../../services/notificationService');
 const pushNotificationService = require('../../services/pushNotificationService');
-const { getFullUrl } = require('./helpers');
+const { getFullUrl, uploadReportScreenshot } = require('./helpers');
 
 // ==========================================
 // نظام الإبلاغات
@@ -17,13 +17,16 @@ const { getFullUrl } = require('./helpers');
 // @route   POST /api/mobile/reports
 // @desc    إنشاء بلاغ جديد (شكل مبسط للتطبيق)
 // @access  Private
-router.post('/reports', protect, async (req, res) => {
+router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), async (req, res) => {
     try {
         const {
             reportedUser,   // userId للمستخدم المبلغ عنه
             reason,         // spam | inappropriate | harassment | fake_profile | other
             description     // وصف إضافي (اختياري)
         } = req.body;
+
+        // ✅ Phase 3: لقطة شاشة اختيارية (multipart "screenshot" field)
+        const screenshotPath = req.file ? `/uploads/reports/${req.file.filename}` : null;
 
         // التحقق من البيانات المطلوبة
         if (!reportedUser || !reason) {
@@ -105,7 +108,8 @@ router.post('/reports', protect, async (req, res) => {
             category: reason,
             description: description || '',
             status: 'pending',
-            priority
+            priority,
+            screenshot: screenshotPath   // ✅ Phase 3
         });
 
         // إرسال إشعار للأدمن عند إنشاء بلاغ جديد

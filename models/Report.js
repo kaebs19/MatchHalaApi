@@ -79,6 +79,11 @@ const reportSchema = new mongoose.Schema({
     },
     resolvedAt: {
         type: Date
+    },
+    // ✅ Phase 3: لقطة شاشة اختيارية كدليل بصري للأدمن
+    screenshot: {
+        type: String,        // URL relative path: /uploads/reports/report-xxx.jpg
+        default: null
     }
 }, {
     timestamps: true
