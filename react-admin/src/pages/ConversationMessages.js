@@ -44,11 +44,13 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     };
 
     const filteredMessages = React.useMemo(() => {
-        if (filter === 'all') return messages;
-        if (filter === 'flagged') return messages.filter(m => m.hasBannedWords);
-        if (filter === 'images') return messages.filter(m => m.type === 'image');
-        if (filter === 'audio') return messages.filter(m => m.type === 'audio');
-        return messages;
+        // ✅ Sort ascending by createdAt — الأحدث في الأسفل (chat convention)
+        const sorted = [...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        if (filter === 'all') return sorted;
+        if (filter === 'flagged') return sorted.filter(m => m.hasBannedWords);
+        if (filter === 'images') return sorted.filter(m => m.type === 'image');
+        if (filter === 'audio') return sorted.filter(m => m.type === 'audio');
+        return sorted;
     }, [messages, filter]);
 
     const flaggedCount = messages.filter(m => m.hasBannedWords).length;
@@ -472,6 +474,14 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                 <div
                                                     onClick={(e) => {
                                                         e.stopPropagation();
+                                                        // ✅ ضغط مباشر → ملف المستخدم (بدلاً من قائمة الإجراءات)
+                                                        if (message.sender?._id && onViewUser) {
+                                                            onViewUser(message.sender._id);
+                                                        }
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                        // right-click → قائمة الإجراءات للأدمن (تعليق/حظر)
+                                                        e.preventDefault();
                                                         if (message.sender?._id) {
                                                             setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
                                                         }
@@ -483,7 +493,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                         fontWeight: 700, cursor: 'pointer', fontSize: 13,
                                                         overflow: 'hidden'
                                                     }}
-                                                    title={message.sender?.name || 'مستخدم'}
+                                                    title={`${message.sender?.name || 'مستخدم'} — اضغط لعرض الملف، right-click لإجراءات`}
                                                 >
                                                     {message.sender?.profileImage ? (
                                                         <img src={getImageUrl(message.sender.profileImage)} alt={message.sender.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
@@ -501,9 +511,17 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             flexDirection: 'column',
                                             alignItems: side === 'right' ? 'flex-end' : 'flex-start'
                                         }}>
-                                            {/* Sender name (only on first of group) */}
+                                            {/* Sender name (clickable → user profile) */}
                                             {!sameSenderAsPrev && (
-                                                <div style={{ fontSize: 11, color: colors.accent, fontWeight: 700, marginBottom: 2, padding: '0 4px' }}>
+                                                <div
+                                                    onClick={() => message.sender?._id && onViewUser && onViewUser(message.sender._id)}
+                                                    style={{
+                                                        fontSize: 11, color: colors.accent, fontWeight: 700,
+                                                        marginBottom: 2, padding: '0 4px',
+                                                        cursor: message.sender?._id ? 'pointer' : 'default'
+                                                    }}
+                                                    title="عرض الملف الشخصي"
+                                                >
                                                     {message.sender?.name || 'مستخدم محذوف'}
                                                 </div>
                                             )}

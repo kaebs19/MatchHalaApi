@@ -28,7 +28,7 @@ import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
 
-function UserDetail({ userId, onBack, onNavigateToUser }) {
+function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
     const [activeTab, setActiveTab] = useState('info');
@@ -1655,7 +1655,22 @@ function UserDetail({ userId, onBack, onNavigateToUser }) {
                                                 {/* الدليل */}
                                                 {v.evidence?.kind === 'message' && v.evidence.text && (
                                                     <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
-                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 الدليل (رسالة):</div>
+                                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:6}}>
+                                                            <div style={{fontSize:11,color:'#6b7280'}}>📎 الدليل (رسالة):</div>
+                                                            {v.evidence.conversationId && onViewConversation && (
+                                                                <button
+                                                                    onClick={() => onViewConversation(v.evidence.conversationId)}
+                                                                    style={{
+                                                                        background:'#6366f1',color:'#fff',border:'none',
+                                                                        padding:'4px 10px',borderRadius:6,fontSize:11,
+                                                                        fontWeight:700,cursor:'pointer'
+                                                                    }}
+                                                                    title="فتح المحادثة كاملة لرؤية السياق"
+                                                                >
+                                                                    💬 عرض المحادثة
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                         <div style={{color:'#b91c1c',fontWeight:500,direction:'rtl'}}>{v.evidence.text}</div>
                                                         {v.evidence.metadata?.matchedWords && (
                                                             <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>

@@ -419,7 +419,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':
-                return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} />;
+                return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             default:
                 return <Dashboard user={user} onPageChange={setCurrentPage} />;
         }
