@@ -70,7 +70,33 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             status: { $in: ['pending', 'reviewing'] }
         }).lean();
 
+        // ✅ Phase 3: helper لحذف ملف screenshot يتيم (لو الـ Report لن يُنشأ/يُحدَّث)
+        const fs = require('fs');
+        const path = require('path');
+        const deleteOrphanScreenshot = () => {
+            if (req.file) {
+                try {
+                    fs.unlinkSync(path.join(__dirname, '..', '..', 'uploads', 'reports', req.file.filename));
+                } catch (e) { /* ignore */ }
+            }
+        };
+
         if (existingActive) {
+            // ✅ Phase 3: لو في صورة جديدة و الـ existing بدون screenshot → حدّثه (تعزيز الدليل)
+            if (screenshotPath && !existingActive.screenshot) {
+                await Report.updateOne(
+                    { _id: existingActive._id },
+                    { $set: { screenshot: screenshotPath } }
+                );
+                return res.status(200).json({
+                    success: true,
+                    message: 'تم استلام بلاغك سابقاً + إضافة لقطة الدليل',
+                    code: 'REPORT_UPDATED_WITH_SCREENSHOT',
+                    data: { report: { _id: existingActive._id, status: existingActive.status } }
+                });
+            }
+            // الـ existing عنده screenshot أو لا توجد جديدة → نتجاهل + نحذف اليتيمة
+            deleteOrphanScreenshot();
             return res.status(200).json({
                 success: true,
                 message: 'تم استلام بلاغك سابقاً وهو قيد المراجعة',
@@ -80,7 +106,6 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
         }
 
         // ✅ cooldown إضافي: منع أي بلاغ جديد من نفس المُبلّغ ضد نفس المستخدم خلال 24 ساعة
-        // (حتى لو السابق انغلق — يمنع "إعادة الفتح" فوراً)
         const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const recentClosed = await Report.findOne({
             reportedBy: req.user._id,
@@ -89,6 +114,7 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
         }).lean();
 
         if (recentClosed && !existingActive) {
+            deleteOrphanScreenshot();   // ✅ تنظيف
             return res.status(429).json({
                 success: false,
                 message: 'أبلغت عن هذا المستخدم مؤخراً. حاول لاحقاً',
