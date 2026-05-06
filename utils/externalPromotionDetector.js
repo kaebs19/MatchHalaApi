@@ -25,6 +25,7 @@
 const PATTERNS = [
     // ─── Snapchat ───
     { regex: /\bsnap(?:chat|s)?\b/gi, category: 'snap' },
+    { regex: /\bsnap[._\-]chat\b/gi, category: 'snap' },                 // snap_chat، snap-chat، snap.chat
     { regex: /\bsanp\b/gi, category: 'snap' },                           // typo شائع
     { regex: /سناب[؀-ۿ]*/g, category: 'snap' },
     // اسم شعبي للـ Snapchat (الشعار أصفر) — مربوط بـ "البرنامج/التطبيق" لتجنب false positives
@@ -125,7 +126,8 @@ function normalizeForDetection(text) {
     // Strip diacritics — Latin (U+0300-036F) + Arabic (U+064B-065F + U+0670)
     t = t.replace(/[̀-ͯ]/g, '');
     t = t.replace(/[ً-ٰٟ]/g, '');
-    // Strip zero-width + invisible separators
+    // Strip zero-width + invisible separators + soft hyphen (U+00AD)
+    t = t.replace(/­/g, '');
     t = t.replace(/[​-‏‪-‮⁠-⁯﻿]/g, '');
     // Strip Arabic tatweel
     t = t.replace(/ـ/g, '');
@@ -148,6 +150,9 @@ function normalizeForDetection(text) {
  */
 function aggressiveNormalize(text) {
     let t = normalizeForDetection(text);
+    // ✅ تحويل الإيموجيات إلى مسافات (تكتيك التخفّي s🔥n🔥a🔥p)
+    // نطاقات: Misc Symbols, Dingbats, Emoji ranges, Symbols & Pictographs
+    t = t.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, ' ');
     t = t.replace(/(.)\1+/g, '$1');   // collapse ALL repeats to 1
     // Strip separators BETWEEN letters فقط (Latin + Arabic) — لا تأثير على الأرقام
     // مثلاً: s.n.a.p → snap، ا ن س ت ا → انستا (لكن 050-123 يبقى لأنه أرقام)
@@ -178,6 +183,31 @@ const EVASION_PATTERNS = [
     // Leet speak — drop \b ليلتقط !nsta و 5nap في بداية النص
     { regex: /5n[a4]p/gi, category: 'snap' },
     { regex: /[1!]nst[a4]/gi, category: 'instagram' },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// ID Label Patterns — كشف اسم المستخدم بدون ذكر المنصة
+// ═══════════════════════════════════════════════════════════════
+// يتطلب username "مميز" (يحتوي digit/separator أو @)
+// لا يطابق الأسماء العادية مثل "اسمي عمر" أو "my name is John"
+//
+// Username pattern: alternative — أي واحد من:
+//   - @ + 4-30 chars
+//   - يحتوي . _ - (multi-segment مثل ahmed.kw)
+//   - يحتوي رقم (مثل omar1990)
+const USERNAME_TOKEN = '(?:@[A-Za-z0-9_][A-Za-z0-9._-]{2,29}|[A-Za-z0-9]+[._-][A-Za-z0-9._-]+|[A-Za-z]+\\d+\\w*|\\d+[A-Za-z]+\\w*)';
+
+const ID_LABEL_PATTERNS = [
+    // English labels: id|username|user_name|handle|nick(name)|account + connectors
+    // connectors: : = is (is بين الـ label والـ username — "my handle is omar.k")
+    new RegExp(`\\b(?:id|username|user[\\s_]?name|handle|nick(?:name)?|account)\\s*(?:[:=]|\\s+is)\\s*${USERNAME_TOKEN}\\b`, 'gi'),
+    // Arabic labels + connectors: اسمي|حسابي|يوزري|معرفي|ايديي + (هو|=|:)
+    new RegExp(`(?:اسمي|حسابي|يوزري|يوزرنيمي|يوزر|معرفي|ايديي|ايدي)\\s*(?:[:=،]|\\s+هو|\\s+هي|\\s)\\s*${USERNAME_TOKEN}\\b`, 'g'),
+    // Imperatives: اضفني|تابعني|ابحثني|ضيفني|اضافتي
+    new RegExp(`(?:اضفني|تابعني|ابحثني|ضيفني|اضافتي|اضيفك)\\s*[:،]?\\s*${USERNAME_TOKEN}\\b`, 'g'),
+    new RegExp(`ابحث\\s*عن\\s*${USERNAME_TOKEN}\\b`, 'g'),
+    // Standalone @username — في بداية الكلمة فقط (يتجنب emails)
+    new RegExp(`(?:^|[\\s,،.!])@([A-Za-z][A-Za-z0-9._-]{3,29})\\b`, 'g'),
 ];
 
 /**
@@ -238,8 +268,26 @@ function detectExternalPromotion(text) {
         }
     }
 
-    // Pass 2: مطابقة على النص الـ aggressive normalized (يكسر التخفّي بـ separators/repeats)
-    // ⚠️ نستثني phone/email — لأن aggressive يحذف separators ويحوّل التواريخ/الإيميلات إلى digits/text متتالية
+    // Pass 2a: Light normalize — يكشف Unicode tricks مع المحافظة على المسافات
+    // (math bold، fullwidth، diacritics، hamza، Arabic-Indic digits)
+    // مهم: يحافظ على \b بين الكلمات — يكشف "ｓｎａｐ ahmed.kw"
+    const lightNorm = normalizeForDetection(text);
+    if (lightNorm !== text.toLowerCase()) {
+        for (const { regex, category } of PATTERNS) {
+            if (category === 'phone' || category === 'email') continue;
+            regex.lastIndex = 0;
+            if (regex.test(lightNorm)) {
+                if (!categories.has(category.replace(/_url$/, ''))) {
+                    matched.push(`[unicode:${category}]`);
+                    categories.add(category.replace(/_url$/, ''));
+                    redacted = '***';   // unicode trickery → نص كامل مشبوه
+                }
+            }
+        }
+    }
+
+    // Pass 2b: Aggressive normalized (يكسر التخفّي بـ separators/repeats/emojis)
+    // ⚠️ نستثني phone/email — aggressive يحذف separators ويحوّل التواريخ/الإيميلات إلى digits/text متتالية
     const aggressive = aggressiveNormalize(text);
     if (aggressive !== text.toLowerCase()) {
         for (const { regex, category } of PATTERNS) {
@@ -270,6 +318,20 @@ function detectExternalPromotion(text) {
     // فقط لو في detected match وما تم استبدال النص كاملاً (Pass 2 aggressive)
     if (matched.length > 0 && redacted !== '***') {
         redacted = censorPlatformTails(text, redacted);
+    }
+
+    // Pass 5: ID Labels — يكشف اسم المستخدم بدون ذكر منصة
+    // مثل: "id: omar1990" / "اسمي ahmed.kw" / "اضفني @user_19" / "@omar.k"
+    for (const regex of ID_LABEL_PATTERNS) {
+        regex.lastIndex = 0;
+        const matches = text.match(regex);
+        if (matches && matches.length > 0) {
+            matched.push(...matches.map(m => `[id-share]${m}`));
+            categories.add('id_share');
+            for (const m of matches) {
+                redacted = redacted.replace(m, '***');
+            }
+        }
     }
 
     return {
