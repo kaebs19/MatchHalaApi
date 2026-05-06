@@ -273,7 +273,9 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
                 status: { "$in": ['pending', 'reviewing'] }
             });
 
-            if (uniqueReporters.length >= AUTO_SUSPEND_THRESHOLD && !targetUser.suspension?.isSuspended) {
+            // ✅ استثناء: لا تعليق تلقائي للأدمن (لمنع المستخدمين من الإبلاغ الكيدي)
+            const isAdmin = targetUser.role === 'admin';
+            if (uniqueReporters.length >= AUTO_SUSPEND_THRESHOLD && !targetUser.suspension?.isSuspended && !isAdmin) {
                 // تحديد المستوى التالي تدريجياً
                 const SUSPENSION_LEVELS = {
                     1: { hours: 24, text: '24 ساعة' },
