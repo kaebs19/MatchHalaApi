@@ -1038,6 +1038,47 @@
     object-fit: cover;
 }
 
+/* ✅ Phase 3: Report Screenshot */
+.context-screenshot-box {
+    margin-top: 12px;
+    padding: 12px;
+    background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
+    border-radius: 10px;
+    border: 1px dashed #f39c12;
+}
+
+.context-screenshot-link {
+    display: block;
+    text-decoration: none;
+    margin-top: 6px;
+    position: relative;
+}
+
+.context-screenshot-image {
+    width: 100%;
+    max-width: 400px;
+    max-height: 500px;
+    border-radius: 8px;
+    object-fit: contain;
+    background: #f8f9fa;
+    border: 1px solid #ecf0f1;
+    cursor: zoom-in;
+    transition: transform 0.2s;
+}
+
+.context-screenshot-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.screenshot-zoom-hint {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #f39c12;
+    font-weight: 600;
+}
+
 /* Action Grid */
 .action-grid {
     display: grid;

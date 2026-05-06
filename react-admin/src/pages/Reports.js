@@ -671,6 +671,27 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                             {selectedReport.reportedMessage?.type === 'image' && selectedReport.reportedMessage?.mediaUrl && (
                                 <img src={getImageUrl(selectedReport.reportedMessage.mediaUrl)} alt="" className="context-msg-image" onError={(e) => { e.target.style.display = 'none'; }} />
                             )}
+
+                            {/* ✅ Phase 3: لقطة شاشة من المُبلِّغ */}
+                            {selectedReport.screenshot && (
+                                <div className="context-screenshot-box">
+                                    <span className="context-msg-label">📸 لقطة شاشة من المُبلِّغ:</span>
+                                    <a
+                                        href={getImageUrl(selectedReport.screenshot)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="context-screenshot-link"
+                                    >
+                                        <img
+                                            src={getImageUrl(selectedReport.screenshot)}
+                                            alt="Report screenshot"
+                                            className="context-screenshot-image"
+                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                        />
+                                        <span className="screenshot-zoom-hint">🔍 اضغط للتكبير</span>
+                                    </a>
+                                </div>
+                            )}
                         </div>
 
                         {/* Action Grid */}
