@@ -315,44 +315,61 @@ function Appeals({ onViewUserDetail }) {
         return text.length > max ? text.substring(0, max) + "..." : text;
     };
 
-    // ✅ شارة المخالف المتكرر — لون متدرّج حسب عدد الإيقافات السابقة
-    const getRepeatBadge = (count) => {
-        if (!count || count === 0) {
+    // ✅ شارة سجل المستخدم — تظهر دائماً، بنوعين:
+    // 1. ترويج خارجي → ألوان متدرّجة (أخضر/أصفر/أحمر) مع توصية
+    // 2. أسباب أخرى → بنفسجي معلوماتي (أول استئناف / استئناف #N)
+    const getRepeatBadge = (appeal) => {
+        const isExternalPromo = appeal.isExternalPromoCase;
+        const promoCount = appeal.previousSuspensionsCount || 0;
+        const totalPast = appeal.totalPastAppeals || 0;
+
+        // ─── ترويج خارجي: ألوان حسب التدرّج ───
+        if (isExternalPromo) {
+            if (promoCount === 0) {
+                return (
+                    <span style={badgeStyle('#10b981')} title="أول مخالفة في الترويج الخارجي — يُنصح بالتساهل والتنبيه">
+                        🟢 أول مرة
+                    </span>
+                );
+            }
+            const isHigh = promoCount >= 3;
             return (
                 <span
-                    style={{
-                        background: '#10b981',
-                        color: 'white',
-                        padding: '2px 7px',
-                        borderRadius: 8,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap'
-                    }}
-                    title="أول مخالفة من هذا النوع — يُنصح بالتساهل والتنبيه"
+                    style={badgeStyle(isHigh ? '#dc2626' : '#f59e0b')}
+                    title={`أُوقف ${promoCount} مرة سابقاً للترويج الخارجي${isHigh ? ' — تكرار شديد' : ''}`}
                 >
-                    🟢 أول مرة
+                    {isHigh ? '🔴' : '🟡'} مكررة ×{promoCount}
                 </span>
             );
         }
-        const isHigh = count >= 3;
+
+        // ─── أسباب أخرى: عدد الاستئنافات السابقة (معلوماتي) ───
+        if (totalPast === 0) {
+            return (
+                <span style={badgeStyle('#3b82f6')} title="لا يوجد استئنافات سابقة لهذا المستخدم">
+                    🔵 أول استئناف
+                </span>
+            );
+        }
         return (
             <span
-                style={{
-                    background: isHigh ? '#dc2626' : '#f59e0b',
-                    color: 'white',
-                    padding: '2px 7px',
-                    borderRadius: 8,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap'
-                }}
-                title={`أُوقف ${count} مرة سابقاً لنفس السبب — مُكرِّر${isHigh ? ' (شديد)' : ''}`}
+                style={badgeStyle('#8b5cf6')}
+                title={`قدّم ${totalPast} استئناف سابقاً (لأسباب مختلفة)`}
             >
-                {isHigh ? '🔴' : '🟡'} مكررة ×{count}
+                📊 استئناف #{totalPast + 1}
             </span>
         );
     };
+
+    const badgeStyle = (bg) => ({
+        background: bg,
+        color: 'white',
+        padding: '2px 7px',
+        borderRadius: 8,
+        fontSize: 10,
+        fontWeight: 700,
+        whiteSpace: 'nowrap'
+    });
 
     const renderUserCell = (appeal) => {
         const user = appeal.user;
@@ -393,11 +410,7 @@ function Appeals({ onViewUserDetail }) {
     const columns = [
         { key: "user", label: "المستخدم", render: (row) => renderUserCell(row) },
         { key: "reason", label: "السبب", render: (row) => <span title={row.reason}>{truncate(row.reason, 50)}</span> },
-        { key: "repeat", label: "السجل", render: (row) => {
-            const isExternalPromo = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي/i.test(row.reason || '');
-            if (!isExternalPromo) return <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>;
-            return getRepeatBadge(row.previousSuspensionsCount);
-        }},
+        { key: "repeat", label: "السجل", render: (row) => getRepeatBadge(row) },
         { key: "actionType", label: "نوع الإجراء", render: (row) => (
             <span className="action-type-cell">
                 {getActionTypeLabel(row.actionType)}
@@ -515,8 +528,50 @@ function Appeals({ onViewUserDetail }) {
                         {/* ✅ تحذير/تنبيه: المكرر vs الأول */}
                         {(() => {
                             const c = selectedAppeal.previousSuspensionsCount || 0;
-                            const isExternalPromo = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي/i.test(selectedAppeal.reason || '');
-                            if (!isExternalPromo) return null;
+                            const totalPast = selectedAppeal.totalPastAppeals || 0;
+                            const isExternalPromo = selectedAppeal.isExternalPromoCase;
+
+                            // ─── حالة عامة (ليست ترويج خارجي) — banner معلوماتي ───
+                            if (!isExternalPromo) {
+                                if (totalPast === 0) {
+                                    return (
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
+                                            border: '1px solid #3b82f6',
+                                            borderRadius: 10,
+                                            padding: '10px 14px',
+                                            marginBottom: 12,
+                                            display: 'flex',
+                                            gap: 10,
+                                            alignItems: 'center'
+                                        }}>
+                                            <span style={{ fontSize: 18 }}>🔵</span>
+                                            <div style={{ fontSize: 13, color: '#1e40af' }}>
+                                                <strong>أول استئناف لهذا المستخدم</strong> — لا يوجد سجل سابق.
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)',
+                                        border: '1px solid #8b5cf6',
+                                        borderRadius: 10,
+                                        padding: '10px 14px',
+                                        marginBottom: 12,
+                                        display: 'flex',
+                                        gap: 10,
+                                        alignItems: 'center'
+                                    }}>
+                                        <span style={{ fontSize: 18 }}>📊</span>
+                                        <div style={{ fontSize: 13, color: '#5b21b6' }}>
+                                            هذا <strong>الاستئناف رقم {totalPast + 1}</strong> لهذا المستخدم — قدّم {totalPast} استئنافاً سابقاً (لأسباب متنوعة).
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // ─── ترويج خارجي — banner مع توصية ───
                             if (c === 0) {
                                 return (
                                     <div style={{

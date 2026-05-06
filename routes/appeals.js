@@ -568,20 +568,39 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const startIdx = (page - 1) * limit;
         const pagedAppeals = visibleAppeals.slice(startIdx, startIdx + Number(limit));
 
-        // ✅ تخصيب: previousSuspensionsCount لكل appeal (للصفحة الحالية فقط)
-        const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
+        // ✅ تخصيب: سجل الاستئنافات لكل appeal (للصفحة الحالية فقط)
+        // نعرض دائماً totalPastAppeals لكل المستخدمين، وإذا الحالة ترويج
+        // خارجي نعرض previousSuspensionsCount مع التوصيات.
         const enriched = await Promise.all(pagedAppeals.map(async (a) => {
             const obj = a.toObject();
-            if (externalPromoRegex.test(a.reason || '')) {
+            const user = a.user;
+
+            // 1. عدد الاستئنافات السابقة (أي سبب) — لكل المستخدمين
+            obj.totalPastAppeals = await Appeal.countDocuments({
+                user: user._id,
+                _id: { $ne: a._id }
+            });
+
+            // 2. هل الحالة ترويج خارجي؟ نتحقق من ٣ مصادر موثوقة على المستخدم
+            // (لا نعتمد على نص الاستئناف — لأنه ما يكتبه المستخدم بنفسه)
+            const isExternalPromoCase =
+                user?.restrictions?.restrictionReason === 'external_promotion' ||
+                user?.suspension?.reason === 'external_promotion_repeat' ||
+                (user?.externalPromo?.violations || 0) > 0;
+
+            obj.isExternalPromoCase = isExternalPromoCase;
+
+            // 3. لو ترويج خارجي → نحسب الإيقافات السابقة بنفس النوع
+            if (isExternalPromoCase) {
                 obj.previousSuspensionsCount = await Appeal.countDocuments({
-                    user: a.user._id,
+                    user: user._id,
                     _id: { $ne: a._id },
-                    actionType: { $in: ['suspension', 'restriction'] },
-                    reason: { $regex: externalPromoRegex }
+                    actionType: { $in: ['suspension', 'restriction'] }
                 });
             } else {
                 obj.previousSuspensionsCount = 0;
             }
+
             return obj;
         }));
 
