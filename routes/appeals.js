@@ -448,9 +448,27 @@ router.get('/my', protect, async (req, res) => {
         const appeals = await Appeal.find({ user: req.user._id })
             .sort({ createdAt: -1 });
 
+        // ✅ عدد الإيقافات السابقة بسبب الترويج الخارجي (لكل استئناف)
+        // يساعد المستخدم على فهم تاريخه + يحفّز على الالتزام
+        const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
+        const enriched = await Promise.all(appeals.map(async (a) => {
+            const obj = a.toObject();
+            if (externalPromoRegex.test(a.reason || '')) {
+                obj.previousSuspensionsCount = await Appeal.countDocuments({
+                    user: req.user._id,
+                    _id: { $ne: a._id },
+                    actionType: { $in: ['suspension', 'restriction'] },
+                    reason: { $regex: externalPromoRegex }
+                });
+            } else {
+                obj.previousSuspensionsCount = 0;
+            }
+            return obj;
+        }));
+
         res.status(200).json({
             success: true,
-            data: appeals
+            data: enriched
         });
 
     } catch (error) {
@@ -489,7 +507,21 @@ router.get('/:id', protect, async (req, res) => {
             await appeal.save();
         }
 
-        res.json({ success: true, data: appeal });
+        // ✅ عدد الإيقافات السابقة بسبب الترويج الخارجي
+        const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
+        const result = appeal.toObject();
+        if (externalPromoRegex.test(appeal.reason || '')) {
+            result.previousSuspensionsCount = await Appeal.countDocuments({
+                user: req.user._id,
+                _id: { $ne: appeal._id },
+                actionType: { $in: ['suspension', 'restriction'] },
+                reason: { $regex: externalPromoRegex }
+            });
+        } else {
+            result.previousSuspensionsCount = 0;
+        }
+
+        res.json({ success: true, data: result });
     } catch (error) {
         console.error('خطأ في جلب الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });

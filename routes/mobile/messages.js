@@ -12,6 +12,7 @@ const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo } = require('../../utils/externalPromotionDetector');
+const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
@@ -162,6 +163,26 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     conversationId,
                     originalText: originalContent
                 });
+            } else {
+                // 3. Multi-Message Number Detection — كشف الأرقام المُقسَّمة على رسائل
+                // (تكتيك التحايل: 124 → 134 → 876 = 124134876 = Zinji ID محتمل)
+                const multiNum = checkMultiMessageNumbers(
+                    String(req.user._id),
+                    String(conversationId),
+                    content
+                );
+                if (multiNum.detected) {
+                    censoredContent = '***';
+                    externalPromoDetected = true;
+                    externalPromoCategories = ['split_number'];
+                    externalPromoViolation = await recordExternalPromoViolation(req.user, {
+                        source: 'message',
+                        categories: ['split_number'],
+                        patterns: [`[multi-msg:${multiNum.combinedDigits}]`],
+                        conversationId,
+                        originalText: `${originalContent} (combined: ${multiNum.combinedDigits} across ${multiNum.bufferSize} msgs)`
+                    });
+                }
             }
         }
 
