@@ -689,6 +689,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                     setViewingConversationId(null);
                     setViewingConversationMessages(false);
                 }}
+                onViewUser={onNavigateToUser}
             />
         );
     }

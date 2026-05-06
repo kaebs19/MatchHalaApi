@@ -6,6 +6,7 @@ import AudioMessageBubble from '../components/AudioMessageBubble';
 import socketService from '../services/socket';
 import notificationService from '../services/notifications';
 import { getImageUrl } from '../config';
+import config from '../config';
 import { formatDate } from '../utils/formatters';
 import './ConversationMessages.css';
 
@@ -26,7 +27,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [showBanConfirm, setShowBanConfirm] = useState(false);
     const [banningUser, setBanningUser] = useState(null);
     const [filter, setFilter] = useState('all');           // ✅ all | flagged | images | audio
-    const [zoomImage, setZoomImage] = useState(null);      // ✅ modal للصور
+    const [zoomImage, setZoomImage] = useState(null);      // ✅ {url, sender} للصور
     const [flaggedDetails, setFlaggedDetails] = useState(null); // ✅ تفاصيل المخالفة
     const messagesEndRef = useRef(null);
     const typingTimeoutRef = useRef(null);
@@ -56,6 +57,38 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const flaggedCount = messages.filter(m => m.hasBannedWords).length;
     const imagesCount = messages.filter(m => m.type === 'image').length;
     const audioCount = messages.filter(m => m.type === 'audio').length;
+
+    // ─── ✅ ميزة: إضافة كلمة لقائمة الكلمات المحظورة من شارة الكلمة ───
+    const [addedWords, setAddedWords] = useState({});  // { word: 'pending' | 'added' | 'duplicate' }
+    const handleAddBannedWord = async (word, category = 'other') => {
+        const trimmed = (word || '').trim().toLowerCase();
+        if (!trimmed || addedWords[trimmed]) return;
+        setAddedWords(prev => ({ ...prev, [trimmed]: 'pending' }));
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(config.API_URL + '/bannedWords', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify({ word: trimmed, category, language: /[؀-ۿ]/.test(trimmed) ? 'ar' : 'en' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const status = (data.results?.duplicates || 0) > 0 ? 'duplicate' : 'added';
+                setAddedWords(prev => ({ ...prev, [trimmed]: status }));
+                showToast(status === 'added' ? `تم إضافة "${trimmed}" للقائمة المحظورة` : `"${trimmed}" موجودة مسبقاً`, status === 'added' ? 'success' : 'info');
+            } else {
+                setAddedWords(prev => { const n = { ...prev }; delete n[trimmed]; return n; });
+                showToast(data.message || 'فشل الإضافة', 'error');
+            }
+        } catch (err) {
+            console.error('Add banned word error:', err);
+            setAddedWords(prev => { const n = { ...prev }; delete n[trimmed]; return n; });
+            showToast('فشل الإضافة', 'error');
+        }
+    };
 
     // Socket.IO: الاتصال والانضمام للمحادثة
     useEffect(() => {
@@ -569,7 +602,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                             <img
                                                                 src={getImageUrl(message.mediaUrl)}
                                                                 alt="صورة"
-                                                                onClick={() => setZoomImage(getImageUrl(message.mediaUrl))}
+                                                                onClick={() => setZoomImage({ url: getImageUrl(message.mediaUrl), sender: message.sender })}
                                                                 style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, cursor: 'zoom-in', marginTop: message.content ? 6 : 0 }}
                                                                 onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
                                                             />
@@ -749,19 +782,30 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         }}
                         title="إغلاق"
                     >✕</button>
-                    <a
-                        href={zoomImage}
-                        download
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            position: 'absolute', top: 20, right: 20, background: '#fff',
-                            padding: '8px 14px', borderRadius: 8, textDecoration: 'none', color: '#111',
-                            fontSize: 13, fontWeight: 700
-                        }}
-                        title="تنزيل الصورة"
-                    >⬇️ تنزيل</a>
+                    <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', gap: 8 }}>
+                        {zoomImage.sender?._id && onViewUser && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onViewUser(zoomImage.sender._id); setZoomImage(null); }}
+                                style={{
+                                    background: '#6366f1', color: '#fff', border: 'none',
+                                    padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                                }}
+                                title="عرض ملف المرسل"
+                            >👤 ملف المرسل</button>
+                        )}
+                        <a
+                            href={zoomImage.url}
+                            download
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                background: '#fff', padding: '8px 14px', borderRadius: 8,
+                                textDecoration: 'none', color: '#111', fontSize: 13, fontWeight: 700
+                            }}
+                            title="تنزيل الصورة"
+                        >⬇️ تنزيل</a>
+                    </div>
                     <img
-                        src={zoomImage}
+                        src={zoomImage.url}
                         alt="معاينة"
                         onClick={(e) => e.stopPropagation()}
                         style={{ maxWidth: '95vw', maxHeight: '90vh', borderRadius: 8, cursor: 'default' }}
@@ -796,15 +840,47 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         {flaggedDetails.bannedWordsFound?.length > 0 && (
                             <div style={{ marginBottom: 12 }}>
                                 <strong style={{ display: 'block', marginBottom: 6 }}>الكلمات المكتشفة:</strong>
+                                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+                                    اضغط على ➕ لإضافة الكلمة لقائمة المحظورات الموحّدة (تطبَّق على كل المستخدمين)
+                                </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    {flaggedDetails.bannedWordsFound.map((w, i) => (
-                                        <span key={i} style={{
-                                            background: w.severity === 'high' ? '#dc2626' : (w.severity === 'medium' ? '#f59e0b' : '#9ca3af'),
-                                            color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
-                                        }}>
-                                            {w.word} {w.severity && `(${w.severity})`}
-                                        </span>
-                                    ))}
+                                    {flaggedDetails.bannedWordsFound.map((w, i) => {
+                                        const wordKey = (w.word || '').trim().toLowerCase();
+                                        const status = addedWords[wordKey];
+                                        return (
+                                            <div key={i} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                background: w.severity === 'high' ? '#dc2626' : (w.severity === 'medium' ? '#f59e0b' : '#9ca3af'),
+                                                color: '#fff', padding: '3px 4px 3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
+                                            }}>
+                                                <span>{w.word} {w.severity && `(${w.severity})`}</span>
+                                                <button
+                                                    onClick={() => handleAddBannedWord(w.word, w.category || 'other')}
+                                                    disabled={!!status}
+                                                    title={
+                                                        status === 'added' ? 'تمت الإضافة بنجاح'
+                                                        : status === 'duplicate' ? 'موجودة مسبقاً'
+                                                        : status === 'pending' ? 'جاري الإضافة...'
+                                                        : 'إضافة لقائمة الكلمات المحظورة'
+                                                    }
+                                                    style={{
+                                                        background: status === 'added' ? '#10b981' : (status === 'duplicate' ? '#6b7280' : '#fff'),
+                                                        color: status === 'added' || status === 'duplicate' ? '#fff' : '#374151',
+                                                        border: 'none', borderRadius: 4,
+                                                        width: 22, height: 22,
+                                                        fontSize: 13, fontWeight: 700,
+                                                        cursor: status ? 'default' : 'pointer',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    {status === 'pending' ? '⏳'
+                                                     : status === 'added' ? '✓'
+                                                     : status === 'duplicate' ? '✓'
+                                                     : '➕'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
