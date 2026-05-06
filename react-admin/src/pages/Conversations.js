@@ -47,6 +47,9 @@ function Conversations({ onViewUserDetail }) {
     const [sending, setSending] = useState(false);
     const [imageViewer, setImageViewer] = useState(null);    // {url, sender}
     const [addedWords, setAddedWords] = useState({});        // ✅ {word: 'pending'|'added'|'duplicate'}
+    const [quickAddOpen, setQuickAddOpen] = useState(false);
+    const [quickAddText, setQuickAddText] = useState('');
+    const [quickAddCategory, setQuickAddCategory] = useState('other');
 
     // State - الإجراءات
     const [showActionsModal, setShowActionsModal] = useState(false);
@@ -514,6 +517,14 @@ function Conversations({ onViewUserDetail }) {
                                     <button className="conv-chat-action-btn" onClick={() => handleLock(selectedConv._id)} title="قفل/فتح">
                                         {selectedConv.isLocked ? '🔓' : '🔒'}
                                     </button>
+                                    <button
+                                        className="conv-chat-action-btn"
+                                        onClick={() => setQuickAddOpen(true)}
+                                        title="إضافة كلمة محظورة يدوياً"
+                                        style={{ background: '#fee2e2', color: '#991b1b', border: '1.5px dashed #dc2626' }}
+                                    >
+                                        ➕ كلمة محظورة
+                                    </button>
                                     <button className="conv-chat-action-btn danger" onClick={() => setShowDeleteConfirm(selectedConv._id)} title="حذف">
                                         🗑️
                                     </button>
@@ -697,6 +708,79 @@ function Conversations({ onViewUserDetail }) {
                     </>
                 )}
             </div>
+
+            {/* ✅ Quick Add Modal — لإضافة كلمة محظورة يدوياً */}
+            {quickAddOpen && (
+                <div
+                    onClick={() => setQuickAddOpen(false)}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 460, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                            <h3 style={{ margin: 0, color: '#dc2626' }}>➕ إضافة كلمة محظورة</h3>
+                            <button onClick={() => setQuickAddOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
+                        </div>
+                        <div style={{ marginBottom: 14, padding: 10, background: '#fef3c7', borderRadius: 8, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+                            <strong>نصيحة:</strong> انسخ النمط الذي تريد حظره من الرسالة (مثلاً "ت ل ج" أو "س ن ا ب") والصقه هنا. الكلمة ستُطبَّق على جميع المستخدمين فوراً.
+                        </div>
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 700 }}>الكلمة / النمط:</label>
+                        <input
+                            type="text"
+                            value={quickAddText}
+                            onChange={(e) => setQuickAddText(e.target.value)}
+                            placeholder="مثلاً: ت ل ج"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && quickAddText.trim()) {
+                                    e.preventDefault();
+                                    handleAddBannedWord(quickAddText, quickAddCategory);
+                                    setQuickAddText('');
+                                    setQuickAddOpen(false);
+                                }
+                            }}
+                            style={{
+                                width: '100%', padding: '10px 12px',
+                                border: '1.5px solid #d1d5db', borderRadius: 8,
+                                fontSize: 14, marginBottom: 12, boxSizing: 'border-box', direction: 'rtl'
+                            }}
+                        />
+                        <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 700 }}>التصنيف:</label>
+                        <select
+                            value={quickAddCategory}
+                            onChange={(e) => setQuickAddCategory(e.target.value)}
+                            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #d1d5db', borderRadius: 8, fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }}
+                        >
+                            <option value="other">أخرى</option>
+                            <option value="external_promo">ترويج خارجي</option>
+                            <option value="sexual">جنسي</option>
+                            <option value="insult">شتيمة</option>
+                            <option value="hate">كراهية</option>
+                            <option value="violence">عنف</option>
+                            <option value="phone">رقم تواصل</option>
+                        </select>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button onClick={() => setQuickAddOpen(false)} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>إلغاء</button>
+                            <button
+                                disabled={!quickAddText.trim()}
+                                onClick={() => {
+                                    handleAddBannedWord(quickAddText, quickAddCategory);
+                                    setQuickAddText('');
+                                    setQuickAddOpen(false);
+                                }}
+                                style={{
+                                    padding: '8px 22px', borderRadius: 8, border: 'none',
+                                    background: quickAddText.trim() ? '#dc2626' : '#fca5a5',
+                                    color: '#fff', cursor: quickAddText.trim() ? 'pointer' : 'not-allowed',
+                                    fontWeight: 700
+                                }}
+                            >➕ إضافة</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ✅ Image Viewer مع تنزيل + ملف المرسل */}
             {imageViewer && (
