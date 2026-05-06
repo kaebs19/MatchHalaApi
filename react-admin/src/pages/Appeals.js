@@ -305,6 +305,45 @@ function Appeals({ onViewUserDetail }) {
         return text.length > max ? text.substring(0, max) + "..." : text;
     };
 
+    // ✅ شارة المخالف المتكرر — لون متدرّج حسب عدد الإيقافات السابقة
+    const getRepeatBadge = (count) => {
+        if (!count || count === 0) {
+            return (
+                <span
+                    style={{
+                        background: '#10b981',
+                        color: 'white',
+                        padding: '2px 7px',
+                        borderRadius: 8,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap'
+                    }}
+                    title="أول مخالفة من هذا النوع — يُنصح بالتساهل والتنبيه"
+                >
+                    🟢 أول مرة
+                </span>
+            );
+        }
+        const isHigh = count >= 3;
+        return (
+            <span
+                style={{
+                    background: isHigh ? '#dc2626' : '#f59e0b',
+                    color: 'white',
+                    padding: '2px 7px',
+                    borderRadius: 8,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap'
+                }}
+                title={`أُوقف ${count} مرة سابقاً لنفس السبب — مُكرِّر${isHigh ? ' (شديد)' : ''}`}
+            >
+                {isHigh ? '🔴' : '🟡'} مكررة ×{count}
+            </span>
+        );
+    };
+
     const renderUserCell = (appeal) => {
         const user = appeal.user;
         if (!user) return <span className="text-muted">-</span>;
@@ -318,7 +357,7 @@ function Appeals({ onViewUserDetail }) {
                     onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
                 />
                 <div className="user-cell-info">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span
                             className="user-link"
                             onClick={(e) => { e.stopPropagation(); if (onViewUserDetail) onViewUserDetail(user._id); }}
@@ -344,6 +383,11 @@ function Appeals({ onViewUserDetail }) {
     const columns = [
         { key: "user", label: "المستخدم", render: (row) => renderUserCell(row) },
         { key: "reason", label: "السبب", render: (row) => <span title={row.reason}>{truncate(row.reason, 50)}</span> },
+        { key: "repeat", label: "السجل", render: (row) => {
+            const isExternalPromo = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي/i.test(row.reason || '');
+            if (!isExternalPromo) return <span style={{ color: '#9ca3af', fontSize: 11 }}>—</span>;
+            return getRepeatBadge(row.previousSuspensionsCount);
+        }},
         { key: "actionType", label: "نوع الإجراء", render: (row) => (
             <span className="action-type-cell">
                 {getActionTypeLabel(row.actionType)}
@@ -457,6 +501,67 @@ function Appeals({ onViewUserDetail }) {
                             <h3>📋 تفاصيل الاستئناف</h3>
                             <button className="close-btn" onClick={() => setShowDetailModal(false)}>✕</button>
                         </div>
+
+                        {/* ✅ تحذير/تنبيه: المكرر vs الأول */}
+                        {(() => {
+                            const c = selectedAppeal.previousSuspensionsCount || 0;
+                            const isExternalPromo = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي/i.test(selectedAppeal.reason || '');
+                            if (!isExternalPromo) return null;
+                            if (c === 0) {
+                                return (
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)',
+                                        border: '1px solid #10b981',
+                                        borderRadius: 10,
+                                        padding: '12px 14px',
+                                        marginBottom: 12,
+                                        display: 'flex',
+                                        gap: 10,
+                                        alignItems: 'flex-start'
+                                    }}>
+                                        <span style={{ fontSize: 20 }}>🟢</span>
+                                        <div>
+                                            <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 2 }}>
+                                                أول مرة لهذا المستخدم
+                                            </div>
+                                            <div style={{ fontSize: 13, color: '#047857', lineHeight: 1.5 }}>
+                                                لا توجد مخالفات سابقة لنفس السبب. يُنصح بالتساهل والاكتفاء بـ
+                                                <strong> القبول مع تنبيه رسمي </strong>
+                                                لتعزيز السلوك الصحيح بدلاً من الإيقاف المستمر.
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            const isHigh = c >= 3;
+                            return (
+                                <div style={{
+                                    background: isHigh
+                                        ? 'linear-gradient(135deg, #fee2e2, #fca5a5)'
+                                        : 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                                    border: `1px solid ${isHigh ? '#dc2626' : '#f59e0b'}`,
+                                    borderRadius: 10,
+                                    padding: '12px 14px',
+                                    marginBottom: 12,
+                                    display: 'flex',
+                                    gap: 10,
+                                    alignItems: 'flex-start'
+                                }}>
+                                    <span style={{ fontSize: 20 }}>{isHigh ? '🔴' : '🟡'}</span>
+                                    <div>
+                                        <div style={{ fontWeight: 700, color: isHigh ? '#7f1d1d' : '#78350f', marginBottom: 2 }}>
+                                            مخالف متكرر — أُوقف {c} مرة سابقاً
+                                        </div>
+                                        <div style={{ fontSize: 13, color: isHigh ? '#991b1b' : '#92400e', lineHeight: 1.5 }}>
+                                            {isHigh
+                                                ? 'تكرار شديد — يُنصح برفض الاستئناف وإبقاء التقييد. الحالات المتكررة تستحق إجراءات أقوى لحماية بقية المستخدمين.'
+                                                : 'مخالف معروف — يُنصح بالحذر. مراجعة دقيقة قبل القبول، أو رفض إذا الدليل واضح.'
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* User Info Enhanced */}
                         {selectedAppeal.user && (

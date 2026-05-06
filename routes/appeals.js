@@ -568,6 +568,23 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const startIdx = (page - 1) * limit;
         const pagedAppeals = visibleAppeals.slice(startIdx, startIdx + Number(limit));
 
+        // ✅ تخصيب: previousSuspensionsCount لكل appeal (للصفحة الحالية فقط)
+        const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
+        const enriched = await Promise.all(pagedAppeals.map(async (a) => {
+            const obj = a.toObject();
+            if (externalPromoRegex.test(a.reason || '')) {
+                obj.previousSuspensionsCount = await Appeal.countDocuments({
+                    user: a.user._id,
+                    _id: { $ne: a._id },
+                    actionType: { $in: ['suspension', 'restriction'] },
+                    reason: { $regex: externalPromoRegex }
+                });
+            } else {
+                obj.previousSuspensionsCount = 0;
+            }
+            return obj;
+        }));
+
         // ✅ stats من DB مباشرة (مش من الـ list — لأن visible فلتر بعض)
         const [pending, underReview, forwarded, approved, rejected] = await Promise.all([
             Appeal.countDocuments({ status: 'pending' }),
@@ -580,7 +597,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
         res.status(200).json({
             success: true,
             data: {
-                appeals: pagedAppeals,
+                appeals: enriched,
                 totalPages: Math.ceil(totalFiltered / limit),
                 currentPage: Number(page),
                 total: totalFiltered,
