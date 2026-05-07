@@ -67,16 +67,19 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const handleAddBannedWord = async (word, category = 'other') => {
         const trimmed = (word || '').trim().toLowerCase();
         if (!trimmed || addedWords[trimmed]) return;
+        // ✅ تأكد إن الـ category من القيم الصحيحة (model enum)
+        const validCategories = ['sexual', 'violence', 'hate', 'spam', 'other'];
+        const safeCategory = validCategories.includes(category) ? category : 'other';
         setAddedWords(prev => ({ ...prev, [trimmed]: 'pending' }));
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(config.API_URL + '/bannedWords', {
+            const res = await fetch(config.API_URL + '/banned-words', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: 'Bearer ' + token
                 },
-                body: JSON.stringify({ word: trimmed, category, language: /[؀-ۿ]/.test(trimmed) ? 'ar' : 'en' })
+                body: JSON.stringify({ word: trimmed, category: safeCategory, language: /[؀-ۿ]/.test(trimmed) ? 'ar' : 'en' })
             });
             const data = await res.json();
             if (data.success) {
@@ -630,12 +633,10 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             }}
                         >
                             <option value="other">أخرى</option>
-                            <option value="external_promo">ترويج خارجي</option>
                             <option value="sexual">جنسي</option>
-                            <option value="insult">شتيمة</option>
-                            <option value="hate">كراهية</option>
                             <option value="violence">عنف</option>
-                            <option value="phone">رقم تواصل</option>
+                            <option value="hate">كراهية</option>
+                            <option value="spam">سبام / ترويج / رقم تواصل</option>
                         </select>
 
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
