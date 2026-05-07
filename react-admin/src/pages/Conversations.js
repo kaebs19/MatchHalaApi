@@ -50,6 +50,7 @@ function Conversations({ onViewUserDetail }) {
     const [quickAddOpen, setQuickAddOpen] = useState(false);
     const [quickAddText, setQuickAddText] = useState('');
     const [quickAddCategory, setQuickAddCategory] = useState('other');
+    const [msgMenu, setMsgMenu] = useState(null);            // ✅ {message, x, y}
 
     // State - الإجراءات
     const [showActionsModal, setShowActionsModal] = useState(false);
@@ -120,6 +121,7 @@ function Conversations({ onViewUserDetail }) {
             if (filterStatus === 'active') filters.isActive = 'true';
             if (filterStatus === 'inactive') filters.isActive = 'false';
             if (filterStatus === 'flagged') filters.hasFlaggedMessages = 'true';
+            if (filterStatus === 'images') filters.hasImages = 'true';
             if (filterStatus === 'pending') filters.status = 'pending';
             if (filterStatus === 'locked') filters.isLocked = 'true';
             if (searchDebounce) filters.search = searchDebounce;
@@ -362,6 +364,7 @@ function Conversations({ onViewUserDetail }) {
                             { key: 'active', label: 'نشطة' },
                             { key: 'inactive', label: 'معطلة' },
                             { key: 'flagged', label: 'مخالفات' },
+                            { key: 'images', label: '📷 صور' },
                             { key: 'pending', label: 'معلقة' },
                             { key: 'locked', label: 'مقفلة' },
                         ].map(f => (
@@ -570,7 +573,22 @@ function Conversations({ onViewUserDetail }) {
                                                         onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(senderName); }}
                                                         onClick={() => msg.sender?._id && handleViewUser(msg.sender._id)}
                                                     />
-                                                    <div className="conv-msg-bubble">
+                                                    <div
+                                                        className="conv-msg-bubble"
+                                                        onClick={(e) => {
+                                                            // ✅ ضغط على الرسالة → popover خيارات
+                                                            // (تجاهل لو click على img أو button داخل الرسالة)
+                                                            const tag = (e.target.tagName || '').toLowerCase();
+                                                            if (tag === 'img' || tag === 'button' || tag === 'a') return;
+                                                            if (msg.isDeleted) return;
+                                                            setMsgMenu({
+                                                                message: msg,
+                                                                x: e.clientX,
+                                                                y: e.clientY
+                                                            });
+                                                        }}
+                                                        style={{ cursor: msg.isDeleted ? 'default' : 'pointer' }}
+                                                    >
                                                         <div className="conv-msg-top">
                                                             <span className="conv-msg-sender" onClick={() => msg.sender?._id && handleViewUser(msg.sender._id)}>
                                                                 {senderName}
@@ -708,6 +726,87 @@ function Conversations({ onViewUserDetail }) {
                     </>
                 )}
             </div>
+
+            {/* ✅ Message Context Menu — ضغط على رسالة → خيارات */}
+            {msgMenu && (
+                <div
+                    onClick={() => setMsgMenu(null)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'transparent' }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'fixed',
+                            top: Math.min(msgMenu.y + 5, window.innerHeight - 160),
+                            left: Math.min(msgMenu.x, window.innerWidth - 240),
+                            background: '#fff',
+                            borderRadius: 10,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+                            minWidth: 220,
+                            overflow: 'hidden',
+                            direction: 'rtl'
+                        }}
+                    >
+                        <div style={{
+                            padding: '10px 12px',
+                            background: '#f9fafb',
+                            borderBottom: '1px solid #e5e7eb',
+                            fontSize: 11,
+                            color: '#6b7280',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: 240
+                        }}>
+                            {(msgMenu.message.content || '(بدون نص)').slice(0, 50)}
+                            {msgMenu.message.content?.length > 50 && '...'}
+                        </div>
+                        <button
+                            onClick={() => {
+                                // فتح Quick Add مع نص الرسالة prefilled
+                                setQuickAddText(msgMenu.message.content || '');
+                                setQuickAddCategory('other');
+                                setQuickAddOpen(true);
+                                setMsgMenu(null);
+                            }}
+                            style={{
+                                width: '100%', textAlign: 'right',
+                                padding: '11px 14px', border: 'none',
+                                background: '#fff', cursor: 'pointer',
+                                fontSize: 13, fontWeight: 600,
+                                color: '#dc2626',
+                                display: 'flex', gap: 8, alignItems: 'center',
+                                borderBottom: '1px solid #f3f4f6'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#fee2e2'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                            <span>➕</span><span>إضافة كلمة محظورة</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (window.confirm('حذف هذه الرسالة؟')) {
+                                    handleDeleteMsg(msgMenu.message._id);
+                                }
+                                setMsgMenu(null);
+                            }}
+                            style={{
+                                width: '100%', textAlign: 'right',
+                                padding: '11px 14px', border: 'none',
+                                background: '#fff', cursor: 'pointer',
+                                fontSize: 13, fontWeight: 600,
+                                color: '#374151',
+                                display: 'flex', gap: 8, alignItems: 'center'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                            <span>🗑️</span><span>حذف الرسالة</span>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* ✅ Quick Add Modal — لإضافة كلمة محظورة يدوياً */}
             {quickAddOpen && (

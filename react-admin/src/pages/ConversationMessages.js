@@ -63,6 +63,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [quickAddOpen, setQuickAddOpen] = useState(false);  // ✅ Modal الإضافة اليدوية
     const [quickAddText, setQuickAddText] = useState('');
     const [quickAddCategory, setQuickAddCategory] = useState('other');
+    const [msgMenu, setMsgMenu] = useState(null);             // ✅ {message, x, y}
     const handleAddBannedWord = async (word, category = 'other') => {
         const trimmed = (word || '').trim().toLowerCase();
         if (!trimmed || addedWords[trimmed]) return;
@@ -493,6 +494,85 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 </div>
             </div>
 
+            {/* ✅ Message Context Menu — ضغط على رسالة → خيارات */}
+            {msgMenu && (
+                <div
+                    onClick={() => setMsgMenu(null)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'transparent' }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'fixed',
+                            top: Math.min(msgMenu.y + 5, window.innerHeight - 160),
+                            left: Math.min(msgMenu.x, window.innerWidth - 240),
+                            background: '#fff',
+                            borderRadius: 10,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+                            minWidth: 220,
+                            overflow: 'hidden',
+                            direction: 'rtl'
+                        }}
+                    >
+                        <div style={{
+                            padding: '10px 12px',
+                            background: '#f9fafb',
+                            borderBottom: '1px solid #e5e7eb',
+                            fontSize: 11,
+                            color: '#6b7280',
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: 240
+                        }}>
+                            {(msgMenu.message.content || '(بدون نص)').slice(0, 50)}
+                            {msgMenu.message.content?.length > 50 && '...'}
+                        </div>
+                        <button
+                            onClick={() => {
+                                setQuickAddText(msgMenu.message.content || '');
+                                setQuickAddCategory('other');
+                                setQuickAddOpen(true);
+                                setMsgMenu(null);
+                            }}
+                            style={{
+                                width: '100%', textAlign: 'right',
+                                padding: '11px 14px', border: 'none',
+                                background: '#fff', cursor: 'pointer',
+                                fontSize: 13, fontWeight: 600,
+                                color: '#dc2626',
+                                display: 'flex', gap: 8, alignItems: 'center',
+                                borderBottom: '1px solid #f3f4f6'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#fee2e2'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                            <span>➕</span><span>إضافة كلمة محظورة</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSelectedMessage(msgMenu.message);
+                                setShowDeleteModal(true);
+                                setMsgMenu(null);
+                            }}
+                            style={{
+                                width: '100%', textAlign: 'right',
+                                padding: '11px 14px', border: 'none',
+                                background: '#fff', cursor: 'pointer',
+                                fontSize: 13, fontWeight: 600,
+                                color: '#374151',
+                                display: 'flex', gap: 8, alignItems: 'center'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                        >
+                            <span>🗑️</span><span>حذف الرسالة</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* ✅ Quick Add Modal — لإضافة كلمة محظورة يدوياً */}
             {quickAddOpen && (
                 <div
@@ -675,7 +755,15 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                     {message.sender?.name || 'مستخدم محذوف'}
                                                 </div>
                                             )}
-                                            <div style={{
+                                            <div
+                                                onClick={(e) => {
+                                                    // ✅ ضغط على الرسالة → popover خيارات
+                                                    const tag = (e.target.tagName || '').toLowerCase();
+                                                    if (tag === 'img' || tag === 'button' || tag === 'a') return;
+                                                    if (message.isDeleted) return;
+                                                    setMsgMenu({ message, x: e.clientX, y: e.clientY });
+                                                }}
+                                                style={{
                                                 padding: '8px 12px',
                                                 borderRadius: side === 'right' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
                                                 background: message.isDeleted ? '#f3f4f6' : (isFlagged ? '#fee2e2' : colors.bg),
@@ -683,7 +771,8 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                 border: isFlagged ? '2px solid #dc2626' : 'none',
                                                 position: 'relative',
                                                 boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                                                wordBreak: 'break-word'
+                                                wordBreak: 'break-word',
+                                                cursor: message.isDeleted ? 'default' : 'pointer'
                                             }}>
                                                 {/* ✅ C: شارة المخالفة الكبيرة */}
                                                 {isFlagged && !message.isDeleted && (

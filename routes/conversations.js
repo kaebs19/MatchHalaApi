@@ -13,7 +13,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, type, isActive, status, search, hasFlaggedMessages, sortBy = 'updatedAt' } = req.query;
+        const { page = 1, limit = 20, type, isActive, status, search, hasFlaggedMessages, hasImages, sortBy = 'updatedAt' } = req.query;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
@@ -53,6 +53,22 @@ router.get('/', protect, adminOnly, async (req, res) => {
             ]);
             flaggedConvIds = flaggedAgg.map(f => f._id);
             filter._id = { $in: flaggedConvIds };
+        }
+
+        // ✅ فلترة المحادثات التي تحتوي صور
+        if (hasImages === 'true') {
+            const imagesAgg = await Message.aggregate([
+                { $match: { type: 'image', isDeleted: { $ne: true } } },
+                { $group: { _id: '$conversation' } }
+            ]);
+            const imageConvIds = imagesAgg.map(f => f._id);
+            // لو فلتر مخالفات مفعّل → تقاطع: محادثات فيها صور AND مخالفات
+            if (filter._id?.$in) {
+                const flaggedSet = new Set(filter._id.$in.map(id => id.toString()));
+                filter._id = { $in: imageConvIds.filter(id => flaggedSet.has(id.toString())) };
+            } else {
+                filter._id = { $in: imageConvIds };
+            }
         }
 
         // ترتيب
