@@ -189,26 +189,28 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         // ✅ Phase 1.2: Sensitive Content — هل نحفظ النص الأصلي للكشف لاحقاً؟
         // الشروط: الميزة مفعّلة + الكلمة من category مشمولة + ليس external promo
         // (external promo يبقى محجوب نهائياً — قرار سياسة)
+        //
+        // ⚠️ ملاحظة: لا نفحص نسخة المُرسِل لأن:
+        // - النص دائماً يُحفظ مكتوماً (content = "***")
+        // - مستلم v6.2 يرى المكتوم (لا يضرّه)
+        // - مستلم v6.3 يقدر يكشف لو فعّل الإعداد
+        // - المُرسِل لا يجب أن يُعاقَب لمجرد كونه على نسخة قديمة
         let sensitiveFlag = { hasFlaggedContent: false, flaggedCategory: null, originalContent: null };
         if (bannedResult.hasBannedWords && !externalPromoDetected && bannedResult.categories?.length > 0) {
             try {
                 const settings = await Settings.getSettings();
                 const sc = settings.sensitiveContent || {};
-                const clientVersion = req.headers['app-version'] || req.headers['x-app-version'] || null;
-                const versionOk = clientSupports(clientVersion, sc.minClientVersion || '6.3');
                 const matchedCategory = bannedResult.categories.find(c => (sc.affectedCategories || []).includes(c));
 
-                if (sc.featureEnabled && versionOk && matchedCategory) {
+                if (sc.featureEnabled && matchedCategory) {
                     sensitiveFlag = {
                         hasFlaggedContent: true,
                         flaggedCategory: matchedCategory,
                         originalContent: content   // النص الأصلي قبل التكتيم — للكشف عند الإذن
                     };
                 }
-                // لو الـ flag = OFF أو client قديم: نخلّي السلوك الحالي 100% (نص مُكتم بدون originalContent)
             } catch (scErr) {
                 console.error('SensitiveContent flag check error:', scErr.message);
-                // نتجاهل ونكمل بالسلوك القديم
             }
         }
 
@@ -417,8 +419,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             data: { message: populatedMessage }
         };
 
-        // تحذير المرسل عند اكتشاف كلمات محظورة
-        if (bannedResult.hasBannedWords) {
+        // تحذير المرسل — فقط لو المخالفة مسجَّلة (لا نزعجه لو محتوى حساس مسموح)
+        if (bannedResult.hasBannedWords && !skipViolationTracking) {
             const Settings = require('../../models/Settings');
             const appSettings = await Settings.getSettings();
             const maxViol = appSettings.maxBannedWordViolations || 3;
@@ -427,6 +429,13 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 violations: userViolations,
                 maxViolations: maxViol,
                 banned: userViolations >= maxViol
+            };
+        } else if (bannedResult.hasBannedWords && skipViolationTracking) {
+            // إشعار لطيف — رسالة المحتوى الحساس مرّت بدون مخالفة
+            response.sensitiveContentNotice = {
+                message: 'تم إرسال رسالتك. ستظهر مكتومة للمستلم حتى يفعّل عرض المحتوى الحساس.',
+                category: sensitiveFlag.flaggedCategory,
+                soft: true
             };
         }
 
