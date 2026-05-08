@@ -202,11 +202,22 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 const sc = settings.sensitiveContent || {};
                 const matchedCategory = bannedResult.categories.find(c => (sc.affectedCategories || []).includes(c));
 
+                // 🔍 DEBUG temp
+                console.log('[SENS-DEBUG]', JSON.stringify({
+                    user: req.user.name,
+                    matched: bannedResult.matchedWords,
+                    cats: bannedResult.categories,
+                    affected: sc.affectedCategories,
+                    featureEnabled: sc.featureEnabled,
+                    matchedCategory: matchedCategory || null,
+                    willSkip: !!(sc.featureEnabled && matchedCategory)
+                }));
+
                 if (sc.featureEnabled && matchedCategory) {
                     sensitiveFlag = {
                         hasFlaggedContent: true,
                         flaggedCategory: matchedCategory,
-                        originalContent: content   // النص الأصلي قبل التكتيم — للكشف عند الإذن
+                        originalContent: content
                     };
                 }
             } catch (scErr) {
