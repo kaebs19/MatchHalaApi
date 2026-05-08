@@ -38,6 +38,9 @@ const protect = async (req, res, next) => {
                 });
             }
 
+            // ✅ فحص استثناء مسار الاستئناف (مرة واحدة لجميع الفحوصات أدناه)
+            const isAppealRequest = req.originalUrl.includes('/appeals');
+
             // ✅ فحص حظر الكلمات المحظورة (قبل isActive لأن الحظر يغيّر isActive)
             if (req.user.bannedWords?.isBanned) {
                 // ✅ فك الحظر تلقائياً بعد 24 ساعة + إعادة العدّاد
@@ -54,18 +57,19 @@ const protect = async (req, res, next) => {
                         isActive: true
                     });
                     // المستخدم فُكّ حظره — يتابع عادي
-                } else {
+                } else if (!isAppealRequest) {
+                    // ✅ السماح بالاستئناف فقط — أي مسار آخر يُمنع
                     return res.status(403).json({
                         success: false,
                         message: 'تم حظر حسابك بسبب مخالفات متكررة',
                         code: 'ACCOUNT_BANNED'
                     });
                 }
+                // لو isAppealRequest → نتركه يمر لتقديم الاستئناف
             }
 
             // ✅ فحص تعليق العضوية (قبل isActive لأن التعليق يغيّر isActive)
             // السماح للمعلّقين بتقديم الاستئناف
-            const isAppealRequest = req.originalUrl.includes('/appeals');
             if (isAppealRequest) {
                 // تخطي فحص التعليق — المستخدم يحق له يستأنف
             } else
@@ -162,8 +166,7 @@ const protect = async (req, res, next) => {
 
             // فحص isActive (بعد الحظر والتعليق — لأنهم يغيّرون isActive)
             // ✅ السماح للمستخدمين المعلّقين بتقديم الاستئناف
-            const isAppealRoute = req.originalUrl.includes('/appeals');
-            if (!req.user.isActive && !isAppealRoute) {
+            if (!req.user.isActive && !isAppealRequest) {
                 return res.status(401).json({
                     success: false,
                     message: 'الحساب غير مفعل'
