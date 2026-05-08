@@ -372,27 +372,41 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 populate: { path: 'sender', select: 'name' }
             }).lean();
 
-        // ✅ نسخة مُجرَّدة من originalContent للبث (privacy للمستلم)
-        // المستلم يرى المكتوم فقط ويفتح originalContent عبر endpoint reveal بعد الموافقة
+        // ✅ senderMessage: للمرسل ولـ HTTP response — content = originalContent
+        // (iOS Message struct لا يحتوي originalContent، نضع الأصلي في content
+        //  مباشرة حتى يعرض المرسل نصه دون تعديل iOS)
+        const senderMessage = { ...populatedMessage };
+        if (senderMessage.hasFlaggedContent && senderMessage.originalContent) {
+            senderMessage.content = senderMessage.originalContent;
+        }
+        delete senderMessage.originalContent;
+
+        // ✅ broadcastMessage: للمستلم — content يبقى مكتوماً (***)
         const broadcastMessage = { ...populatedMessage };
         delete broadcastMessage.originalContent;
 
         // إرسال عبر Socket.IO
         if (global.io) {
-            // ✅ غرفة المحادثة → نسخة مُجرَّدة (يستخدمها المستلم لو متصل)
-            global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: broadcastMessage
+            // ✅ غرفة المرسل الخاصة → النسخة الكاملة (نص أصلي)
+            // مهم لو المرسل لديه أكثر من جلسة (نفس الحساب على أكثر من جهاز)
+            global.io.to(`user:${req.user._id}`).emit('new-message', {
+                message: senderMessage
             });
 
-            // ✅ غرفة المستخدم الخاصة للمستلمين الآخرين → نسخة مُجرَّدة فقط
+            // ✅ غرفة المستخدم الخاصة للمستلمين → نسخة مُجرَّدة (مكتومة)
             const otherParticipants = conversation.participants.filter(
                 p => p._id.toString() !== req.user._id.toString()
             );
             for (const participant of otherParticipants) {
                 global.io.to(`user:${participant._id}`).emit('new-message', {
-                    message: broadcastMessage   // بدون originalContent
+                    message: broadcastMessage
                 });
             }
+
+            // ✅ غرفة المحادثة — للأدمن المراقب أو واجهات أخرى (نسخة مكتومة آمنة)
+            global.io.to(`conversation-${conversationId}`).emit('new-message', {
+                message: broadcastMessage
+            });
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM
@@ -422,7 +436,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         const response = {
             success: true,
             message: 'تم إرسال الرسالة',
-            data: { message: populatedMessage }
+            data: { message: senderMessage }   // ✅ النسخة الكاملة للمرسل
         };
 
         // تحذير المرسل — فقط لو المخالفة مسجَّلة (لا نزعجه لو محتوى حساس مسموح)
