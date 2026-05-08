@@ -682,8 +682,17 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
         }
 
         // إذا تمت الموافقة: رفع التعليق + فك التقييد عن المستخدم
+        let wasExternalPromoCase = false;
         if (status === 'approved') {
-            await User.findByIdAndUpdate(appeal.user, {
+            // ✅ تحقق إن كانت الحالة ترويج خارجي (قبل التصفير)
+            const targetUserBefore = await User.findById(appeal.user)
+                .select('suspension restrictions externalPromo').lean();
+            wasExternalPromoCase =
+                targetUserBefore?.suspension?.reason === 'external_promotion_repeat' ||
+                targetUserBefore?.restrictions?.restrictionReason === 'external_promotion' ||
+                (targetUserBefore?.externalPromo?.violations || 0) >= 5;
+
+            const updates = {
                 'suspension.isSuspended': false,
                 'suspension.suspendedUntil': null,
                 'suspension.level': 0,
@@ -705,17 +714,26 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
                 'bannedWords.banReason': null,
                 'bannedWords.violations': 0,
                 'bannedWords.lastViolationDate': null,
-                // ✅ تفعيل الحساب (لأن أي حظر يضع isActive=false)
+                // ✅ فك قفل bio (لو كان مقفلاً من external_promo)
+                'externalPromo.bioLockedUntil': null,
+                'externalPromo.suspendedAt': null,
+                // ✅ تفعيل الحساب
                 isActive: true
-            });
+            };
 
-            // إذا كان حظر جهاز: إزالة حظر الجهاز
-            if (appeal.actionType === 'device_ban') {
-                await BannedDevice.updateMany(
-                    { originalUserId: appeal.user, isActive: true },
-                    { isActive: false }
-                );
+            if (wasExternalPromoCase) {
+                // ✅ فرصتان فقط: نضع violations=8 (HARD=10، فرصتان قبل الإيقاف)
+                // - مخالفة 1 → counter 9 → soft lock 24س
+                // - مخالفة 2 → counter 10 → إيقاف 7 أيام
+                updates['externalPromo.violations'] = 8;
+                updates['externalPromo.lastViolationAt'] = new Date();
+            } else {
+                // ✅ ليس ترويجاً خارجياً → reset كامل
+                updates['externalPromo.violations'] = 0;
+                updates['externalPromo.lastViolationAt'] = null;
             }
+
+            await User.findByIdAndUpdate(appeal.user, updates);
 
             // إذا كان حظر جهاز: إزالة حظر الجهاز
             if (appeal.actionType === 'device_ban') {
@@ -730,14 +748,20 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
 
         // إرسال إشعار للمستخدم
         try {
+            // ✅ عنوان مختلف للترويج الخارجي (تنبيه شديد اللهجة)
             const notifTitle = status === 'approved'
-                ? 'تمت الموافقة على استئنافك ✅'
+                ? (wasExternalPromoCase
+                    ? '⚠️ تنبيه شديد: فرصتان فقط قبل الإيقاف الدائم'
+                    : 'تمت الموافقة على استئنافك ✅')
                 : status === 'rejected'
                 ? 'تم رفض استئنافك'
                 : 'تحديث على استئنافك';
 
+            // ✅ جسم مختلف للترويج الخارجي
             const notifBody = status === 'approved'
-                ? 'تم رفع التقييد عن حسابك. مرحباً بك مجدداً في هلا!'
+                ? (wasExternalPromoCase
+                    ? 'تم رفع التقييد كاستثناء واحد. تذكير صارم: مشاركة الحسابات الخارجية أو أرقام التواصل ممنوعة منعاً باتاً. لديك فرصتان فقط — أي مخالفة قادمة ستؤدي إلى قفل المراسلة 24 ساعة، والتي تليها إلى إيقاف الحساب 7 أيام، ثم حظر دائم.'
+                    : 'تم رفع التقييد عن حسابك. مرحباً بك مجدداً في هلا!')
                 : status === 'rejected'
                 ? 'للأسف تم رفض استئنافك. يمكنك تقديم استئناف جديد لاحقاً.'
                 : 'تم تحديث حالة استئنافك. افتح التطبيق للتفاصيل.';
