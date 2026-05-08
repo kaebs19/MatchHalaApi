@@ -553,9 +553,9 @@ router.get('/', protect, adminOnly, async (req, res) => {
         // فلترة + ترتيب يدوي (الـ count صغير، لا حاجة لـ aggregation)
         const visibleAppeals = appeals
             .filter(appeal => {
-                if (!appeal.user) return false;
-                if (appeal.user.bannedWords?.isBanned) return false;
-                return true;
+                // فقط نستثني الأبيلز اللي مستخدمها محذوف
+                // (المحظورين والمعلّقين يجب أن تظهر استئنافاتهم — نحن نراجعها!)
+                return !!appeal.user;
             })
             .sort((a, b) => {
                 const orderA = STATUS_ORDER[a.status] || 99;
