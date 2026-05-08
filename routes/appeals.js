@@ -698,12 +698,23 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
                 'restrictions.photoBlockedReason': null,
                 'restrictions.nameBlocked': false,
                 'restrictions.nameBlockedUntil': null,
-                'restrictions.nameBlockedReason': null
+                'restrictions.nameBlockedReason': null,
+                // ✅ فك حظر الكلمات المحظورة + تصفير العدّاد
+                'bannedWords.isBanned': false,
+                'bannedWords.bannedAt': null,
+                'bannedWords.banReason': null,
+                'bannedWords.violations': 0,
+                'bannedWords.lastViolationDate': null,
+                // ✅ تفعيل الحساب (لأن أي حظر يضع isActive=false)
+                isActive: true
             });
 
-            // إذا كان حظر: إعادة تفعيل الحساب
-            if (appeal.actionType === 'ban' || appeal.actionType === 'device_ban') {
-                await User.findByIdAndUpdate(appeal.user, { isActive: true });
+            // إذا كان حظر جهاز: إزالة حظر الجهاز
+            if (appeal.actionType === 'device_ban') {
+                await BannedDevice.updateMany(
+                    { originalUserId: appeal.user, isActive: true },
+                    { isActive: false }
+                );
             }
 
             // إذا كان حظر جهاز: إزالة حظر الجهاز
