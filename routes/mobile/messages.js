@@ -437,10 +437,27 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 banned: userViolations >= maxViol
             };
         } else if (bannedResult.hasBannedWords && skipViolationTracking) {
-            // إشعار لطيف — رسالة المحتوى الحساس مرّت بدون مخالفة
+            // ✅ إشعار شفافية للمرسل — يخبره كيف سيرى المستلم الرسالة
+            // (طبيعية لو فعّل المحتوى الحساس، مخفية لو لم يفعّل)
+            const receiverId = conversation.participants.find(
+                p => p._id.toString() !== req.user._id.toString()
+            )?._id;
+
+            let receiverSeesRevealed = false;
+            if (receiverId) {
+                try {
+                    const receiver = await User.findById(receiverId)
+                        .select('privacySettings.allowSensitiveContent').lean();
+                    receiverSeesRevealed = receiver?.privacySettings?.allowSensitiveContent === true;
+                } catch (rcErr) { /* تجاهل — افتراضي blurred */ }
+            }
+
             response.sensitiveContentNotice = {
-                message: 'تم إرسال رسالتك. ستظهر مكتومة للمستلم حتى يفعّل عرض المحتوى الحساس.',
+                message: receiverSeesRevealed
+                    ? 'تم إرسال رسالتك. المستلم فعّل عرض المحتوى الحساس وسيراها طبيعياً.'
+                    : 'تم إرسال رسالتك. ستظهر مخفية للمستلم لأنه لم يفعّل عرض المحتوى الحساس.',
                 category: sensitiveFlag.flaggedCategory,
+                receiverWillSee: receiverSeesRevealed ? 'revealed' : 'blurred',
                 soft: true
             };
         }
