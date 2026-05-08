@@ -645,6 +645,12 @@ export const userBioAction = async (userId, action, reason) => {
     return response.data;
 };
 
+// ✅ تعديل نبذة المستخدم مباشرة (admin)
+export const editUserBio = async (userId, bio) => {
+    const response = await api.put(`/users/${userId}/bio`, { bio });
+    return response.data;
+};
+
 
 // ============ Banned Devices APIs ============
 

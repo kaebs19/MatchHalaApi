@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { userBioAction,
+    editUserBio,
     getUserActivity,
     suspendUser,
     unsuspendUser,
@@ -56,6 +57,10 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [restrictForm, setRestrictForm] = useState({ type: 'photo', duration: '7d', reason: '' });
     // Name action form
     const [nameForm, setNameForm] = useState({ action: 'suspend', reason: '', newName: '' });
+    // ✅ تعديل النبذة
+    const [editingBio, setEditingBio] = useState(false);
+    const [bioText, setBioText] = useState('');
+    const [bioSaving, setBioSaving] = useState(false);
     // ✅ Name history modal
     const [showNameHistoryModal, setShowNameHistoryModal] = useState(false);
     const [nameHistoryData, setNameHistoryData] = useState(null);
@@ -964,17 +969,93 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             </div>
                         )}
 
-                        {/* Bio Section */}
+                        {/* Bio Section — مع تعديل */}
                         <div className="bio-section">
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>                                <h4>📝 نبذة عن المستخدم {user.bioStatus?.status === 'banned' ? <span className="bio-status-badge banned">🔴 محظورة</span> : user.bio ? <span className="bio-status-badge normal">🟢 عادية</span> : null}</h4>
-                                {user.nameStatus?.status && user.nameStatus.status !== 'normal' && (
-                                    <span className="name-status-inline-badge">{user.nameStatus.status === 'banned' ? '🔴 الاسم محظور' : '🟡 الاسم معلّق'}</span>
-                                )}                                {user.bio && (                                    user.bioStatus?.status === "banned" ? (                                        <button onClick={async () => { try { const r = await userBioAction(userId, "restore"); if(r.success){showToast("تم إعادة النبذة","success");fetchUserActivity();}} catch(e){showToast("فشل","error")}}} style={{padding:"4px 12px",borderRadius:"8px",border:"1px solid #22c55e",background:"#dcfce7",color:"#166534",fontSize:"12px",cursor:"pointer"}}>↩️ إعادة النبذة</button>                                    ) : (                                        <button onClick={async () => { try { const r = await userBioAction(userId, "ban", "نبذة مخالفة"); if(r.success){showToast("تم حظر النبذة","success");fetchUserActivity();}} catch(e){showToast("فشل","error")}}} style={{padding:"4px 12px",borderRadius:"8px",border:"1px solid #ef4444",background:"#fef2f2",color:"#dc2626",fontSize:"12px",cursor:"pointer"}}>🚫 حظر النبذة</button>                                    )                                )}                            </div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                                <h4 style={{margin:0}}>📝 نبذة عن المستخدم {user.bioStatus?.status === 'banned' ? <span className="bio-status-badge banned">🔴 محظورة</span> : user.bio ? <span className="bio-status-badge normal">🟢 عادية</span> : null}</h4>
+                                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                                    {user.nameStatus?.status && user.nameStatus.status !== 'normal' && (
+                                        <span className="name-status-inline-badge">{user.nameStatus.status === 'banned' ? '🔴 الاسم محظور' : '🟡 الاسم معلّق'}</span>
+                                    )}
+                                    {!editingBio && (
+                                        <button
+                                            onClick={() => { setBioText(user.bio || ''); setEditingBio(true); }}
+                                            style={{padding:"4px 12px",borderRadius:"8px",border:"1px solid #6366f1",background:"#eef2ff",color:"#4338ca",fontSize:"12px",fontWeight:600,cursor:"pointer"}}
+                                        >
+                                            ✏️ تعديل
+                                        </button>
+                                    )}
+                                    {!editingBio && user.bio && (
+                                        user.bioStatus?.status === "banned" ? (
+                                            <button onClick={async () => { try { const r = await userBioAction(userId, "restore"); if(r.success){showToast("تم إعادة النبذة","success");fetchUserActivity();}} catch(e){showToast("فشل","error")}}} style={{padding:"4px 12px",borderRadius:"8px",border:"1px solid #22c55e",background:"#dcfce7",color:"#166534",fontSize:"12px",cursor:"pointer"}}>↩️ إعادة النبذة</button>
+                                        ) : (
+                                            <button onClick={async () => { try { const r = await userBioAction(userId, "ban", "نبذة مخالفة"); if(r.success){showToast("تم حظر النبذة","success");fetchUserActivity();}} catch(e){showToast("فشل","error")}}} style={{padding:"4px 12px",borderRadius:"8px",border:"1px solid #ef4444",background:"#fef2f2",color:"#dc2626",fontSize:"12px",cursor:"pointer"}}>🚫 حظر النبذة</button>
+                                        )
+                                    )}
+                                </div>
+                            </div>
                             <div className="bio-content">
-                                {user.bio ? (
-                                    <p>{user.bio}</p>
+                                {editingBio ? (
+                                    <div>
+                                        <textarea
+                                            value={bioText}
+                                            onChange={(e) => setBioText(e.target.value)}
+                                            placeholder="اكتب النبذة هنا..."
+                                            maxLength={500}
+                                            rows={4}
+                                            disabled={bioSaving}
+                                            style={{
+                                                width:"100%", padding:"10px 12px",
+                                                border:"1.5px solid #d1d5db", borderRadius:8,
+                                                fontSize:14, fontFamily:"inherit",
+                                                resize:"vertical", direction:"rtl",
+                                                boxSizing:"border-box"
+                                            }}
+                                        />
+                                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
+                                            <span style={{fontSize:11,color:"#6b7280"}}>
+                                                {bioText.length}/500 حرف
+                                            </span>
+                                            <div style={{display:"flex",gap:6}}>
+                                                <button
+                                                    onClick={() => { setEditingBio(false); setBioText(''); }}
+                                                    disabled={bioSaving}
+                                                    style={{padding:"6px 14px",borderRadius:8,border:"1px solid #d1d5db",background:"#fff",fontSize:13,cursor:"pointer",fontWeight:600}}
+                                                >
+                                                    إلغاء
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        setBioSaving(true);
+                                                        try {
+                                                            const r = await editUserBio(userId, bioText);
+                                                            if (r.success) {
+                                                                showToast('تم تحديث النبذة بنجاح','success');
+                                                                setEditingBio(false);
+                                                                fetchUserActivity();
+                                                            } else {
+                                                                showToast(r.message || 'فشل التحديث','error');
+                                                            }
+                                                        } catch(e) {
+                                                            showToast(e.response?.data?.message || 'فشل التحديث','error');
+                                                        } finally {
+                                                            setBioSaving(false);
+                                                        }
+                                                    }}
+                                                    disabled={bioSaving}
+                                                    style={{padding:"6px 18px",borderRadius:8,border:"none",background:"#6366f1",color:"#fff",fontSize:13,fontWeight:700,cursor:bioSaving?"wait":"pointer"}}
+                                                >
+                                                    {bioSaving ? 'جاري الحفظ...' : '💾 حفظ'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 ) : (
-                                    <p className="no-bio">لم يتم إضافة نبذة</p>
+                                    user.bio ? (
+                                        <p>{user.bio}</p>
+                                    ) : (
+                                        <p className="no-bio">لم يتم إضافة نبذة</p>
+                                    )
                                 )}
                             </div>
                         </div>

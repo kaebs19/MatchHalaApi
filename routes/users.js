@@ -731,6 +731,60 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   PUT /api/users/:id/bio
+// @desc    Edit user bio (admin) — تعديل/استبدال النبذة مباشرة
+// @access  Private/Admin
+router.put('/:id/bio', protect, adminOnly, async (req, res) => {
+    try {
+        const { bio } = req.body;
+        if (typeof bio !== 'string') {
+            return res.status(400).json({ success: false, message: 'النبذة مطلوبة (نص)' });
+        }
+        const trimmed = bio.trim();
+        if (trimmed.length > 500) {
+            return res.status(400).json({ success: false, message: 'النبذة طويلة جداً (الحد 500 حرف)' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // ✅ التعديل المباشر — بدون فحص banned words (الأدمن مسؤول عن المحتوى)
+        user.bio = trimmed;
+        // ✅ استعادة الحالة لو كانت محظورة
+        if (user.bioStatus?.status === 'banned') {
+            user.bioStatus = {
+                status: 'active',
+                originalBio: null,
+                reason: null,
+                bannedAt: null
+            };
+        }
+        await user.save();
+        invalidateUsers();
+
+        // ✅ Socket — يُحدّث iOS فوراً
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('profile-updated', {
+                type: 'bio',
+                bio: user.bio,
+                bioStatus: user.bioStatus,
+                editedByAdmin: true
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'تم تحديث النبذة بنجاح',
+            data: { bio: user.bio, bioStatus: user.bioStatus }
+        });
+    } catch (error) {
+        console.error('خطأ في تعديل النبذة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/users/:id/toggle-active
 // @desc    تفعيل/إلغاء تفعيل مستخدم
 // @access  Private/Admin
