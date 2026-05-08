@@ -362,8 +362,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
         await conversation.save();
 
-        // جلب الرسالة مع بيانات المرسل + الرد
+        // جلب الرسالة مع بيانات المرسل + الرد + originalContent (للمرسل فقط)
         const populatedMessage = await Message.findById(message._id)
+            .select('+originalContent')
             .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
             .populate({
                 path: 'replyTo',
@@ -371,20 +372,25 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 populate: { path: 'sender', select: 'name' }
             }).lean();
 
+        // ✅ نسخة مُجرَّدة من originalContent للبث (privacy للمستلم)
+        // المستلم يرى المكتوم فقط ويفتح originalContent عبر endpoint reveal بعد الموافقة
+        const broadcastMessage = { ...populatedMessage };
+        delete broadcastMessage.originalContent;
+
         // إرسال عبر Socket.IO
         if (global.io) {
-            // بث للمتصلين بغرفة المحادثة
+            // ✅ غرفة المحادثة → نسخة مُجرَّدة (يستخدمها المستلم لو متصل)
             global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: populatedMessage
+                message: broadcastMessage
             });
 
-            // بث أيضاً لغرفة المستخدم الخاصة (حتى لو لم ينضم لغرفة المحادثة)
+            // ✅ غرفة المستخدم الخاصة للمستلمين الآخرين → نسخة مُجرَّدة فقط
             const otherParticipants = conversation.participants.filter(
                 p => p._id.toString() !== req.user._id.toString()
             );
             for (const participant of otherParticipants) {
                 global.io.to(`user:${participant._id}`).emit('new-message', {
-                    message: populatedMessage
+                    message: broadcastMessage   // بدون originalContent
                 });
             }
         }
