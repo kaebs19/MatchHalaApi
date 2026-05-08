@@ -108,6 +108,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
 
         // مسح الكاش
         cacheDel('banned_words_list');
+        cacheDel('banned_words_list_v2');
 
         res.status(201).json({
             success: true,
@@ -131,6 +132,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
         }
 
         cacheDel('banned_words_list');
+        cacheDel('banned_words_list_v2');
 
         res.json({ success: true, message: 'تم حذف الكلمة' });
     } catch (error) {
@@ -150,6 +152,7 @@ router.post('/bulk/delete', protect, adminOnly, async (req, res) => {
 
         const result = await BannedWord.deleteMany({ _id: { $in: ids } });
         cacheDel('banned_words_list');
+        cacheDel('banned_words_list_v2');
 
         res.json({
             success: true,
@@ -178,6 +181,7 @@ router.put('/:id', protect, adminOnly, async (req, res) => {
         }
 
         cacheDel('banned_words_list');
+        cacheDel('banned_words_list_v2');
         res.json({ success: true, data: updated });
     } catch (error) {
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
@@ -211,6 +215,7 @@ router.post('/seed', protect, adminOnly, async (req, res) => {
         }
 
         cacheDel('banned_words_list');
+        cacheDel('banned_words_list_v2');
 
         res.json({
             success: true,
