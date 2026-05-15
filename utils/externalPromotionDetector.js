@@ -386,7 +386,7 @@ async function recordExternalPromoViolation(user, logContext = null) {
                 logContext.source === 'bio'     ? 'bio' :
                 logContext.source === 'name'    ? 'name' : 'text';
 
-            const reasonText = `محاولة مشاركة حسابات خارجية: ${logContext.categories.join(', ')}`;
+            const reasonText = `نشر/طلب حسابات خارجية: ${logContext.categories.join(', ')}`;
 
             Violation.create({
                 user: user._id,
@@ -439,10 +439,10 @@ async function recordExternalPromoViolation(user, logContext = null) {
         user.suspension.suspendedAt = now;
         user.suspension.suspendedUntil = suspensionUntil;
         user.suspension.reason = 'external_promotion_repeat';
-        user.suspension.adminMessage = 'تم تعليق الحساب بسبب محاولات متكررة لمشاركة حسابات خارجية';
+        user.suspension.adminMessage = 'تم تعليق الحساب بسبب نشر حسابات خارجية';
         user.externalPromo.suspendedAt = now;
         suspended = true;
-        message = 'تم تعليق حسابك 7 أيام بسبب محاولات متكررة لمشاركة حسابات خارجية';
+        message = 'تم تقييد حسابك بسبب نشر حسابات خارجية';
     }
     // SOFT threshold: lock 24 ساعة
     else if (user.externalPromo.violations >= SOFT_THRESHOLD) {
@@ -455,7 +455,11 @@ async function recordExternalPromoViolation(user, logContext = null) {
         user.restrictions.messagingRestrictedLevel = 'all';
         user.restrictions.restrictionReason = 'external_promotion';
         lockApplied = true;
-        message = 'تم تقييد حسابك 24 ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية';
+        message = 'تم تقييد حسابك بسبب نشر حسابات خارجية';
+    }
+    // قبل الوصول للعتبة: تحذير وقائي يصل المستخدم في كل مخالفة
+    else {
+        message = 'نشر أو طلب حسابات خارجية مخالف لسياسة المنصة ويعرض حسابك للتقييد والحظر';
     }
 
     await user.save();

@@ -18,7 +18,8 @@ const bannedWordSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['sexual', 'violence', 'hate', 'spam', 'other'],
+        // promotion = ترويج | contact = رقم تواصل / حساب خارجي
+        enum: ['sexual', 'violence', 'hate', 'spam', 'promotion', 'contact', 'other'],
         default: 'other'
     },
     isActive: {

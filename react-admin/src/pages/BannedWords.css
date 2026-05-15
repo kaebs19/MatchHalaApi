@@ -309,6 +309,16 @@
     color: #1e40af;
 }
 
+.bw-badge.category-promotion {
+    background: #ede9fe;
+    color: #6d28d9;
+}
+
+.bw-badge.category-contact {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
 .bw-badge.category-other {
     background: #f3f4f6;
     color: #4b5563;

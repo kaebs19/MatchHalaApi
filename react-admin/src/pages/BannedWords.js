@@ -113,6 +113,8 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
         { value: 'violence', label: 'عنف' },
         { value: 'hate', label: 'كراهية' },
         { value: 'spam', label: 'سبام' },
+        { value: 'promotion', label: 'ترويج' },
+        { value: 'contact', label: 'رقم تواصل' },
         { value: 'other', label: 'أخرى' }
     ];
 
