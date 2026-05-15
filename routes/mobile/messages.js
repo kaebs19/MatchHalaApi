@@ -269,7 +269,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         //   3. violations += 2 (عقوبة مضاعفة لأن التحايل متعمد)
         let multiLetterDetection = null;
         if (!externalPromoDetected && type === 'text') {
-            multiLetterDetection = checkMultiMessageLetters(
+            multiLetterDetection = await checkMultiMessageLetters(
                 String(req.user._id),
                 String(conversationId),
                 content,
@@ -322,7 +322,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 });
 
                 // ✅ مسح الـ buffer (تم الالتقاط — تجنّب double-trigger)
-                clearLetterBuffer(String(req.user._id), String(conversationId));
+                await clearLetterBuffer(String(req.user._id), String(conversationId));
             }
         }
         // ════════════════════════════════════════════════════════════════

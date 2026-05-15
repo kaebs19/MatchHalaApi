@@ -29,17 +29,18 @@
  */
 
 const { detectExternalPromotion, aggressiveNormalize } = require('./externalPromotionDetector');
+const redisClient = require('./redisClient');
 
 // إعدادات
-const TTL_MS = 60 * 1000;                 // 60 ثانية
+const TTL_SECONDS = 60;                   // 60 ثانية (Redis EX يعمل بالثواني)
 const MAX_FRAGMENT_LENGTH = 3;            // 1-3 أحرف فقط
 const MIN_FRAGMENTS = 3;                  // الحد الأدنى للفحص
 const MIN_COMBINED_LENGTH = 4;            // أو combined.length ≥ 4
 const MAX_BUFFER_PER_KEY = 12;            // حماية من spam
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const REDIS_KEY_PREFIX = 'mml:';          // multi-message-letter
 
-// in-memory cache: Map<userId:convId, { fragments, messageIds, lastAt, startedAt }>
-const cache = new Map();
+// ⚠️ النظام كان in-memory Map → غير صالح في PM2 cluster mode (4 instances)
+// التحويل إلى Redis يضمن مشاركة الـ buffer بين كل الـ instances
 
 // Stop-words list (لا تُضاف للـ buffer لكن لا تمسحه)
 const STOP_WORDS_AR = new Set([
@@ -184,7 +185,7 @@ function multiPassDetect(combined) {
  *   tactic: 'split_letters'
  * }
  */
-function checkMultiMessageLetters(userId, conversationId, content, messageId = null) {
+async function checkMultiMessageLetters(userId, conversationId, content, messageId = null) {
     const result = { detected: false, tactic: 'split_letters' };
 
     if (!isEligible(content)) return result;
@@ -194,23 +195,17 @@ function checkMultiMessageLetters(userId, conversationId, content, messageId = n
     // stop-word → لا تُضاف لكن لا تمسح الـ buffer
     if (isStopWord(trimmed)) return result;
 
-    const key = `${userId}:${conversationId}`;
-    const now = Date.now();
+    const key = `${REDIS_KEY_PREFIX}${userId}:${conversationId}`;
 
-    // جلب أو إنشاء buffer
-    let buf = cache.get(key);
-    if (buf && (now - buf.lastAt) > TTL_MS) {
-        // الـ buffer انتهى → ابدأ جديد
-        buf = null;
-    }
+    // جلب الـ buffer من Redis
+    let buf = await redisClient.getJSON(key);
     if (!buf) {
-        buf = { fragments: [], messageIds: [], startedAt: now, lastAt: now };
+        buf = { fragments: [], messageIds: [], startedAt: Date.now() };
     }
 
     // أضف الـ fragment
     buf.fragments.push(trimmed);
     if (messageId) buf.messageIds.push(messageId);
-    buf.lastAt = now;
 
     // حماية من spam — احتفظ بآخر MAX_BUFFER_PER_KEY فقط
     if (buf.fragments.length > MAX_BUFFER_PER_KEY) {
@@ -218,7 +213,8 @@ function checkMultiMessageLetters(userId, conversationId, content, messageId = n
         if (buf.messageIds.length > MAX_BUFFER_PER_KEY) buf.messageIds.shift();
     }
 
-    cache.set(key, buf);
+    // احفظ الـ buffer في Redis مع TTL
+    await redisClient.setJSON(key, buf, TTL_SECONDS);
 
     // شرط التفعيل
     const combined = buf.fragments.join('');
@@ -226,10 +222,6 @@ function checkMultiMessageLetters(userId, conversationId, content, messageId = n
     if (!shouldCheck) return result;
 
     // Sliding window: اختبر nano-windows
-    // window 1: combined كامل
-    // window 2: آخر 5 fragments
-    // window 3: آخر 4 fragments
-    // window 4: آخر 3 fragments
     const candidates = [];
     candidates.push(combined);
     for (let take = Math.min(buf.fragments.length, 6); take >= MIN_FRAGMENTS; take--) {
@@ -245,7 +237,7 @@ function checkMultiMessageLetters(userId, conversationId, content, messageId = n
             const matchedIds = buf.messageIds.slice(-matchedCount);
 
             // مسح الـ buffer لتجنب double-trigger
-            cache.delete(key);
+            await redisClient.del(key);
 
             return {
                 detected: true,
@@ -280,24 +272,11 @@ function countFragmentsForString(fragments, target) {
 }
 
 /**
- * تنظيف دوري للـ buffers المنتهية
- */
-function cleanup() {
-    const now = Date.now();
-    for (const [key, buf] of cache.entries()) {
-        if ((now - buf.lastAt) > TTL_MS) {
-            cache.delete(key);
-        }
-    }
-}
-
-setInterval(cleanup, CLEANUP_INTERVAL_MS).unref?.();
-
-/**
  * مسح الـ buffer (للاختبارات أو إعادة الضبط)
+ * Redis يتولى الـ TTL تلقائياً — لا حاجة لـ interval cleanup
  */
-function clearLetterBuffer(userId, conversationId) {
-    cache.delete(`${userId}:${conversationId}`);
+async function clearLetterBuffer(userId, conversationId) {
+    await redisClient.del(`${REDIS_KEY_PREFIX}${userId}:${conversationId}`);
 }
 
 /**
@@ -305,8 +284,8 @@ function clearLetterBuffer(userId, conversationId) {
  */
 function getStats() {
     return {
-        activeBuffers: cache.size,
-        ttlMs: TTL_MS,
+        backend: 'redis',
+        ttlSeconds: TTL_SECONDS,
         minFragments: MIN_FRAGMENTS,
         minCombinedLength: MIN_COMBINED_LENGTH
     };
