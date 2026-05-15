@@ -1547,6 +1547,48 @@ function ExternalPromoTab({ onViewUserDetail }) {
     if (loading) return <div className="bw-section" style={{padding:'40px',textAlign:'center'}}>جارِ التحميل...</div>;
     if (!stats) return <div className="bw-section" style={{padding:'40px',textAlign:'center'}}>تعذر التحميل</div>;
 
+    // ✅ بانر توضيحي يشرح للأدمن النظام التدريجي
+    const InfoBanner = () => (
+        <div style={{
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            border: '1px solid #f59e0b',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            gap: '14px',
+            alignItems: 'flex-start'
+        }}>
+            <div style={{fontSize: '28px', lineHeight: 1}}>🛡️</div>
+            <div style={{flex: 1, color: '#78350f'}}>
+                <div style={{fontWeight: 700, fontSize: '14px', marginBottom: '6px'}}>
+                    نظام كشف الحسابات الخارجية يعمل تلقائياً
+                </div>
+                <div style={{fontSize: '13px', lineHeight: 1.6, marginBottom: '10px'}}>
+                    يتم التعرف تلقائياً على محاولات مشاركة حسابات أو أرقام تواصل خارجية (سناب، انستا، واتساب، تيليجرام، إلخ).
+                    سياسة المنصة تمنع نشر أو طلب هذه الحسابات، وتكرار المحاولة يقيّد الحساب آلياً.
+                </div>
+                <div style={{
+                    display: 'flex', gap: '10px', flexWrap: 'wrap',
+                    fontSize: '12px', fontWeight: 600
+                }}>
+                    <span style={{background: '#fbbf24', padding: '4px 10px', borderRadius: '6px', color: '#78350f'}}>
+                        ⚠️ 5 مخالفات → تقييد 24 ساعة (أول مرة)
+                    </span>
+                    <span style={{background: '#f59e0b', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                        ⛔ ثاني تقييد → 48 ساعة
+                    </span>
+                    <span style={{background: '#d97706', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                        🚫 ثالث تقييد → 72 ساعة
+                    </span>
+                    <span style={{background: '#b91c1c', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                        🛑 رابع تقييد → تعليق أسبوع
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+
     const platformColors = {
         snap: '#FFC107', instagram: '#E91E63', whatsapp: '#25D366',
         zinji: '#FF5722', telegram: '#0088CC', tiktok: '#000',
@@ -1560,6 +1602,9 @@ function ExternalPromoTab({ onViewUserDetail }) {
 
     return (
         <div className="bw-section" style={{padding:'20px'}}>
+            {/* ✅ بانر توضيحي يشرح النظام التدريجي للأدمن */}
+            <InfoBanner />
+
             {/* فلتر الفترة */}
             <div style={{display:'flex',gap:'8px',marginBottom:'20px',alignItems:'center'}}>
                 <span style={{fontWeight:'600'}}>الفترة:</span>

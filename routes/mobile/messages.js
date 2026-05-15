@@ -505,20 +505,25 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         if (externalPromoDetected) {
             const v = externalPromoViolation?.violations || 0;
             const t = externalPromoViolation?.threshold || 5;
+            const lockCount = externalPromoViolation?.lockCount || 0;
+            const durationHours = externalPromoViolation?.durationHours || 0;
 
             response.externalPromoBlocked = {
                 // عنوان الـ sheet
                 title: externalPromoViolation?.suspended ? 'تم تعليق حسابك' :
-                       externalPromoViolation?.lockApplied ? 'تم تقييد حسابك' :
+                       externalPromoViolation?.lockApplied ? `تم تقييد حسابك (التقييد رقم ${lockCount})` :
                        'تم حجب رسالتك',
-                // الرسالة الأساسية (واضحة ومختصرة)
-                message: 'تم حجب رسالتك لاحتوائها على حساب تواصل خارجي. تكرار المخالفة يعرض حسابك للتقييد والحظر',
-                // رسالة السيرفر الأصلية (للـ severity العالية)
+                // الرسالة الأساسية (احترافية + شاملة)
+                message: 'تم التعرف تلقائياً على مشاركة حساب خارجي. سياسة المنصة تمنع ذلك، وتكرار مشاركة حسابات أو أرقام يقيّد حسابك آلياً.',
+                // رسالة السيرفر التفصيلية (مع المدة ورقم التقييد)
                 serverMessage: externalPromoViolation?.message || null,
                 categories: externalPromoCategories,
                 violations: v,
                 threshold: t,
-                // severity للـ iOS ليختار الـ UI المناسب
+                // ✅ معلومات التصعيد التدريجي
+                lockCount,
+                durationHours,
+                // severity للـ iOS
                 severity: externalPromoViolation?.suspended ? 'suspended' :
                           externalPromoViolation?.lockApplied ? 'locked' :
                           v >= t - 1 ? 'last_warning' :
@@ -527,7 +532,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 suspended: externalPromoViolation?.suspended || false
             };
 
-            // ✅ بث لحظي للمرسل (لو كان متصلاً من جهاز آخر — يصله التحذير فوراً)
+            // ✅ بث لحظي للمرسل
             try {
                 global.io.to(`user:${req.user._id}`).emit('external-promo-warning', {
                     conversationId,

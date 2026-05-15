@@ -391,7 +391,12 @@ const userSchema = new mongoose.Schema({
         violations: { type: Number, default: 0 },
         lastViolationAt: { type: Date, default: null },
         bioLockedUntil: { type: Date, default: null },
-        suspendedAt: { type: Date, default: null }
+        suspendedAt: { type: Date, default: null },
+        // ✅ عداد التقييدات السابقة بسبب external promo — يحدد مدة التقييد التالي
+        //    1 → 24h | 2 → 48h | 3 → 72h | 4+ → suspension 7d
+        //    لا يتصفّر إلا بعد فترة طويلة (90 يوم) من حسن السلوك
+        lockCount: { type: Number, default: 0 },
+        lastLockAt: { type: Date, default: null }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
