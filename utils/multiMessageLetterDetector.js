@@ -188,6 +188,9 @@ function multiPassDetect(combined) {
 async function checkMultiMessageLetters(userId, conversationId, content, messageId = null) {
     const result = { detected: false, tactic: 'split_letters' };
 
+    // 🔬 DEBUG: log every call entry
+    console.log(`[MML] called: content="${content}" length=${content?.length} user=${String(userId).slice(-6)} conv=${String(conversationId).slice(-6)} msg=${messageId?.slice(-6)}`);
+
     if (!isEligible(content)) {
         console.log(`[MML] not eligible: "${content}"`);
         return result;

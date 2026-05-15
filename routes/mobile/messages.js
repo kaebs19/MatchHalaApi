@@ -276,6 +276,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         //   2. socket emit للمستلم لتحديث UI
         //   3. violations += 2 (عقوبة مضاعفة لأن التحايل متعمد)
         let multiLetterDetection = null;
+        // 🔬 DEBUG entry
+        console.log(`[MML-MSG] before check: content="${content}" type=${type} externalPromoDetected=${externalPromoDetected}`);
         if (!externalPromoDetected && type === 'text') {
             multiLetterDetection = await checkMultiMessageLetters(
                 String(req.user._id),
