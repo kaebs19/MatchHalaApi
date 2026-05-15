@@ -188,12 +188,18 @@ function multiPassDetect(combined) {
 async function checkMultiMessageLetters(userId, conversationId, content, messageId = null) {
     const result = { detected: false, tactic: 'split_letters' };
 
-    if (!isEligible(content)) return result;
+    if (!isEligible(content)) {
+        console.log(`[MML] not eligible: "${content}"`);
+        return result;
+    }
 
     const trimmed = content.trim();
 
     // stop-word → لا تُضاف لكن لا تمسح الـ buffer
-    if (isStopWord(trimmed)) return result;
+    if (isStopWord(trimmed)) {
+        console.log(`[MML] stop-word skipped: "${trimmed}"`);
+        return result;
+    }
 
     const key = `${REDIS_KEY_PREFIX}${userId}:${conversationId}`;
 
@@ -218,8 +224,13 @@ async function checkMultiMessageLetters(userId, conversationId, content, message
 
     // شرط التفعيل
     const combined = buf.fragments.join('');
+    console.log(`[MML] buffer for ${key}: fragments=${JSON.stringify(buf.fragments)}, combined="${combined}"`);
+
     const shouldCheck = buf.fragments.length >= MIN_FRAGMENTS || combined.length >= MIN_COMBINED_LENGTH;
-    if (!shouldCheck) return result;
+    if (!shouldCheck) {
+        console.log(`[MML] not enough yet (need ≥${MIN_FRAGMENTS} fragments or ≥${MIN_COMBINED_LENGTH} chars)`);
+        return result;
+    }
 
     // Sliding window: اختبر nano-windows
     const candidates = [];
@@ -229,8 +240,11 @@ async function checkMultiMessageLetters(userId, conversationId, content, message
         if (sub !== combined) candidates.push(sub);
     }
 
+    console.log(`[MML] candidates: ${JSON.stringify(candidates)}`);
+
     for (const candidate of candidates) {
         const detection = multiPassDetect(candidate);
+        console.log(`[MML]   "${candidate}" → detected=${detection.detected}, pass=${detection.pass || '-'}`);
         if (detection.detected) {
             // حدد أي fragments شاركت في المخالفة (للـ retroactive blocking)
             const matchedCount = countFragmentsForString(buf.fragments, candidate);
