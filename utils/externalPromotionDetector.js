@@ -29,7 +29,7 @@ const PATTERNS = [
     { regex: /\bsanp\b/gi, category: 'snap' },                           // typo شائع
     { regex: /سناب[؀-ۿ]*/g, category: 'snap' },
     // اسم شعبي للـ Snapchat (الشعار أصفر) — مربوط بـ "البرنامج/التطبيق" لتجنب false positives
-    { regex: /(?:البرنامج|التطبيق|تطبيق|برنامج)\s+ال[أإا]صفر/g, category: 'snap' },
+    { regex: /(?:البرنامج|التطبيق|تطبيق|برنامج)\s+ال[أإاآ]صفر/g, category: 'snap' },
     { regex: /(?:https?:\/\/)?(?:www\.)?snapchat\.com\/[^\s,]*/gi, category: 'snap_url' },
     { regex: /(?:https?:\/\/)?snap(?:chat)?\.app\.link\/[^\s,]*/gi, category: 'snap_url' },
 
@@ -38,8 +38,9 @@ const PATTERNS = [
     { regex: /\binsta(?:gram)?\w*\b/gi, category: 'instagram' },
     { regex: /\binst[ae]?gr[ae]?m\b/gi, category: 'instagram' },         // typos: instgrm, instagrm, instgram
     { regex: /\bigtv\b/gi, category: 'instagram' },
-    // lookbehind: ليس قبل "ا/إ" حرف عربي (يحمي "استأنست"، "استانستو"، "استئناس" من false positive)
-    { regex: /(?<![؀-ۿ])[إا]نست[؀-ۿ]*/g, category: 'instagram' },
+    // lookbehind: ليس قبل حرف عربي (يحمي "استأنست"، "استانستو"، "استئناس" من false positive)
+    // ✅ يشمل كل أشكال الهمزة في البداية: أ/إ/ا/آ
+    { regex: /(?<![؀-ۿ])[أإاآ]نست[؀-ۿ]*/g, category: 'instagram' },
     { regex: /(?:https?:\/\/)?(?:www\.)?instagram\.com\/[^\s,]*/gi, category: 'instagram_url' },
     { regex: /(?:https?:\/\/)?(?:www\.)?ig\.me\/[^\s,]*/gi, category: 'instagram_url' },
 
@@ -61,15 +62,15 @@ const PATTERNS = [
     // واتس/واتساب — يجب ألا يتبعها حرف عربي (يحمي "تسبحين/تسوينها/تسويق" من false positive)
     // ملاحظة: \b لا يعمل مع العربية في JS regex، نستخدم lookahead بدلاً منه
     // lookbehind: ليس قبل "و" حرف عربي (يحمي من aggressive merging مثل "شنو تسوي" → "شنوتسوي")
-    { regex: /(?<![؀-ۿ])و[اآ]?تس(?:[\s]?[اآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
+    { regex: /(?<![؀-ۿ])و[أإاآ]?تس(?:[\s]?[أإاآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
     // ✅ "الواتس" / "الواتساب" — استثناء صريح للـ "ال" التعريف (lookbehind يمنعها)
-    { regex: /(?<![؀-ۿ])الو[اآ]?تس(?:[\s]?[اآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
+    { regex: /(?<![؀-ۿ])الو[أإاآ]?تس(?:[\s]?[أإاآ]?ب(?![؀-ۿ])|(?![؀-ۿ]))/g, category: 'whatsapp' },
     { regex: /(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)\/[^\s,]*/gi, category: 'whatsapp_url' },
 
     // ─── Zinji (تطبيق مشاركة أرقام شائع في السعودية والخليج) ───
     // يغطي: zinji, zenji, zanji, zonji + variations عربية: زنجي، زانجي، زآنجي
     { regex: /\bz[aeio]n[jq]i\b/gi, category: 'zinji' },
-    { regex: /ز[اآ]*ن[جق]ي[؀-ۿ]*/g, category: 'zinji' },
+    { regex: /ز[أإاآ]*ن[جق]ي[؀-ۿ]*/g, category: 'zinji' },
     // روابط Zinji بكل الـ TLDs (com, app, me, net, io)
     { regex: /(?:https?:\/\/)?(?:www\.)?z[aeio]n[jq]i\.[a-z]{2,4}\/?[^\s,]*/gi, category: 'zinji_url' },
 
@@ -155,8 +156,9 @@ function aggressiveNormalize(text) {
     t = t.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, ' ');
     t = t.replace(/(.)\1+/g, '$1');   // collapse ALL repeats to 1
     // Strip separators BETWEEN letters فقط (Latin + Arabic) — لا تأثير على الأرقام
-    // مثلاً: s.n.a.p → snap، ا ن س ت ا → انستا (لكن 050-123 يبقى لأنه أرقام)
-    const letterPair = /([a-z؀-ۿ])[\s._\-]+([a-z؀-ۿ])/g;
+    // مثلاً: s.n.a.p → snap، ا ن س ت ا → انستا، سن//اب → سناب (لكن 050-123 يبقى لأنه أرقام)
+    // ✅ separators المدعومة: space . _ - / (يشمل // وَ /// كحالات تخفّي شائعة)
+    const letterPair = /([a-z؀-ۿ])[\s._\-\/]+([a-z؀-ۿ])/g;
     t = t.replace(letterPair, '$1$2');
     // كرّر لمعالجة sequences طويلة (s_n_a_p يحتاج passes متعددة)
     t = t.replace(letterPair, '$1$2');
@@ -175,11 +177,12 @@ const EVASION_PATTERNS = [
     { regex: /\bi[\s._\-]+n[\s._\-]+s[\s._\-]+t[\s._\-]+a\b/gi, category: 'instagram' },
     { regex: /\bw[\s._\-]+h[\s._\-]+a[\s._\-]+t[\s._\-]+s\b/gi, category: 'whatsapp' },
     { regex: /\bz[\s._\-]+[ieao][\s._\-]+n[\s._\-]+[jq][\s._\-]+i\b/gi, category: 'zinji' },
-    // Arabic spaced — س ن ا ب / ا ن س ت ا
-    { regex: /س[\s._\-]+ن[\s._\-]+ا[\s._\-]+ب/g, category: 'snap' },
-    { regex: /[إا][\s._\-]+ن[\s._\-]+س[\s._\-]+ت[\s._\-]+[اآ]/g, category: 'instagram' },
-    { regex: /و[\s._\-]+ا[\s._\-]+ت[\s._\-]+س/g, category: 'whatsapp' },
-    { regex: /ز[\s._\-]*[اآ]?[\s._\-]+ن[\s._\-]+[جق][\s._\-]+ي/g, category: 'zinji' },
+    // Arabic spaced — س ن ا ب / ا ن س ت ا (يدعم separators: مسافة / . _ - / //)
+    // ✅ يدعم كل أشكال الهمزة [أإاآ] في البداية والنهاية
+    { regex: /س[\s._\-\/]+ن[\s._\-\/]+[أإاآ][\s._\-\/]+ب/g, category: 'snap' },
+    { regex: /[أإاآ][\s._\-\/]+ن[\s._\-\/]+س[\s._\-\/]+ت[\s._\-\/]+[أإاآ]/g, category: 'instagram' },
+    { regex: /و[\s._\-\/]+[أإاآ][\s._\-\/]+ت[\s._\-\/]+س/g, category: 'whatsapp' },
+    { regex: /ز[\s._\-\/]*[أإاآ]?[\s._\-\/]+ن[\s._\-\/]+[جق][\s._\-\/]+ي/g, category: 'zinji' },
     // Leet speak — drop \b ليلتقط !nsta و 5nap في بداية النص
     { regex: /5n[a4]p/gi, category: 'snap' },
     { regex: /[1!]nst[a4]/gi, category: 'instagram' },

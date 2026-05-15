@@ -167,6 +167,23 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 bannedResult = await checkBannedWords(content);
                 if (bannedResult.hasBannedWords) {
                     censoredContent = bannedResult.censoredText;
+
+                    // ✅ إذا الـ banned word category = contact/promotion → عاملها كـ external promo
+                    //    (الأدمن يضيف "سن//اب" أو "سَناب" يدوياً بـ category=contact لتحويلها لـ violation)
+                    const externalCats = (bannedResult.categories || []).filter(c =>
+                        c === 'contact' || c === 'promotion'
+                    );
+                    if (externalCats.length > 0) {
+                        externalPromoDetected = true;
+                        externalPromoCategories = externalCats;
+                        externalPromoViolation = await recordExternalPromoViolation(req.user, {
+                            source: 'message',
+                            categories: externalCats,
+                            patterns: bannedResult.matchedWords,
+                            conversationId,
+                            originalText: content
+                        });
+                    }
                 }
             }
 
