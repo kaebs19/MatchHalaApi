@@ -143,14 +143,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         let externalPromoCategories = [];
         let externalPromoViolation = null;
         if (type === 'text' && content) {
-            // 1. كلمات محظورة (sexual/insults)
-            bannedResult = await checkBannedWords(content);
-            if (bannedResult.hasBannedWords) {
-                censoredContent = bannedResult.censoredText;
-            }
-
-            // 2. ترويج خارجي — censor + record violation + escalation
-            const promo = detectExternalPromotion(censoredContent);
+            // 1. ترويج خارجي — يُفحَص أولاً على النص الأصلي (قبل أي censoring)
+            //    أولوية على banned words لأن الحسابات الخارجية تحتاج violation tracking منفصل
+            //    ولا نريد أن يطمسها banned-words filter قبل أن يلتقطها الـ detector
+            const promo = detectExternalPromotion(content);
             const originalContent = content;
             if (promo.detected) {
                 censoredContent = promo.redacted;
@@ -163,9 +159,21 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     conversationId,
                     originalText: originalContent
                 });
-            } else {
-                // 3. Multi-Message Number Detection — كشف الأرقام المُقسَّمة على رسائل
-                // (تكتيك التحايل: 124 → 134 → 876 = 124134876 = Zinji ID محتمل)
+            }
+
+            // 2. كلمات محظورة — تُفحَص فقط لو لم يُكتشف ترويج خارجي
+            //    (لو فيه كلاهما، الـ external promo يأخذ الأولوية)
+            if (!externalPromoDetected) {
+                bannedResult = await checkBannedWords(content);
+                if (bannedResult.hasBannedWords) {
+                    censoredContent = bannedResult.censoredText;
+                }
+            }
+
+            // 3. Multi-Message Number Detection — كشف الأرقام المُقسَّمة على رسائل
+            //    (تكتيك التحايل: 124 → 134 → 876 = 124134876 = Zinji ID محتمل)
+            //    لا يُفحَص لو اكتُشف external promo بالفعل (موجود تحذيره)
+            if (!externalPromoDetected) {
                 const multiNum = checkMultiMessageNumbers(
                     String(req.user._id),
                     String(conversationId),
@@ -476,17 +484,39 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             };
         }
 
-        // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...)
+        // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...) — sheet احترافي على iOS
         if (externalPromoDetected) {
+            const v = externalPromoViolation?.violations || 0;
+            const t = externalPromoViolation?.threshold || 5;
+
             response.externalPromoBlocked = {
-                message: externalPromoViolation?.message
-                    || 'لا يُسمح بمشاركة حسابات خارجية — تم إخفاء المعلومة',
+                // عنوان الـ sheet
+                title: externalPromoViolation?.suspended ? 'تم تعليق حسابك' :
+                       externalPromoViolation?.lockApplied ? 'تم تقييد حسابك' :
+                       'تم حجب رسالتك',
+                // الرسالة الأساسية (واضحة ومختصرة)
+                message: 'تم حجب رسالتك لاحتوائها على حساب تواصل خارجي. تكرار المخالفة يعرض حسابك للتقييد والحظر',
+                // رسالة السيرفر الأصلية (للـ severity العالية)
+                serverMessage: externalPromoViolation?.message || null,
                 categories: externalPromoCategories,
-                violations: externalPromoViolation?.violations,
-                threshold: externalPromoViolation?.threshold,
-                lockApplied: externalPromoViolation?.lockApplied,
-                suspended: externalPromoViolation?.suspended
+                violations: v,
+                threshold: t,
+                // severity للـ iOS ليختار الـ UI المناسب
+                severity: externalPromoViolation?.suspended ? 'suspended' :
+                          externalPromoViolation?.lockApplied ? 'locked' :
+                          v >= t - 1 ? 'last_warning' :
+                          v > 1 ? 'repeated' : 'first',
+                lockApplied: externalPromoViolation?.lockApplied || false,
+                suspended: externalPromoViolation?.suspended || false
             };
+
+            // ✅ بث لحظي للمرسل (لو كان متصلاً من جهاز آخر — يصله التحذير فوراً)
+            try {
+                global.io.to(`user:${req.user._id}`).emit('external-promo-warning', {
+                    conversationId,
+                    ...response.externalPromoBlocked
+                });
+            } catch (emitErr) { /* غير حرج */ }
         }
 
         res.status(201).json(response);
