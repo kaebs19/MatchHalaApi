@@ -13,6 +13,7 @@ const pushNotificationService = require('../../services/pushNotificationService'
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
+const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
@@ -255,7 +256,76 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         };
         if (replyTo) messageData.replyTo = replyTo;
 
-        const message = await Message.create(messageData);
+        let message = await Message.create(messageData);
+
+        // ════════════════════════════════════════════════════════════════
+        // 🔍 Multi-Message Letter Detection (Anti-Evasion)
+        // ════════════════════════════════════════════════════════════════
+        // المستخدم يحاول التحايل بتقسيم اسم الحساب الخارجي على عدة رسائل:
+        //   "س" → "ن" → "ا" → "ب" = "سناب"
+        // الـ buffer يتتبع آخر القطع. عند الكشف:
+        //   1. الرسائل السابقة + الحالية → content = "***"
+        //   2. socket emit للمستلم لتحديث UI
+        //   3. violations += 2 (عقوبة مضاعفة لأن التحايل متعمد)
+        let multiLetterDetection = null;
+        if (!externalPromoDetected && type === 'text') {
+            multiLetterDetection = checkMultiMessageLetters(
+                String(req.user._id),
+                String(conversationId),
+                content,
+                message._id.toString()
+            );
+
+            if (multiLetterDetection.detected) {
+                // 1. حدّث كل الرسائل المعنية (الحالية + السابقة) → ***
+                const idsToFlag = multiLetterDetection.bufferedMessageIds || [];
+                if (idsToFlag.length > 0) {
+                    await Message.updateMany(
+                        { _id: { $in: idsToFlag } },
+                        {
+                            $set: {
+                                content: '***',
+                                hasFlaggedContent: true,
+                                flaggedCategory: 'external_promo_split'
+                            }
+                        }
+                    );
+                    // إعادة جلب الرسالة الحالية بعد التحديث
+                    message = await Message.findById(message._id);
+                }
+
+                // 2. socket emit retroactive للمحادثة (المستلم يحدّث الرسائل السابقة)
+                try {
+                    global.io.to(`conversation-${conversationId}`).emit('messages-retroactive-flagged', {
+                        conversationId,
+                        messageIds: idsToFlag,
+                        reason: 'external_promo_split_letters',
+                        tactic: 'split_letters',
+                        combinedWord: multiLetterDetection.combinedWord,
+                        categories: multiLetterDetection.categories
+                    });
+                } catch (emitErr) { /* غير حرج */ }
+
+                // 3. record violation مع عقوبة مضاعفة (weight: 2)
+                externalPromoCategories = multiLetterDetection.categories;
+                externalPromoDetected = true;
+                censoredContent = '***';
+                externalPromoViolation = await recordExternalPromoViolation(req.user, {
+                    source: 'message',
+                    categories: multiLetterDetection.categories,
+                    patterns: multiLetterDetection.patterns,
+                    conversationId,
+                    originalText: `${content} (split: ${multiLetterDetection.combinedWord})`,
+                    tactic: 'split_letters',
+                    weight: 2,
+                    messageId: message._id
+                });
+
+                // ✅ مسح الـ buffer (تم الالتقاط — تجنّب double-trigger)
+                clearLetterBuffer(String(req.user._id), String(conversationId));
+            }
+        }
+        // ════════════════════════════════════════════════════════════════
 
         // إذا فيها كلمات محظورة → أضفها لقائمة المراجعة + تنبيه أدمن + حظر تلقائي
         // ✅ Phase 2: استثناء — لو الميزة مفعّلة وكل الكلمات في sensitive categories

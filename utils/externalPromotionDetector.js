@@ -414,7 +414,8 @@ async function recordExternalPromoViolation(user, logContext = null) {
                 logContext.source === 'bio'     ? 'bio' :
                 logContext.source === 'name'    ? 'name' : 'text';
 
-            const reasonText = `نشر/طلب حسابات خارجية: ${logContext.categories.join(', ')}`;
+            const tacticLabel = logContext.tactic === 'split_letters' ? ' [تحايل: حروف-حروف]' : '';
+            const reasonText = `نشر/طلب حسابات خارجية: ${logContext.categories.join(', ')}${tacticLabel}`;
 
             Violation.create({
                 user: user._id,
@@ -430,7 +431,9 @@ async function recordExternalPromoViolation(user, logContext = null) {
                     metadata: {
                         categories: logContext.categories,
                         matchedPatterns: logContext.patterns,
-                        violationCount: (user.externalPromo?.violations || 0) + 1
+                        violationCount: (user.externalPromo?.violations || 0) + (logContext.weight || 1),
+                        tactic: logContext.tactic || 'direct',          // ✅ direct / split_letters / split_number
+                        weight: logContext.weight || 1                  // ✅ 1 = عادي، 2 = مضاعف
                     }
                 }
             }).catch(err => {
@@ -466,7 +469,9 @@ async function recordExternalPromoViolation(user, logContext = null) {
         }
     }
 
-    user.externalPromo.violations += 1;
+    // ✅ Weight — للتحايل المتعمد (split letters) العقوبة مضاعفة
+    const violationWeight = Math.max(1, parseInt(logContext?.weight || 1, 10));
+    user.externalPromo.violations += violationWeight;
     user.externalPromo.lastViolationAt = now;
 
     let lockApplied = false;
@@ -569,6 +574,7 @@ module.exports = {
     recordExternalPromoViolation,
     isBioLocked,
     isMessagingLockedByPromo,
+    aggressiveNormalize,        // ✅ exposed لاستخدامه في multiMessageLetterDetector
     SOFT_THRESHOLD,
     HARD_THRESHOLD
 };
