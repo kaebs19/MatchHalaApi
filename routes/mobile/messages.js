@@ -11,7 +11,7 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
-const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo } = require('../../utils/externalPromotionDetector');
+const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
@@ -169,20 +169,28 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 if (bannedResult.hasBannedWords) {
                     censoredContent = bannedResult.censoredText;
 
-                    // ✅ إذا الـ banned word category = contact/promotion → عاملها كـ external promo
-                    //    (الأدمن يضيف "سن//اب" أو "سَناب" يدوياً بـ category=contact لتحويلها لـ violation)
+                    // ✅ تصنيف ذكي للـ external promo:
+                    //   (أ) category صريح = contact / promotion
+                    //   (ب) heuristic: الكلمة تشبه handle (underscore، mix letters+digits، @، إلخ)
+                    //       حتى لو الأدمن وضعها بـ category=spam/other بالخطأ
                     const externalCats = (bannedResult.categories || []).filter(c =>
                         c === 'contact' || c === 'promotion'
                     );
-                    if (externalCats.length > 0) {
+                    const handleLikeWords = (bannedResult.matchedWords || []).filter(looksLikeExternalHandle);
+                    const treatAsExternal = externalCats.length > 0 || handleLikeWords.length > 0;
+
+                    if (treatAsExternal) {
                         externalPromoDetected = true;
-                        externalPromoCategories = externalCats;
+                        externalPromoCategories = externalCats.length > 0
+                            ? externalCats
+                            : ['handle_pattern']; // عُلِّمت كـ external بسبب الـ heuristic
                         externalPromoViolation = await recordExternalPromoViolation(req.user, {
                             source: 'message',
-                            categories: externalCats,
+                            categories: externalPromoCategories,
                             patterns: bannedResult.matchedWords,
                             conversationId,
-                            originalText: content
+                            originalText: content,
+                            tactic: externalCats.length > 0 ? 'banned_word_contact' : 'handle_heuristic'
                         });
                     }
                 }

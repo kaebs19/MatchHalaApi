@@ -569,12 +569,55 @@ function isMessagingLockedByPromo(user) {
     );
 }
 
+/**
+ * ✅ Heuristic — هل الكلمة تشبه handle/username لحساب خارجي؟
+ *
+ * يلتقط الحالات التي يضيفها الأدمن في القائمة المحظورة بـ category خاطئ
+ * (مثل "spam" أو "other" بدلاً من "contact")، لكن النمط واضح أنه handle.
+ *
+ * أمثلة TP:
+ *   - "i_9000i"      → underscore + digits + letters
+ *   - "user.123"     → dot + digits + letters
+ *   - "@username"    → @ في البداية
+ *   - "snap_official" → underscore + letters
+ *   - "ali_2030"     → underscore + digits
+ *   - "abc123"       → mix letters+digits بدون separator
+ *
+ * أمثلة TN (لا تُعتبر handle):
+ *   - "كتاب"          → عربي خالص قصير
+ *   - "hello"        → كلمة إنجليزية عادية بدون أرقام/symbols
+ *   - "123"          → أرقام فقط
+ */
+function looksLikeExternalHandle(word) {
+    if (!word || typeof word !== 'string') return false;
+    const w = word.trim().toLowerCase();
+    if (w.length < 3) return false;
+
+    // domains معروفة
+    if (/\.(com|me|link|app|gg|net|io|org)\b/i.test(w)) return true;
+
+    // @username
+    if (/^@/.test(w) || /\s@/.test(w)) return true;
+
+    // يحتوي underscore + (حرف أو رقم) — pattern username الكلاسيكي
+    if (/_/.test(w) && /[a-z0-9؀-ۿ]/.test(w)) return true;
+
+    // mix letters + digits بدون separators (مثل abc123 أو 9000i)
+    // لكن نتجاهل الأرقام الصرفة (123) أو الكلمات الصرفة (hello)
+    const hasLetter = /[a-zA-Z]/.test(w);
+    const hasDigit = /\d/.test(w);
+    if (hasLetter && hasDigit && w.length >= 4) return true;
+
+    return false;
+}
+
 module.exports = {
     detectExternalPromotion,
     recordExternalPromoViolation,
     isBioLocked,
     isMessagingLockedByPromo,
-    aggressiveNormalize,        // ✅ exposed لاستخدامه في multiMessageLetterDetector
+    aggressiveNormalize,
+    looksLikeExternalHandle,    // ✅ heuristic للـ banned-words auto-classification
     SOFT_THRESHOLD,
     HARD_THRESHOLD
 };
