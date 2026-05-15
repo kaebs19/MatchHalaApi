@@ -445,7 +445,7 @@ async function recordExternalPromoViolation(user, logContext = null) {
         user.suspension.adminMessage = 'تم تعليق الحساب بسبب نشر حسابات خارجية';
         user.externalPromo.suspendedAt = now;
         suspended = true;
-        message = 'تم تقييد حسابك بسبب نشر حسابات خارجية';
+        message = 'تم تعليق حسابك بسبب نشر حسابات خارجية. التزامك بسياسة التطبيق يحمي حسابك من الحظر الدائم.';
     }
     // SOFT threshold: lock 24 ساعة
     else if (user.externalPromo.violations >= SOFT_THRESHOLD) {
@@ -458,11 +458,11 @@ async function recordExternalPromoViolation(user, logContext = null) {
         user.restrictions.messagingRestrictedLevel = 'all';
         user.restrictions.restrictionReason = 'external_promotion';
         lockApplied = true;
-        message = 'تم تقييد حسابك بسبب نشر حسابات خارجية';
+        message = 'تم تقييد حسابك بسبب نشر حسابات خارجية. التزامك بسياسة التطبيق يحمي حسابك من الحظر الدائم.';
     }
     // قبل الوصول للعتبة: تحذير وقائي يصل المستخدم في كل مخالفة
     else {
-        message = 'نشر أو طلب حسابات خارجية مخالف لسياسة المنصة ويعرض حسابك للتقييد والحظر';
+        message = 'النظام يكشف الحسابات الخارجية تلقائياً. نشر أو طلب هذه الحسابات مخالف لسياسة المنصة ويعرض حسابك للتقييد والحظر — رسائلك أمانة، حافظ على التواصل داخل التطبيق.';
     }
 
     await user.save();
