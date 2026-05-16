@@ -26,6 +26,8 @@ const Settings = require('../../models/Settings');
 // @desc    إرسال رسالة
 // @access  Private
 router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => {
+    // 🔬 DEBUG: log every entry to this route
+    console.log(`[ROUTE-SEND] user=${String(req.user?._id).slice(-6)} content="${req.body?.content}" type=${req.body?.type || 'text'} convId=${String(req.body?.conversationId).slice(-6)}`);
     try {
         const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
 
