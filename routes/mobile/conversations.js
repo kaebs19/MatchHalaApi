@@ -984,6 +984,8 @@ router.delete('/conversations/:id', protect, async (req, res) => {
         const { id } = req.params;
         const userId = req.user._id;
 
+        console.log(`[DEL-CONV] user=${userId} id=${id} valid=${mongoose.Types.ObjectId.isValid(id)}`);
+
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ success: false, message: 'معرّف المحادثة غير صالح' });
         }
@@ -994,6 +996,9 @@ router.delete('/conversations/:id', protect, async (req, res) => {
         }).select('_id hiddenFor participants').lean();
 
         if (!conv) {
+            // ✅ debug: تحقق هل المحادثة موجودة لكن المستخدم ليس participant
+            const convExists = await Conversation.findById(id).select('_id participants').lean();
+            console.log(`[DEL-CONV] not found for user. convExists=${!!convExists}, participants=${convExists?.participants?.map(p=>p.toString())}`);
             return res.status(404).json({
                 success: false,
                 message: 'المحادثة غير موجودة أو لست مشاركاً فيها'
