@@ -976,6 +976,54 @@ router.get('/conversations', protect, async (req, res) => {
     }
 });
 
+// @route   DELETE /api/mobile/conversations/:id
+// @desc    إخفاء محادثة عن المستخدم (soft delete — لا يحذف من الطرف الآخر)
+// @access  Private
+router.delete('/conversations/:id', protect, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'معرّف المحادثة غير صالح' });
+        }
+
+        const conv = await Conversation.findOne({
+            _id: id,
+            participants: userId
+        }).select('_id hiddenFor participants').lean();
+
+        if (!conv) {
+            return res.status(404).json({
+                success: false,
+                message: 'المحادثة غير موجودة أو لست مشاركاً فيها'
+            });
+        }
+
+        // hidden مسبقاً؟
+        const alreadyHidden = (conv.hiddenFor || []).some(h =>
+            h.user && h.user.toString() === userId.toString()
+        );
+        if (!alreadyHidden) {
+            await Conversation.updateOne(
+                { _id: id },
+                { $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'user_delete' } } }
+            );
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'تم حذف المحادثة من قائمتك'
+        });
+    } catch (error) {
+        console.error('خطأ في حذف المحادثة:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
+        });
+    }
+});
+
 // @route   GET /api/mobile/conversations/:id
 // @desc    جلب محادثة واحدة بمعرّفها (للـ Smart Merge في iOS عند Socket events)
 // @access  Private
