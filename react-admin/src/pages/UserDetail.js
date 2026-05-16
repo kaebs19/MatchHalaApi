@@ -2003,6 +2003,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     inappropriate_content: { bg:'#fee2e2', border:'#ef4444', text:'#7f1d1d' },
                                     disruptive_behavior: { bg:'#fff7ed', border:'#f97316', text:'#7c2d12' },
                                     bio_violation: { bg:'#ecfeff', border:'#06b6d4', text:'#164e63' },
+                                    external_accounts: { bg:'#ede9fe', border:'#7c3aed', text:'#4c1d95' },
                                     final_warning: { bg:'#fee2e2', border:'#dc2626', text:'#7f1d1d' },
                                     custom: { bg:'#f9fafb', border:'#9ca3af', text:'#374151' }
                                 };
