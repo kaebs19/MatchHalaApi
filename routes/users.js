@@ -2553,6 +2553,7 @@ router.post('/:id/official-warning', protect, adminOnly, async (req, res) => {
                 bio_violation: 'bio',
                 inappropriate_content: 'inappropriate',
                 disruptive_behavior: 'behavior',
+                external_accounts: 'external_promo',
                 final_warning: 'other'
             };
             try {

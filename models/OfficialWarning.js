@@ -14,7 +14,7 @@ const officialWarningSchema = new mongoose.Schema({
         index: true
     },
 
-    // نوع التنبيه (يقابل القوالب السبعة)
+    // نوع التنبيه (يقابل القوالب الثمانية)
     type: {
         type: String,
         enum: [
@@ -23,6 +23,7 @@ const officialWarningSchema = new mongoose.Schema({
             'inappropriate_content', // محتوى غير لائق
             'disruptive_behavior',   // سلوك مزعج
             'bio_violation',         // نبذة مخالفة
+            'external_accounts',     // مشاركة حسابات خارجية
             'final_warning',         // تحذير أخير
             'custom'                 // رسالة مخصصة
         ],
