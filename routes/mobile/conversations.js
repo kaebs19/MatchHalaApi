@@ -89,6 +89,19 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }).lean();
 
         if (existingConversation) {
+            // ✅ لو المحادثة مخفية عند المرسل (من reset chats/delete سابق)، أعد إظهارها
+            const wasHidden = (existingConversation.hiddenFor || []).some(h =>
+                h.user && h.user.toString() === req.user._id.toString()
+            );
+            if (wasHidden) {
+                await Conversation.findByIdAndUpdate(existingConversation._id, {
+                    $pull: { hiddenFor: { user: req.user._id } }
+                });
+                existingConversation.hiddenFor = (existingConversation.hiddenFor || []).filter(h =>
+                    !h.user || h.user.toString() !== req.user._id.toString()
+                );
+            }
+
             return res.status(200).json({
                 success: true,
                 message: 'محادثة موجودة بالفعل',

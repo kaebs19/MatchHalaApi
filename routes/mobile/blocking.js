@@ -86,6 +86,17 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
             $pull: { blockedUsers: userId }
         });
 
+        // ✅ إعادة إظهار المحادثة التي أُخفيت بسبب الحظر
+        await Conversation.updateMany(
+            {
+                type: 'private',
+                participants: { $all: [req.user._id, userId] }
+            },
+            {
+                $pull: { hiddenFor: { user: req.user._id, reason: 'block' } }
+            }
+        );
+
         res.json({
             success: true,
             message: 'تم إلغاء حظر المستخدم'

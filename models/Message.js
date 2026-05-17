@@ -152,6 +152,26 @@ messageSchema.methods.getChatId = function() {
     return this.conversation;
 };
 
+// ✅ Post-save hook: عند إنشاء رسالة جديدة، أعد إظهار المحادثة لمن أخفاها
+// (reset chats / delete account / user_delete) — لكن استبعد من أخفاها بسبب block
+messageSchema.post('save', async function(doc) {
+    try {
+        if (!doc.conversation || doc.type === 'system' || doc.isDeleted) return;
+        if (!doc.wasNew) return; // فقط للرسائل الجديدة (ليس التحديثات)
+        await mongoose.model('Conversation').findByIdAndUpdate(doc.conversation, {
+            $pull: { hiddenFor: { reason: { $ne: 'block' } } }
+        });
+    } catch (e) {
+        console.error('[Message post-save] unhide error:', e.message);
+    }
+});
+
+// تتبع isNew في pre-save (post-save لا يرى isNew بسبب توقيت Mongoose)
+messageSchema.pre('save', function(next) {
+    this.wasNew = this.isNew;
+    next();
+});
+
 const Message = mongoose.model('Message', messageSchema);
 
 module.exports = Message;
