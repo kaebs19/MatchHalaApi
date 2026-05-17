@@ -1431,30 +1431,19 @@ router.post('/reset-account', protect, async (req, res) => {
         const results = { level };
 
         // ── مسح المحادثات ──
+        // ✅ إخفاء أحادي الجانب: تختفي عند المستخدم فقط، تبقى عند الطرف الآخر
         if (level === 'chats' || level === 'full') {
-            const userConversations = await Conversation.find({
-                participants: req.user.id
-            }).select('_id');
+            const hideResult = await Conversation.updateMany(
+                {
+                    participants: req.user.id,
+                    'hiddenFor.user': { $ne: req.user.id }
+                },
+                {
+                    $push: { hiddenFor: { user: req.user.id, hiddenAt: new Date(), reason: 'user_reset' } }
+                }
+            );
 
-            const convIds = userConversations.map(c => c._id);
-
-            // حذف جميع الرسائل
-            const deletedMessages = await Message.deleteMany({
-                conversation: { $in: convIds }
-            });
-
-            // حذف جميع المحادثات
-            const deletedConversations = await Conversation.deleteMany({
-                _id: { $in: convIds }
-            });
-
-            // حذف البلاغات المرتبطة
-            await FlaggedMessage.deleteMany({
-                conversation: { $in: convIds }
-            });
-
-            results.deletedMessages = deletedMessages.deletedCount;
-            results.deletedConversations = deletedConversations.deletedCount;
+            results.hiddenConversations = hideResult.modifiedCount;
         }
 
         // ── إعادة تعيين الملف الشخصي ──
@@ -1581,17 +1570,17 @@ router.delete('/delete-account', protect, async (req, res) => {
             }
         }
 
-        // ✅ حذف المحادثات والرسائل المرتبطة
-        const userConversations = await Conversation.find({
-            participants: req.user.id
-        }).select('_id');
-        const convIds = userConversations.map(c => c._id);
-
-        if (convIds.length > 0) {
-            await Message.deleteMany({ conversation: { $in: convIds } });
-            await Conversation.deleteMany({ _id: { $in: convIds } });
-            await FlaggedMessage.deleteMany({ conversation: { $in: convIds } });
-        }
+        // ✅ إخفاء المحادثات عند المستخدم فقط — الطرف الآخر يحتفظ بسجله
+        // (الرسائل والمحادثات تبقى للطرف الآخر، المستخدم نفسه يُحذف)
+        await Conversation.updateMany(
+            {
+                participants: req.user.id,
+                'hiddenFor.user': { $ne: req.user.id }
+            },
+            {
+                $push: { hiddenFor: { user: req.user.id, hiddenAt: new Date(), reason: 'account_deleted' } }
+            }
+        );
 
         // حذف المستخدم
         await user.deleteOne();

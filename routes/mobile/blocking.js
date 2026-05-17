@@ -38,11 +38,17 @@ router.post('/users/block/:userId', protect, async (req, res) => {
             $addToSet: { blockedUsers: userId }
         });
 
-        // حذف أي محادثة بينهم
-        await Conversation.deleteMany({
-            type: 'private',
-            participants: { $all: [req.user._id, userId] }
-        });
+        // ✅ إخفاء المحادثة عند الحاظر فقط (soft hide) — الطرف الآخر لا يتأثر
+        await Conversation.updateMany(
+            {
+                type: 'private',
+                participants: { $all: [req.user._id, userId] },
+                'hiddenFor.user': { $ne: req.user._id }
+            },
+            {
+                $push: { hiddenFor: { user: req.user._id, hiddenAt: new Date(), reason: 'block' } }
+            }
+        );
 
         res.json({
             success: true,
