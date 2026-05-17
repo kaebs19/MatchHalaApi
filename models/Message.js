@@ -167,9 +167,8 @@ messageSchema.post('save', async function(doc) {
 });
 
 // تتبع isNew في pre-save (post-save لا يرى isNew بسبب توقيت Mongoose)
-messageSchema.pre('save', function(next) {
+messageSchema.pre('save', function() {
     this.wasNew = this.isNew;
-    next();
 });
 
 const Message = mongoose.model('Message', messageSchema);
