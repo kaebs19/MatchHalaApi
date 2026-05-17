@@ -662,7 +662,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             });
         }
 
-        // فحص حد الصور اليومي (2 للعادي، لا حد للبريميوم)
+        // فحص حد الصور اليومي (6 للعادي، لا حد للبريميوم)
         if (!req.user.isPremium) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -671,13 +671,13 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                 type: 'image',
                 createdAt: { $gte: today }
             });
-            if (imageCount >= 2) {
+            if (imageCount >= 6) {
                 if (req.file) fs.unlinkSync(req.file.path);
                 return res.status(429).json({
                     success: false,
-                    message: 'وصلت للحد اليومي (2 صور). اشترك في Premium لإرسال بلا حدود',
+                    message: 'وصلت للحد اليومي (6 صور). اشترك في Premium لإرسال بلا حدود',
                     code: 'IMAGE_LIMIT_REACHED',
-                    data: { dailyLimit: 2, sent: imageCount }
+                    data: { dailyLimit: 6, sent: imageCount }
                 });
             }
         }
@@ -998,7 +998,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
             });
         }
 
-        // فحص حد الصور اليومي (2 للعادي، لا حد للبريميوم)
+        // فحص حد الصور اليومي (6 للعادي، لا حد للبريميوم)
         if (!req.user.isPremium) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -1007,13 +1007,13 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                 type: 'image',
                 createdAt: { $gte: today }
             });
-            if (imageCount >= 2) {
+            if (imageCount >= 6) {
                 if (req.file) fs.unlinkSync(req.file.path);
                 return res.status(429).json({
                     success: false,
-                    message: 'وصلت للحد اليومي (2 صور). اشترك في Premium لإرسال بلا حدود',
+                    message: 'وصلت للحد اليومي (6 صور). اشترك في Premium لإرسال بلا حدود',
                     code: 'IMAGE_LIMIT_REACHED',
-                    data: { dailyLimit: 2, sent: imageCount }
+                    data: { dailyLimit: 6, sent: imageCount }
                 });
             }
         }
