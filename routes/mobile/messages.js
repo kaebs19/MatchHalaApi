@@ -1261,16 +1261,18 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             messageQuery.createdAt = { $gt: userClear.date };
         }
 
-        // 2) فلترة 24h: لا نعرض الرسائل الأقدم من 24 ساعة
+        // 2) فلترة 24h: تختفي الرسائل القديمة فقط بعد قراءتها
+        //    الرسائل غير المقروءة تظل ظاهرة بغض النظر عن العمر —
+        //    وإلا المستخدم الذي يدخل بعد > 24 ساعة يفقد رسائل لم يقرأها أصلاً.
         if (conversation.chatMode === '24h') {
             const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            if (messageQuery.createdAt) {
-                // دمج مع فلتر clearedAt — نأخذ الأحدث
-                const clearDate = messageQuery.createdAt.$gt;
-                messageQuery.createdAt.$gt = clearDate > cutoff ? clearDate : cutoff;
-            } else {
-                messageQuery.createdAt = { $gt: cutoff };
-            }
+            const userObjectId = new mongoose.Types.ObjectId(req.user._id);
+            // قد يكون messageQuery.createdAt مضبوط من فلتر clearedAt — نتركه كما هو (top-level AND)
+            messageQuery.$or = [
+                { createdAt: { $gt: cutoff } },           // حديثة (< 24h)
+                { sender: userObjectId },                  // رسائلي أنا — أحتفظ بها دائماً
+                { 'readBy.user': { $ne: userObjectId } }   // لم أقرأها بعد — تبقى ظاهرة
+            ];
         }
 
         const messages = await Message.find(messageQuery)
