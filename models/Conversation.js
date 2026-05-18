@@ -52,11 +52,15 @@ const conversationSchema = new mongoose.Schema({
         enum: ['pending', 'accepted', 'rejected', 'expired'],
         default: 'accepted' // المحادثات القديمة تكون مقبولة بشكل افتراضي
     },
-    // ✅ وضع المحادثة (سناب = الافتراضي)
+    // ✅ وضع المحادثة (keep = الافتراضي — الرسائل تبقى للمستخدم)
+    // snap = تنحذف عند الخروج من المحادثة (مثل سناب شات)
+    // 24h = تنحذف بعد 24 ساعة من قراءتها
+    // keep = تبقى دائماً (الافتراضي)
+    // ملاحظة: الرسائل تبقى في السيرفر دائماً للأدمن
     chatMode: {
         type: String,
         enum: ['snap', '24h', 'keep'],
-        default: '24h'
+        default: 'keep'
     },
     // هل تم إرسال تذكير للمستقبل بعد 24 ساعة
     reminderSent: {
