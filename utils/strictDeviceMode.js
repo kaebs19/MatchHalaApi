@@ -2,7 +2,9 @@
 // ✅ تحديد متى نُلزم التطبيق بإرسال بصمة الجهاز
 // النسخ ≥ MIN_STRICT_VERSION ملزمة. النسخ الأقدم → fail-open (للتوافق).
 
-const MIN_STRICT_VERSION = '5.4';
+// ✅ v7.0+ تُلزم إرسال بصمة جهاز قوية (deviceUUID فريد من Keychain)
+// النسخ < 7.0 ستُرفض في endpoints الحساسة لإغلاق ثغرة البصمات الضوضائية
+const MIN_STRICT_VERSION = '7.0';
 const STRICT_PLATFORM = 'ios';
 
 /**
