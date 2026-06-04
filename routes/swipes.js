@@ -534,7 +534,14 @@ router.get('/cards', protect, async (req, res) => {
             _id: {
                 $ne: userId,
                 $nin: [...swipedIds, ...blockedIds]
-            }
+            },
+            // ✅ استبعاد المخفيين (مع احتساب انتهاء المدة)
+            $and: [{
+                $or: [
+                    { 'hidden.isHidden': { $ne: true } },
+                    { 'hidden.hiddenUntil': { $ne: null, $lte: new Date() } }
+                ]
+            }]
         };
 
         // فلتر نشاط مخصص (اختياري) مثل ?lastActiveWithin=30d

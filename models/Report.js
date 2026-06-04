@@ -49,8 +49,15 @@ const reportSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'reviewing', 'resolved', 'rejected'],
+        enum: ['pending', 'reviewing', 'resolved', 'rejected', 'cancelled'],
         default: 'pending'
+    },
+    // ✅ إلغاء البلاغ من الأدمن (سبب الإلغاء + التنبيه)
+    cancelled: {
+        cancelledAt: { type: Date, default: null },
+        cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        reason: { type: String, default: null },             // سبب اختياري للأرشيف
+        notified: { type: Boolean, default: false }          // هل أُرسل تنبيه للمُبلِّغ
     },
     priority: {
         type: String,

@@ -56,6 +56,12 @@ const appealSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // ✅ نوع الاستئناف — لتمييز استئناف التعليق عن إخفاء الحساب
+    appealType: {
+        type: String,
+        enum: ['suspension', 'hide', 'device_ban', 'other'],
+        default: 'suspension'
+    },
     // ✅ رسائل الاستئناف — محادثة ثنائية بين المستخدم والإدارة
     messages: [{
         sender: {

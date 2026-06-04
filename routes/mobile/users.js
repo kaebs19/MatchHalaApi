@@ -240,9 +240,20 @@ router.get('/users/search', protect, async (req, res) => {
             'bannedWords.isBanned': { $ne: true },
             // ✅ إخفاء المقيّدين من المراسلة (جزئي أو كامل) — ما يظهروا في الاستكشاف
             'restrictions.messagingRestricted': { $ne: true },
-            $or: [
-                { 'suspension.isSuspended': { $ne: true } },
-                { 'suspension.level': { $lt: 5 } }
+            $and: [
+                {
+                    $or: [
+                        { 'suspension.isSuspended': { $ne: true } },
+                        { 'suspension.level': { $lt: 5 } }
+                    ]
+                },
+                // ✅ استبعاد المخفيين (مع احتساب انتهاء المدة)
+                {
+                    $or: [
+                        { 'hidden.isHidden': { $ne: true } },
+                        { 'hidden.hiddenUntil': { $ne: null, $lte: new Date() } }
+                    ]
+                }
             ]
         };
 
@@ -438,7 +449,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode'
         ).lean();
 
         if (!user) {
@@ -540,6 +551,15 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             acceptingRequests: user.acceptingRequests !== false, // افتراضي true
             premiumOnlyRequests: user.premiumOnlyRequests === true
         };
+
+        // ✅ إخفاء الحساب — العميل يبلر الصورة ويخفي الاسم لمن ليس المستخدم نفسه
+        const isOwnProfile = String(user._id) === String(req.user._id);
+        const hiddenActive = !!(user.hidden?.isHidden) &&
+            (!user.hidden.hiddenUntil || new Date(user.hidden.hiddenUntil) > new Date());
+        if (hiddenActive && !isOwnProfile) {
+            profileData.isHidden = true;
+            profileData.hiddenLabel = 'مستخدم مخفي';
+        }
 
         res.json({ success: true, data: { user: profileData } });
     } catch (err) {

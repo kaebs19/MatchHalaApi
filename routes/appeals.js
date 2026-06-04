@@ -184,10 +184,19 @@ router.post('/', protect, async (req, res) => {
             });
         }
 
+        // ✅ تحديد نوع الاستئناف تلقائياً لو لم يُحدد (hide_appeal لو المستخدم مخفي وليس موقوف)
+        let resolvedActionType = actionType || 'suspension';
+        const isHidden = req.user.hidden?.isHidden &&
+            (!req.user.hidden.hiddenUntil || new Date(req.user.hidden.hiddenUntil) > new Date());
+        if (!actionType && isHidden && !req.user.suspension?.isSuspended) {
+            resolvedActionType = 'hide';
+        }
+
         const appeal = await Appeal.create({
             user: req.user._id,
             reason: reason.trim(),
-            actionType: actionType || 'suspension',
+            actionType: resolvedActionType,
+            appealType: resolvedActionType === 'hide' ? 'hide' : 'suspension',
             suspensionLevel: req.user.suspension?.level || null,
             statusHistory: [{
                 status: 'pending',

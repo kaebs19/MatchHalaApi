@@ -994,6 +994,142 @@ router.put('/:id/ban', protect, adminOnly, async (req, res) => {
 
 const pushNotificationService = require('../services/pushNotificationService');
 const Notification = require('../models/Notification');
+const { hideUser, unhideUser, DURATIONS, isCurrentlyHidden } = require('../utils/hideManager');
+
+// ══════════════════════════════════════════════════════════
+// @route   POST /api/users/:id/hide
+// @desc    إخفاء حساب مستخدم من Explore/Search كعقوبة
+// @access  Private/Admin
+// @body    { duration: '24h'|'3d'|'7d'|'30d'|'permanent', reason }
+// ══════════════════════════════════════════════════════════
+router.post('/:id/hide', protect, adminOnly, async (req, res) => {
+    try {
+        const { duration = '7d', reason = '' } = req.body;
+        if (!Object.keys(DURATIONS).includes(duration)) {
+            return res.status(400).json({ success: false, message: 'مدة غير صالحة' });
+        }
+
+        const user = await hideUser(req.params.id, {
+            duration,
+            reason: reason.trim(),
+            adminId: req.user._id
+        });
+
+        // إشعار المستخدم بأن حسابه أُخفي
+        try {
+            const title = '🙈 حسابك مخفي عن العام';
+            const untilTxt = user.hidden.hiddenUntil
+                ? `حتى ${new Date(user.hidden.hiddenUntil).toLocaleDateString('ar')}`
+                : 'بشكل دائم';
+            const body = `حسابك لن يظهر في الاكتشاف والبحث ${untilTxt}. يمكنك الاستئناف من تطبيقك.`;
+
+            await pushNotificationService.sendNotificationToUser(String(user._id), {
+                title, body
+            }, { type: 'account_hidden' }).catch(() => {});
+
+            await Notification.create({
+                title, body,
+                type: 'system',
+                sender: req.user._id,
+                recipients: 'specific',
+                targetUsers: [user._id],
+                status: 'sent',
+                sentAt: new Date()
+            });
+
+            user.hidden.notified = true;
+            await user.save();
+
+            // Socket event للعميل ليُحدّث UI فوراً
+            if (global.io) {
+                global.io.to(`user:${String(user._id)}`).emit('account-hidden', {
+                    hiddenUntil: user.hidden.hiddenUntil,
+                    reason: user.hidden.reason
+                });
+            }
+        } catch (notifErr) {
+            console.error('hide notify error:', notifErr.message);
+        }
+
+        invalidateUsers();
+        res.json({
+            success: true,
+            message: 'تم إخفاء الحساب وتنبيه المستخدم',
+            data: {
+                userId: user._id,
+                hiddenUntil: user.hidden.hiddenUntil,
+                reason: user.hidden.reason
+            }
+        });
+    } catch (error) {
+        console.error('hide user error:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+// @route   POST /api/users/:id/unhide
+// @desc    فك إخفاء حساب
+// @access  Private/Admin
+// ══════════════════════════════════════════════════════════
+router.post('/:id/unhide', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await unhideUser(req.params.id, { adminId: req.user._id, source: 'admin' });
+
+        // إشعار المستخدم
+        try {
+            const title = '✅ تم إعادة حسابك للظهور';
+            const body = 'حسابك ظاهر الآن في الاكتشاف والبحث. مرحباً بعودتك!';
+            await pushNotificationService.sendNotificationToUser(String(user._id), {
+                title, body
+            }, { type: 'account_unhidden' }).catch(() => {});
+
+            await Notification.create({
+                title, body,
+                type: 'system',
+                sender: req.user._id,
+                recipients: 'specific',
+                targetUsers: [user._id],
+                status: 'sent',
+                sentAt: new Date()
+            });
+
+            if (global.io) {
+                global.io.to(`user:${String(user._id)}`).emit('account-unhidden');
+            }
+        } catch (e) { /* fail-silent */ }
+
+        invalidateUsers();
+        res.json({ success: true, message: 'تم فك إخفاء الحساب', data: { userId: user._id } });
+    } catch (error) {
+        console.error('unhide user error:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+// @route   GET /api/users/me/hide-status
+// @desc    حالة إخفاء حسابي (للعميل ليعرض الشريط + خيار الاستئناف)
+// @access  Private
+// ══════════════════════════════════════════════════════════
+router.get('/me/hide-status', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('hidden').lean();
+        const active = isCurrentlyHidden(user);
+        res.json({
+            success: true,
+            data: {
+                isHidden: active,
+                hiddenUntil: user?.hidden?.hiddenUntil || null,
+                reason: user?.hidden?.reason || null,
+                hiddenAt: user?.hidden?.hiddenAt || null
+            }
+        });
+    } catch (error) {
+        console.error('hide-status error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
 
 // @route   PUT /api/users/:id/violations
 // @desc    تحديد عدد مخالفات الكلمات المحظورة يدوياً

@@ -497,6 +497,70 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   POST /api/reports/:id/cancel
+// @desc    إلغاء البلاغ + تنبيه المُبلِّغ
+// @access  Private/Admin
+router.post('/:id/cancel', protect, adminOnly, async (req, res) => {
+    try {
+        const { reason = '' } = req.body;
+        const report = await Report.findById(req.params.id);
+        if (!report) {
+            return res.status(404).json({ success: false, message: 'البلاغ غير موجود' });
+        }
+        if (report.status === 'cancelled') {
+            return res.status(400).json({ success: false, message: 'البلاغ ملغى بالفعل' });
+        }
+
+        report.status = 'cancelled';
+        report.cancelled = {
+            cancelledAt: new Date(),
+            cancelledBy: req.user._id,
+            reason: reason.trim() || null,
+            notified: false
+        };
+        report.resolvedBy = req.user._id;
+        report.resolvedAt = new Date();
+        await report.save();
+
+        // تنبيه المُبلِّغ (في حال البلاغ يعود لمستخدم موجود)
+        try {
+            if (report.reportedBy) {
+                const pushService = require('../services/pushNotificationService');
+                const NotificationModel = require('../models/Notification');
+                const title = 'تمت مراجعة بلاغك';
+                const body = reason && reason.trim()
+                    ? `تمت مراجعة بلاغك ولم يُثبت وجود مخالفة. ${reason.trim().slice(0, 120)}`
+                    : 'تمت مراجعة بلاغك ولم يُثبت وجود مخالفة. شكراً لحرصك على سلامة المجتمع.';
+
+                await pushService.sendNotificationToUser(String(report.reportedBy), {
+                    title, body
+                }, { type: 'report_cancelled', reportId: String(report._id) }).catch(() => {});
+
+                await NotificationModel.create({
+                    title,
+                    body,
+                    type: 'system',
+                    sender: req.user._id,
+                    recipients: 'specific',
+                    targetUsers: [report.reportedBy],
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+
+                report.cancelled.notified = true;
+                await report.save();
+            }
+        } catch (notifErr) {
+            console.error('cancel-report notify error:', notifErr.message);
+        }
+
+        res.json({ success: true, message: 'تم إلغاء البلاغ وتنبيه المُبلِّغ', data: { report } });
+    } catch (error) {
+        console.error('cancel-report error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/reports/:id/action
 // @desc    اتخاذ إجراء على البلاغ
 // @access  Private/Admin

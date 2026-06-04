@@ -368,6 +368,26 @@ const userSchema = new mongoose.Schema({
         restrictionReason: { type: String, default: null }
     },
 
+    // ✅ إخفاء الحساب (عقوبة أخف من التعليق — يخفي من Explore/Search)
+    // المستخدم نفسه يستطيع تسجيل الدخول والمحادثة، فقط غير ظاهر للجمهور
+    hidden: {
+        isHidden: { type: Boolean, default: false },
+        hiddenAt: { type: Date, default: null },
+        hiddenUntil: { type: Date, default: null },          // null = دائم
+        reason: { type: String, default: null },
+        hiddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        notified: { type: Boolean, default: false },         // هل أُبلغ المستخدم
+        history: [{
+            hiddenAt: { type: Date },
+            hiddenUntil: { type: Date },
+            reason: { type: String },
+            hiddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            unhiddenAt: { type: Date, default: null },
+            unhiddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+            source: { type: String, enum: ['admin', 'appeal', 'auto-expire'], default: 'admin' }
+        }]
+    },
+
     // ✅ نظام التحذيرات (قبل التعليق)
     warnings: {
         level: { type: Number, default: 0, min: 0, max: 2 },
@@ -468,6 +488,7 @@ userSchema.index({ isActive: 1, 'privacySettings.profileVisibility': 1, lastLogi
 userSchema.index({ isActive: 1, lastLogin: -1, gender: 1 }, { name: 'discover_active_lastLogin_gender' });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ 'suspension.isSuspended': 1, 'suspension.suspendedUntil': 1 });
+userSchema.index({ 'hidden.isHidden': 1, 'hidden.hiddenUntil': 1 });
 
 const User = mongoose.model('User', userSchema);
 
