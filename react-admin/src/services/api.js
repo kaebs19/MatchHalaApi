@@ -670,6 +670,12 @@ export const unbanBulkDevices = async (source = 'auto') => {
     return response.data;
 };
 
+// ✅ فك حظر الأجهزة الضوضائية (collision-only) — dryRun لمعاينة العدد قبل التنفيذ
+export const unbanNoisyDevices = async ({ dryRun = false } = {}) => {
+    const response = await api.post('/users/banned-devices/unban-noisy', { dryRun });
+    return response.data;
+};
+
 // ============ Violations APIs ============
 
 export const getUserViolations = async (userId, params = {}) => {

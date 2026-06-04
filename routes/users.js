@@ -1847,6 +1847,105 @@ router.post('/banned-devices/unban-bulk', protect, adminOnly, async (req, res) =
 });
 
 // ══════════════════════════════════════════════════════════
+// @route   POST /api/users/banned-devices/unban-noisy
+// @desc    فك حظر كل الأجهزة ذات البصمة الضوضائية (collision-only)
+// @access  Private/Admin
+// المعيار: deviceFingerprint و keychainToken كلاهما ضوضائي (أو null)،
+// ولا يوجد vendorId — أي لا توجد إشارة فريدة موثوقة.
+// ══════════════════════════════════════════════════════════
+router.post('/banned-devices/unban-noisy', protect, adminOnly, async (req, res) => {
+    try {
+        const BannedDevice = require('../models/BannedDevice');
+        const { dryRun = false } = req.body;
+
+        const all = await BannedDevice.find({ isActive: true })
+            .select('_id deviceFingerprint keychainToken vendorId originalUserId')
+            .lean();
+
+        // فحص كل جهاز: هل كل إشاراته ضوضائية؟
+        const noisyOnlyIds = [];
+        const noisyOnlyUserIds = [];
+        for (const d of all) {
+            if (d.vendorId) continue; // vendorId إشارة فريدة → نتركها
+            const noise = await checkFpNoise({
+                deviceFingerprint: d.deviceFingerprint,
+                keychainToken: d.keychainToken
+            });
+            const fpNoisyOrEmpty = !d.deviceFingerprint || noise.deviceFingerprint.noisy;
+            const keyNoisyOrEmpty = !d.keychainToken || noise.keychainToken.noisy;
+            if (fpNoisyOrEmpty && keyNoisyOrEmpty
+                && (d.deviceFingerprint || d.keychainToken)) {
+                noisyOnlyIds.push(d._id);
+                if (d.originalUserId) noisyOnlyUserIds.push(String(d.originalUserId));
+            }
+        }
+
+        if (dryRun) {
+            return res.json({
+                success: true,
+                data: {
+                    wouldUnbanDevices: noisyOnlyIds.length,
+                    wouldUnsuspendUsers: [...new Set(noisyOnlyUserIds)].length,
+                    threshold: NOISE_THRESHOLD,
+                    dryRun: true
+                }
+            });
+        }
+
+        if (noisyOnlyIds.length === 0) {
+            return res.json({
+                success: true,
+                message: 'لا توجد أجهزة ضوضائية لفك حظرها',
+                data: { unbannedDevices: 0, unsuspendedUsers: 0 }
+            });
+        }
+
+        const result = await BannedDevice.updateMany(
+            { _id: { $in: noisyOnlyIds } },
+            { $set: { isActive: false } }
+        );
+
+        // فك تعليق الحسابات المتأثرة (لو suspended بسبب الحظر)
+        const uniqueUserIds = [...new Set(noisyOnlyUserIds)];
+        let unsuspended = 0;
+        if (uniqueUserIds.length > 0) {
+            const userResult = await User.updateMany(
+                { _id: { $in: uniqueUserIds }, 'suspension.isSuspended': true },
+                {
+                    $set: {
+                        isActive: true,
+                        'suspension.isSuspended': false,
+                        'suspension.suspendedUntil': null,
+                        'suspension.reason': null
+                    }
+                }
+            );
+            unsuspended = userResult.modifiedCount;
+            invalidateUsers();
+
+            if (global.io) {
+                uniqueUserIds.forEach(uid => {
+                    global.io.to(`user:${uid}`).emit('account-unsuspended');
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `تم فك حظر ${result.modifiedCount} جهاز ضوضائي + ${unsuspended} حساب`,
+            data: {
+                unbannedDevices: result.modifiedCount,
+                unsuspendedUsers: unsuspended,
+                threshold: NOISE_THRESHOLD
+            }
+        });
+    } catch (error) {
+        console.error('Unban-noisy error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
 // @route   DELETE /api/users/:id/unban-device
 // @desc    فك حظر جهاز المستخدم
 // @access  Private/Admin

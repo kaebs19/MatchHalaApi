@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getBannedDevices, unbanDevice, unbanBulkDevices } from '../services/api';
+import { getBannedDevices, unbanDevice, unbanBulkDevices, unbanNoisyDevices } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -112,6 +112,49 @@ function BannedDevices({ onViewUserDetail }) {
         }
     };
 
+    // ✅ فك حظر الأجهزة الضوضائية (تطابق ≥ 8 حسابات → ليست فريدة)
+    const handleUnbanNoisy = async () => {
+        try {
+            setBulkLoading(true);
+            // معاينة أولاً
+            const preview = await unbanNoisyDevices({ dryRun: true });
+            const wouldUnban = preview.data?.wouldUnbanDevices || 0;
+            const wouldUnsuspend = preview.data?.wouldUnsuspendUsers || 0;
+            const threshold = preview.data?.threshold || 8;
+
+            if (wouldUnban === 0) {
+                showToast('لا توجد أجهزة ضوضائية حالياً', 'info');
+                setBulkLoading(false);
+                return;
+            }
+
+            const ok = window.confirm(
+                `🔍 الفحص اكتشف ${wouldUnban} جهاز ضوضائي (بصمته تطابق ≥ ${threshold} حساب — ليست فريدة).\n\n` +
+                `سيتم فك حظرهم + فك تعليق ${wouldUnsuspend} حساب.\n\n` +
+                `هذه الأجهزة كانت تحجب مستخدمين أبرياء بسبب iOS Simulator/iCloud Keychain.\n\n` +
+                `هل تريد المتابعة؟`
+            );
+            if (!ok) { setBulkLoading(false); return; }
+
+            const confirmText = window.prompt('للتأكيد، اكتب: NOISY');
+            if (confirmText !== 'NOISY') {
+                showToast('تم الإلغاء', 'info');
+                setBulkLoading(false);
+                return;
+            }
+
+            const res = await unbanNoisyDevices({ dryRun: false });
+            if (res.success) {
+                showToast(res.message || `تم فك حظر ${res.data?.unbannedDevices || 0} جهاز`, 'success');
+                fetchDevices();
+            }
+        } catch (err) {
+            showToast('فشل في فك حظر الأجهزة الضوضائية', 'error');
+        } finally {
+            setBulkLoading(false);
+        }
+    };
+
     const sourceLabel = (bannedBy) => {
         if (bannedBy === 'admin') return { text: 'يدوي', icon: '👤', cls: 'admin' };
         if (bannedBy === 'spam_system') return { text: 'سبام', icon: '🛡️', cls: 'auto' };
@@ -196,6 +239,15 @@ function BannedDevices({ onViewUserDetail }) {
                     title='فك حظر كل الأجهزة المحظورة تلقائياً (auto + spam) دون لمس الحظر اليدوي'
                 >
                     {bulkLoading ? '⏳ جاري...' : `🔓 فك التلقائي (${stats.autoCount})`}
+                </button>
+                <button
+                    className='bulk-unban-btn'
+                    onClick={handleUnbanNoisy}
+                    disabled={bulkLoading}
+                    title='فك حظر الأجهزة التي بصمتها/keychain يطابق عدد كبير من الحسابات (collision) — كانت تحجب أبرياء'
+                    style={{ background: 'linear-gradient(135deg,#dc2626,#991b1b)', marginInlineStart: 8 }}
+                >
+                    {bulkLoading ? '⏳ جاري...' : '⚠️ فك الضوضائية'}
                 </button>
             </div>
 
