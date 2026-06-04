@@ -20,7 +20,9 @@ import { userBioAction,
     deleteAllUserConversations,
     deleteUserMessage,
     censorUserMessages,
-    getUserNameHistory
+    getUserNameHistory,
+    hideUser,
+    unhideUser
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -39,6 +41,49 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
     // External Promo violations history
     const [promoLogs, setPromoLogs] = useState(null);
+
+    // ✅ إخفاء الحساب (Modal)
+    const [showHideModal, setShowHideModal] = useState(false);
+    const [hideDuration, setHideDuration] = useState('7d');
+    const [hideReason, setHideReason] = useState('');
+    const [hideLoading, setHideLoading] = useState(false);
+
+    const handleHideUser = async () => {
+        if (!userData?._id) return;
+        try {
+            setHideLoading(true);
+            const res = await hideUser(userData._id, {
+                duration: hideDuration,
+                reason: hideReason.trim()
+            });
+            if (res.success) {
+                showToast('تم إخفاء الحساب وتنبيه المستخدم', 'success');
+                setShowHideModal(false);
+                setHideReason('');
+                setHideDuration('7d');
+                // إعادة التحميل
+                window.location.reload();
+            }
+        } catch (err) {
+            showToast(err?.response?.data?.message || 'فشل في إخفاء الحساب', 'error');
+        } finally {
+            setHideLoading(false);
+        }
+    };
+
+    const handleUnhideUser = async () => {
+        if (!userData?._id) return;
+        if (!window.confirm('فك إخفاء الحساب وإعادته للظهور؟')) return;
+        try {
+            const res = await unhideUser(userData._id);
+            if (res.success) {
+                showToast('تم فك إخفاء الحساب', 'success');
+                window.location.reload();
+            }
+        } catch (err) {
+            showToast('فشل في فك الإخفاء', 'error');
+        }
+    };
 
     // Admin Actions State
     const [actionLoading, setActionLoading] = useState(false);
@@ -808,6 +853,30 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 )}
             </div>
 
+            {/* ✅ Hidden Status Bar */}
+            {user.hidden?.isHidden && (!user.hidden.hiddenUntil || new Date(user.hidden.hiddenUntil) > new Date()) && (
+                <div style={{
+                    margin: '8px 0',
+                    padding: '10px 14px',
+                    background: 'linear-gradient(135deg,#fef3c7,#fde68a)',
+                    border: '1px solid #f59e0b',
+                    borderRadius: 10,
+                    color: '#78350f',
+                    fontSize: 14,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                }}>
+                    🙈 <strong>الحساب مخفي عن العام</strong>
+                    {user.hidden.hiddenUntil ? (
+                        <span>— حتى {formatDate(user.hidden.hiddenUntil)}</span>
+                    ) : (
+                        <span>— بشكل دائم</span>
+                    )}
+                    {user.hidden.reason && <span style={{ opacity: 0.8 }}>· السبب: {user.hidden.reason}</span>}
+                </div>
+            )}
+
             {/* Quick Actions Row */}
             <div className="quick-actions-row">
                 {user.suspension?.isSuspended ? (
@@ -817,6 +886,26 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 ) : (
                     <button className="quick-action-btn suspend" onClick={() => setShowSuspendModal(true)} disabled={actionLoading}>
                         ⛔ تعليق
+                    </button>
+                )}
+                {user.hidden?.isHidden && (!user.hidden.hiddenUntil || new Date(user.hidden.hiddenUntil) > new Date()) ? (
+                    <button
+                        className="quick-action-btn"
+                        onClick={handleUnhideUser}
+                        disabled={actionLoading}
+                        style={{ background: '#10b981', color: '#fff' }}
+                    >
+                        👁️ إظهار الحساب
+                    </button>
+                ) : (
+                    <button
+                        className="quick-action-btn"
+                        onClick={() => setShowHideModal(true)}
+                        disabled={actionLoading}
+                        style={{ background: '#f59e0b', color: '#fff' }}
+                        title="إخفاء الحساب من الاكتشاف والبحث (المستخدم يستطيع الدخول لكن لا يظهر للآخرين)"
+                    >
+                        🙈 إخفاء الحساب
                     </button>
                 )}
                 <button className="quick-action-btn notify" onClick={() => setShowNotifyModal(true)} disabled={actionLoading}>
@@ -2573,6 +2662,63 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <button className="cancel-btn" onClick={() => setShowSuspendModal(false)} disabled={actionLoading}>إلغاء</button>
                             <button className="submit-btn danger" onClick={handleSuspendUser} disabled={actionLoading}>
                                 {actionLoading ? 'جاري التعليق...' : 'تعليق المستخدم'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ✅ Hide Account Modal */}
+            {showHideModal && (
+                <div className="modal-overlay" onClick={() => setShowHideModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>🙈 إخفاء الحساب</h3>
+                            <button className="close-modal-btn" onClick={() => setShowHideModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <div style={{
+                                padding: 12,
+                                background: '#fef3c7',
+                                border: '1px solid #f59e0b',
+                                borderRadius: 8,
+                                marginBottom: 14,
+                                fontSize: 13,
+                                color: '#78350f'
+                            }}>
+                                ℹ️ <strong>عقوبة أخف من التعليق:</strong> المستخدم يستطيع تسجيل الدخول والمحادثة،
+                                لكن حسابه لن يظهر في الاكتشاف والبحث، وستظهر صورته مبهمة واسمه مخفي لمن يراه.
+                                يستطيع الاستئناف من تطبيقه.
+                            </div>
+                            <div className="form-group">
+                                <label>مدة الإخفاء</label>
+                                <select value={hideDuration} onChange={(e) => setHideDuration(e.target.value)}>
+                                    <option value="24h">24 ساعة</option>
+                                    <option value="3d">3 أيام</option>
+                                    <option value="7d">أسبوع (موصى)</option>
+                                    <option value="30d">30 يوم</option>
+                                    <option value="permanent">دائم</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>السبب (يظهر للمستخدم)</label>
+                                <textarea
+                                    value={hideReason}
+                                    onChange={(e) => setHideReason(e.target.value)}
+                                    placeholder="مثال: مخالفة شروط الاستخدام / صورة غير لائقة..."
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowHideModal(false)} disabled={hideLoading}>إلغاء</button>
+                            <button
+                                className="submit-btn"
+                                onClick={handleHideUser}
+                                disabled={hideLoading}
+                                style={{ background: '#f59e0b' }}
+                            >
+                                {hideLoading ? 'جاري الإخفاء...' : '🙈 إخفاء الحساب'}
                             </button>
                         </div>
                     </div>

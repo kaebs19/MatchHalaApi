@@ -228,6 +228,22 @@ export const updateReportStatus = async (reportId, status, reviewNotes = '') => 
     return response.data;
 };
 
+// ✅ إلغاء بلاغ + تنبيه المُبلِّغ
+export const cancelReport = async (reportId, reason = '') => {
+    const response = await api.post(`/reports/${reportId}/cancel`, { reason });
+    return response.data;
+};
+
+// ✅ إخفاء/فك إخفاء حساب
+export const hideUser = async (userId, { duration = '7d', reason = '' } = {}) => {
+    const response = await api.post(`/users/${userId}/hide`, { duration, reason });
+    return response.data;
+};
+export const unhideUser = async (userId) => {
+    const response = await api.post(`/users/${userId}/unhide`);
+    return response.data;
+};
+
 // اتخاذ إجراء على البلاغ
 export const takeReportAction = async (reportId, action, reviewNotes = '') => {
     const response = await api.put(`/reports/${reportId}/action`, { action, reviewNotes });

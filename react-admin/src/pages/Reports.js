@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, updateReportPriority, deleteReport, bulkUpdateReportStatus, bulkDeleteReports, resolveAllPendingReports, getTopReported, getTopReporters } from '../services/api';
+import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, updateReportPriority, deleteReport, bulkUpdateReportStatus, bulkDeleteReports, resolveAllPendingReports, getTopReported, getTopReporters, cancelReport } from '../services/api';
 import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -110,6 +110,22 @@ function Reports({ onViewUserDetail, onViewConversation }) {
             }
         } catch (error) {
             showToast('فشل في تحديث الحالة', 'error');
+        }
+    };
+
+    // ✅ إلغاء البلاغ مع تنبيه المُبلِّغ
+    const handleCancelReport = async (reportId) => {
+        const reason = window.prompt('سبب إلغاء البلاغ (اختياري — سيظهر للمُبلِّغ):', '');
+        if (reason === null) return; // ألغى المستخدم
+        try {
+            const res = await cancelReport(reportId, reason || '');
+            if (res.success) {
+                showToast('تم إلغاء البلاغ وتنبيه المُبلِّغ', 'success');
+                fetchReports();
+                fetchStats();
+            }
+        } catch (err) {
+            showToast(err?.response?.data?.message || 'فشل في إلغاء البلاغ', 'error');
         }
     };
 
@@ -611,6 +627,7 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                             <option value="reviewing">قيد المراجعة</option>
                                             <option value="resolved">تم الحل</option>
                                             <option value="rejected">مرفوض</option>
+                                            <option value="cancelled">ملغى</option>
                                         </select>
 
                                         <select
@@ -635,6 +652,16 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                         >
                                             اتخاذ إجراء
                                         </button>
+                                        {report.status !== 'cancelled' && (
+                                            <button
+                                                onClick={() => handleCancelReport(report._id)}
+                                                className="action-btn"
+                                                style={{ background: '#f59e0b', color: '#fff' }}
+                                                title="إلغاء البلاغ + تنبيه المُبلِّغ بأنه لم يُثبَت مخالفة"
+                                            >
+                                                ❌ إلغاء + تنبيه
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setDeleteConfirm({ show: true, reportId: report._id })}
                                             className="delete-btn"
