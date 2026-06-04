@@ -32,6 +32,7 @@ const { detectExternalPromotion, recordExternalPromoViolation, isBioLocked } = r
 const BannedDevice = require('../models/BannedDevice');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 const { isStrictDeviceVersion } = require('../utils/strictDeviceMode');
+const { checkSignals: checkFpNoise } = require('../utils/deviceFingerprintNoise');
 
 // ════════════════════════════════════════════════════════════════
 // @route   POST /api/auth/check-device-ban
@@ -46,14 +47,43 @@ router.post('/check-device-ban', async (req, res) => {
             return res.status(400).json({ success: false, message: 'بيانات الجهاز مطلوبة' });
         }
 
-        const bannedDevice = await BannedDevice.findOne({
+        // ✅ كشف القيم الضوضائية قبل المطابقة
+        const noise = await checkFpNoise({
+            deviceFingerprint,
+            keychainToken: deviceToken
+        });
+
+        const candidates = await BannedDevice.find({
             isActive: true,
             $or: [
                 ...(deviceFingerprint ? [{ deviceFingerprint }] : []),
                 ...(deviceToken ? [{ keychainToken: deviceToken }] : []),
                 ...(vendorId ? [{ vendorId }] : [])
             ]
-        }).select('_id reason reasonDetails bannedBy createdAt');
+        }).select('_id reason reasonDetails bannedBy createdAt deviceFingerprint keychainToken vendorId');
+
+        // ✅ نطلب إشارة واحدة فريدة (غير ضوضائية) على الأقل
+        let bannedDevice = null;
+        for (const d of candidates) {
+            let nonNoisyCount = 0;
+            if (deviceFingerprint && d.deviceFingerprint === deviceFingerprint
+                && !noise.deviceFingerprint.noisy) nonNoisyCount++;
+            if (deviceToken && d.keychainToken === deviceToken
+                && !noise.keychainToken.noisy) nonNoisyCount++;
+            if (vendorId && d.vendorId === vendorId) nonNoisyCount++;
+            if (nonNoisyCount >= 1) {
+                bannedDevice = d;
+                break;
+            }
+        }
+
+        if (!bannedDevice && candidates.length > 0) {
+            console.log('[check-device-ban] noisy-only match skipped:', {
+                fp: (deviceFingerprint || '').slice(0, 12),
+                noisyFp: noise.deviceFingerprint.noisy,
+                noisyKey: noise.keychainToken.noisy
+            });
+        }
 
         res.json({
             success: true,

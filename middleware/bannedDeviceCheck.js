@@ -4,6 +4,7 @@
 
 const BannedDevice = require('../models/BannedDevice');
 const { isStrictDeviceVersion } = require('../utils/strictDeviceMode');
+const { checkSignals } = require('../utils/deviceFingerprintNoise');
 
 /**
  * يقرأ deviceFingerprint + deviceToken + vendorId من body أو headers
@@ -52,17 +53,34 @@ const bannedDeviceCheck = async (req, res, next) => {
             $or: orConditions
         });
 
+        // ✅ كشف القيم الضوضائية (تطابق عشرات/مئات الحسابات → ليست فريدة)
+        const noise = await checkSignals({
+            deviceFingerprint,
+            keychainToken: deviceToken
+        });
+
         let bannedDevice = null;
         let matchCount = 0;
         for (const d of candidates) {
             let count = 0;
-            if (deviceFingerprint && d.deviceFingerprint === deviceFingerprint) count++;
-            if (deviceToken && d.keychainToken === deviceToken) count++;
-            if (vendorId && d.vendorId === vendorId) count++;
-            // ✅ admin bans (manual) تبقى صارمة — مطابقة واحدة كافية
+            let nonNoisyCount = 0;
+            if (deviceFingerprint && d.deviceFingerprint === deviceFingerprint) {
+                count++;
+                if (!noise.deviceFingerprint.noisy) nonNoisyCount++;
+            }
+            if (deviceToken && d.keychainToken === deviceToken) {
+                count++;
+                if (!noise.keychainToken.noisy) nonNoisyCount++;
+            }
+            if (vendorId && d.vendorId === vendorId) {
+                count++;
+                nonNoisyCount++; // vendorId يعتبر فريد لكل مستخدم Apple
+            }
+            // ✅ admin bans (manual) تبقى صارمة — مطابقة واحدة فريدة كافية
             // ✅ auto bans تحتاج 2+ إشارات لتجنب false positives من collision
+            // ✅ في كلا الحالتين: إذا كانت كل المطابقات ضوضائية فقط → نتجاهل
             const requiredMatches = (d.bannedBy === 'auto') ? 2 : 1;
-            if (count >= requiredMatches && count > matchCount) {
+            if (count >= requiredMatches && nonNoisyCount >= 1 && count > matchCount) {
                 bannedDevice = d;
                 matchCount = count;
             }
@@ -74,6 +92,10 @@ const bannedDeviceCheck = async (req, res, next) => {
                 console.log('[bannedDeviceCheck] potential collision skipped:', {
                     fingerprint: (deviceFingerprint || '').slice(0, 12),
                     candidates: candidates.length,
+                    noisyFp: noise.deviceFingerprint.noisy,
+                    noisyKey: noise.keychainToken.noisy,
+                    fpCount: noise.deviceFingerprint.count,
+                    keyCount: noise.keychainToken.count,
                     route: req.originalUrl || req.path
                 });
             }

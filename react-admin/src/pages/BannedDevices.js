@@ -335,6 +335,17 @@ function BannedDevices({ onViewUserDetail }) {
                                                 </span>
                                             </div>
                                         )}
+                                        {(d.noisyFingerprint || d.noisyKeychain) && (
+                                            <div className='detail-row' style={{marginTop:6,padding:8,background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8}}>
+                                                <span className='detail-label' style={{color:'#7f1d1d'}}>⚠️ بصمة ضوضائية:</span>
+                                                <span className='detail-value' style={{color:'#7f1d1d',fontSize:12}}>
+                                                    {d.noisyFingerprint && `بصمة → ${d.fingerprintMatchCount} حساب`}
+                                                    {d.noisyFingerprint && d.noisyKeychain && ' · '}
+                                                    {d.noisyKeychain && `Keychain → ${d.keychainMatchCount} حساب`}
+                                                    {d.isNoisyOnly && ' — المحاولات قد تكون لأشخاص مختلفين'}
+                                                </span>
+                                            </div>
+                                        )}
                                         {d.admin && (
                                             <div className='detail-row'>
                                                 <span className='detail-label'>👤 الأدمن:</span>

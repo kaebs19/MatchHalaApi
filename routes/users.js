@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Report = require('../models/Report');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
+const { checkSignals: checkFpNoise, NOISE_THRESHOLD } = require('../utils/deviceFingerprintNoise');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -1701,12 +1702,44 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             .limit(Number(limit))
             .lean();
 
+        // ✅ لكل جهاز: احسب كم حساب يطابق بصمته/keychain → اكتشف الضوضائية
+        const enriched = await Promise.all(devices.map(async (d) => {
+            const noise = await checkFpNoise({
+                deviceFingerprint: d.deviceFingerprint,
+                keychainToken: d.keychainToken
+            });
+            return {
+                id: d._id,
+                fingerprint: d.deviceFingerprint?.substring(0, 16) + '...',
+                fullFingerprint: d.deviceFingerprint,
+                user: d.originalUserId,
+                deviceInfo: d.deviceInfo,
+                reason: d.reason,
+                reasonDetails: d.reasonDetails,
+                bannedBy: d.bannedBy,
+                pendingFingerprint: d.pendingFingerprint || false,
+                admin: d.adminId,
+                rejectedAttempts: d.rejectedAttempts?.length || 0,
+                lastAttempt: d.rejectedAttempts?.slice(-1)[0],
+                createdAt: d.createdAt,
+                // ✅ تشخيص الضوضاء
+                fingerprintMatchCount: noise.deviceFingerprint.count,
+                keychainMatchCount: noise.keychainToken.count,
+                noisyFingerprint: noise.deviceFingerprint.noisy,
+                noisyKeychain: noise.keychainToken.noisy,
+                isNoisyOnly: (noise.deviceFingerprint.noisy || !d.deviceFingerprint)
+                    && (noise.keychainToken.noisy || !d.keychainToken)
+                    && !d.vendorId
+            };
+        }));
+
         res.json({
             success: true,
             data: {
                 total: totalCount,
                 page: Number(page),
                 totalPages: Math.ceil(totalCount / Number(limit)),
+                noiseThreshold: NOISE_THRESHOLD,
                 stats: {
                     totalActive,
                     today,
@@ -1715,21 +1748,7 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
                     manualCount,
                     autoCount
                 },
-                devices: devices.map(d => ({
-                    id: d._id,
-                    fingerprint: d.deviceFingerprint?.substring(0, 16) + '...',
-                    fullFingerprint: d.deviceFingerprint,
-                    user: d.originalUserId,
-                    deviceInfo: d.deviceInfo,
-                    reason: d.reason,
-                    reasonDetails: d.reasonDetails,
-                    bannedBy: d.bannedBy,
-                    pendingFingerprint: d.pendingFingerprint || false,
-                    admin: d.adminId,
-                    rejectedAttempts: d.rejectedAttempts?.length || 0,
-                    lastAttempt: d.rejectedAttempts?.slice(-1)[0],
-                    createdAt: d.createdAt
-                }))
+                devices: enriched
             }
         });
     } catch (error) {
@@ -2640,13 +2659,21 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
         const BannedDevice = require('../models/BannedDevice');
         const SELECT_FIELDS = '+deviceFingerprint +keychainToken +lastIP name email profileImage createdAt lastLogin isActive halaId suspension.isSuspended bannedWords.isBanned bannedWords.banReason';
 
-        // ✅ استعلامات مرتبطة بالتوازي
+        // ✅ كشف القيم الضوضائية (تطابق ≥ NOISE_THRESHOLD حساب → ليست مميزة)
+        const noise = await checkFpNoise({
+            deviceFingerprint: mainUser.deviceFingerprint,
+            keychainToken: mainUser.keychainToken
+        });
+        const useFingerprint = mainUser.deviceFingerprint && !noise.deviceFingerprint.noisy;
+        const useKeychain = mainUser.keychainToken && !noise.keychainToken.noisy;
+
+        // ✅ استعلامات مرتبطة بالتوازي — نتخطّى البصمات الضوضائية
         const [byFingerprint, byKeychain, byIP, bannedDevices] = await Promise.all([
-            mainUser.deviceFingerprint
+            useFingerprint
                 ? User.find({ _id: { $ne: mainUser._id }, deviceFingerprint: mainUser.deviceFingerprint })
                     .select(SELECT_FIELDS).limit(50).lean()
                 : Promise.resolve([]),
-            mainUser.keychainToken
+            useKeychain
                 ? User.find({ _id: { $ne: mainUser._id }, keychainToken: mainUser.keychainToken })
                     .select(SELECT_FIELDS).limit(50).lean()
                 : Promise.resolve([]),
@@ -2654,12 +2681,12 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                 ? User.find({ _id: { $ne: mainUser._id }, lastIP: mainUser.lastIP })
                     .select(SELECT_FIELDS).limit(30).lean()
                 : Promise.resolve([]),
-            (mainUser.deviceFingerprint || mainUser.keychainToken)
+            (useFingerprint || useKeychain)
                 ? BannedDevice.find({
                     isActive: true,
                     $or: [
-                        ...(mainUser.deviceFingerprint ? [{ deviceFingerprint: mainUser.deviceFingerprint }] : []),
-                        ...(mainUser.keychainToken ? [{ keychainToken: mainUser.keychainToken }] : [])
+                        ...(useFingerprint ? [{ deviceFingerprint: mainUser.deviceFingerprint }] : []),
+                        ...(useKeychain ? [{ keychainToken: mainUser.keychainToken }] : [])
                     ]
                 }).populate('originalUserId', 'name email halaId profileImage').lean()
                 : Promise.resolve([])
@@ -2707,6 +2734,13 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                 hasFingerprint: !!mainUser.deviceFingerprint,
                 hasKeychain: !!mainUser.keychainToken,
                 hasIP: !!mainUser.lastIP,
+                noise: {
+                    threshold: NOISE_THRESHOLD,
+                    fingerprintNoisy: !!(mainUser.deviceFingerprint && noise.deviceFingerprint.noisy),
+                    fingerprintMatchCount: noise.deviceFingerprint.count,
+                    keychainNoisy: !!(mainUser.keychainToken && noise.keychainToken.noisy),
+                    keychainMatchCount: noise.keychainToken.count
+                },
                 counts: {
                     byFingerprint: results.byDeviceFingerprint.length,
                     byKeychain: results.byKeychainToken.length,

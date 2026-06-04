@@ -1829,6 +1829,24 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     </div>
                                 )}
 
+                                {/* ⚠️ تحذير بصمة ضوضائية */}
+                                {relatedAccounts.noise?.fingerprintNoisy && (
+                                    <div style={{marginTop:12,padding:14,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:12,color:'#7f1d1d'}}>
+                                        🚫 <strong>بصمة الجهاز ضوضائية (collision)</strong> — تطابق {relatedAccounts.noise.fingerprintMatchCount} حساب في النظام (الحد: {relatedAccounts.noise.threshold}).
+                                        <div style={{fontSize:12,marginTop:4,color:'#991b1b'}}>
+                                            لم نُدرج المطابقات بناءً على هذه البصمة لتجنب false positives (iOS Simulator / fallback hash).
+                                        </div>
+                                    </div>
+                                )}
+                                {relatedAccounts.noise?.keychainNoisy && (
+                                    <div style={{marginTop:12,padding:14,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:12,color:'#7f1d1d'}}>
+                                        🚫 <strong>Keychain Token ضوضائي (collision)</strong> — يطابق {relatedAccounts.noise.keychainMatchCount} حساب (الحد: {relatedAccounts.noise.threshold}).
+                                        <div style={{fontSize:12,marginTop:4,color:'#991b1b'}}>
+                                            لم نُدرج المطابقات بناءً على هذا التوكن لتجنب false positives (iCloud Keychain مشترك).
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* ملخص */}
                                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginTop:16}}>
                                     <div style={{padding:14,background:'#eff6ff',borderRadius:12,border:'1px solid #bfdbfe'}}>
