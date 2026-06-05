@@ -628,45 +628,55 @@ router.post('/profile-views', protect, async (req, res) => {
             });
         }
 
-        // ✅ إشعار in-app + push (Premium فقط + لا stealthMode)
-        // viewedUser لازم يكون مشترك Premium لاستقبال إشعارات الزيارة
+        // ✅ إشعار الزيارة — تصميمان حسب اشتراك viewedUser
+        // Premium: إشعار كامل مع اسم وصورة الزائر
+        // مجاني: إشعار تعريفي مبهم يقود لـ Paywall (نموذج Tinder/Bumble)
         const nowDate = new Date();
         const viewedIsPremiumActive = !!(viewedUser.isPremium &&
             viewedUser.premiumExpiresAt &&
             new Date(viewedUser.premiumExpiresAt) > nowDate);
 
-        if (!isHidden && viewedIsPremiumActive) {
+        if (!isHidden) {
             try {
                 const Notification = require('../../models/Notification');
                 const pushService = require('../../services/pushNotificationService');
 
-                const title = '👀 زيارة جديدة';
-                const body = `${req.user.name || 'مستخدم'} زار ملفك الشخصي`;
+                const title = viewedIsPremiumActive
+                    ? '👀 زيارة جديدة'
+                    : '👀 شخص ما زار ملفك!';
+                const body = viewedIsPremiumActive
+                    ? `${req.user.name || 'مستخدم'} زار ملفك الشخصي`
+                    : 'اشترك في Premium لاكتشاف من زار ملفك ←';
 
-                // in-app notification
+                // in-app: للـ Premium نُعطي data كاملة، للمجاني data مقفلة (locked)
                 await Notification.create({
                     title, body,
                     type: 'profile_view',
-                    sender: req.user._id,
+                    sender: viewedIsPremiumActive ? req.user._id : null,
                     recipients: 'specific',
                     targetUsers: [viewedUserId],
-                    data: {
+                    data: viewedIsPremiumActive ? {
                         viewerId: String(req.user._id),
                         viewerName: req.user.name,
                         viewerAvatar: getFullUrl(req.user.profileImage),
                         isPremium: !!req.user.isPremium,
-                        isVerified: !!req.user.verification?.isVerified
+                        isVerified: !!req.user.verification?.isVerified,
+                        locked: false
+                    } : {
+                        locked: true,
+                        requiresPremium: true
                     },
                     status: 'sent',
                     sentAt: new Date()
                 });
 
-                // push notification (fail-silent)
+                // push (fail-silent)
                 pushService.sendNotificationToUser(String(viewedUserId), {
                     title, body
                 }, {
                     type: 'profile_view',
-                    viewerId: String(req.user._id)
+                    locked: viewedIsPremiumActive ? '0' : '1',
+                    viewerId: viewedIsPremiumActive ? String(req.user._id) : ''
                 }).catch(() => {});
             } catch (notifErr) {
                 console.error('profile-view notify error:', notifErr.message);
