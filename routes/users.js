@@ -1210,45 +1210,12 @@ router.post('/:id/clear-reports', protect, adminOnly, async (req, res) => {
             console.error('clear-reports notify user error:', notifErr.message);
         }
 
-        // ═══════════════════════════════════════════════════════
-        // 2. تنبيه المُبلِّغين (أن بلاغهم رُوجع ولم يُثبَت مخالفة)
-        // ═══════════════════════════════════════════════════════
-        const reporterIds = [...new Set(
-            reports.map(r => r.reportedBy?.toString()).filter(Boolean)
-        )];
-        let notifiedReporters = 0;
-        try {
-            if (reporterIds.length > 0) {
-                const repTitle = 'تمت مراجعة بلاغك';
-                const repBody = 'تمت مراجعة بلاغك ولم يُثبَت وجود مخالفة. شكراً لحرصك على سلامة المجتمع.';
-
-                for (const rid of reporterIds) {
-                    pushNotificationService.sendNotificationToUser(rid, {
-                        title: repTitle, body: repBody
-                    }, { type: 'report_cancelled' }).catch(() => {});
-                }
-
-                await Notification.create({
-                    title: repTitle, body: repBody,
-                    type: 'system',
-                    sender: req.user._id,
-                    recipients: 'specific',
-                    targetUsers: reporterIds,
-                    status: 'sent',
-                    sentAt: new Date()
-                });
-                notifiedReporters = reporterIds.length;
-            }
-        } catch (e) {
-            console.error('clear-reports notify reporters error:', e.message);
-        }
-
+        // ✅ تنبيه المستخدم فقط — لا تنبيه للمُبلِّغين (حسب طلب الأدمن)
         res.json({
             success: true,
-            message: `تم تصفير ${totalReports} بلاغ + تنبيه المستخدم والمُبلِّغين`,
+            message: `تم تصفير ${totalReports} بلاغ + تنبيه المستخدم`,
             data: {
                 clearedCount: totalReports,
-                notifiedReporters,
                 userId: String(user._id)
             }
         });
@@ -2287,8 +2254,11 @@ router.get('/:id/reports-count', protect, adminOnly, async (req, res) => {
             status: { $in: ['pending', 'reviewing'] }
         });
 
-        // إجمالي البلاغات
-        const totalReports = await Report.countDocuments({ reportedUser: userId });
+        // ✅ إجمالي البلاغات الفعلية (استثناء cancelled لأن الأدمن صفّرها)
+        const totalReports = await Report.countDocuments({
+            reportedUser: userId,
+            status: { $nin: ['cancelled'] }
+        });
 
         // البلاغات المعلّقة
         const pendingReports = await Report.countDocuments({
