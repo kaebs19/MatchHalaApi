@@ -234,6 +234,12 @@ export const cancelReport = async (reportId, reason = '') => {
     return response.data;
 };
 
+// ✅ تصفير كل البلاغات المفتوحة على مستخدم + تنبيهه
+export const clearUserReports = async (userId, { reason = '', includeResolved = false } = {}) => {
+    const response = await api.post(`/users/${userId}/clear-reports`, { reason, includeResolved });
+    return response.data;
+};
+
 // ✅ إخفاء/فك إخفاء حساب
 export const hideUser = async (userId, { duration = '7d', reason = '' } = {}) => {
     const response = await api.post(`/users/${userId}/hide`, { duration, reason });

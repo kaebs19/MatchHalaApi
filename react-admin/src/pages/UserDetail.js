@@ -22,7 +22,8 @@ import { userBioAction,
     censorUserMessages,
     getUserNameHistory,
     hideUser,
-    unhideUser
+    unhideUser,
+    clearUserReports
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar } from '../config';
@@ -81,6 +82,42 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             showToast(err?.response?.data?.message || 'فشل في إخفاء الحساب', 'error');
         } finally {
             setHideLoading(false);
+        }
+    };
+
+    // ✅ تصفير كل البلاغات على المستخدم + تنبيهه
+    const handleClearReports = async () => {
+        const targetId = userData?.user?._id || userData?._id;
+        if (!targetId) {
+            showToast('معرف المستخدم غير متاح', 'error');
+            return;
+        }
+        const count = reportsCount?.totalReports || userData?.reportsCount || 0;
+        if (count === 0) {
+            showToast('لا توجد بلاغات لتصفيرها', 'info');
+            return;
+        }
+        const ok = window.confirm(
+            `🚨 تصفير ${count} بلاغ عن هذا المستخدم؟\n\n` +
+            `سيتم:\n` +
+            `• إلغاء البلاغات المفتوحة (pending + reviewing)\n` +
+            `• تنبيه المستخدم: "تم تصفير ${count} بلاغ، نشكرك على الالتزام"\n` +
+            `• تنبيه المُبلِّغين بأن البلاغ لم يثبت مخالفة\n\n` +
+            `هل تريد المتابعة؟`
+        );
+        if (!ok) return;
+
+        const reason = window.prompt('سبب اختياري (للأرشيف فقط):', '');
+        if (reason === null) return;
+
+        try {
+            const res = await clearUserReports(targetId, { reason: reason || '' });
+            if (res.success) {
+                showToast(res.message || `تم تصفير ${res.data?.clearedCount || 0} بلاغ`, 'success');
+                fetchUserActivity();
+            }
+        } catch (err) {
+            showToast(err?.response?.data?.message || 'فشل في تصفير البلاغات', 'error');
         }
     };
 
@@ -832,7 +869,27 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             return null;
                         })()}
                         {(reportsCount?.totalReports > 0 || userData?.reportsCount > 0) && (
-                            <span className="reports-badge">🚨 {reportsCount?.totalReports || userData?.reportsCount || 0} بلاغ</span>
+                            <>
+                                <span className="reports-badge">🚨 {reportsCount?.totalReports || userData?.reportsCount || 0} بلاغ</span>
+                                <button
+                                    onClick={handleClearReports}
+                                    title="تصفير كل البلاغات المفتوحة + تنبيه المستخدم بشكر التزامه"
+                                    style={{
+                                        marginInlineStart: 6,
+                                        padding: '4px 10px',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        background: 'linear-gradient(135deg,#10b981,#059669)',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: 999,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(16,185,129,0.3)'
+                                    }}
+                                >
+                                    ✓ تصفير + شكر
+                                </button>
+                            </>
                         )}
                     </div>
                     <p className="user-joined">
