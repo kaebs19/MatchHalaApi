@@ -1131,6 +1131,133 @@ router.get('/me/hide-status', protect, async (req, res) => {
     }
 });
 
+// ══════════════════════════════════════════════════════════
+// @route   POST /api/users/:id/clear-reports
+// @desc    تصفير كل البلاغات المفتوحة على المستخدم + تنبيهه
+// @access  Private/Admin
+// @body    { reason?, includeResolved? }  افتراضي: pending + reviewing فقط
+// ══════════════════════════════════════════════════════════
+router.post('/:id/clear-reports', protect, adminOnly, async (req, res) => {
+    try {
+        const { reason = '', includeResolved = false } = req.body;
+        const userId = req.params.id;
+
+        const user = await User.findById(userId).select('_id name');
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // بناء فلتر البلاغات
+        const Report = require('../models/Report');
+        const filter = {
+            reportedUser: userId,
+            status: includeResolved
+                ? { $in: ['pending', 'reviewing', 'resolved'] }
+                : { $in: ['pending', 'reviewing'] }
+        };
+
+        const reports = await Report.find(filter).select('_id reportedBy');
+        const totalReports = reports.length;
+
+        if (totalReports === 0) {
+            return res.json({
+                success: true,
+                message: 'لا توجد بلاغات مفتوحة لتصفيرها',
+                data: { clearedCount: 0, notifiedReporters: 0 }
+            });
+        }
+
+        // تحديث كل البلاغات → cancelled
+        await Report.updateMany(filter, {
+            $set: {
+                status: 'cancelled',
+                'cancelled.cancelledAt': new Date(),
+                'cancelled.cancelledBy': req.user._id,
+                'cancelled.reason': reason.trim() || 'تصفير جماعي من الأدمن',
+                'cancelled.notified': true,
+                resolvedBy: req.user._id,
+                resolvedAt: new Date()
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════
+        // 1. تنبيه المستخدم صاحب الحساب (الذي تم تصفير بلاغاته)
+        // ═══════════════════════════════════════════════════════
+        try {
+            const title = '✅ تم تصفير البلاغات عن حسابك';
+            const body = `تم تصفير ${totalReports} بلاغ عن حسابك. نشكرك على الالتزام بسياسة التطبيق.`;
+
+            await pushNotificationService.sendNotificationToUser(String(user._id), {
+                title, body
+            }, { type: 'report_cancelled' }).catch(() => {});
+
+            await Notification.create({
+                title, body,
+                type: 'system',
+                sender: req.user._id,
+                recipients: 'specific',
+                targetUsers: [user._id],
+                status: 'sent',
+                sentAt: new Date()
+            });
+
+            if (global.io) {
+                global.io.to(`user:${String(user._id)}`).emit('reports-cleared', {
+                    count: totalReports
+                });
+            }
+        } catch (notifErr) {
+            console.error('clear-reports notify user error:', notifErr.message);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // 2. تنبيه المُبلِّغين (أن بلاغهم رُوجع ولم يُثبَت مخالفة)
+        // ═══════════════════════════════════════════════════════
+        const reporterIds = [...new Set(
+            reports.map(r => r.reportedBy?.toString()).filter(Boolean)
+        )];
+        let notifiedReporters = 0;
+        try {
+            if (reporterIds.length > 0) {
+                const repTitle = 'تمت مراجعة بلاغك';
+                const repBody = 'تمت مراجعة بلاغك ولم يُثبَت وجود مخالفة. شكراً لحرصك على سلامة المجتمع.';
+
+                for (const rid of reporterIds) {
+                    pushNotificationService.sendNotificationToUser(rid, {
+                        title: repTitle, body: repBody
+                    }, { type: 'report_cancelled' }).catch(() => {});
+                }
+
+                await Notification.create({
+                    title: repTitle, body: repBody,
+                    type: 'system',
+                    sender: req.user._id,
+                    recipients: 'specific',
+                    targetUsers: reporterIds,
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+                notifiedReporters = reporterIds.length;
+            }
+        } catch (e) {
+            console.error('clear-reports notify reporters error:', e.message);
+        }
+
+        res.json({
+            success: true,
+            message: `تم تصفير ${totalReports} بلاغ + تنبيه المستخدم والمُبلِّغين`,
+            data: {
+                clearedCount: totalReports,
+                notifiedReporters,
+                userId: String(user._id)
+            }
+        });
+    } catch (error) {
+        console.error('clear-reports error:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/users/:id/violations
 // @desc    تحديد عدد مخالفات الكلمات المحظورة يدوياً
 // @access  Private/Admin
