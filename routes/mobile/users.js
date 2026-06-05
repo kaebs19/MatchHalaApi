@@ -641,12 +641,31 @@ router.post('/profile-views', protect, async (req, res) => {
                 const Notification = require('../../models/Notification');
                 const pushService = require('../../services/pushNotificationService');
 
+                // ✅ بناء صيغة "غامضة + إثارة" للمجاني: جنس + بلد/مدينة (بدون اسم)
+                const buildTeaserTitle = () => {
+                    const gender = req.user.gender;
+                    const country = req.user.country || req.user.city;
+                    const verb = gender === 'female' ? 'زارت' : 'زار';
+                    let subject;
+                    if (gender === 'female') {
+                        subject = 'أنثى';
+                    } else if (gender === 'male') {
+                        subject = 'شاب';
+                    } else {
+                        subject = 'شخص ما';
+                    }
+                    if (country) {
+                        return `👀 ${subject} من ${country} ${verb} ملفك!`;
+                    }
+                    return `👀 ${subject} ${verb} ملفك!`;
+                };
+
                 const title = viewedIsPremiumActive
                     ? '👀 زيارة جديدة'
-                    : '👀 شخص ما زار ملفك!';
+                    : buildTeaserTitle();
                 const body = viewedIsPremiumActive
                     ? `${req.user.name || 'مستخدم'} زار ملفك الشخصي`
-                    : 'اشترك في Premium لاكتشاف من زار ملفك ←';
+                    : 'اشترك في Premium لاكتشاف من هو/هي ←';
 
                 // in-app: للـ Premium نُعطي data كاملة، للمجاني data مقفلة (locked)
                 await Notification.create({
