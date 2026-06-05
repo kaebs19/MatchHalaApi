@@ -1147,13 +1147,12 @@ router.post('/:id/clear-reports', protect, adminOnly, async (req, res) => {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
 
-        // بناء فلتر البلاغات
+        // ✅ تصفير كل البلاغات غير الملغاة سابقاً (شامل: pending+reviewing+resolved+rejected)
+        // المستخدم البريء الذي تراكمت عليه بلاغات يستحق تصفير الشارة كاملاً
         const Report = require('../models/Report');
         const filter = {
             reportedUser: userId,
-            status: includeResolved
-                ? { $in: ['pending', 'reviewing', 'resolved'] }
-                : { $in: ['pending', 'reviewing'] }
+            status: { $nin: ['cancelled'] }
         };
 
         const reports = await Report.find(filter).select('_id reportedBy');
