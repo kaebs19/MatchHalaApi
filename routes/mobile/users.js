@@ -628,8 +628,14 @@ router.post('/profile-views', protect, async (req, res) => {
             });
         }
 
-        // ✅ إشعار in-app + push (فقط للزيارات الظاهرة — احترام stealthMode)
-        if (!isHidden) {
+        // ✅ إشعار in-app + push (Premium فقط + لا stealthMode)
+        // viewedUser لازم يكون مشترك Premium لاستقبال إشعارات الزيارة
+        const nowDate = new Date();
+        const viewedIsPremiumActive = !!(viewedUser.isPremium &&
+            viewedUser.premiumExpiresAt &&
+            new Date(viewedUser.premiumExpiresAt) > nowDate);
+
+        if (!isHidden && viewedIsPremiumActive) {
             try {
                 const Notification = require('../../models/Notification');
                 const pushService = require('../../services/pushNotificationService');
