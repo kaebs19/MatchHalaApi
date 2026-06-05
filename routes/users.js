@@ -1496,9 +1496,10 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             await user.save();
             invalidateUsers();
 
-            // ✅ Socket event — التطبيق يمسح شاشة التقييد فوراً
+            // ✅ Socket events — التطبيق يمسح شاشة التقييد فوراً + يفك قفل المرفقات
             if (global.io) {
                 global.io.to(`user:${user._id}`).emit('account-unsuspended');
+                global.io.to(`user:${user._id}`).emit('account-unrestricted');
             }
 
             // ✅ إشعار push
