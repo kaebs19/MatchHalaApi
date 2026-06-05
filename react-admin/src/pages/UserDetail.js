@@ -113,7 +113,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             const res = await clearUserReports(targetId, { reason: reason || '' });
             if (res.success) {
                 showToast(res.message || `تم تصفير ${res.data?.clearedCount || 0} بلاغ`, 'success');
+                // ✅ تحديث متعدد: userData + reportsCount حتى تختفي الشارة فوراً
                 fetchUserActivity();
+                fetchReportsCount();
+                // ✅ تصفير محلي فوري حتى لو الـ fetch تأخر
+                setReportsCount(prev => prev ? { ...prev, totalReports: 0, pendingReports: 0, uniqueReporters: 0 } : prev);
             }
         } catch (err) {
             showToast(err?.response?.data?.message || 'فشل في تصفير البلاغات', 'error');
