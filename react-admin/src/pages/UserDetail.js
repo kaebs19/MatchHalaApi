@@ -42,17 +42,31 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     // External Promo violations history
     const [promoLogs, setPromoLogs] = useState(null);
 
-    // ✅ إخفاء الحساب (Modal)
+    // ✅ إخفاء الحساب (Modal) — الافتراضي 24h + رسائل سريعة
+    const HIDE_QUICK_REASONS = [
+        '🚫 اسم مخالف',
+        '📷 صورة مخالفة',
+        '📝 نبذة مخالفة',
+        '⚠️ مخالفات متعددة',
+        '🔞 محتوى غير لائق',
+        '🎭 انتحال شخصية',
+        '📢 إعلانات/سبام',
+        '😡 سلوك مزعج'
+    ];
     const [showHideModal, setShowHideModal] = useState(false);
-    const [hideDuration, setHideDuration] = useState('7d');
+    const [hideDuration, setHideDuration] = useState('24h');
     const [hideReason, setHideReason] = useState('');
     const [hideLoading, setHideLoading] = useState(false);
 
     const handleHideUser = async () => {
-        if (!userData?._id) return;
+        const targetId = userData?.user?._id || userData?._id;
+        if (!targetId) {
+            showToast('معرف المستخدم غير متاح', 'error');
+            return;
+        }
         try {
             setHideLoading(true);
-            const res = await hideUser(userData._id, {
+            const res = await hideUser(targetId, {
                 duration: hideDuration,
                 reason: hideReason.trim()
             });
@@ -60,9 +74,8 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 showToast('تم إخفاء الحساب وتنبيه المستخدم', 'success');
                 setShowHideModal(false);
                 setHideReason('');
-                setHideDuration('7d');
-                // إعادة التحميل
-                window.location.reload();
+                setHideDuration('24h');
+                fetchUserActivity();
             }
         } catch (err) {
             showToast(err?.response?.data?.message || 'فشل في إخفاء الحساب', 'error');
@@ -72,13 +85,14 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     };
 
     const handleUnhideUser = async () => {
-        if (!userData?._id) return;
+        const targetId = userData?.user?._id || userData?._id;
+        if (!targetId) return;
         if (!window.confirm('فك إخفاء الحساب وإعادته للظهور؟')) return;
         try {
-            const res = await unhideUser(userData._id);
+            const res = await unhideUser(targetId);
             if (res.success) {
                 showToast('تم فك إخفاء الحساب', 'success');
-                window.location.reload();
+                fetchUserActivity();
             }
         } catch (err) {
             showToast('فشل في فك الإخفاء', 'error');
@@ -2693,19 +2707,66 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <div className="form-group">
                                 <label>مدة الإخفاء</label>
                                 <select value={hideDuration} onChange={(e) => setHideDuration(e.target.value)}>
-                                    <option value="24h">24 ساعة</option>
+                                    <option value="24h">24 ساعة (موصى)</option>
                                     <option value="3d">3 أيام</option>
-                                    <option value="7d">أسبوع (موصى)</option>
+                                    <option value="7d">أسبوع</option>
                                     <option value="30d">30 يوم</option>
                                     <option value="permanent">دائم</option>
                                 </select>
+                            </div>
+                            <div className="form-group">
+                                <label>أسباب سريعة</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                    {HIDE_QUICK_REASONS.map(r => (
+                                        <button
+                                            key={r}
+                                            type="button"
+                                            onClick={() => {
+                                                setHideReason(prev => {
+                                                    if (!prev) return r;
+                                                    if (prev.includes(r)) return prev;
+                                                    return prev.trim().endsWith('+') ? `${prev} ${r}` : `${prev} + ${r}`;
+                                                });
+                                            }}
+                                            style={{
+                                                padding: '6px 10px',
+                                                fontSize: 12,
+                                                border: '1px solid #e5e7eb',
+                                                background: hideReason.includes(r) ? '#fef3c7' : '#f9fafb',
+                                                borderRadius: 999,
+                                                cursor: 'pointer',
+                                                color: '#374151',
+                                                fontWeight: hideReason.includes(r) ? 600 : 400
+                                            }}
+                                        >
+                                            {r}
+                                        </button>
+                                    ))}
+                                    {hideReason && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setHideReason('')}
+                                            style={{
+                                                padding: '6px 10px',
+                                                fontSize: 12,
+                                                border: '1px dashed #ef4444',
+                                                background: '#fee2e2',
+                                                borderRadius: 999,
+                                                cursor: 'pointer',
+                                                color: '#991b1b'
+                                            }}
+                                        >
+                                            ✕ مسح
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                             <div className="form-group">
                                 <label>السبب (يظهر للمستخدم)</label>
                                 <textarea
                                     value={hideReason}
                                     onChange={(e) => setHideReason(e.target.value)}
-                                    placeholder="مثال: مخالفة شروط الاستخدام / صورة غير لائقة..."
+                                    placeholder="اختر من الأسباب السريعة أعلاه أو اكتب سبباً مخصصاً..."
                                     rows={3}
                                 />
                             </div>
