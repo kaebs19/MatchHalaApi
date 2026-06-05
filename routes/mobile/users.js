@@ -628,6 +628,45 @@ router.post('/profile-views', protect, async (req, res) => {
             });
         }
 
+        // ✅ إشعار in-app + push (فقط للزيارات الظاهرة — احترام stealthMode)
+        if (!isHidden) {
+            try {
+                const Notification = require('../../models/Notification');
+                const pushService = require('../../services/pushNotificationService');
+
+                const title = '👀 زيارة جديدة';
+                const body = `${req.user.name || 'مستخدم'} زار ملفك الشخصي`;
+
+                // in-app notification
+                await Notification.create({
+                    title, body,
+                    type: 'profile_view',
+                    sender: req.user._id,
+                    recipients: 'specific',
+                    targetUsers: [viewedUserId],
+                    data: {
+                        viewerId: String(req.user._id),
+                        viewerName: req.user.name,
+                        viewerAvatar: getFullUrl(req.user.profileImage),
+                        isPremium: !!req.user.isPremium,
+                        isVerified: !!req.user.verification?.isVerified
+                    },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+
+                // push notification (fail-silent)
+                pushService.sendNotificationToUser(String(viewedUserId), {
+                    title, body
+                }, {
+                    type: 'profile_view',
+                    viewerId: String(req.user._id)
+                }).catch(() => {});
+            } catch (notifErr) {
+                console.error('profile-view notify error:', notifErr.message);
+            }
+        }
+
         res.json({ success: true, message: 'تم تسجيل الزيارة' });
     } catch (error) {
         console.error('خطأ في تسجيل زيارة البروفايل:', error);
