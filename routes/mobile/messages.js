@@ -22,6 +22,34 @@ const Settings = require('../../models/Settings');
 // نظام الرسائل
 // ==========================================
 
+// ✅ Helper: فحص قيد المراسلة (يطبَّق على النص + الصور + الصوت)
+// يُرجع response object لو مقيّد، أو null لو مسموح
+// mediaType: 'text' | 'image' | 'audio' — يُستخدم في رسالة الخطأ فقط
+function checkMessagingRestriction(req, mediaType = 'text') {
+    if (!req.user.restrictions?.messagingRestricted) return null;
+    const now = new Date();
+    const until = req.user.restrictions.messagingRestrictedUntil;
+    if (until && now >= until) return null; // انتهى التقييد
+
+    const level = req.user.restrictions.messagingRestrictedLevel;
+    if (level === 'all') {
+        const labels = { text: 'الرسائل', image: 'الصور', audio: 'الرسائل الصوتية' };
+        return {
+            success: false,
+            message: `حسابك مقيّد من إرسال ${labels[mediaType] || 'الرسائل'} مؤقتاً`,
+            code: 'MESSAGING_RESTRICTED',
+            data: {
+                level: 'all',
+                until: until?.toISOString(),
+                reason: req.user.restrictions.restrictionReason,
+                mediaType
+            }
+        };
+    }
+    // level === 'new_only': يُسمح فقط في المحادثات القائمة (يُفحص لاحقاً)
+    return null;
+}
+
 // @route   POST /api/mobile/messages/send
 // @desc    إرسال رسالة
 // @access  Private
@@ -639,6 +667,13 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 // @desc    إرسال صورة — يستقبل conversationId من body (للتوافق مع تطبيق iOS)
 // @access  Private
 router.post('/messages/send-image', protect, uploadMessageImage.single('image'), async (req, res) => {
+    // ✅ فحص تقييد المراسلة قبل أي شيء (ثغرة سابقة: كان يسمح بالصور للمقيدين)
+    const restriction = checkMessagingRestriction(req, 'image');
+    if (restriction) {
+        if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+        return res.status(403).json(restriction);
+    }
+
     // أعد التوجيه لنفس المنطق مع أخذ conversationId من body
     req.params.conversationId = req.body.conversationId;
 
@@ -823,21 +858,11 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
             return res.status(400).json({ success: false, message: 'conversationId مطلوب' });
         }
 
-        // ✅ فحص تقييد المراسلة
-        if (req.user.restrictions?.messagingRestricted) {
-            const now = new Date();
-            const until = req.user.restrictions.messagingRestrictedUntil;
-            if (!until || now < until) {
-                const level = req.user.restrictions.messagingRestrictedLevel;
-                if (level === 'all') {
-                    try { fs.unlinkSync(req.file.path); } catch (e) {}
-                    return res.status(403).json({
-                        success: false,
-                        message: 'حسابك مقيّد من إرسال الرسائل مؤقتاً',
-                        code: 'MESSAGING_RESTRICTED'
-                    });
-                }
-            }
+        // ✅ فحص تقييد المراسلة (موحَّد عبر helper — يدعم رسالة مخصصة للصوت)
+        const restrictionAudio = checkMessagingRestriction(req, 'audio');
+        if (restrictionAudio) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(403).json(restrictionAudio);
         }
 
         const conversation = await Conversation.findById(conversationId)
@@ -991,6 +1016,13 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         const { conversationId } = req.params;
         const senderId = req.user._id;
 
+        // ✅ فحص تقييد المراسلة (ثغرة سابقة)
+        const restriction = checkMessagingRestriction(req, 'image');
+        if (restriction) {
+            if (req.file) try { fs.unlinkSync(req.file.path); } catch {}
+            return res.status(403).json(restriction);
+        }
+
         if (!req.file) {
             return res.status(400).json({
                 success: false,
@@ -1121,6 +1153,10 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
     try {
         const { conversationId } = req.params;
         const { content, type = 'text', mediaUrl, mediaMetadata } = req.body;
+
+        // ✅ فحص تقييد المراسلة (ثغرة سابقة في الـ alt route)
+        const restrictionAlt = checkMessagingRestriction(req, type === 'image' ? 'image' : type === 'audio' ? 'audio' : 'text');
+        if (restrictionAlt) return res.status(403).json(restrictionAlt);
 
         if (!content) {
             return res.status(400).json({
@@ -1488,6 +1524,10 @@ router.delete('/messages/:messageId', protect, async (req, res) => {
 // @access  Private
 router.post('/messages/forward', protect, async (req, res) => {
     try {
+        // ✅ فحص تقييد المراسلة (forward = إرسال — ثغرة سابقة)
+        const restrictionFwd = checkMessagingRestriction(req, 'text');
+        if (restrictionFwd) return res.status(403).json(restrictionFwd);
+
         const { messageId, targetConversationId } = req.body;
         const userId = req.user._id;
 

@@ -714,6 +714,26 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
         const userId = req.user._id;
         const { greeting } = req.body;
 
+        // ✅ فحص تقييد المراسلة (accept-with-message يُرسل رسالة ترحيب)
+        if (req.user.restrictions?.messagingRestricted) {
+            const now = new Date();
+            const until = req.user.restrictions.messagingRestrictedUntil;
+            if (!until || now < until) {
+                if (req.user.restrictions.messagingRestrictedLevel === 'all') {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'حسابك مقيّد من إرسال الرسائل مؤقتاً. يمكنك القبول بدون رسالة ترحيب.',
+                        code: 'MESSAGING_RESTRICTED',
+                        data: {
+                            level: 'all',
+                            until: until?.toISOString(),
+                            reason: req.user.restrictions.restrictionReason
+                        }
+                    });
+                }
+            }
+        }
+
         const conv = await Conversation.findById(req.params.id);
         if (!conv) return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
         if (!conv.participants.some(p => p.toString() === userId.toString())) {
