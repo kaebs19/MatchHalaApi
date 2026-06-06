@@ -318,18 +318,32 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
             if (multiLetterDetection.detected) {
                 // 1. حدّث كل الرسائل المعنية (الحالية + السابقة) → ***
+                // ✅ نحفظ originalContent لكل رسالة على حدة حتى يُمكن كشفها لو
+                //    فعّل المستلم 'عرض المحتوى الحساس' (نفس آلية sensitive content)
                 const idsToFlag = multiLetterDetection.bufferedMessageIds || [];
                 if (idsToFlag.length > 0) {
-                    await Message.updateMany(
-                        { _id: { $in: idsToFlag } },
-                        {
-                            $set: {
-                                content: '***',
-                                hasFlaggedContent: true,
-                                flaggedCategory: 'external_promo_split'
+                    // جلب الرسائل المعنية لاحتفاظ بمحتواها الأصلي قبل التغطية
+                    const originals = await Message.find({ _id: { $in: idsToFlag } })
+                        .select('_id content originalContent')
+                        .lean();
+
+                    // bulkWrite لتحديث كل رسالة بمحتواها الأصلي الخاص
+                    const bulkOps = originals.map(orig => ({
+                        updateOne: {
+                            filter: { _id: orig._id },
+                            update: {
+                                $set: {
+                                    content: '***',
+                                    hasFlaggedContent: true,
+                                    flaggedCategory: 'external_promo_split',
+                                    // احفظ originalContent فقط لو لم يكن محفوظاً سابقاً
+                                    ...(orig.originalContent ? {} : { originalContent: orig.content })
+                                }
                             }
                         }
-                    );
+                    }));
+                    await Message.bulkWrite(bulkOps);
+
                     // إعادة جلب الرسالة الحالية بعد التحديث
                     message = await Message.findById(message._id);
                 }
