@@ -1487,6 +1487,16 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             user.set('restrictions.messagingRestrictedUntil', null);
             user.set('restrictions.messagingRestrictedLevel', null);
             user.set('restrictions.restrictionReason', null);
+            // ✅ فك قيود الصورة/الاسم/النبذة أيضاً
+            user.set('restrictions.photoBlocked', false);
+            user.set('restrictions.photoBlockedUntil', null);
+            user.set('restrictions.photoBlockedReason', null);
+            user.set('restrictions.nameBlocked', false);
+            user.set('restrictions.nameBlockedUntil', null);
+            user.set('restrictions.nameBlockedReason', null);
+            user.set('restrictions.bioBlocked', false);
+            user.set('restrictions.bioBlockedUntil', null);
+            user.set('restrictions.bioBlockedReason', null);
             user.set('warnings.level', 0);
             // ✅ نظّف قيود external promo أيضاً (bio lock + counter)
             user.set('externalPromo.bioLockedUntil', null);
@@ -2750,6 +2760,13 @@ router.put('/:id/restrict', protect, adminOnly, async (req, res) => {
             user.restrictions.nameBlockedUntil = until;
             user.restrictions.nameBlockedReason = reason || 'اسم مخالف';
             typeAr = 'تغيير الاسم';
+        } else if (type === 'bio') {
+            // ✅ حظر تعديل النبذة من الأدمن
+            user.restrictions = user.restrictions || {};
+            user.restrictions.bioBlocked = true;
+            user.restrictions.bioBlockedUntil = until;
+            user.restrictions.bioBlockedReason = reason || 'نبذة مخالفة';
+            typeAr = 'تعديل النبذة';
         } else if (type === 'messaging_new' || type === 'messaging_all') {
             user.restrictions = user.restrictions || {};
             user.restrictions.messagingRestricted = true;

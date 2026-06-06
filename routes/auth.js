@@ -860,6 +860,23 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
         // ✅ فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta) على النبذة
         let bioRedactedNotice = null;
         if (bio !== undefined && bio !== user.bio) {
+            // ✅ فحص قيد الأدمن: bioBlocked (حظر نبذة من الأدمن لمدة محددة)
+            if (user.restrictions?.bioBlocked) {
+                const until = user.restrictions.bioBlockedUntil;
+                if (!until || new Date(until) > new Date()) {
+                    return res.status(403).json({
+                        success: false,
+                        message: until
+                            ? `تم تقييد تعديل نبذتك من الإدارة حتى ${new Date(until).toLocaleDateString('ar-SA')}`
+                            : 'تم تقييد تعديل نبذتك من الإدارة',
+                        code: 'BIO_BLOCKED_ADMIN',
+                        data: {
+                            until: until ? new Date(until).toISOString() : null,
+                            reason: user.restrictions.bioBlockedReason || null
+                        }
+                    });
+                }
+            }
             // ✅ Phase 2: لو bio مقفول بسبب مخالفات متكررة → ارفض التعديل
             if (isBioLocked(user)) {
                 const lockedUntil = user.externalPromo.bioLockedUntil;

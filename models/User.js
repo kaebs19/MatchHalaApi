@@ -353,7 +353,7 @@ const userSchema = new mongoose.Schema({
         notificationsDisabled: { type: Boolean, default: false } // علم إذا الإشعارات معطّلة فعلياً
     },
 
-    // ✅ قيود الأدمن (منع تغيير الصورة/الاسم لفترة)
+    // ✅ قيود الأدمن (منع تغيير الصورة/الاسم/النبذة لفترة)
     restrictions: {
         photoBlocked: { type: Boolean, default: false },
         photoBlockedUntil: { type: Date, default: null },
@@ -361,6 +361,10 @@ const userSchema = new mongoose.Schema({
         nameBlocked: { type: Boolean, default: false },
         nameBlockedUntil: { type: Date, default: null },
         nameBlockedReason: { type: String, default: null },
+        // ✅ حظر تعديل النبذة (bio) من الأدمن
+        bioBlocked: { type: Boolean, default: false },
+        bioBlockedUntil: { type: Date, default: null },     // null = دائم
+        bioBlockedReason: { type: String, default: null },
         // ✅ تقييد المراسلة (نظام تدريجي)
         messagingRestricted: { type: Boolean, default: false },
         messagingRestrictedUntil: { type: Date, default: null },

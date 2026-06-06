@@ -3182,7 +3182,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 <div className="modal-overlay" onClick={() => setShowRestrictModal(false)}>
                     <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>⛔ منع تغيير صورة/اسم</h3>
+                            <h3>⛔ منع تغيير صورة/اسم/نبذة</h3>
                             <button className="close-modal-btn" onClick={() => setShowRestrictModal(false)}>✕</button>
                         </div>
                         <div className="modal-body">
@@ -3191,6 +3191,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                 <select value={restrictForm.type} onChange={(e) => setRestrictForm({...restrictForm, type: e.target.value})}>
                                     <option value="photo">📷 منع تغيير الصورة</option>
                                     <option value="name">📛 منع تغيير الاسم</option>
+                                    <option value="bio">📝 منع تعديل النبذة</option>
                                     <option value="messaging_new">💬 منع بدء محادثات جديدة (يمكنه الرد)</option>
                                     <option value="messaging_all">🚫 منع جميع المراسلة (لا بدء ولا رد)</option>
                                 </select>
@@ -3198,6 +3199,8 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <div className="form-group">
                                 <label>المدة</label>
                                 <select value={restrictForm.duration} onChange={(e) => setRestrictForm({...restrictForm, duration: e.target.value})}>
+                                    <option value="24h">24 ساعة</option>
+                                    <option value="48h">48 ساعة</option>
                                     <option value="7d">7 أيام</option>
                                     <option value="30d">30 يوم</option>
                                     <option value="90d">90 يوم</option>
@@ -3209,7 +3212,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                 <textarea
                                     value={restrictForm.reason}
                                     onChange={(e) => setRestrictForm({...restrictForm, reason: e.target.value})}
-                                    placeholder="صورة/اسم مخالف لسياسة الاستخدام..."
+                                    placeholder="صورة/اسم/نبذة مخالفة لسياسة الاستخدام..."
                                     rows={3}
                                 />
                             </div>
