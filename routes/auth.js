@@ -60,7 +60,9 @@ router.post('/check-device-ban', async (req, res) => {
                 ...(deviceToken ? [{ keychainToken: deviceToken }] : []),
                 ...(vendorId ? [{ vendorId }] : [])
             ]
-        }).select('_id reason reasonDetails bannedBy createdAt deviceFingerprint keychainToken vendorId');
+        })
+        .select('_id reason reasonDetails bannedBy createdAt deviceFingerprint keychainToken vendorId originalUserId')
+        .populate('originalUserId', 'name email halaId profileImage createdAt suspension bannedWords');
 
         // ✅ نطلب إشارة واحدة فريدة (غير ضوضائية) على الأقل
         let bannedDevice = null;
@@ -85,12 +87,50 @@ router.post('/check-device-ban', async (req, res) => {
             });
         }
 
+        // ✅ بيانات الحساب الأصلي المسبب للحظر (مقنّعة لحماية الخصوصية)
+        let originalAccount = null;
+        if (bannedDevice?.originalUserId) {
+            const u = bannedDevice.originalUserId;
+            // قناع الإيميل: ka****@gm***.com
+            const maskedEmail = u.email ? (() => {
+                const [local, domain] = u.email.split('@');
+                if (!local || !domain) return null;
+                const localMasked = local.length <= 2
+                    ? local[0] + '*'
+                    : local.slice(0, 2) + '*'.repeat(Math.min(local.length - 2, 4));
+                const domainParts = domain.split('.');
+                const domainMasked = domainParts[0].length <= 2
+                    ? domainParts[0][0] + '*'
+                    : domainParts[0].slice(0, 2) + '*'.repeat(Math.min(domainParts[0].length - 2, 3));
+                return `${localMasked}@${domainMasked}.${domainParts.slice(1).join('.')}`;
+            })() : null;
+
+            // اسم مقنّع جزئياً (أول حرفين فقط)
+            const maskedName = u.name ? (() => {
+                if (u.name.length <= 2) return u.name[0] + '*';
+                return u.name.slice(0, 2) + '*'.repeat(Math.min(u.name.length - 2, 4));
+            })() : null;
+
+            originalAccount = {
+                maskedName,
+                maskedEmail,
+                halaId: u.halaId || null,
+                accountCreatedAt: u.createdAt || null,
+                wasSuspended: !!u.suspension?.isSuspended,
+                wasBanned: !!u.bannedWords?.isBanned
+            };
+        }
+
         res.json({
             success: true,
             data: {
                 banned: !!bannedDevice,
                 bannedDeviceId: bannedDevice?._id.toString() || null,
-                reason: bannedDevice?.reasonDetails || null
+                reason: bannedDevice?.reasonDetails || bannedDevice?.reason || null,
+                bannedAt: bannedDevice?.createdAt || null,
+                bannedBy: bannedDevice?.bannedBy || null,    // 'admin' | 'auto' | 'spam_system'
+                originalAccount,
+                canAppeal: !!bannedDevice
             }
         });
     } catch (error) {
