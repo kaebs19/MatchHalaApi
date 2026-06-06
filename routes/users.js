@@ -1528,6 +1528,21 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             await user.save();
             invalidateUsers();
 
+            // ✅ فك حظر الأجهزة المرتبطة بهذا المستخدم تلقائياً
+            // (السيناريو: الأدمن فك التعليق لكن لم يفك حظر الجهاز يدوياً)
+            try {
+                const BannedDevice = require('../models/BannedDevice');
+                const deviceResult = await BannedDevice.updateMany(
+                    { originalUserId: user._id, isActive: true },
+                    { $set: { isActive: false } }
+                );
+                if (deviceResult.modifiedCount > 0) {
+                    console.log(`[unsuspend] auto-unban ${deviceResult.modifiedCount} device(s) for user ${user._id}`);
+                }
+            } catch (devErr) {
+                console.error('Auto-unban device error:', devErr.message);
+            }
+
             if (notify) {
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: '✅ تم إلغاء تعليق حسابك',
