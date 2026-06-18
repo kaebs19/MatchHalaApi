@@ -276,7 +276,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ✅ صفحة حذف الحساب العامة (مطلوبة من Google Play Data Safety)
 // رابط عام بلا تسجيل دخول — يشرح كيف يحذف المستخدم حسابه وبياناته
-app.get('/delete-account', (req, res) => {
+// تحت /api لأن nginx يمرّر /api فقط إلى Express (بقية المسارات تخدم SPA الأدمن)
+app.get('/api/delete-account', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'delete-account.html'));
 });
 
