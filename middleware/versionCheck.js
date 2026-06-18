@@ -57,12 +57,27 @@ const versionCheck = async (req, res, next) => {
 
         const versionControl = cachedSettings.appVersionControl;
 
-        // إذا فحص الإصدار معطل → تخطي
+        // إذا فحص الإصدار معطل (master switch) → تخطي
         if (!versionControl || !versionControl.enforceUpdate) {
             return next();
         }
 
-        const minRequired = versionControl.minRequiredVersion;
+        // ✅ إعدادات خاصة بالمنصّة (android/ios) مع fallback للقيمة المشتركة
+        const platformKey = (platform || '').toLowerCase();
+        const platformVC = (platformKey === 'android' || platformKey === 'ios')
+            ? versionControl[platformKey]
+            : null;
+
+        // المنصّة قد تُعطّل الفرض على نفسها (أندرويد معطّل افتراضياً حتى لو master مفعّل)
+        if (platformVC && platformVC.enforceUpdate === false) {
+            return next();
+        }
+
+        // حدّ المنصّة إن وُجد، وإلا القيمة المشتركة
+        const minRequired = (platformVC && platformVC.minRequiredVersion) || versionControl.minRequiredVersion;
+
+        // رابط المتجر الخاص بالمنصّة إن وُجد، وإلا المشترك (iosStoreURL)
+        const storeURL = (platformVC && platformVC.storeURL) || versionControl.iosStoreURL || null;
 
         // مقارنة الإصدارات
         if (minRequired && compareVersions(appVersion, minRequired) < 0) {
@@ -82,7 +97,7 @@ const versionCheck = async (req, res, next) => {
                     currentVersion: appVersion,
                     minRequiredVersion: minRequired,
                     latestVersion: versionControl.latestVersion,
-                    storeURL: versionControl.iosStoreURL || null
+                    storeURL
                 }
             });
         }

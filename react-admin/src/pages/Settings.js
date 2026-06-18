@@ -53,7 +53,10 @@ function Settings() {
         iosStoreURL: '',
         updateMessageAr: '',
         updateMessageEn: '',
-        enforceUpdate: false
+        enforceUpdate: false,
+        // ✅ إعدادات خاصة بكل منصّة (fallback للقيمة المشتركة عند الفراغ)
+        android: { minRequiredVersion: '1.0', enforceUpdate: false, storeURL: '' },
+        ios: { minRequiredVersion: '', enforceUpdate: true, storeURL: '' }
     });
 
     // ✅ الأسماء المحظورة
@@ -274,7 +277,13 @@ function Settings() {
         try {
             const response = await getVersionControl();
             if (response.success && response.data?.appVersionControl) {
-                setVersionControl(response.data.appVersionControl);
+                const vc = response.data.appVersionControl;
+                // ضمان وجود كائنات المنصّات حتى مع وثائق قديمة
+                setVersionControl({
+                    ...vc,
+                    android: { minRequiredVersion: '1.0', enforceUpdate: false, storeURL: '', ...(vc.android || {}) },
+                    ios: { minRequiredVersion: '', enforceUpdate: true, storeURL: '', ...(vc.ios || {}) }
+                });
             }
         } catch (err) {
             console.log('استخدام قيم افتراضية للإصدار');
@@ -665,7 +674,7 @@ function Settings() {
                             </div>
 
                             <div className="form-group">
-                                <label>الحد الأدنى المطلوب (أقل من هذا = تحديث إجباري)</label>
+                                <label>الحد الأدنى المطلوب — مشترك (fallback عند عدم ضبط منصّة)</label>
                                 <input
                                     type="text"
                                     value={versionControl.minRequiredVersion}
@@ -693,6 +702,71 @@ function Settings() {
                                     placeholder="https://apps.apple.com/app/id..."
                                     dir="ltr"
                                 />
+                            </div>
+
+                            {/* ✅ إعدادات خاصة بأندرويد */}
+                            <div style={{ marginTop: '16px', padding: '16px', background: '#ecfdf5', borderRadius: '12px', border: '1px solid #34d399' }}>
+                                <p style={{ margin: '0 0 12px', fontWeight: 'bold', color: '#065f46' }}>🤖 إعدادات أندرويد (تتجاوز المشترك)</p>
+
+                                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <label style={{ marginBottom: 0 }}>فرض التحديث على أندرويد</label>
+                                    <button
+                                        type="button"
+                                        className={`btn-toggle ${versionControl.android?.enforceUpdate ? 'active' : ''}`}
+                                        onClick={() => setVersionControl({ ...versionControl, android: { ...versionControl.android, enforceUpdate: !versionControl.android?.enforceUpdate } })}
+                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.android?.enforceUpdate ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                    >
+                                        {versionControl.android?.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
+                                    </button>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>الحد الأدنى لأندرويد (فارغ = استخدم المشترك)</label>
+                                    <input
+                                        type="text"
+                                        value={versionControl.android?.minRequiredVersion || ''}
+                                        onChange={(e) => setVersionControl({ ...versionControl, android: { ...versionControl.android, minRequiredVersion: e.target.value } })}
+                                        placeholder="مثال: 1.0"
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>رابط متجر أندرويد (Google Play)</label>
+                                    <input
+                                        type="url"
+                                        value={versionControl.android?.storeURL || ''}
+                                        onChange={(e) => setVersionControl({ ...versionControl, android: { ...versionControl.android, storeURL: e.target.value } })}
+                                        placeholder="https://play.google.com/store/apps/details?id=..."
+                                        dir="ltr"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* ✅ إعدادات خاصة بـ iOS */}
+                            <div style={{ marginTop: '16px', padding: '16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #60a5fa' }}>
+                                <p style={{ margin: '0 0 12px', fontWeight: 'bold', color: '#1e40af' }}>🍏 إعدادات iOS (تتجاوز المشترك)</p>
+
+                                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <label style={{ marginBottom: 0 }}>فرض التحديث على iOS</label>
+                                    <button
+                                        type="button"
+                                        className={`btn-toggle ${versionControl.ios?.enforceUpdate ? 'active' : ''}`}
+                                        onClick={() => setVersionControl({ ...versionControl, ios: { ...versionControl.ios, enforceUpdate: !versionControl.ios?.enforceUpdate } })}
+                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.ios?.enforceUpdate ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                    >
+                                        {versionControl.ios?.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
+                                    </button>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>الحد الأدنى لـ iOS (فارغ = استخدم المشترك)</label>
+                                    <input
+                                        type="text"
+                                        value={versionControl.ios?.minRequiredVersion || ''}
+                                        onChange={(e) => setVersionControl({ ...versionControl, ios: { ...versionControl.ios, minRequiredVersion: e.target.value } })}
+                                        placeholder="مثال: 2.4"
+                                    />
+                                </div>
                             </div>
 
                             <div className="form-group">

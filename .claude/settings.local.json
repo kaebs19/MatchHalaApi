@@ -39,7 +39,12 @@
       "Bash(node -c utils/notificationHelpers.js)",
       "Bash(node -c scripts/cleanupOldNotifications.js)",
       "Bash(node -c routes/mobile/notifications.js)",
-      "Bash(node -c scripts/managePendingConversations.js)"
+      "Bash(node -c scripts/managePendingConversations.js)",
+      "Bash(node --check routes/auth.js)",
+      "Bash(node --check models/Settings.js)",
+      "Bash(node --check middleware/versionCheck.js)",
+      "Bash(node --check routes/settings.js)",
+      "Bash(node --check server.js)"
     ]
   }
 }

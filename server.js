@@ -274,6 +274,12 @@ app.use('/uploads/violations', (req, res) => {
 });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ✅ صفحة حذف الحساب العامة (مطلوبة من Google Play Data Safety)
+// رابط عام بلا تسجيل دخول — يشرح كيف يحذف المستخدم حسابه وبياناته
+app.get('/delete-account', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'delete-account.html'));
+});
+
 // Route تجريبي للتأكد من عمل السيرفر
 app.get('/', (req, res) => {
     res.json({

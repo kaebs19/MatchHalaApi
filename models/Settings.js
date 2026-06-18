@@ -113,6 +113,7 @@ const settingsSchema = new mongoose.Schema({
     // ✅ التحكم بإصدارات التطبيق
     appVersionControl: {
         // الحد الأدنى المطلوب — أقل من هذا = تحديث إجباري (426)
+        // ⚠️ قيمة مشتركة (fallback) تُستخدم عندما لا يُضبط حدّ خاص بالمنصّة
         minRequiredVersion: { type: String, default: '1.0' },
         // أحدث إصدار متاح
         latestVersion: { type: String, default: '2.4' },
@@ -122,8 +123,28 @@ const settingsSchema = new mongoose.Schema({
         updateMessageAr: { type: String, default: 'يجب تحديث التطبيق للاستمرار. النسخة الحالية لم تعد مدعومة.' },
         // رسالة التحديث (إنجليزي)
         updateMessageEn: { type: String, default: 'Please update the app to continue. Your current version is no longer supported.' },
-        // تفعيل/تعطيل فحص الإصدار
-        enforceUpdate: { type: Boolean, default: false }
+        // المفتاح الرئيسي لتفعيل/تعطيل فحص الإصدار (master switch)
+        enforceUpdate: { type: Boolean, default: false },
+
+        // ✅ إعدادات خاصة بكل منصّة (تتجاوز القيمة المشتركة عند ضبطها)
+        // أندرويد: معطّل افتراضياً + حدّ منخفض حتى يُضبط من اللوحة
+        android: {
+            // حدّ أندرويد الأدنى — فارغ = استخدم القيمة المشتركة
+            minRequiredVersion: { type: String, default: '1.0' },
+            // فرض التحديث على أندرويد (false = لا يُحجب أبداً حتى لو كان master مفعّلاً)
+            enforceUpdate: { type: Boolean, default: false },
+            // رابط متجر أندرويد (Google Play)
+            storeURL: { type: String, default: '' }
+        },
+        // iOS: يحافظ على السلوك الحالي (يتبع القيمة المشتركة)
+        ios: {
+            // حدّ iOS الأدنى — فارغ = استخدم القيمة المشتركة
+            minRequiredVersion: { type: String, default: '' },
+            // فرض التحديث على iOS (مفعّل افتراضياً ليطابق السلوك الحالي)
+            enforceUpdate: { type: Boolean, default: true },
+            // رابط متجر iOS — فارغ = استخدم iosStoreURL المشترك
+            storeURL: { type: String, default: '' }
+        }
     },
 
     // ✅ الأسماء المحظورة

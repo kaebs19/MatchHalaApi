@@ -316,7 +316,9 @@ router.put('/version-control', protect, adminOnly, async (req, res) => {
             iosStoreURL,
             updateMessageAr,
             updateMessageEn,
-            enforceUpdate
+            enforceUpdate,
+            android,
+            ios
         } = req.body;
 
         const settings = await Settings.getSettings();
@@ -327,6 +329,20 @@ router.put('/version-control', protect, adminOnly, async (req, res) => {
         if (updateMessageAr !== undefined) settings.appVersionControl.updateMessageAr = updateMessageAr;
         if (updateMessageEn !== undefined) settings.appVersionControl.updateMessageEn = updateMessageEn;
         if (enforceUpdate !== undefined) settings.appVersionControl.enforceUpdate = enforceUpdate;
+
+        // ✅ إعدادات أندرويد الخاصة بالمنصّة
+        if (android && typeof android === 'object') {
+            if (android.minRequiredVersion !== undefined) settings.appVersionControl.android.minRequiredVersion = android.minRequiredVersion;
+            if (android.enforceUpdate !== undefined) settings.appVersionControl.android.enforceUpdate = android.enforceUpdate;
+            if (android.storeURL !== undefined) settings.appVersionControl.android.storeURL = android.storeURL;
+        }
+
+        // ✅ إعدادات iOS الخاصة بالمنصّة
+        if (ios && typeof ios === 'object') {
+            if (ios.minRequiredVersion !== undefined) settings.appVersionControl.ios.minRequiredVersion = ios.minRequiredVersion;
+            if (ios.enforceUpdate !== undefined) settings.appVersionControl.ios.enforceUpdate = ios.enforceUpdate;
+            if (ios.storeURL !== undefined) settings.appVersionControl.ios.storeURL = ios.storeURL;
+        }
 
         settings.lastUpdated = Date.now();
         settings.updatedBy = req.user._id;
@@ -353,13 +369,21 @@ router.put('/version-control', protect, adminOnly, async (req, res) => {
 router.get('/check-version', async (req, res) => {
     try {
         const appVersion = req.headers['x-app-version'] || req.query.version;
+        const platformKey = (req.headers['x-app-platform'] || req.query.platform || '').toLowerCase();
         const settings = await Settings.getSettings();
         const vc = settings.appVersionControl;
 
         const { compareVersions } = require('../middleware/versionCheck');
 
-        const isOutdated = appVersion && vc.minRequiredVersion
-            ? compareVersions(appVersion, vc.minRequiredVersion) < 0
+        // ✅ حلّ الإعدادات الخاصة بالمنصّة مع fallback للقيمة المشتركة
+        const platformVC = (platformKey === 'android' || platformKey === 'ios') ? vc[platformKey] : null;
+        const minRequired = (platformVC && platformVC.minRequiredVersion) || vc.minRequiredVersion;
+        const storeURL = (platformVC && platformVC.storeURL) || vc.iosStoreURL || null;
+        // الفرض يتطلب master switch + ألّا تكون المنصّة معطّلة لنفسها
+        const enforceForPlatform = vc.enforceUpdate && !(platformVC && platformVC.enforceUpdate === false);
+
+        const isOutdated = appVersion && minRequired
+            ? compareVersions(appVersion, minRequired) < 0
             : false;
 
         const hasUpdate = appVersion && vc.latestVersion
@@ -371,10 +395,10 @@ router.get('/check-version', async (req, res) => {
             data: {
                 currentVersion: appVersion || null,
                 latestVersion: vc.latestVersion,
-                minRequiredVersion: vc.minRequiredVersion,
-                updateRequired: vc.enforceUpdate && isOutdated,
+                minRequiredVersion: minRequired,
+                updateRequired: enforceForPlatform && isOutdated,
                 updateAvailable: hasUpdate,
-                storeURL: vc.iosStoreURL || null,
+                storeURL,
                 message: isOutdated
                     ? (vc.updateMessageAr || 'يجب تحديث التطبيق')
                     : null

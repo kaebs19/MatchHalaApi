@@ -1692,7 +1692,12 @@ router.delete('/delete-account', protect, async (req, res) => {
 // @access  Public
 router.post('/google', bannedDeviceCheck, async (req, res) => {
     try {
-        const { idToken, deviceToken, deviceInfo, googleUserInfo } = req.body;
+        const { idToken, deviceInfo, googleUserInfo } = req.body;
+
+        // ✅ التقاط معرّفات الجهاز (body مع fallback للترويسات) مثل login/register
+        const deviceFingerprint = req.body.deviceFingerprint || req.headers['x-device-fingerprint'];
+        const deviceToken = req.body.deviceToken || req.headers['x-device-token'];
+        const vendorId = req.body.vendorId || req.headers['x-vendor-id'];
 
         if (!idToken && !googleUserInfo) {
             return res.status(400).json({
@@ -1818,7 +1823,12 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
             });
         }
 
-        if (deviceToken) user.deviceToken = deviceToken;
+        // ✅ حفظ بصمة الجهاز بالحقول الصحيحة (مطابقة لـ login/register)
+        if (deviceFingerprint) user.deviceFingerprint = deviceFingerprint;
+        if (deviceToken) user.keychainToken = deviceToken;
+        if (vendorId) user.vendorId = vendorId;
+        if (deviceInfo) user.deviceDetails = deviceInfo;
+
         user.fcmToken = deviceToken;
         if (deviceInfo) user.deviceInfo = deviceInfo;
 
