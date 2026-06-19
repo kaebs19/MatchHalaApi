@@ -120,7 +120,9 @@ const sendToDevice = async (token, notification, data = {}) => {
                 payload: apnsPayload,
                 ...(hasImage ? { fcm_options: { image: data.senderImage } } : {})
             },
-            android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } }
+            android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } },
+            // ✅ رابط اختياري — يُفتح عند الضغط على الإشعار (Web). التطبيق الأصلي يقرأ data.link
+            ...(data.link ? { webpush: { fcm_options: { link: String(data.link) } } } : {})
         };
         const response = await messaging.send(message);
         return { success: true, messageId: response };
@@ -174,6 +176,8 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                 payload: { aps: apsPayload }
             },
             android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } },
+            // ✅ رابط اختياري — يُفتح عند الضغط على الإشعار (Web). التطبيق الأصلي يقرأ data.link
+            ...(data.link ? { webpush: { fcm_options: { link: String(data.link) } } } : {}),
             tokens
         };
         const response = await messaging.sendEachForMulticast(message);

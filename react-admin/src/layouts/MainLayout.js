@@ -40,7 +40,8 @@ function MainLayout({ onLogout, user: initialUser }) {
         title: '',
         body: '',
         type: 'general',
-        recipients: 'all'
+        recipients: 'all',
+        link: ''
     });
     const [sending, setSending] = useState(false);
     const { showToast } = useToast();
@@ -260,7 +261,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                 }
             }
             setShowNotificationModal(false);
-            setNotificationData({ title: '', body: '', type: 'general', recipients: 'all' });
+            setNotificationData({ title: '', body: '', type: 'general', recipients: 'all', link: '' });
             setNotifyTarget('all');
             setNotifyUserId('');
             setNotifyUserLabel('');
@@ -337,7 +338,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                     title: '',
                     body: '',
                     type: 'general',
-                    recipients: 'all'
+                    recipients: 'all',
+                    link: ''
                 });
             } else {
                 showToast(data.message || 'فشل إرسال الإشعار', 'error');
@@ -699,6 +701,37 @@ function MainLayout({ onLogout, user: initialUser }) {
                                     <option value="message">رسالة</option>
                                     <option value="report">بلاغ</option>
                                 </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label>رابط عند الضغط (اختياري)</label>
+                                <select
+                                    value=""
+                                    onChange={(e) => {
+                                        if (!e.target.value) return;
+                                        setNotificationData({ ...notificationData, link: e.target.value });
+                                    }}
+                                >
+                                    <option value="">— اختر حساب تواصل جاهز —</option>
+                                    <option value="https://instagram.com/">إنستغرام</option>
+                                    <option value="https://x.com/">X (تويتر)</option>
+                                    <option value="https://snapchat.com/add/">سناب شات</option>
+                                    <option value="https://tiktok.com/@">تيك توك</option>
+                                    <option value="https://wa.me/">واتساب</option>
+                                </select>
+                                <input
+                                    type="url"
+                                    value={notificationData.link || ''}
+                                    onChange={(e) => setNotificationData({
+                                        ...notificationData,
+                                        link: e.target.value
+                                    })}
+                                    placeholder="https://instagram.com/yourpage"
+                                    style={{ marginTop: 8 }}
+                                />
+                                <small style={{ color: '#888' }}>
+                                    يُفتح في المتصفح عند الضغط على الإشعار. اتركه فارغاً لإشعار عادي.
+                                </small>
                             </div>
 
                             <div className="modal-actions">

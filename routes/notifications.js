@@ -129,7 +129,8 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             priority = 'normal',
             data = {},
             sound = 'default',
-            badge = 1
+            badge = 1,
+            link
         } = req.body;
 
         // Validation
@@ -138,6 +139,12 @@ router.post('/send', protect, adminOnly, async (req, res) => {
                 success: false,
                 message: 'العنوان والمحتوى مطلوبان'
             });
+        }
+
+        // ✅ رابط اختياري (حساب تواصل اجتماعي / صفحة) — يُفتح عند الضغط على الإشعار
+        // يصل للجهاز ضمن data ويفتحه تطبيق Flutter بمتصفح خارجي
+        if (link && typeof link === 'string' && link.trim()) {
+            data.link = link.trim();
         }
 
         // إنشاء الإشعار في قاعدة البيانات
