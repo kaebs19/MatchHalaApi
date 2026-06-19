@@ -589,7 +589,6 @@ router.put('/:id/action', protect, adminOnly, async (req, res) => {
 
         // تنفيذ الإجراء باستخدام نظام التصعيد الموحّد
         const { escalateUser } = require('../middleware/escalation');
-        const notificationService = require('../services/notificationService') || require('../services/pushNotificationService');
 
         switch (action) {
             case 'warning':

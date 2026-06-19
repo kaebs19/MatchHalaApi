@@ -14,7 +14,7 @@ const Report = require('../models/Report');
 const Notification = require('../models/Notification');
 const { protect } = require('../middleware/auth');
 const { requirePremium } = require('../middleware/premium');
-const notificationService = require('../services/notificationService');
+const { sendToDevice } = require('../config/firebase');
 const pushNotificationService = require('../services/pushNotificationService');
 const ProfileView = require('../models/ProfileView');
 const SuperLike = require('../models/SuperLike');
@@ -3144,11 +3144,13 @@ router.post('/reports', protect, async (req, res) => {
                 }
 
                 // Push للأدمن الأوفلاين
-                if (!admin.isOnline && admin.deviceToken) {
-                    await notificationService.sendPush(
-                        admin.deviceToken,
-                        `بلاغ جديد ${reportProgress}`,
-                        `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`,
+                if (!admin.isOnline && (admin.deviceToken || admin.fcmToken)) {
+                    await sendToDevice(
+                        admin.deviceToken || admin.fcmToken,
+                        {
+                            title: `بلاغ جديد ${reportProgress}`,
+                            body: `${req.user.name} أبلغ عن ${targetUser.name} - السبب: ${reasonArabic}`
+                        },
                         {
                             type: 'new_report',
                             reportId: report._id.toString()

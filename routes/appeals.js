@@ -8,7 +8,7 @@ const User = require('../models/User');
 const BannedDevice = require('../models/BannedDevice');
 const Notification = require('../models/Notification');
 const { protect, adminOnly } = require('../middleware/auth');
-const notificationService = require('../services/notificationService');
+const { sendToDevice } = require('../config/firebase');
 const { checkBannedWords } = require('./bannedWords');
 const { sendAppealUpdate } = require('../services/emailService');
 
@@ -377,10 +377,9 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
 
             const targetUser = await User.findById(appeal.user);
             if (targetUser && (targetUser.deviceToken || targetUser.fcmToken)) {
-                await notificationService.sendPush(
+                await sendToDevice(
                     targetUser.deviceToken || targetUser.fcmToken,
-                    title,
-                    body,
+                    { title, body },
                     { type: 'appeal_reply', appealId: appeal._id.toString() }
                 );
             }
@@ -789,11 +788,10 @@ router.put('/:id/status', protect, adminOnly, async (req, res) => {
             });
 
             const targetUser = await User.findById(appeal.user);
-            if (targetUser && targetUser.deviceToken) {
-                await notificationService.sendPush(
-                    targetUser.deviceToken,
-                    notifTitle,
-                    notifBody,
+            if (targetUser && (targetUser.deviceToken || targetUser.fcmToken)) {
+                await sendToDevice(
+                    targetUser.deviceToken || targetUser.fcmToken,
+                    { title: notifTitle, body: notifBody },
                     { type: 'appeal_update', appealId: appeal._id.toString(), status }
                 );
             }

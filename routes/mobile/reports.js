@@ -6,7 +6,6 @@ const Conversation = require('../../models/Conversation');
 const Message = require('../../models/Message');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
-const notificationService = require('../../services/notificationService');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { getFullUrl, uploadReportScreenshot } = require('./helpers');
 
