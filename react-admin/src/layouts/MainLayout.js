@@ -41,7 +41,8 @@ function MainLayout({ onLogout, user: initialUser }) {
         body: '',
         type: 'general',
         recipients: 'all',
-        link: ''
+        link: '',
+        image: ''
     });
     const [sending, setSending] = useState(false);
     const { showToast } = useToast();
@@ -261,7 +262,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                 }
             }
             setShowNotificationModal(false);
-            setNotificationData({ title: '', body: '', type: 'general', recipients: 'all', link: '' });
+            setNotificationData({ title: '', body: '', type: 'general', recipients: 'all', link: '', image: '' });
             setNotifyTarget('all');
             setNotifyUserId('');
             setNotifyUserLabel('');
@@ -339,7 +340,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                     body: '',
                     type: 'general',
                     recipients: 'all',
-                    link: ''
+                    link: '',
+                    image: ''
                 });
             } else {
                 showToast(data.message || 'فشل إرسال الإشعار', 'error');
@@ -732,6 +734,31 @@ function MainLayout({ onLogout, user: initialUser }) {
                                 <small style={{ color: '#888' }}>
                                     يُفتح في المتصفح عند الضغط على الإشعار. اتركه فارغاً لإشعار عادي.
                                 </small>
+                            </div>
+
+                            <div className="form-group">
+                                <label>صورة الإشعار (اختياري)</label>
+                                <input
+                                    type="url"
+                                    value={notificationData.image || ''}
+                                    onChange={(e) => setNotificationData({
+                                        ...notificationData,
+                                        image: e.target.value
+                                    })}
+                                    placeholder="https://matchhala.chathala.com/uploads/promo.jpg"
+                                />
+                                <small style={{ color: '#888' }}>
+                                    رابط صورة تظهر كبيرة داخل الإشعار (iOS + أندرويد). يُفضّل رابط HTTPS مباشر للصورة.
+                                </small>
+                                {notificationData.image ? (
+                                    <img
+                                        src={notificationData.image}
+                                        alt="معاينة"
+                                        style={{ marginTop: 8, maxWidth: '100%', maxHeight: 140, borderRadius: 8, objectFit: 'cover' }}
+                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                        onLoad={(e) => { e.target.style.display = 'block'; }}
+                                    />
+                                ) : null}
                             </div>
 
                             <div className="modal-actions">

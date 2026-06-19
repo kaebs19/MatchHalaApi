@@ -156,6 +156,7 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
 
         // ✅ Rich Notifications — Action Buttons حسب type
         const apnsCategory = APNS_CATEGORY_MAP[data.type];
+        const hasImage = Boolean(data.image && String(data.image).trim());
         const apsPayload = {
             alert: { title: notification.title, body: notification.body },
             badge: 1,
@@ -163,9 +164,19 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
             'thread-id': collapseId
         };
         if (apnsCategory) apsPayload.category = apnsCategory;
+        // mutable-content مطلوب ليعرض الـ NSE الصورة الكبيرة على iOS
+        if (hasImage) apsPayload['mutable-content'] = 1;
+
+        const apnsPayload = { aps: apsPayload };
+        if (hasImage) apnsPayload.senderImage = String(data.image); // يقرأها NSE في iOS
 
         const message = {
-            notification: { title: notification.title, body: notification.body },
+            // imageUrl على مستوى notification → FCM يوزّعها لـ iOS و أندرويد
+            notification: {
+                title: notification.title,
+                body: notification.body,
+                ...(hasImage ? { imageUrl: String(data.image) } : {})
+            },
             data: sanitizedData,
             apns: {
                 headers: {
@@ -173,9 +184,17 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                     'apns-collapse-id': collapseId,
                     'apns-push-type': 'alert'
                 },
-                payload: { aps: apsPayload }
+                payload: apnsPayload,
+                ...(hasImage ? { fcmOptions: { imageUrl: String(data.image) } } : {})
             },
-            android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } },
+            android: {
+                priority: 'high',
+                notification: {
+                    sound: 'default',
+                    channelId: 'matchhala_channel',
+                    ...(hasImage ? { imageUrl: String(data.image) } : {})
+                }
+            },
             // ✅ رابط اختياري — يُفتح عند الضغط على الإشعار (Web). التطبيق الأصلي يقرأ data.link
             ...(data.link ? { webpush: { fcm_options: { link: String(data.link) } } } : {}),
             tokens

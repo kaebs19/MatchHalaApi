@@ -130,7 +130,8 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             data = {},
             sound = 'default',
             badge = 1,
-            link
+            link,
+            image
         } = req.body;
 
         // Validation
@@ -147,6 +148,12 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             data.link = link.trim();
         }
 
+        // ✅ صورة اختيارية — تظهر كصورة كبيرة في الإشعار (iOS + أندرويد)
+        // تُمرَّر ضمن data ليقرأها sendToMultipleDevices
+        if (image && typeof image === 'string' && image.trim()) {
+            data.image = image.trim();
+        }
+
         // إنشاء الإشعار في قاعدة البيانات
         const notification = await Notification.create({
             title,
@@ -158,6 +165,7 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             data,
             sound,
             badge,
+            image: data.image || '',
             sender: req.user._id,
             status: 'pending'
         });
