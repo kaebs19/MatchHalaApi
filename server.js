@@ -338,6 +338,10 @@ app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/interests', require('./routes/interests'));
 app.use('/api/appeals', require('./routes/appeals'));
 
+// ✅ صفحات قانونية عامة لمتطلبات Google Play (/child-safety و /delete-account)
+// مسارات جذرية يوجّهها nginx إلى المنفذ 3000
+app.use('/', require('./routes/legalPages'));
+
 // 9. React Admin Panel - لوحة التحكم
 app.use('/admin', express.static(path.join(__dirname, 'react-admin/build')));
 app.get('/admin/*', (req, res) => {
