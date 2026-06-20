@@ -44,7 +44,20 @@
       "Bash(node --check models/Settings.js)",
       "Bash(node --check middleware/versionCheck.js)",
       "Bash(node --check routes/settings.js)",
-      "Bash(node --check server.js)"
+      "Bash(node --check server.js)",
+      "Bash(xcodebuild -project DatingHala.xcodeproj -scheme DatingHala -configuration Debug -destination 'generic/platform=iOS' build-for-testing)",
+      "Bash(xcodebuild -project DatingHala.xcodeproj -scheme DatingHala -configuration Debug -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build)",
+      "Bash(xcodebuild -project /Volumes/me/DatingHala/DatingHala.xcodeproj -scheme DatingHala -configuration Debug -destination 'generic/platform=iOS Simulator' -skipPackagePluginValidation build)",
+      "Bash(node -c routes/mobile/helpers.js)",
+      "Bash(node -c routes/appeals.js)",
+      "Bash(node -c routes/mobile/reports.js)",
+      "Bash(curl -I \"https://matchhala.chathala.com/uploads/audio/voice-1776397260749-a0wq4jwzo.m4a\")",
+      "Bash(node -c middleware/bannedDeviceCheck.js)",
+      "Bash(node -c utils/profileEnrichment.js)",
+      "Bash(grep -rn \"customNameColor\\\\|nameColor\" /Volumes/me/MatchHalaApi --include=\"*.js\" ! -path \"*/node_modules/*\")",
+      "Bash(grep -rn \"customNameColor\" /Volumes/me/MatchHalaApi --include=\"*.js\" ! -path \"*/node_modules/*\")",
+      "Bash(git -C /Volumes/me/MatchHalaApi log --oneline -5 -- react-admin/src/pages/PremiumUsers.js react-admin/src/react_src/pages/PremiumUsers.js)",
+      "Bash(find /Volumes/me/MatchHalaApi/routes -name \"*.js\" -exec grep -l \"getDashboardStats\\\\|dashboard\\\\|stats\" {} \\\\;)"
     ]
   }
 }

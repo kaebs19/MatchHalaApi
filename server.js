@@ -621,13 +621,19 @@ io.on('connection', async (socket) => {
         }
         offlineTimers.set(socket.userId, setTimeout(async () => {
             offlineTimers.delete(socket.userId);
-            // ما زال غير متصل بأي سوكِت بعد انتهاء المهلة → أعلن «غير متصل»
-            if (!connectedUsers.has(socket.userId)) {
+            try {
+                // ✅ فحص عبر كل عمليات الـ cluster (Redis adapter): هل للمستخدم أي سوكِت متصل؟
+                // أدقّ من connectedUsers المحلي الذي لا يرى الاتصالات على عمليات أخرى.
+                const sockets = await io.in(`user:${socket.userId}`).fetchSockets();
+                if (sockets.length > 0) return; // ما زال متصلاً على عملية ما — لا تضعه غير متصل
+
                 await User.findByIdAndUpdate(socket.userId, {
                     isOnline: false,
                     lastLogin: new Date()
                 });
                 notifyConversationPartners(socket.userId, 'user:offline', { userId: socket.userId });
+            } catch (e) {
+                console.error('خطأ في فحص الحضور:', e.message);
             }
         }, OFFLINE_GRACE_MS));
     });
