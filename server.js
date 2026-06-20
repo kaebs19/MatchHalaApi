@@ -108,6 +108,11 @@ io.use(async (socket, next) => {
 global.io = io;
 global.connectedUsers = new Map();
 
+// مؤقّتات «فترة السماح» قبل وضع المستخدم غير متصل (userId → Timeout)
+// تمنع وميض الحضور عند انقطاع/إعادة اتصال قصيرة (شبكة ضعيفة/خلفية)
+const offlineTimers = new Map();
+const OFFLINE_GRACE_MS = 15000;
+
 // الإعدادات الأساسية
 const PORT = process.env.PORT || 5000;
 
@@ -424,6 +429,13 @@ io.on('connection', async (socket) => {
         connectedAt: new Date()
     });
 
+    // ✅ ألغِ أي مؤقّت «إيقاف» معلّق — المستخدم عاد خلال فترة السماح
+    const wasReconnecting = offlineTimers.has(socket.userId);
+    if (wasReconnecting) {
+        clearTimeout(offlineTimers.get(socket.userId));
+        offlineTimers.delete(socket.userId);
+    }
+
     // تحديث حالة المستخدم: متصل
     await User.findByIdAndUpdate(socket.userId, {
         isOnline: true,
@@ -431,7 +443,10 @@ io.on('connection', async (socket) => {
     });
 
     // ✅ إبلاغ شركاء المحادثات فقط (بدل broadcast للجميع)
-    notifyConversationPartners(socket.userId, 'user:online', { userId: socket.userId });
+    // إن كان مجرّد إعادة اتصال خلال فترة السماح، فهو أصلاً «متصل» عندهم — لا داعي للإبلاغ
+    if (!wasReconnecting) {
+        notifyConversationPartners(socket.userId, 'user:online', { userId: socket.userId });
+    }
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
@@ -592,17 +607,29 @@ io.on('connection', async (socket) => {
     // عند قطع الاتصال
     socket.on('disconnect', async () => {
         if (process.env.NODE_ENV !== 'production') console.log(`👋 غادر: ${socket.user.name}`);
-        connectedUsers.delete(socket.userId);
 
-        // تحديث حالة المستخدم: غير متصل
-        await User.findByIdAndUpdate(socket.userId, {
-            isOnline: false,
-            lastLogin: new Date()
-        });
+        // احذف من قائمة المتصلين فقط إذا كان هذا هو السوكِت الحالي للمستخدم
+        // (يتفادى حذف اتصال جديد عند سباق إعادة الاتصال)
+        const entry = connectedUsers.get(socket.userId);
+        if (entry && entry.socketId === socket.id) {
+            connectedUsers.delete(socket.userId);
+        }
 
-        // ✅ إبلاغ شركاء المحادثات فقط (بدل broadcast للجميع)
-        // ✅ حدث واحد فقط بدل حدثين (أزلنا user-disconnected المكرر)
-        notifyConversationPartners(socket.userId, 'user:offline', { userId: socket.userId });
+        // ✅ فترة سماح: لا نضع «غير متصل» فوراً — قد يعود خلال ثوانٍ (شبكة ضعيفة/خلفية)
+        if (offlineTimers.has(socket.userId)) {
+            clearTimeout(offlineTimers.get(socket.userId));
+        }
+        offlineTimers.set(socket.userId, setTimeout(async () => {
+            offlineTimers.delete(socket.userId);
+            // ما زال غير متصل بأي سوكِت بعد انتهاء المهلة → أعلن «غير متصل»
+            if (!connectedUsers.has(socket.userId)) {
+                await User.findByIdAndUpdate(socket.userId, {
+                    isOnline: false,
+                    lastLogin: new Date()
+                });
+                notifyConversationPartners(socket.userId, 'user:offline', { userId: socket.userId });
+            }
+        }, OFFLINE_GRACE_MS));
     });
 });
 
