@@ -20,7 +20,7 @@ import Appeals from '../pages/Appeals';
 import BannedDevices from '../pages/BannedDevices';
 import MaintenancePage from '../pages/MaintenancePage';
 import SensitiveContent from '../pages/SensitiveContent';
-import { getReportsStats, getAppealsStats, getNotifications, searchUsers, sendUserNotification } from '../services/api';
+import { getReportsStats, getAppealsStats, getNotifications, searchUsers } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -247,18 +247,22 @@ function MainLayout({ onLogout, user: initialUser }) {
                     showToast(data.message || 'فشل الإرسال', 'error');
                 }
             } else {
-                // Send to specific user
-                const res = await sendUserNotification(
-                    notificationData.title,
-                    notificationData.body,
-                    notifyUserId,
-                    'id',
-                    notificationData.type
-                );
-                if (res.success) {
+                // Send to specific user — نفس مسار البث ليدعم link + image
+                const token = localStorage.getItem('token');
+                const response = await fetch(config.API_URL + '/notifications/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({
+                        ...notificationData,
+                        recipients: 'specific',
+                        targetUserIds: [notifyUserId]
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
                     showToast('تم إرسال الإشعار للمستخدم ' + notifyUserLabel, 'success');
                 } else {
-                    showToast(res.message || 'فشل الإرسال', 'error');
+                    showToast(data.message || 'فشل الإرسال', 'error');
                 }
             }
             setShowNotificationModal(false);
