@@ -170,75 +170,67 @@ router.post('/send', protect, adminOnly, async (req, res) => {
             status: 'pending'
         });
 
-        // إرسال الإشعار
-        let sendResults;
-
-        if (recipients === 'all') {
-            // إرسال لجميع المستخدمين النشطين الذين لديهم توكن (deviceToken أو fcmToken)
-            const users = await User.find({
-                isActive: true,
-                $or: [
-                    { deviceToken: { $exists: true, $nin: [null, ''] } },
-                    { fcmToken: { $exists: true, $nin: [null, ''] } }
-                ]
-            }).select('_id deviceToken fcmToken');
-
-            sendResults = await sendFcmToUsers(users, { title, body, type, data, badge });
-        } else {
-            // إرسال لمستخدمين محددين
-            const users = await User.find({
-                _id: { $in: targetUserIds },
-                isActive: true
-            }).select('_id deviceToken fcmToken');
-
-            sendResults = await sendFcmToUsers(users, { title, body, type, data, badge });
-        }
-
-        // تحديث حالة الإشعار
-        notification.status = sendResults.sent > 0 ? 'sent' : 'failed';
-        notification.sentCount = sendResults.sent;
-        notification.failedCount = sendResults.failed;
-        notification.sentAt = new Date();
-        await notification.save();
-
-        // إرسال عبر Socket.IO أيضاً
+        // إرسال عبر Socket.IO فوراً (سريع — للأدمن/المستخدمين المتصلين)
         if (global.io) {
             if (recipients === 'all') {
                 global.io.emit('notification', {
-                    id: notification._id,
-                    title,
-                    body,
-                    type,
-                    data
+                    id: notification._id, title, body, type, data
                 });
             } else {
                 targetUserIds.forEach(userId => {
                     global.io.to(`user-${userId}`).emit('notification', {
-                        id: notification._id,
-                        title,
-                        body,
-                        type,
-                        data
+                        id: notification._id, title, body, type, data
                     });
                 });
             }
         }
 
+        // ✅ نرد على اللوحة فوراً — تجنّب 504 (إرسال FCM لآلاف المستخدمين يتجاوز مهلة nginx 90s)
         res.json({
             success: true,
-            message: `تم إرسال ${sendResults.sent} إشعار بنجاح`,
-            data: {
-                notification,
-                sendResults
-            }
+            message: 'بدأ إرسال الإشعار. سيظهر العدد النهائي في سجل الإشعارات بعد الانتهاء.',
+            data: { notification }
         });
+
+        // ✅ إرسال FCM في الخلفية (بعد إرسال الرد) — لا يحجب الطلب
+        (async () => {
+            try {
+                const userQuery = recipients === 'all'
+                    ? {
+                        isActive: true,
+                        $or: [
+                            { deviceToken: { $exists: true, $nin: [null, ''] } },
+                            { fcmToken: { $exists: true, $nin: [null, ''] } }
+                        ]
+                    }
+                    : { _id: { $in: targetUserIds }, isActive: true };
+
+                const users = await User.find(userQuery).select('_id deviceToken fcmToken');
+                const sendResults = await sendFcmToUsers(users, { title, body, type, data, badge });
+
+                notification.status = sendResults.sent > 0 ? 'sent' : 'failed';
+                notification.sentCount = sendResults.sent;
+                notification.failedCount = sendResults.failed;
+                notification.sentAt = new Date();
+                await notification.save();
+                console.log(`📢 اكتمل بث الإشعار ${notification._id}: نجاح ${sendResults.sent}، فشل ${sendResults.failed}`);
+            } catch (bgErr) {
+                console.error('❌ خطأ في إرسال الإشعار (خلفية):', bgErr.message);
+                try {
+                    notification.status = 'failed';
+                    await notification.save();
+                } catch (_) { /* ignore */ }
+            }
+        })();
     } catch (error) {
         console.error('خطأ في إرسال الإشعار:', error);
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في إرسال الإشعار',
-            error: error.message
-        });
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'خطأ في إرسال الإشعار',
+                error: error.message
+            });
+        }
     }
 });
 
@@ -313,61 +305,52 @@ router.post('/:id/resend', protect, adminOnly, async (req, res) => {
             });
         }
 
-        // إرسال الإشعار مرة أخرى
-        let sendResults;
-
-        if (notification.recipients === 'all') {
-            const users = await User.find({
-                isActive: true,
-                $or: [
-                    { deviceToken: { $exists: true, $nin: [null, ''] } },
-                    { fcmToken: { $exists: true, $nin: [null, ''] } }
-                ]
-            }).select('_id deviceToken fcmToken');
-
-            sendResults = await sendFcmToUsers(users, {
-                title: notification.title,
-                body: notification.body,
-                type: notification.type,
-                data: notification.data,
-                badge: notification.badge
-            });
-        } else {
-            const users = await User.find({
-                _id: { $in: notification.targetUsers },
-                isActive: true
-            }).select('_id deviceToken fcmToken');
-
-            sendResults = await sendFcmToUsers(users, {
-                title: notification.title,
-                body: notification.body,
-                type: notification.type,
-                data: notification.data,
-                badge: notification.badge
-            });
-        }
-
-        // تحديث الإحصائيات
-        notification.sentCount += sendResults.sent;
-        notification.failedCount += sendResults.failed;
-        notification.status = sendResults.sent > 0 ? 'sent' : 'failed';
-        notification.sentAt = new Date();
-        await notification.save();
-
+        // ✅ نرد فوراً ثم نُعيد الإرسال في الخلفية — تجنّب مهلة nginx
         res.json({
             success: true,
-            message: 'تم إعادة إرسال الإشعار بنجاح',
-            data: {
-                notification,
-                sendResults
+            message: 'بدأت إعادة إرسال الإشعار. سيُحدَّث العدد بعد الانتهاء.',
+            data: { notification }
+        });
+
+        (async () => {
+            try {
+                const userQuery = notification.recipients === 'all'
+                    ? {
+                        isActive: true,
+                        $or: [
+                            { deviceToken: { $exists: true, $nin: [null, ''] } },
+                            { fcmToken: { $exists: true, $nin: [null, ''] } }
+                        ]
+                    }
+                    : { _id: { $in: notification.targetUsers }, isActive: true };
+
+                const users = await User.find(userQuery).select('_id deviceToken fcmToken');
+                const sendResults = await sendFcmToUsers(users, {
+                    title: notification.title,
+                    body: notification.body,
+                    type: notification.type,
+                    data: notification.data,
+                    badge: notification.badge
+                });
+
+                notification.sentCount += sendResults.sent;
+                notification.failedCount += sendResults.failed;
+                notification.status = sendResults.sent > 0 ? 'sent' : 'failed';
+                notification.sentAt = new Date();
+                await notification.save();
+                console.log(`🔁 اكتملت إعادة بث الإشعار ${notification._id}: نجاح ${sendResults.sent}، فشل ${sendResults.failed}`);
+            } catch (bgErr) {
+                console.error('❌ خطأ في إعادة إرسال الإشعار (خلفية):', bgErr.message);
             }
-        });
+        })();
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'خطأ في إعادة إرسال الإشعار',
-            error: error.message
-        });
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'خطأ في إعادة إرسال الإشعار',
+                error: error.message
+            });
+        }
     }
 });
 
