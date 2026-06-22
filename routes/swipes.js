@@ -547,12 +547,21 @@ router.get('/cards', protect, async (req, res) => {
                 $nin: [...swipedIds, ...blockedIds]
             },
             // ✅ استبعاد المخفيين (مع احتساب انتهاء المدة)
-            $and: [{
-                $or: [
-                    { 'hidden.isHidden': { $ne: true } },
-                    { 'hidden.hiddenUntil': { $ne: null, $lte: new Date() } }
-                ]
-            }]
+            $and: [
+                {
+                    $or: [
+                        { 'hidden.isHidden': { $ne: true } },
+                        { 'hidden.hiddenUntil': { $ne: null, $lte: new Date() } }
+                    ]
+                },
+                // ✅ استبعاد من أوقف ظهوره مؤقتاً (discoveryPaused) — مع احتساب انتهاء المدة
+                {
+                    $or: [
+                        { 'discoveryPaused.enabled': { $ne: true } },
+                        { 'discoveryPaused.until': { $ne: null, $lte: new Date() } }
+                    ]
+                }
+            ]
         };
 
         // فلتر نشاط مخصص (اختياري) مثل ?lastActiveWithin=30d

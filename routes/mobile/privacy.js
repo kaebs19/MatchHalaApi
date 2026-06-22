@@ -101,11 +101,17 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
 router.get('/privacy/settings', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('privacySettings showDistance showAge showCountry stealthMode acceptingRequests premiumOnlyRequests').lean();
+            .select('privacySettings showDistance showAge showCountry stealthMode acceptingRequests premiumOnlyRequests discoveryPaused').lean();
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
+
+        const dnd = user.privacySettings?.doNotDisturb || {};
+        // ✅ إيقاف الاكتشاف يُعتبر منتهياً إذا مرّ until
+        const paused = user.discoveryPaused || {};
+        const pauseActive = paused.enabled === true &&
+            (!paused.until || new Date(paused.until) > new Date());
 
         res.json({
             success: true,
@@ -118,7 +124,18 @@ router.get('/privacy/settings', protect, async (req, res) => {
                 showCountry: user.showCountry ?? true,
                 stealthMode: user.stealthMode || false,
                 acceptingRequests: user.acceptingRequests ?? true,
-                premiumOnlyRequests: user.premiumOnlyRequests ?? false
+                premiumOnlyRequests: user.premiumOnlyRequests ?? false,
+                doNotDisturb: {
+                    enabled: dnd.enabled ?? false,
+                    startHour: dnd.startHour ?? 23,
+                    startMinute: dnd.startMinute ?? 0,
+                    endHour: dnd.endHour ?? 7,
+                    endMinute: dnd.endMinute ?? 0
+                },
+                discoveryPaused: {
+                    enabled: pauseActive,
+                    until: pauseActive ? (paused.until || null) : null
+                }
             }
         });
     } catch (error) {
@@ -147,6 +164,117 @@ router.patch('/privacy/accepting-requests', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في تغيير إعداد استقبال الطلبات:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/do-not-disturb
+// @desc    تفعيل/تعطيل ساعات الهدوء وتحديد نافذتها
+// @access  Private
+router.patch('/privacy/do-not-disturb', protect, async (req, res) => {
+    try {
+        const { enabled, startHour, startMinute, endHour, endMinute } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        const set = { 'privacySettings.doNotDisturb.enabled': enabled };
+
+        // تحقق من الأوقات إن أُرسلت
+        const inRange = (v, max) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max;
+        if (startHour !== undefined) {
+            if (!inRange(startHour, 23)) return res.status(400).json({ success: false, message: 'ساعة البداية غير صالحة' });
+            set['privacySettings.doNotDisturb.startHour'] = startHour;
+        }
+        if (startMinute !== undefined) {
+            if (!inRange(startMinute, 59)) return res.status(400).json({ success: false, message: 'دقيقة البداية غير صالحة' });
+            set['privacySettings.doNotDisturb.startMinute'] = startMinute;
+        }
+        if (endHour !== undefined) {
+            if (!inRange(endHour, 23)) return res.status(400).json({ success: false, message: 'ساعة النهاية غير صالحة' });
+            set['privacySettings.doNotDisturb.endHour'] = endHour;
+        }
+        if (endMinute !== undefined) {
+            if (!inRange(endMinute, 59)) return res.status(400).json({ success: false, message: 'دقيقة النهاية غير صالحة' });
+            set['privacySettings.doNotDisturb.endMinute'] = endMinute;
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { $set: set });
+
+        const user = await User.findById(req.user._id).select('privacySettings.doNotDisturb').lean();
+        const dnd = user.privacySettings?.doNotDisturb || {};
+
+        res.json({
+            success: true,
+            message: enabled ? 'تم تفعيل ساعات الهدوء' : 'تم إيقاف ساعات الهدوء',
+            data: {
+                enabled: dnd.enabled ?? false,
+                startHour: dnd.startHour ?? 23,
+                startMinute: dnd.startMinute ?? 0,
+                endHour: dnd.endHour ?? 7,
+                endMinute: dnd.endMinute ?? 0
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير ساعات الهدوء:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/pause-discovery
+// @desc    إيقاف/استئناف ظهوري في الاكتشاف مؤقتاً (للمشتركين عند التفعيل)
+// @access  Private + Premium (عند التفعيل)
+router.patch('/privacy/pause-discovery', protect, async (req, res) => {
+    try {
+        const { enabled, durationHours } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        if (enabled) {
+            // التفعيل ميزة للمشتركين فقط
+            if (!req.user.isPremium) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'هذه الميزة للمشتركين فقط',
+                    premiumRequired: true
+                });
+            }
+
+            // durationHours: رقم موجب أو null/0 = حتى يُعيد التفعيل يدوياً
+            let until = null;
+            if (durationHours !== undefined && durationHours !== null && durationHours !== 0) {
+                if (typeof durationHours !== 'number' || durationHours <= 0 || durationHours > 24 * 30) {
+                    return res.status(400).json({ success: false, message: 'مدة غير صالحة' });
+                }
+                until = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+            }
+
+            await User.findByIdAndUpdate(req.user._id, {
+                $set: { 'discoveryPaused.enabled': true, 'discoveryPaused.until': until }
+            });
+
+            return res.json({
+                success: true,
+                message: 'تم إيقاف ظهورك في الاكتشاف',
+                data: { enabled: true, until }
+            });
+        }
+
+        // الاستئناف متاح للجميع
+        await User.findByIdAndUpdate(req.user._id, {
+            $set: { 'discoveryPaused.enabled': false, 'discoveryPaused.until': null }
+        });
+
+        res.json({
+            success: true,
+            message: 'تم استئناف ظهورك في الاكتشاف',
+            data: { enabled: false, until: null }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إيقاف الاكتشاف:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });

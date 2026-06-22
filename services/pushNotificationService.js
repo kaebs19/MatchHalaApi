@@ -29,6 +29,28 @@ const updatePushHealth = (userId, update) => {
 };
 
 /**
+ * هل المستخدم ضمن ساعات الهدوء (عدم الإزعاج) الآن؟
+ * @param {object} user - مستند المستخدم (يحوي privacySettings.doNotDisturb)
+ * @returns {boolean}
+ */
+const isInQuietHours = (user) => {
+    const dnd = user.privacySettings?.doNotDisturb;
+    if (!dnd?.enabled) return false;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = (dnd.startHour || 0) * 60 + (dnd.startMinute || 0);
+    const endMinutes = (dnd.endHour || 0) * 60 + (dnd.endMinute || 0);
+
+    if (startMinutes === endMinutes) return false; // نافذة فارغة
+    if (startMinutes > endMinutes) {
+        // تعبر منتصف الليل (مثل 23:00 → 07:00)
+        return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+};
+
+/**
  * إرسال إشعار لمستخدم واحد
  * @param {string} userId - معرف المستخدم
  * @param {object} notification - بيانات الإشعار
@@ -89,6 +111,13 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                     return { success: true, saved: true, pushed: false, reason: 'pref_disabled' };
                 }
             }
+        }
+
+        // ✅ ساعات الهدوء (عدم الإزعاج) — للأنواع غير الحرجة فقط (التي لها مفتاح تفضيل)
+        // التحذيرات/الأمان (prefKey = null) تتجاوز ساعات الهدوء
+        if (getPreferenceKey(notifType) && isInQuietHours(user)) {
+            console.log(`🌙 Quiet hours — push skipped for ${user.name} (type: ${notifType})`);
+            return { success: true, saved: true, pushed: false, reason: 'quiet_hours' };
         }
 
         // ✅ استخدام deviceToken أو fcmToken (fallback)
@@ -316,27 +345,7 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             }
         }
 
-        // ✅ فحص عدم الإزعاج (ساعات هادئة)
-        const dnd = user.privacySettings?.doNotDisturb;
-        if (dnd?.enabled) {
-            const now = new Date();
-            const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            const startMinutes = (dnd.startHour || 23) * 60 + (dnd.startMinute || 0);
-            const endMinutes = (dnd.endHour || 7) * 60 + (dnd.endMinute || 0);
-
-            let isDND = false;
-            if (startMinutes > endMinutes) {
-                // يعبر منتصف الليل (مثل 23:00 - 07:00)
-                isDND = currentMinutes >= startMinutes || currentMinutes < endMinutes;
-            } else {
-                isDND = currentMinutes >= startMinutes && currentMinutes < endMinutes;
-            }
-
-            if (isDND) {
-                console.log(`🌙 عدم إزعاج — لا إشعار لـ ${user.name}`);
-                return { success: true, skipped: true, reason: 'dnd' };
-            }
-        }
+        // ملاحظة: فحص ساعات الهدوء (عدم الإزعاج) صار مركزياً في sendNotificationToUser
 
         const notification = {
             title: senderName,

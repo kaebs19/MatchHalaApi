@@ -254,6 +254,11 @@ const userSchema = new mongoose.Schema({
     acceptingRequests: { type: Boolean, default: true },
     // ✅ Premium-only requests (يقبل طلبات من المشتركين فقط)
     premiumOnlyRequests: { type: Boolean, default: false },
+    // ✅ إيقاف الظهور في الاكتشاف مؤقتاً (للمشتركين) — منفصل عن hidden الخاص بالإدارة
+    discoveryPaused: {
+        enabled: { type: Boolean, default: false },
+        until: { type: Date, default: null }   // null = حتى يُعيد التفعيل يدوياً
+    },
 
     // توثيق الحساب
     verification: {
