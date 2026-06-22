@@ -101,7 +101,7 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
 router.get('/privacy/settings', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('privacySettings showDistance stealthMode acceptingRequests premiumOnlyRequests').lean();
+            .select('privacySettings showDistance showAge showCountry stealthMode acceptingRequests premiumOnlyRequests').lean();
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -114,6 +114,8 @@ router.get('/privacy/settings', protect, async (req, res) => {
                 showLastSeen: user.privacySettings?.showLastSeen ?? true,
                 notificationSound: user.privacySettings?.notificationSound ?? true,
                 showDistance: user.showDistance ?? true,
+                showAge: user.showAge ?? true,
+                showCountry: user.showCountry ?? true,
                 stealthMode: user.stealthMode || false,
                 acceptingRequests: user.acceptingRequests ?? true,
                 premiumOnlyRequests: user.premiumOnlyRequests ?? false
@@ -145,6 +147,87 @@ router.patch('/privacy/accepting-requests', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في تغيير إعداد استقبال الطلبات:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/show-age
+// @desc    إظهار/إخفاء العمر في الاكتشاف والملف الشخصي
+// @access  Private
+router.patch('/privacy/show-age', protect, async (req, res) => {
+    try {
+        const { showAge } = req.body;
+
+        if (typeof showAge !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { showAge });
+
+        res.json({
+            success: true,
+            message: showAge ? 'تم إظهار العمر' : 'تم إخفاء العمر',
+            data: { showAge }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد العمر:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/show-country
+// @desc    إظهار/إخفاء الدولة في الاكتشاف والملف الشخصي
+// @access  Private
+router.patch('/privacy/show-country', protect, async (req, res) => {
+    try {
+        const { showCountry } = req.body;
+
+        if (typeof showCountry !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { showCountry });
+
+        res.json({
+            success: true,
+            message: showCountry ? 'تم إظهار الدولة' : 'تم إخفاء الدولة',
+            data: { showCountry }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد الدولة:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/premium-only-requests
+// @desc    قبول طلبات المحادثة من المشتركين فقط (ميزة للمشتركين)
+// @access  Private + Premium (عند التفعيل)
+router.patch('/privacy/premium-only-requests', protect, async (req, res) => {
+    try {
+        const { premiumOnlyRequests } = req.body;
+
+        if (typeof premiumOnlyRequests !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        // التفعيل ميزة للمشتركين فقط؛ الإيقاف متاح للجميع
+        if (premiumOnlyRequests && !req.user.isPremium) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذه الميزة للمشتركين فقط',
+                premiumRequired: true
+            });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, { premiumOnlyRequests });
+
+        res.json({
+            success: true,
+            message: premiumOnlyRequests ? 'تم تفعيل استقبال الدعوات من المشتركين فقط' : 'تم إيقاف هذا الإعداد',
+            data: { premiumOnlyRequests }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد دعوات المشتركين:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });

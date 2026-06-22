@@ -625,6 +625,9 @@ router.get('/cards', protect, async (req, res) => {
             // ✅ احترام إعداد showLastSeen + stealthMode (premium)
             // لو المستخدم اختار إخفاء آخر ظهوره → نخفي lastLogin + isOnline
             const hidePresence = u.privacySettings?.showLastSeen === false || u.stealthMode === true;
+            // ✅ احترام إعداد إخفاء العمر/الدولة
+            const hideAge = u.showAge === false;
+            const hideCountry = u.showCountry === false;
             return {
                 _id: u._id,
                 name: u.name,
@@ -632,9 +635,9 @@ router.get('/cards', protect, async (req, res) => {
                     ? getFullUrl(mainPhoto.medium || mainPhoto.original || mainPhoto.thumbnail)
                     : getFullUrl(u.profileImage),
                 photos: photoUrls,
-                birthDate: u.birthDate,
+                birthDate: hideAge ? null : u.birthDate,
                 gender: u.gender,
-                country: u.country,
+                country: hideCountry ? null : u.country,
                 bio: u.bio,
                 isOnline: hidePresence ? false : u.isOnline,
                 isPremium: u.isPremium,
@@ -665,7 +668,7 @@ router.get('/cards', protect, async (req, res) => {
                         gender: 1, country: 1, bio: 1, isOnline: 1,
                         isPremium: 1, distance: 1, lastLogin: 1,
                         createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1,
-                        privacySettings: 1, stealthMode: 1
+                        privacySettings: 1, stealthMode: 1, showAge: 1, showCountry: 1
                     }
                 },
                 { $limit: fetchLimit }
@@ -681,7 +684,7 @@ router.get('/cards', protect, async (req, res) => {
             };
 
             const noLocationUsers = await User.find(noGeoFilter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry')
                 .limit(Math.max(0, fetchLimit - geoUsers.length));
 
             // 3) دمج النتائج
@@ -708,7 +711,7 @@ router.get('/cards', protect, async (req, res) => {
         } else {
             // بدون موقع - ترتيب بالنقاط فقط
             const rawUsers = await User.find(filter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry')
                 .limit(fetchLimit);
 
             users = rawUsers.map(u => mapUserToCard(u.toObject(), null));

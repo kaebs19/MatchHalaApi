@@ -449,7 +449,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode'
+            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry'
         ).lean();
 
         if (!user) {
@@ -510,6 +510,11 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         // ✅ احترام إعداد showLastSeen + stealthMode — لو مخفي، نخفي lastLogin + isOnline
         const hidePresence = user.privacySettings?.showLastSeen === false || user.stealthMode === true;
 
+        // ✅ احترام إعداد إخفاء العمر/الدولة — فقط عند عرض ملف شخص آخر (لا نُخفي عن صاحب الملف)
+        const isOwn = String(user._id) === String(req.user._id);
+        const hideAge = !isOwn && user.showAge === false;
+        const hideCountry = !isOwn && user.showCountry === false;
+
         // ✅ isPremium محسوب لحظياً — لا نرجع المخزن stale
         const nowDate = new Date();
         const userExpiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
@@ -527,9 +532,9 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                     order: p.order
                 }))
                 : [],
-            birthDate: user.birthDate,
+            birthDate: hideAge ? null : user.birthDate,
             gender: user.gender,
-            country: user.country,
+            country: hideCountry ? null : user.country,
             bio: user.bio,
             isOnline: hidePresence ? false : user.isOnline,
             lastLogin: hidePresence ? null : user.lastLogin,
@@ -542,9 +547,9 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             distance,
             // ✅ حقول محسوبة للملف الشخصي
             joinDate: user.createdAt,
-            zodiacSign: getZodiacSign(user.birthDate),
+            zodiacSign: hideAge ? null : getZodiacSign(user.birthDate),
             userRank: computeUserRank(user),
-            isBirthdayToday: isBirthdayToday(user.birthDate),
+            isBirthdayToday: hideAge ? false : isBirthdayToday(user.birthDate),
             hasVipBadge: hasVipBadge(user),
             vipBadgeSource: getVipBadgeSource(user),
             // ✅ إعدادات الخصوصية للعرض الشرطي في iOS (تعطيل زر الإرسال مسبقاً)
