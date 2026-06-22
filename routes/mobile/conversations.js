@@ -831,13 +831,26 @@ router.get('/conversations', protect, async (req, res) => {
         // ✅ زيادة limit الافتراضي من 20 → 50 (يحل 95% من حالات اختفاء المحادثات)
         // ✅ دعم since=ISO timestamp للتحديثات الجزئية (delta sync)
         // ✅ all=true يجلب كل المحادثات النشطة بدون pagination (للـ initial load)
-        const { page = 1, since, all } = req.query;
+        const { page = 1, since, all, status } = req.query;
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
         const userId = req.user._id;
 
+        // ✅ فلتر حالة اختياري (متوافق للخلف):
+        //   - status=accepted → القائمة الرئيسية المقبولة فقط (يمنع مزاحمة الطلبات/المرفوضة لها)
+        //   - يقبل قيمة واحدة أو عدة قيم مفصولة بفواصل (accepted,pending)
+        //   - الافتراضي (بدون status) = السلوك القديم: accepted + pending + rejected
+        const ALLOWED_STATUSES = ['accepted', 'pending', 'rejected', 'expired'];
+        let statusValues = ['accepted', 'pending', 'rejected'];
+        if (typeof status === 'string' && status.trim()) {
+            const requested = status.split(',')
+                .map(s => s.trim())
+                .filter(s => ALLOWED_STATUSES.includes(s));
+            if (requested.length > 0) statusValues = requested;
+        }
+
         const convFilter = {
             participants: userId,
-            status: { $in: ['accepted', 'pending', 'rejected'] },
+            status: { $in: statusValues },
             // ✅ استبعاد المحادثات المخفية عن هذا المستخدم
             'hiddenFor.user': { $ne: userId }
         };
