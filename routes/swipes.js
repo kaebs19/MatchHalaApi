@@ -15,6 +15,17 @@ const NodeCache = require('node-cache');
 // ✅ cache لـ /cards endpoint — 60 ثانية لكل user (يقلل CPU)
 const cardsCache = new NodeCache({ stdTTL: 60, checkperiod: 90 });
 
+// ✅ خريطة كود الدولة (ISO2) → الاسم الإنجليزي الكامل
+// تُستخدم في فلتر الدولة لمطابقة السجلات القديمة المخزّنة كاسم كامل
+const COUNTRY_CODE_TO_NAME = {
+    DZ: 'Algeria', BH: 'Bahrain', CA: 'Canada', KM: 'Comoros', EG: 'Egypt',
+    FR: 'France', DE: 'Germany', IQ: 'Iraq', JP: 'Japan', JO: 'Jordan',
+    KW: 'Kuwait', LB: 'Lebanon', LY: 'Libya', MA: 'Morocco', OM: 'Oman',
+    PS: 'Palestine', QA: 'Qatar', RU: 'Russia', SA: 'Saudi Arabia', ES: 'Spain',
+    CH: 'Switzerland', SY: 'Syria', UA: 'Ukraine', AE: 'United Arab Emirates',
+    GB: 'United Kingdom', US: 'United States', YE: 'Yemen'
+};
+
 // Helper: تحويل المسار النسبي إلى URL كامل
 const getFullUrl = (imgPath) => {
     if (!imgPath) return null;
@@ -490,11 +501,11 @@ function calculateDistanceScore(distanceKm) {
 // @access  Protected
 router.get('/cards', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 10, gender, minAge, maxAge, lastActiveWithin, latitude, longitude } = req.query;
+        const { page = 1, limit = 10, gender, country, minAge, maxAge, lastActiveWithin, latitude, longitude } = req.query;
         const userId = req.user._id;
 
         // ✅ Cache check (60s TTL per user+filters)
-        const cacheKey = "cards_" + userId + "_" + page + "_" + limit + "_" + (gender || "") + "_" + (minAge || "") + "_" + (maxAge || "") + "_" + (lastActiveWithin || "") + "_" + (latitude || "") + "_" + (longitude || "");
+        const cacheKey = "cards_" + userId + "_" + page + "_" + limit + "_" + (gender || "") + "_" + (country || "") + "_" + (minAge || "") + "_" + (maxAge || "") + "_" + (lastActiveWithin || "") + "_" + (latitude || "") + "_" + (longitude || "");
         const cached = cardsCache.get(cacheKey);
         if (cached) {
             return res.json(cached);
@@ -565,6 +576,14 @@ router.get('/cards', protect, async (req, res) => {
         // فلتر الجنس
         if (gender && ['male', 'female'].includes(gender)) {
             filter.gender = gender;
+        }
+
+        // فلتر الدولة (يُرسل كود ISO مثل SA / AE)
+        // نطابق الكود + الاسم الإنجليزي الكامل (بيانات قديمة مخزّنة كاسم) لضمان الشمول
+        if (country && typeof country === 'string' && country.trim()) {
+            const c = country.trim();
+            const fullName = COUNTRY_CODE_TO_NAME[c.toUpperCase()];
+            filter.country = fullName ? { $in: [c, c.toUpperCase(), fullName] } : c;
         }
 
         // فلتر العمر
