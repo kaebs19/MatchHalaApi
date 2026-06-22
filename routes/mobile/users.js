@@ -741,16 +741,20 @@ router.get('/profile-views', protect, async (req, res) => {
                 success: true,
                 data: {
                     totalViews,
-                    views: views.map(v => ({
-                        viewer: {
-                            _id: v.viewer._id,
-                            name: v.viewer.name,
-                            profileImage: getFullUrl(v.viewer.profileImage),
-                            country: v.viewer.country,
-                            isVerified: v.viewer.verification?.isVerified || false
-                        },
-                        createdAt: v.createdAt
-                    })),
+                    // ✅ نتجاهل الزيارات التي حُذف صاحبها (viewer = null بعد populate)
+                    // وإلا كان v.viewer._id يرمي خطأ → 500 → القائمة تظهر فارغة للمشترك
+                    views: views
+                        .filter(v => v.viewer)
+                        .map(v => ({
+                            viewer: {
+                                _id: v.viewer._id,
+                                name: v.viewer.name,
+                                profileImage: getFullUrl(v.viewer.profileImage),
+                                country: v.viewer.country,
+                                isVerified: v.viewer.verification?.isVerified || false
+                            },
+                            createdAt: v.createdAt
+                        })),
                     page: pageNum,
                     totalPages: Math.ceil(totalViews / limitNum),
                     isPremiumRequired: false
