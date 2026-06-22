@@ -189,6 +189,20 @@ const userSchema = new mongoose.Schema({
         // متى فعّل المستخدم الإعداد (للسجل القانوني)
         sensitiveContentEnabledAt: { type: Date, default: null }
     },
+    // ✅ تفضيلات الإشعارات (Push) — تخصيص لكل فئة
+    // الأنواع الحرجة (تحذيرات/أمان/إيقاف الحساب) تبقى مفعّلة دائماً ولا تتأثر بهذه الإعدادات
+    notificationPreferences: {
+        // الكتم الكامل لكل إشعارات الـ push (مفتاح رئيسي)
+        pushEnabled: { type: Boolean, default: true },
+        // تلقّي دعوات المحادثة (طلبات + قبول + تذكير)
+        invitations: { type: Boolean, default: true },
+        // الرسائل الجديدة
+        messages: { type: Boolean, default: true },
+        // زيارة جديدة للملف الشخصي
+        profileVisits: { type: Boolean, default: true },
+        // تنبيهات التطبيق (إعلانات + بث + نظام)
+        appAlerts: { type: Boolean, default: true }
+    },
     // قائمة المستخدمين المحظورين
     blockedUsers: [{
         type: mongoose.Schema.Types.ObjectId,

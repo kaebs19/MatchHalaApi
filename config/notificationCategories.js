@@ -106,6 +106,39 @@ function isGroupableType(type) {
 }
 
 /**
+ * ربط نوع الإشعار بمفتاح تفضيل الـ push الذي يتحكّم به المستخدم.
+ * يُستخدم لبوابة الـ push في pushNotificationService.
+ *
+ * القيم الممكنة: 'invitations' | 'messages' | 'profileVisits' | 'appAlerts'
+ * أو null للأنواع الحرجة (تحذيرات/أمان/إيقاف حساب) التي تبقى مفعّلة دائماً.
+ */
+const PREFERENCE_KEY_BY_TYPE = {
+    // دعوات المحادثة
+    'conversation_request':  'invitations',
+    'conversation_accepted': 'invitations',
+    'conversation_reminder': 'invitations',
+    // الرسائل
+    'message':               'messages',
+    'new_message':           'messages',
+    // زيارة الملف الشخصي
+    'profile_view':          'profileVisits',
+    // تنبيهات التطبيق (إعلانات عامة)
+    'announcement':          'appAlerts',
+    'broadcast':             'appAlerts',
+    'system':                'appAlerts',
+    'general':               'appAlerts'
+};
+
+/**
+ * احصل على مفتاح التفضيل الذي يتحكّم بإشعار من هذا النوع.
+ * @param {string} type
+ * @returns {string|null} مفتاح التفضيل أو null للأنواع الحرجة (دائماً مفعّلة)
+ */
+function getPreferenceKey(type) {
+    return PREFERENCE_KEY_BY_TYPE[type] || null;
+}
+
+/**
  * أنواع تُستخدم للـ filter tabs في iOS
  * يجب أن تطابق NotificationCategory.swift
  */
@@ -166,5 +199,6 @@ module.exports = {
     isChannelType,
     isAdminOnlyType,
     isGroupableType,
+    getPreferenceKey,
     buildUserNotificationsFilter
 };

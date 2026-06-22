@@ -10,7 +10,7 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { isChannelType, isAdminOnlyType } = require('../config/notificationCategories');
+const { isChannelType, isAdminOnlyType, getPreferenceKey } = require('../config/notificationCategories');
 
 /**
  * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
@@ -71,6 +71,24 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         // الأدمن يراها فقط في لوحة التحكم — Socket.IO يُبلّغ الـ dashboard
         if (isAdminOnlyType(notifType)) {
             return { success: true, saved: true, pushed: false, reason: 'admin_only_no_push' };
+        }
+
+        // ✅ تفضيلات الإشعارات الخاصة بالمستخدم
+        // الأنواع الحرجة (تحذيرات/أمان) تُعيد prefKey = null فتمرّ دائماً
+        const prefs = user.notificationPreferences;
+        if (prefs) {
+            // المفتاح الرئيسي — يكتم كل الـ push (عدا الأنواع الحرجة)
+            const prefKey = getPreferenceKey(notifType);
+            if (prefKey) {
+                if (prefs.pushEnabled === false) {
+                    console.log(`🔕 Push muted (master off) for ${user.name} (type: ${notifType})`);
+                    return { success: true, saved: true, pushed: false, reason: 'push_disabled' };
+                }
+                if (prefs[prefKey] === false) {
+                    console.log(`🔕 Push skipped (pref "${prefKey}" off) for ${user.name}`);
+                    return { success: true, saved: true, pushed: false, reason: 'pref_disabled' };
+                }
+            }
         }
 
         // ✅ استخدام deviceToken أو fcmToken (fallback)
