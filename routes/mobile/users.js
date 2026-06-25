@@ -231,7 +231,8 @@ router.get('/users/search', protect, async (req, res) => {
             longitude,   // خط الطول (اختياري)
             maxDistance = 50, // أقصى مسافة بالكيلومتر
             isPremium,   // 'true' → المشتركون فقط (لاقتراحات صفحة البحث)
-            online       // 'true' → المتصلون الآن فقط
+            online,      // 'true' → المتصلون الآن فقط
+            random       // 'true' → عيّنة عشوائية ($sample) لتنويع الاقتراحات
         } = req.query;
 
         // بناء الفلتر
@@ -338,6 +339,47 @@ router.get('/users/search', protect, async (req, res) => {
         };
 
         let users, totalUsers;
+
+        // Helper: تطبيق الخصوصية على نتيجة lean/aggregate (lastSeen + إخفاء العمر/الدولة + رابط الصورة)
+        const mapBasicUser = (u) => {
+            const obj = { ...u };
+            obj.lastActive = obj.stealthMode ? null : obj.lastLogin;
+            if (obj.showAge === false) obj.birthDate = null;
+            if (obj.showCountry === false) obj.country = null;
+            delete obj.lastLogin;
+            delete obj.stealthMode;
+            delete obj.showAge;
+            delete obj.showCountry;
+            obj.profileImage = getFullUrl(obj.profileImage);
+            obj.isVerified = obj.verification?.isVerified ?? obj.isVerified ?? false;
+            delete obj.verification;
+            obj.distance = null;
+            obj.distanceLabel = null;
+            return obj;
+        };
+
+        // ✅ عيّنة عشوائية (لاقتراحات صفحة البحث) — مستخدمون مختلفون كل مرة
+        if (random === 'true' || random === '1') {
+            const sampled = await User.aggregate([
+                { $match: filter },
+                { $sample: { size: limitNum } },
+                {
+                    $project: {
+                        name: 1, email: 1, profileImage: 1, birthDate: 1, gender: 1,
+                        country: 1, bio: 1, isOnline: 1, lastLogin: 1, isPremium: 1,
+                        stealthMode: 1, showAge: 1, showCountry: 1,
+                        isVerified: '$verification.isVerified'
+                    }
+                }
+            ]);
+            users = sampled.map(mapBasicUser);
+            totalUsers = await User.countDocuments(filter);
+
+            return res.status(200).json({
+                success: true,
+                data: { users, page: pageNum, limit: limitNum, total: totalUsers }
+            });
+        }
 
         // إذا فيه إحداثيات → استخدام $geoNear
         if (latitude && longitude && parseFloat(latitude) !== 0 && parseFloat(longitude) !== 0) {
