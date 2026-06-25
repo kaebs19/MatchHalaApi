@@ -253,6 +253,13 @@ router.get('/users/search', protect, async (req, res) => {
                         { 'hidden.isHidden': { $ne: true } },
                         { 'hidden.hiddenUntil': { $ne: null, $lte: new Date() } }
                     ]
+                },
+                // ✅ استبعاد من أوقف ظهوره مؤقتاً (discoveryPaused) — تناسقاً مع الاكتشاف
+                {
+                    $or: [
+                        { 'discoveryPaused.enabled': { $ne: true } },
+                        { 'discoveryPaused.until': { $ne: null, $lte: new Date() } }
+                    ]
                 }
             ]
         };
@@ -345,7 +352,7 @@ router.get('/users/search', protect, async (req, res) => {
                         name: 1, email: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
                         isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1,
-                        showDistance: 1
+                        showDistance: 1, showAge: 1, showCountry: 1
                     }
                 },
                 { $sort: { isOnline: -1, distance: 1 } },
@@ -362,12 +369,16 @@ router.get('/users/search', protect, async (req, res) => {
                     ...u,
                     distance: hideDistance ? null : Math.round(u.distance / 100) / 10,
                     distanceLabel: hideDistance ? null : getDistanceLabel(u.distance),
-                    lastActive: u.stealthMode ? null : u.lastLogin
+                    lastActive: u.stealthMode ? null : u.lastLogin,
+                    birthDate: u.showAge === false ? null : u.birthDate,
+                    country: u.showCountry === false ? null : u.country
                 };
                 result.profileImage = getFullUrl(u.profileImage);
                 delete result.lastLogin;
                 delete result.stealthMode;
                 delete result.showDistance;
+                delete result.showAge;
+                delete result.showCountry;
                 return result;
             });
 
@@ -390,7 +401,7 @@ router.get('/users/search', protect, async (req, res) => {
         } else {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode')
+                .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode showAge showCountry')
                 .sort({ isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum)
@@ -398,12 +409,16 @@ router.get('/users/search', protect, async (req, res) => {
 
             totalUsers = await User.countDocuments(filter);
 
-            // إخفاء lastLogin للمتخفين + إضافة distance: null + حذف stealthMode
+            // إخفاء lastLogin للمتخفين + إخفاء العمر/الدولة حسب الإعداد + distance: null
             users = users.map(u => {
                 const userObj = { ...u };
                 userObj.lastActive = userObj.stealthMode ? null : userObj.lastLogin;
+                if (userObj.showAge === false) userObj.birthDate = null;
+                if (userObj.showCountry === false) userObj.country = null;
                 delete userObj.lastLogin;
                 delete userObj.stealthMode;
+                delete userObj.showAge;
+                delete userObj.showCountry;
                 userObj.profileImage = getFullUrl(userObj.profileImage);
                 userObj.isVerified = userObj.verification?.isVerified || false;
                 delete userObj.verification;
