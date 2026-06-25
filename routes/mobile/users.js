@@ -229,7 +229,9 @@ router.get('/users/search', protect, async (req, res) => {
             maxAge,      // أكبر عمر
             latitude,    // خط العرض (اختياري)
             longitude,   // خط الطول (اختياري)
-            maxDistance = 50 // أقصى مسافة بالكيلومتر
+            maxDistance = 50, // أقصى مسافة بالكيلومتر
+            isPremium,   // 'true' → المشتركون فقط (لاقتراحات صفحة البحث)
+            online       // 'true' → المتصلون الآن فقط
         } = req.query;
 
         // بناء الفلتر
@@ -296,6 +298,14 @@ router.get('/users/search', protect, async (req, res) => {
         // فلتر الدولة
         if (country) {
             filter.country = country.toUpperCase();
+        }
+
+        // ✅ اقتراحات صفحة البحث: المشتركون / المتصلون
+        if (isPremium === 'true' || isPremium === '1') {
+            filter.isPremium = true;
+        }
+        if (online === 'true' || online === '1') {
+            filter.isOnline = true;
         }
 
         // فلتر العمر (من birthDate)
