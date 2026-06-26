@@ -173,11 +173,12 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         let externalPromoDetected = false;
         let externalPromoCategories = [];
         let externalPromoViolation = null;
+        let promo = { detected: false, redacted: content, categories: [], patterns: [] };
         if (type === 'text' && content) {
             // 1. ترويج خارجي — يُفحَص أولاً على النص الأصلي (قبل أي censoring)
             //    أولوية على banned words لأن الحسابات الخارجية تحتاج violation tracking منفصل
             //    ولا نريد أن يطمسها banned-words filter قبل أن يلتقطها الـ detector
-            const promo = detectExternalPromotion(content);
+            promo = detectExternalPromotion(content);
             const originalContent = content;
             if (promo.detected) {
                 censoredContent = promo.redacted;
