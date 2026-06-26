@@ -126,7 +126,11 @@ const messageSchema = new mongoose.Schema({
     },
     // النص الأصلي قبل التكتيم — محمي بـ select: false (لا يُرجع افتراضياً)
     // يُرجع فقط عبر endpoint /reveal مع التحقق من الإذن + العمر + setting
-    originalContent: { type: String, default: null, select: false }
+    originalContent: { type: String, default: null, select: false },
+
+    // ✅ ترويج خارجي (Snap/Insta/...) — محجوب تلقائياً + مخالفة
+    isExternalPromoBlocked: { type: Boolean, default: false },
+    externalPromoCategories: { type: [String], default: undefined }
 }, {
     timestamps: true
 });

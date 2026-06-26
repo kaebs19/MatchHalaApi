@@ -290,7 +290,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             // Phase 1.2: Sensitive Content fields (additive — التطبيق القديم يتجاهلها)
             hasFlaggedContent: sensitiveFlag.hasFlaggedContent,
             flaggedCategory: sensitiveFlag.flaggedCategory,
-            originalContent: sensitiveFlag.originalContent
+            originalContent: sensitiveFlag.originalContent,
+            isExternalPromoBlocked: false,   // يُحدَّث لاحقاً لو اكتُشف
+            externalPromoCategories: []
         };
         if (replyTo) messageData.replyTo = replyTo;
 
@@ -336,6 +338,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                                     content: '***',
                                     hasFlaggedContent: true,
                                     flaggedCategory: 'external_promo_split',
+                                    isExternalPromoBlocked: true,
+                                    externalPromoCategories: ['external_promo_split'],
                                     // احفظ originalContent فقط لو لم يكن محفوظاً سابقاً
                                     ...(orig.originalContent ? {} : { originalContent: orig.content })
                                 }
@@ -623,6 +627,18 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 receiverWillSee: receiverSeesRevealed ? 'revealed' : 'blurred',
                 soft: true
             };
+        }
+
+        // ✅ تحديث حقل isExternalPromoBlocked على الرسالة
+        if (externalPromoDetected) {
+            await Message.findByIdAndUpdate(message._id, {
+                isExternalPromoBlocked: true,
+                externalPromoCategories: externalPromoCategories
+            });
+            if (senderMessage) {
+                senderMessage.isExternalPromoBlocked = true;
+                senderMessage.externalPromoCategories = externalPromoCategories;
+            }
         }
 
         // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...) — sheet احترافي على iOS
