@@ -155,15 +155,21 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
-        // ✅ Phase 2: لو messaging مقفول بسبب external promo violations → ارفض الإرسال
+        // ✅ Phase 2: لو messaging مقفول بسبب external promo violations → أبلغ المرسل بـ dialog (201)
         if (isMessagingLockedByPromo(req.user)) {
             const lockedUntil = req.user.restrictions.messagingRestrictedUntil;
             const hoursLeft = Math.ceil((lockedUntil.getTime() - Date.now()) / (60 * 60 * 1000));
-            return res.status(403).json({
-                success: false,
-                message: `تم تقييد المراسلة لمدة ${hoursLeft} ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية`,
-                code: 'MESSAGING_LOCKED_PROMO',
-                lockedUntil
+            return res.status(201).json({
+                success: true,
+                data: { message: null },
+                messagingLocked: {
+                    title: 'المراسلة مقيّدة مؤقتاً',
+                    message: `تم تقييد مراسلتك لمدة ${hoursLeft} ساعة بسبب محاولات متكررة لمشاركة حسابات خارجية`,
+                    serverMessage: `لحماية مجتمع هلا، يتم تقييد المراسلة عند تجاوز الحد المسموح من المخالفات. ستتمكن من الإرسال مجدداً خلال ${hoursLeft} ساعة.`,
+                    hoursLeft,
+                    lockedUntil: lockedUntil?.toISOString(),
+                    code: 'MESSAGING_LOCKED_PROMO'
+                }
             });
         }
 
