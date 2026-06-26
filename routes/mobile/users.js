@@ -939,4 +939,34 @@ router.get('/stats', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/mobile/violations-history
+// @desc    سجل مخالفات المستخدم
+// @access  Private
+router.get('/violations-history', protect, async (req, res) => {
+    try {
+        const Violation = require('../../models/Violation');
+        const violations = await Violation.find({ user: req.user._id })
+            .sort({ createdAt: -1 }).limit(50).lean();
+        res.json({ success: true, data: { violations } });
+    } catch (error) {
+        // إذا لم يكن نموذج Violation موجوداً بعد، أرجع قائمة فارغة
+        console.error('violations-history error:', error);
+        res.json({ success: true, data: { violations: [] } });
+    }
+});
+
+// @route   GET /api/mobile/config/promo-keywords
+// @desc    جلب أنماط الترويج الخارجي الديناميكية
+// @access  Private
+router.get('/config/promo-keywords', protect, async (req, res) => {
+    try {
+        const Settings = require('../../models/Settings');
+        const settings = await Settings.getSettings();
+        res.json({ success: true, data: { keywords: settings.promoKeywords || [] } });
+    } catch (error) {
+        console.error('promo-keywords error:', error);
+        res.json({ success: true, data: { keywords: [] } });
+    }
+});
+
 module.exports = router;

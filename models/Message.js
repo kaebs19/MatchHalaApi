@@ -130,7 +130,16 @@ const messageSchema = new mongoose.Schema({
 
     // ✅ ترويج خارجي (Snap/Insta/...) — محجوب تلقائياً + مخالفة
     isExternalPromoBlocked: { type: Boolean, default: false },
-    externalPromoCategories: { type: [String], default: undefined }
+    externalPromoCategories: { type: [String], default: undefined },
+
+    // ✅ استئناف الحجب
+    appealStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected', null],
+        default: null
+    },
+    appealReason: { type: String, default: null },
+    appealedAt: { type: Date, default: null }
 }, {
     timestamps: true
 });

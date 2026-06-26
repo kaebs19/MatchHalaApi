@@ -648,6 +648,18 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             const lockCount = externalPromoViolation?.lockCount || 0;
             const durationHours = externalPromoViolation?.durationHours || 0;
 
+            // أنماط مُقنَّعة
+            const allPatterns = [
+                ...(promo.patterns || []),
+                ...(bannedResult.matchedWords || [])
+            ];
+            const maskedPatterns = allPatterns.map(p => {
+                const w = (p.matched || p || '').toString();
+                if (w.length <= 2) return '*'.repeat(w.length);
+                return w[0] + '*'.repeat(Math.max(w.length - 2, 1)) + w[w.length - 1];
+            });
+            const detectedPatterns = [...new Set(maskedPatterns)].filter(Boolean).slice(0, 5);
+
             response.externalPromoBlocked = {
                 // عنوان الـ sheet
                 title: externalPromoViolation?.suspended ? 'تم تعليق حسابك' :
@@ -669,7 +681,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                           v >= t - 1 ? 'last_warning' :
                           v > 1 ? 'repeated' : 'first',
                 lockApplied: externalPromoViolation?.lockApplied || false,
-                suspended: externalPromoViolation?.suspended || false
+                suspended: externalPromoViolation?.suspended || false,
+                // ✅ الكلمات المكتشفة مع إخفاء جزئي
+                detectedPatterns
             };
 
             // ✅ بث لحظي للمرسل
@@ -690,6 +704,31 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// @route   POST /api/mobile/messages/:id/appeal-block
+// @desc    استئناف حجب رسالة خارجية
+// @access  Private
+router.post('/messages/:id/appeal-block', protect, async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const message = await Message.findById(req.params.id);
+        if (!message?.isExternalPromoBlocked) {
+            return res.status(400).json({ success: false, message: 'لا يوجد حجب لهذه الرسالة' });
+        }
+        if (message.sender.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: 'غير مصرّح' });
+        }
+        await Message.findByIdAndUpdate(req.params.id, {
+            appealStatus: 'pending',
+            appealReason: reason || 'no_reason',
+            appealedAt: new Date()
+        });
+        res.json({ success: true, message: 'تم تقديم الاستئناف، سيتم مراجعته خلال 24 ساعة' });
+    } catch (error) {
+        console.error('خطأ في استئناف الحجب:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

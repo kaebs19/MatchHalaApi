@@ -190,6 +190,13 @@ const settingsSchema = new mongoose.Schema({
         allowAdmin: { type: Boolean, default: true }
     },
 
+    // ✅ أنماط الترويج الخارجي الديناميكية
+    promoKeywords: [{
+        pattern: { type: String, required: true },
+        category: { type: String, required: true },
+        isRegex: { type: Boolean, default: false }
+    }],
+
     // آخر تحديث
     lastUpdated: {
         type: Date,
