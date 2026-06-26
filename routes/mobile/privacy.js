@@ -101,7 +101,7 @@ router.put('/users/stealth-mode', protect, requirePremium, async (req, res) => {
 router.get('/privacy/settings', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('privacySettings showDistance showAge showCountry stealthMode acceptingRequests premiumOnlyRequests discoveryPaused').lean();
+            .select('privacySettings showDistance showAge showCountry stealthMode acceptingRequests premiumOnlyRequests discoveryPaused birthDate').lean();
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -135,7 +135,8 @@ router.get('/privacy/settings', protect, async (req, res) => {
                 discoveryPaused: {
                     enabled: pauseActive,
                     until: pauseActive ? (paused.until || null) : null
-                }
+                },
+                allowSensitiveContent: user.privacySettings?.allowSensitiveContent ?? false
             }
         });
     } catch (error) {
@@ -403,6 +404,47 @@ router.patch('/privacy/stealth', protect, requirePremium, async (req, res) => {
     } catch (error) {
         console.error('خطأ في تغيير وضع التخفي:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير وضع التخفي' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/allow-sensitive-content
+// @desc    تفعيل/تعطيل عرض المحتوى الحساس
+// @access  Private (18+)
+router.patch('/privacy/allow-sensitive-content', protect, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        // التحقق من العمر عند التفعيل
+        if (enabled) {
+            let userAge = null;
+            if (req.user.birthDate) {
+                const ageMs = Date.now() - new Date(req.user.birthDate).getTime();
+                userAge = Math.floor(ageMs / (365.25 * 24 * 60 * 60 * 1000));
+            }
+            if (userAge === null || userAge < 18) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'هذا الخيار للبالغين فقط (+18)',
+                    code: 'AGE_RESTRICTED'
+                });
+            }
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            'privacySettings.allowSensitiveContent': enabled
+        });
+
+        res.json({
+            success: true,
+            message: enabled ? 'تم تفعيل عرض المحتوى الحساس' : 'تم تعطيل عرض المحتوى الحساس',
+            enabled
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد المحتوى الحساس:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });
 
