@@ -1430,13 +1430,29 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             return msgObj;
         });
 
+        // ✅ حالة تقييد المراسلة بسبب نشر حسابات خارجية — لعرض بانر أعلى المحادثة
+        let messagingRestriction = null;
+        if (isMessagingLockedByPromo(req.user)) {
+            const lockedUntil = req.user.restrictions.messagingRestrictedUntil;
+            const hoursLeft = Math.max(1, Math.ceil((lockedUntil.getTime() - Date.now()) / (60 * 60 * 1000)));
+            messagingRestriction = {
+                restricted: true,
+                reason: 'external_promotion',
+                title: 'حسابك مقيّد مؤقتاً',
+                message: `تم تقييد المراسلة بسبب تكرار نشر حسابات خارجية. يتبقّى ${hoursLeft} ساعة.`,
+                hoursLeft,
+                lockedUntil: lockedUntil.toISOString()
+            };
+        }
+
         res.status(200).json({
             success: true,
             data: {
                 messages: messagesWithReadStatus,
                 total,
                 currentPage: parseInt(page),
-                totalPages: Math.ceil(total / limit)
+                totalPages: Math.ceil(total / limit),
+                messagingRestriction
             }
         });
 
