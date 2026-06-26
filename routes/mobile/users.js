@@ -587,6 +587,18 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         const userExpiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
         const userIsPremiumValid = !!(user.isPremium && userExpiresAt && userExpiresAt > nowDate);
 
+        // ✅ هل أعجب بي هذا المستخدم؟ (اهتمام متبادل)
+        let likedYou = false;
+        if (!isOwn) {
+            const Swipe = require('../../models/Swipe');
+            const theirLike = await Swipe.findOne({
+                swiper: user._id,
+                swiped: req.user._id,
+                type: { $in: ['like', 'superlike'] }
+            }).select('_id').lean();
+            likedYou = !!theirLike;
+        }
+
         const profileData = {
             _id: user._id,
             name: user.name,
@@ -621,7 +633,8 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             vipBadgeSource: getVipBadgeSource(user),
             // ✅ إعدادات الخصوصية للعرض الشرطي في iOS (تعطيل زر الإرسال مسبقاً)
             acceptingRequests: user.acceptingRequests !== false, // افتراضي true
-            premiumOnlyRequests: user.premiumOnlyRequests === true
+            premiumOnlyRequests: user.premiumOnlyRequests === true,
+            likedYou
         };
 
         // ✅ إخفاء الحساب — العميل يبلر الصورة ويخفي الاسم لمن ليس المستخدم نفسه
