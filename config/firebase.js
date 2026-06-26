@@ -79,8 +79,12 @@ const sendToDevice = async (token, notification, data = {}) => {
         const hasImage = Boolean(data.senderImage && String(data.senderImage).trim());
 
         // ✅ تنقية data — كل القيم تُحوَّل لـ strings (متطلب FCM)
+        // ملاحظة: نُمرّر title/body داخل data لأن أندرويد data-only (يبني الإشعار في onMessageReceived
+        // ليُظهر صورة المُرسِل كأيقونة كبيرة في المقدّمة والخلفية). iOS يعتمد على apns.aps.
         const sanitizedData = sanitizeFCMData({
             ...data,
+            title: notification.title,
+            body: notification.body,
             click_action: 'FLUTTER_NOTIFICATION_CLICK'
         });
 
@@ -109,7 +113,8 @@ const sendToDevice = async (token, notification, data = {}) => {
 
         const message = {
             token,
-            notification: { title: notification.title, body: notification.body },
+            // ✅ لا notification block على المستوى الأعلى → أندرويد data-only (onMessageReceived يبني الإشعار).
+            // iOS مغطّى بالكامل عبر apns.payload.aps أدناه.
             data: sanitizedData,
             apns: {
                 headers: {
@@ -120,7 +125,8 @@ const sendToDevice = async (token, notification, data = {}) => {
                 payload: apnsPayload,
                 ...(hasImage ? { fcm_options: { image: data.senderImage } } : {})
             },
-            android: { priority: 'high', notification: { sound: 'default', channelId: 'matchhala_channel' } },
+            // ✅ أندرويد data-only عالي الأولوية (بلا notification → يُبنى في العميل)
+            android: { priority: 'high' },
             // ✅ رابط اختياري — يُفتح عند الضغط على الإشعار (Web). التطبيق الأصلي يقرأ data.link
             ...(data.link ? { webpush: { fcm_options: { link: String(data.link) } } } : {})
         };
