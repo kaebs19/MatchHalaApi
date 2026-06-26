@@ -709,8 +709,13 @@ router.get('/cards', protect, async (req, res) => {
 
             users = [...geoCards, ...noGeoCards];
 
-            // ترتيب حسب النقاط (الأعلى أولاً)
-            users.sort((a, b) => b._score - a._score);
+            // ✅ خوارزمية العرض: الأولوية للمشتركين، ثم الأنشط/الأقرب (النقاط = نشاط + مسافة)
+            users.sort((a, b) => {
+                const pa = a.isPremium ? 1 : 0;
+                const pb = b.isPremium ? 1 : 0;
+                if (pa !== pb) return pb - pa;
+                return b._score - a._score;
+            });
 
             totalUsers = users.length;
             const startIdx = (pageNum - 1) * limitNum;
@@ -725,7 +730,13 @@ router.get('/cards', protect, async (req, res) => {
 
             users = rawUsers.map(u => mapUserToCard(u.toObject(), null));
 
-            users.sort((a, b) => b._score - a._score);
+            // ✅ الأولوية للمشتركين، ثم الأنشط/الأقرب
+            users.sort((a, b) => {
+                const pa = a.isPremium ? 1 : 0;
+                const pb = b.isPremium ? 1 : 0;
+                if (pa !== pb) return pb - pa;
+                return b._score - a._score;
+            });
 
             totalUsers = await User.countDocuments(filter);
             const startIdx = (pageNum - 1) * limitNum;
