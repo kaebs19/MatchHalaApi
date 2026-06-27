@@ -1298,6 +1298,90 @@ router.put('/:id/violations', protect, adminOnly, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/review-requests
+// @desc    قائمة طلبات مراجعة تقييد المراسلة المعلّقة (نشر حسابات خارجية)
+// @access  Private/Admin
+router.get('/review-requests', protect, adminOnly, async (req, res) => {
+    try {
+        const users = await User.find({ 'externalPromo.reviewRequest.status': 'pending' })
+            .select('name email profileImage externalPromo restrictions')
+            .sort({ 'externalPromo.reviewRequest.requestedAt': -1 })
+            .limit(200)
+            .lean();
+
+        const requests = users.map(u => ({
+            _id: u._id,
+            name: u.name,
+            email: u.email,
+            profileImage: u.profileImage,
+            reason: u.externalPromo?.reviewRequest?.reason,
+            requestedAt: u.externalPromo?.reviewRequest?.requestedAt,
+            violations: u.externalPromo?.violations || 0,
+            lockCount: u.externalPromo?.lockCount || 0,
+            restrictedUntil: u.restrictions?.messagingRestrictedUntil
+        }));
+
+        res.json({ success: true, data: { requests, total: requests.length } });
+    } catch (error) {
+        console.error('خطأ في جلب طلبات المراجعة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/review-request
+// @desc    معالجة طلب المراجعة — approve (يرفع التقييد) أو reject
+// @access  Private/Admin
+router.put('/:id/review-request', protect, adminOnly, async (req, res) => {
+    try {
+        const { decision } = req.body; // 'approve' | 'reject'
+        if (!['approve', 'reject'].includes(decision)) {
+            return res.status(400).json({ success: false, message: 'القرار يجب أن يكون approve أو reject' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+        if (user.externalPromo?.reviewRequest?.status !== 'pending') {
+            return res.status(400).json({ success: false, message: 'لا يوجد طلب مراجعة معلّق لهذا المستخدم' });
+        }
+
+        user.set('externalPromo.reviewRequest.status', decision === 'approve' ? 'approved' : 'rejected');
+        user.set('externalPromo.reviewRequest.reviewedAt', new Date());
+        user.set('externalPromo.reviewRequest.reviewedBy', req.user._id);
+
+        if (decision === 'approve') {
+            // رفع التقييد فوراً
+            user.set('restrictions.messagingRestricted', false);
+            user.set('restrictions.messagingRestrictedUntil', null);
+            user.set('restrictions.messagingRestrictedLevel', null);
+            user.set('restrictions.restrictionReason', null);
+        }
+
+        await user.save();
+        invalidateUsers();
+
+        try {
+            const pushNotificationService = require('../services/pushNotificationService');
+            await pushNotificationService.sendNotificationToUser(user._id, {
+                title: decision === 'approve' ? '✅ تمت الموافقة على المراجعة' : 'ℹ️ نتيجة طلب المراجعة',
+                body: decision === 'approve'
+                    ? 'تمت مراجعة حسابك ورفع التقييد. يمكنك المراسلة الآن.'
+                    : 'تمت مراجعة طلبك، وسيبقى التقييد سارياً حتى انتهاء مدته. التزم بسياسة المنصة.'
+            }, { type: decision === 'approve' ? 'info' : 'warning' });
+        } catch (e) { console.error('Push error:', e.message); }
+
+        res.json({
+            success: true,
+            message: decision === 'approve' ? 'تمت الموافقة ورفع التقييد' : 'تم رفض الطلب',
+            data: { _id: user._id, reviewRequest: user.externalPromo.reviewRequest }
+        });
+    } catch (error) {
+        console.error('خطأ في معالجة طلب المراجعة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/users/send-notification
 // @desc    إرسال إشعار لمستخدم معين (بالبريد/الاسم/المعرف)
 // @access  Private/Admin

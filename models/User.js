@@ -439,7 +439,15 @@ const userSchema = new mongoose.Schema({
         //    1 → 24h | 2 → 48h | 3 → 72h | 4+ → suspension 7d
         //    لا يتصفّر إلا بعد فترة طويلة (90 يوم) من حسن السلوك
         lockCount: { type: Number, default: 0 },
-        lastLockAt: { type: Date, default: null }
+        lastLockAt: { type: Date, default: null },
+        // ✅ طلب مراجعة من المستخدم المقيّد — يراجعه المشرف
+        reviewRequest: {
+            status: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+            reason: { type: String, default: null },
+            requestedAt: { type: Date, default: null },
+            reviewedAt: { type: Date, default: null },
+            reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+        }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
