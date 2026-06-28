@@ -534,6 +534,21 @@ async function recordExternalPromoViolation(user, logContext = null) {
     // قبل الوصول للعتبة: تحذير وقائي
     else {
         message = 'تم التعرف تلقائياً على مشاركة حساب خارجي. سياسة المنصة تمنع نشر أو طلب الحسابات والأرقام، وتكرار ذلك يقيّد حسابك تلقائياً — رسائلك أمانة، حافظ على التواصل داخل التطبيق.';
+
+        // ✅ تنبيه استباقي: عند بلوغ مخالفة واحدة قبل العتبة (4/5) أرسل push تحذيري
+        if (user.externalPromo.violations === SOFT_THRESHOLD - 1) {
+            try {
+                const remaining = SOFT_THRESHOLD - user.externalPromo.violations; // = 1
+                require('../services/pushNotificationService').sendNotificationToUser(
+                    user._id,
+                    {
+                        title: '⚠️ تبقّت مخالفة واحدة قبل التقييد',
+                        body: `لديك ${user.externalPromo.violations} من ${SOFT_THRESHOLD} مخالفات. مشاركة حساب خارجي إضافية ستقيّد مراسلتك تلقائياً — التزم بسياسة المنصة.`
+                    },
+                    { type: 'promo_warning', remaining: String(remaining) }
+                ).catch(() => {});
+            } catch (_) { /* غير حرج */ }
+        }
     }
 
     await user.save();
