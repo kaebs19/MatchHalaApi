@@ -645,4 +645,13 @@ server.listen(PORT, () => {
     console.log(`🔗 http://localhost:${PORT}`);
     console.log(`📝 البيئة: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔌 Socket.IO جاهز للاتصال`);
+
+    // ✅ مراقب فك تقييد المراسلة — على instance 0 فقط لتجنّب التكرار في الـ cluster
+    if (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0') {
+        try {
+            require('./services/messagingRestrictionWatcher').startMessagingRestrictionWatcher();
+        } catch (e) {
+            console.error('تعذّر بدء مراقب فك التقييد:', e.message);
+        }
+    }
 });
