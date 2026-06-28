@@ -618,6 +618,9 @@ module.exports = {
     isMessagingLockedByPromo,
     aggressiveNormalize,
     looksLikeExternalHandle,    // ✅ heuristic للـ banned-words auto-classification
+    calculateLockHours,         // ✅ لحساب مدة القفل لكل مستوى تصعيد
     SOFT_THRESHOLD,
-    HARD_THRESHOLD
+    HARD_THRESHOLD,
+    LOCK_DECAY_DAYS,
+    SUSPENSION_DURATION_DAYS
 };

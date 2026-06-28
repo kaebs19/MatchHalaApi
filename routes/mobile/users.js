@@ -945,13 +945,121 @@ router.get('/stats', protect, async (req, res) => {
 router.get('/violations-history', protect, async (req, res) => {
     try {
         const Violation = require('../../models/Violation');
-        const violations = await Violation.find({ user: req.user._id })
+        const raw = await Violation.find({ user: req.user._id })
             .sort({ createdAt: -1 }).limit(50).lean();
+
+        // ✅ إخفاء جزئي لنص الدليل (الكلمة المكتشفة) — أول/آخر حرف فقط
+        const maskWord = (w) => {
+            const s = (w || '').toString().trim();
+            if (!s) return null;
+            if (s.length <= 2) return '*'.repeat(s.length);
+            return s[0] + '*'.repeat(Math.max(s.length - 2, 1)) + s[s.length - 1];
+        };
+
+        const violations = raw.map(v => ({
+            _id: v._id,
+            type: v.type,
+            reason: v.reason,
+            action: v.action,
+            escalationLevel: v.escalationLevel,
+            source: v.source,
+            // كلمة الدليل مُقنَّعة فقط (لا نكشف النص الكامل)
+            maskedEvidence: maskWord(v.evidence?.text),
+            createdAt: v.createdAt
+        }));
+
         res.json({ success: true, data: { violations } });
     } catch (error) {
         // إذا لم يكن نموذج Violation موجوداً بعد، أرجع قائمة فارغة
         console.error('violations-history error:', error);
         res.json({ success: true, data: { violations: [] } });
+    }
+});
+
+// @route   GET /api/mobile/account-standing
+// @desc    حالة الحساب: المخالفات + التصعيد + التقييد + الاسترداد (شفافية للمستخدم)
+// @access  Private
+router.get('/account-standing', protect, async (req, res) => {
+    try {
+        const {
+            calculateLockHours, SOFT_THRESHOLD, HARD_THRESHOLD,
+            LOCK_DECAY_DAYS, SUSPENSION_DURATION_DAYS
+        } = require('../../utils/externalPromotionDetector');
+
+        const u = req.user;
+        const now = Date.now();
+        const ep = u.externalPromo || {};
+        const violations = ep.violations || 0;
+        const lockCount = ep.lockCount || 0;
+
+        // التقييد الحالي
+        const restrictedUntil = u.restrictions?.messagingRestrictedUntil;
+        const isRestricted = !!(u.restrictions?.messagingRestricted &&
+            restrictedUntil && new Date(restrictedUntil).getTime() > now);
+        const restrictionHoursLeft = isRestricted
+            ? Math.max(1, Math.ceil((new Date(restrictedUntil).getTime() - now) / 3600000))
+            : 0;
+
+        // التعليق الحالي
+        const suspendedUntil = u.suspension?.suspendedUntil;
+        const isSuspended = !!(u.suspension?.isSuspended &&
+            (!suspendedUntil || new Date(suspendedUntil).getTime() > now));
+
+        // الحالة العامة
+        let standing = 'good';
+        if (isSuspended) standing = 'suspended';
+        else if (isRestricted) standing = 'restricted';
+        else if (violations >= SOFT_THRESHOLD - 1) standing = 'warning';
+
+        // الاسترداد: lockCount يتصفّر بعد 90 يوماً من آخر قفل
+        let daysUntilLockReset = null;
+        if (lockCount > 0 && ep.lastLockAt) {
+            const resetAt = new Date(ep.lastLockAt).getTime() + LOCK_DECAY_DAYS * 86400000;
+            daysUntilLockReset = Math.max(0, Math.ceil((resetAt - now) / 86400000));
+        }
+
+        // سُلّم التصعيد — مبني على lockCount الحالي
+        const ladder = [
+            { step: 1, label: 'تقييد المراسلة 24 ساعة', hours: calculateLockHours(1) },
+            { step: 2, label: 'تقييد المراسلة 48 ساعة', hours: calculateLockHours(2) },
+            { step: 3, label: 'تقييد المراسلة 72 ساعة', hours: calculateLockHours(3) },
+            { step: 4, label: 'تعليق الحساب 7 أيام', hours: calculateLockHours(4) }
+        ];
+        // الخطوة التالية = lockCount + 1
+        const nextStep = Math.min(lockCount + 1, 4);
+
+        res.json({
+            success: true,
+            data: {
+                standing,                         // good | warning | restricted | suspended
+                violations,
+                softThreshold: SOFT_THRESHOLD,    // 5
+                hardThreshold: HARD_THRESHOLD,    // 10
+                lockCount,
+                restriction: {
+                    active: isRestricted,
+                    hoursLeft: restrictionHoursLeft,
+                    until: restrictedUntil || null,
+                    reason: u.restrictions?.restrictionReason || null
+                },
+                suspension: {
+                    active: isSuspended,
+                    until: suspendedUntil || null
+                },
+                decay: {
+                    lockDecayDays: LOCK_DECAY_DAYS,   // 90
+                    daysUntilLockReset                 // أيام حتى تصفير عدّاد التقييدات
+                },
+                escalation: {
+                    currentLockCount: lockCount,
+                    nextStep,
+                    ladder
+                }
+            }
+        });
+    } catch (error) {
+        console.error('account-standing error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 
