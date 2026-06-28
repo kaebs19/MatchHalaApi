@@ -1,0 +1,10 @@
+# dependencies
+/node_modules
+
+# production build — يُبنى تلقائياً على السيرفر عبر post-receive hook (لا يُتعقّب في git)
+/build
+
+# misc
+.DS_Store
+*.local
+npm-debug.log*
