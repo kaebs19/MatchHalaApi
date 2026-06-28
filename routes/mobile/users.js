@@ -1028,6 +1028,20 @@ router.get('/account-standing', protect, async (req, res) => {
         // الخطوة التالية = lockCount + 1
         const nextStep = Math.min(lockCount + 1, 4);
 
+        // ✅ قابلية المراجعة: مخالفات الصور الإباحية/الجنسية والأسماء المخالفة
+        //    غير قابلة للمراجعة. الترويج الخارجي قابل للمراجعة.
+        const reasonText = [
+            u.restrictions?.restrictionReason,
+            u.restrictions?.photoBlockedReason,
+            u.restrictions?.nameBlockedReason,
+            u.suspension?.reason
+        ].filter(Boolean).join(' | ');
+        const NON_REVIEWABLE = /إباح|اباح|جنس|عاري|عري|صورة? ?مخالف|صور ?مخالف|اسم ?(مخالف|غير ?لائق)|nudity|porn|sexual|explicit|nsfw/i;
+        const photoOrNameBlocked = !!(u.restrictions?.photoBlocked || u.restrictions?.nameBlocked);
+        const reviewable = u.restrictions?.restrictionReason === 'external_promotion'
+            ? true
+            : !(photoOrNameBlocked || NON_REVIEWABLE.test(reasonText));
+
         res.json({
             success: true,
             data: {
@@ -1036,6 +1050,8 @@ router.get('/account-standing', protect, async (req, res) => {
                 softThreshold: SOFT_THRESHOLD,    // 5
                 hardThreshold: HARD_THRESHOLD,    // 10
                 lockCount,
+                reviewable,                       // هل يمكن طلب مراجعة لهذا الإجراء؟
+                nonReviewableNote: 'مخالفات الصور الإباحية أو الجنسية والأسماء المخالفة غير قابلة للمراجعة.',
                 restriction: {
                     active: isRestricted,
                     hoursLeft: restrictionHoursLeft,
