@@ -739,52 +739,6 @@ router.post('/messages/:id/appeal-block', protect, async (req, res) => {
     }
 });
 
-// @route   POST /api/mobile/messages/request-review
-// @desc    طلب مراجعة تقييد المراسلة (نشر حسابات خارجية) من المشرف
-// @access  Private
-router.post('/messages/request-review', protect, async (req, res) => {
-    try {
-        const { reason } = req.body;
-
-        // لا بد أن يكون مقيّداً فعلاً بسبب نشر حسابات خارجية
-        if (!isMessagingLockedByPromo(req.user)) {
-            return res.status(400).json({
-                success: false,
-                message: 'لا يوجد تقييد نشط على حسابك',
-                code: 'NO_ACTIVE_RESTRICTION'
-            });
-        }
-
-        const existing = req.user.externalPromo?.reviewRequest;
-        if (existing?.status === 'pending') {
-            return res.status(409).json({
-                success: false,
-                message: 'لديك طلب مراجعة قيد الانتظار بالفعل',
-                code: 'REVIEW_ALREADY_PENDING'
-            });
-        }
-
-        await User.findByIdAndUpdate(req.user._id, {
-            'externalPromo.reviewRequest': {
-                status: 'pending',
-                reason: (reason || '').toString().trim().slice(0, 1000) || 'بدون سبب',
-                requestedAt: new Date(),
-                reviewedAt: null,
-                reviewedBy: null
-            }
-        });
-
-        res.json({
-            success: true,
-            message: 'تم إرسال طلب المراجعة، سيراجعه المشرف خلال 24 ساعة',
-            code: 'REVIEW_SUBMITTED'
-        });
-    } catch (error) {
-        console.error('خطأ في طلب المراجعة:', error);
-        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
-    }
-});
-
 // @route   POST /api/mobile/messages/send-image
 // @desc    إرسال صورة — يستقبل conversationId من body (للتوافق مع تطبيق iOS)
 // @access  Private
@@ -1487,8 +1441,7 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                 title: 'حسابك مقيّد مؤقتاً',
                 message: `تم تقييد المراسلة بسبب تكرار نشر حسابات خارجية. يتبقّى ${hoursLeft} ساعة.`,
                 hoursLeft,
-                lockedUntil: lockedUntil.toISOString(),
-                reviewStatus: req.user.externalPromo?.reviewRequest?.status || 'none'
+                lockedUntil: lockedUntil.toISOString()
             };
         }
 
