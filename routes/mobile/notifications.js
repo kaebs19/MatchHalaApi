@@ -4,8 +4,11 @@ const Notification = require('../../models/Notification');
 const User = require('../../models/User');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, getBestUserImage } = require('./helpers');
-const { buildUserNotificationsFilter, FILTER_CATEGORIES } = require('../../config/notificationCategories');
+const { buildUserNotificationsFilter, FILTER_CATEGORIES, getTypeMeta } = require('../../config/notificationCategories');
 const { groupNotifications, formatGroupedNotification } = require('../../utils/notificationHelpers');
+
+// شعار التطبيق الرسمي — يُستخدم كأيقونة لإشعارات الأدمن الرسمية بدل صورة الأدمن الشخصية
+const OFFICIAL_NOTIFICATION_LOGO = (process.env.BASE_URL || 'https://matchhala.chathala.com') + '/app-logo.png';
 
 // ==========================================
 // نظام الإشعارات الموحّد
@@ -73,7 +76,13 @@ router.get('/notifications', protect, async (req, res) => {
         // ✅ تنسيق صور المرسلين
         const formatted = processed.map(n => {
             const notif = { ...n };
-            if (notif.sender) {
+            // الإشعارات الرسمية (category: personal مثل إعلان/نظام/تحذير/إجراءات حساب) →
+            // أيقونة شعار التطبيق بدل صورة الأدمن الشخصية.
+            // الإشعارات الاجتماعية (إعجاب/متابعة/مطابقة) تبقى تعرض صورة الشخص الفعلي.
+            const isOfficial = getTypeMeta(notif.type).category === 'personal';
+            if (isOfficial) {
+                notif.sender = { ...(notif.sender || {}), profileImage: OFFICIAL_NOTIFICATION_LOGO };
+            } else if (notif.sender) {
                 notif.sender.profileImage = getFullUrl(getBestUserImage(notif.sender));
             }
             if (notif.image) {

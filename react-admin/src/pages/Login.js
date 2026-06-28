@@ -49,7 +49,7 @@ function Login({ onLogin }) {
         <div className="login-container">
             <div className="login-box">
                 <div className="logo">
-                    <img src="/favicon.svg" alt="ماتش هلا" className="logo-image" />
+                    <img src="/app-logo.png" alt="ماتش هلا" className="logo-image" />
                     <h1>ماتش هلا</h1>
                     <p>لوحة التحكم</p>
                 </div>
