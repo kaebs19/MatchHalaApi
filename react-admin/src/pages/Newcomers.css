@@ -1,0 +1,85 @@
+.newcomers-page {
+    padding: 4px;
+}
+
+.nc-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.nc-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.nc-filter {
+    padding: 8px 16px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #475569;
+    transition: all 0.15s;
+}
+
+.nc-filter:hover { border-color: #a78bfa; }
+
+.nc-filter.active {
+    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    color: #fff;
+    border-color: transparent;
+}
+
+.nc-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.nc-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #ede9fe;
+}
+
+.nc-name { font-weight: 600; color: #1e293b; }
+.nc-meta { font-size: 12px; color: #94a3b8; }
+.nc-muted { color: #cbd5e1; }
+.nc-reason { color: #b91c1c; font-size: 13px; }
+.nc-viol { color: #ea580c; font-size: 13px; font-weight: 600; }
+
+.nc-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.nc-badge--orange { background: #ffedd5; color: #c2410c; }
+.nc-badge--red { background: #fee2e2; color: #b91c1c; }
+.nc-badge--green { background: #dcfce7; color: #15803d; }
+
+.nc-actions { display: flex; gap: 6px; }
+
+.nc-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity 0.15s;
+}
+.nc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.nc-btn--approve { background: #dcfce7; color: #15803d; }
+.nc-btn--approve:hover:not(:disabled) { background: #bbf7d0; }
+.nc-btn--reject { background: #fee2e2; color: #b91c1c; }
+.nc-btn--reject:hover:not(:disabled) { background: #fecaca; }

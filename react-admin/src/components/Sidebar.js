@@ -35,6 +35,12 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
             adminOnly: true
         },
         {
+            id: 'newcomers',
+            name: 'الحسابات الجديدة',
+            icon: '🆕',
+            adminOnly: true
+        },
+        {
             id: 'banned-devices',
             name: 'الأجهزة المحظورة',
             icon: '📵',

@@ -192,6 +192,28 @@ export const getAppealsStats = async () => {
     return response.data;
 };
 
+// ========== Newcomers (مراجعة الحسابات الجديدة) ==========
+export const getNewcomers = async (status = 'review', page = 1, limit = 20) => {
+    const params = new URLSearchParams({ status, page, limit });
+    const response = await api.get(`/newcomers?${params}`);
+    return response.data;
+};
+
+export const getNewcomersStats = async () => {
+    const response = await api.get('/newcomers/stats');
+    return response.data;
+};
+
+export const approveNewcomer = async (userId) => {
+    const response = await api.post(`/newcomers/${userId}/approve`);
+    return response.data;
+};
+
+export const rejectNewcomer = async (userId, reason) => {
+    const response = await api.post(`/newcomers/${userId}/reject`, { reason });
+    return response.data;
+};
+
 // ========== Sensitive Content (Phase 1.4) ==========
 export const getSensitiveContentSettings = async () => {
     const response = await api.get('/settings/sensitive-content');

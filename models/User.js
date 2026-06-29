@@ -440,6 +440,23 @@ const userSchema = new mongoose.Schema({
         //    لا يتصفّر إلا بعد فترة طويلة (90 يوم) من حسن السلوك
         lockCount: { type: Number, default: 0 },
         lastLockAt: { type: Date, default: null }
+    },
+
+    // ✅ مراجعة المستخدم الجديد (newcomer review)
+    // - الجديد يبدأ pending: ظهوره مخفّض في الاكتشاف خلال أول 24 ساعة.
+    // - بعد 24 ساعة بلا مخالفة يُعتبر approved تلقائياً (يصبح ظهوره عادياً).
+    // - أي مخالفة تلقائية (كلمات محظورة / ترويج خارجي) خلال الفترة → flagged
+    //   فيُخفى من الاكتشاف للجميع ويظهر للمشرف للمراجعة.
+    newcomer: {
+        status: {
+            type: String,
+            enum: ['pending', 'approved', 'flagged', 'rejected'],
+            default: 'pending'
+        },
+        reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        reviewedAt: { type: Date, default: null },
+        flaggedReason: { type: String, default: null },   // سبب الرفع التلقائي/اليدوي
+        flaggedAt: { type: Date, default: null }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
@@ -510,6 +527,8 @@ userSchema.index({ 'verification.status': 1 });
 userSchema.index({ isActive: 1, 'privacySettings.profileVisibility': 1, lastLogin: -1 }, { name: 'discover_active_visibility_lastLogin' });
 userSchema.index({ isActive: 1, lastLogin: -1, gender: 1 }, { name: 'discover_active_lastLogin_gender' });
 userSchema.index({ createdAt: -1 });
+// ✅ index لقائمة مراجعة الجدد في لوحة التحكم
+userSchema.index({ 'newcomer.status': 1, createdAt: -1 });
 userSchema.index({ 'suspension.isSuspended': 1, 'suspension.suspendedUntil': 1 });
 userSchema.index({ 'hidden.isHidden': 1, 'hidden.hiddenUntil': 1 });
 

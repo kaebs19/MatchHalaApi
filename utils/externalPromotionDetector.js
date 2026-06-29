@@ -551,6 +551,17 @@ async function recordExternalPromoViolation(user, logContext = null) {
         }
     }
 
+    // ✅ رفع المستخدم الجديد المعلّق إلى flagged عند مخالفة الترويج الخارجي
+    // (خلال نافذة المراجعة فقط: pending + عمر الحساب < 24 ساعة) → يُخفى من الاكتشاف
+    if (user.newcomer?.status === 'pending' && user.createdAt) {
+        const ageMs = Date.now() - new Date(user.createdAt).getTime();
+        if (ageMs < 24 * 60 * 60 * 1000) {
+            user.newcomer.status = 'flagged';
+            user.newcomer.flaggedReason = 'ترويج خارجي أثناء فترة مراجعة الحساب الجديد';
+            user.newcomer.flaggedAt = now;
+        }
+    }
+
     await user.save();
 
     return {

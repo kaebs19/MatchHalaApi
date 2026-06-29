@@ -452,6 +452,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             const updatedUser = await User.findByIdAndUpdate(req.user._id, updateQuery, { new: true });
             userViolations = updatedUser.bannedWords?.violations || 1;
 
+            // ✅ رفع المستخدم الجديد المعلّق إلى flagged عند المخالفة (يُخفى للمراجعة)
+            const { flagPendingNewcomer } = require('../../utils/newcomerReview');
+            await flagPendingNewcomer(req.user._id, 'كلمات محظورة أثناء فترة مراجعة الحساب الجديد');
+
             // ✅ حد المخالفات من الإعدادات (افتراضي 3)
             const Settings = require('../../models/Settings');
             const appSettings = await Settings.getSettings();

@@ -17,10 +17,11 @@ import SuperLikes from '../pages/SuperLikes';
 import Analytics from '../pages/Analytics';
 import BannedWords from '../pages/BannedWords';
 import Appeals from '../pages/Appeals';
+import Newcomers from '../pages/Newcomers';
 import BannedDevices from '../pages/BannedDevices';
 import MaintenancePage from '../pages/MaintenancePage';
 import SensitiveContent from '../pages/SensitiveContent';
-import { getReportsStats, getAppealsStats, getNotifications, searchUsers } from '../services/api';
+import { getReportsStats, getAppealsStats, getNotifications, searchUsers, getNewcomersStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -33,6 +34,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [viewingConversationFromReport, setViewingConversationFromReport] = useState(null);
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
     const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
+    const [newcomersCount, setNewcomersCount] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -70,10 +72,12 @@ function MainLayout({ onLogout, user: initialUser }) {
             fetchReportsCount();
             fetchAppealsCount();
             fetchNotificationsCount();
+            fetchNewcomersCount();
             const interval = setInterval(() => {
                 fetchReportsCount();
                 fetchAppealsCount();
                 fetchNotificationsCount();
+                fetchNewcomersCount();
             }, 60000); // Update every minute
             return () => clearInterval(interval);
         }
@@ -302,6 +306,17 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
+    const fetchNewcomersCount = async () => {
+        try {
+            const response = await getNewcomersStats();
+            if (response.success) {
+                setNewcomersCount(response.data.needsReview || 0);
+            }
+        } catch (error) {
+            console.error('خطأ في جلب عدد الحسابات الجديدة:', error);
+        }
+    };
+
     const fetchNotificationsCount = async () => {
         try {
             const response = await getNotifications({ unreadOnly: true, limit: 1 });
@@ -418,6 +433,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <SuperLikes />;
             case 'appeals':
                 return <Appeals onViewUserDetail={handleViewUserDetail} />;
+            case 'newcomers':
+                return <Newcomers onViewUserDetail={handleViewUserDetail} />;
             case 'banned-devices':
                 return <BannedDevices onViewUserDetail={handleViewUserDetail} />;
             case 'banned-words':
@@ -442,7 +459,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 onProfileClick={() => setCurrentPage('profile')}
                 badges={{
                     reports: pendingReportsCount,
-                    appeals: appealsStats.total + appealsStats.awaitingReply
+                    appeals: appealsStats.total + appealsStats.awaitingReply,
+                    newcomers: newcomersCount
                 }}
             />
             
@@ -465,6 +483,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
                         {currentPage === 'appeals' && '📋 الاستئنافات'}
+                        {currentPage === 'newcomers' && '🆕 الحسابات الجديدة'}
                         {currentPage === 'banned-devices' && '📵 الأجهزة المحظورة'}
                         {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
                         {currentPage === 'maintenance' && '🔧 وضع الصيانة'}

@@ -435,65 +435,60 @@ router.post('/batch', protect, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// دالة حساب نقاط النشاط (v3 — بدون isOnline boost ضخم + randomness)
+// دالة حساب نقاط الترتيب (v4 — نظام طبقات بفجوات كبيرة)
 // ═══════════════════════════════════════════════════════════════
-// تغيير v3:
-// - إزالة isOnline +60 (كان يضع كل النشطين فوراً في القمة)
-// - الاعتماد على lastLogin recency (أكثر دقة من isOnline flag)
-// - randomness ±15 يضمن variety كل refresh
+// المبدأ: النشاط هو الطبقة الأساس (فجوات 10000 بين الطبقات)، بحيث
+// لا يستطيع أي معدّل (Premium/توثيق/صورة/مسافة) أن يقفز فوق طبقة.
+// النتيجة المطابقة للمطلوب:
+//   1) مشترك + متصل   = 60000 + 4000 + ...  (الأعلى)
+//   2) متصل + قريب    = 60000 + قرب
+//   3) متصل عادي      = 60000
+//   4) مشترك غير متصل = 40000/50000 + 4000  (تحت كل المتصلين)
+//   5) كان نشطاً قريباً = طبقات أدنى
+// مجموع المعدّلات الموجبة القصوى = 4000+2000+2000+1500 = 9500 < 10000
+// فلا يقفز أحد فوق طبقته. Premium معزّز "داخل الطبقة" لا "قافز طبقة".
 // ═══════════════════════════════════════════════════════════════
-function calculateActivityScore(user) {
-    const now = new Date();
-    let score = 0;
+const TIER_GAP = 10000;
 
-    // --- 1. نقاط النشاط الحديث (40 نقطة كحد أقصى) ---
-    // الاعتماد على lastLogin فقط — أكثر دقة من isOnline flag
+function calculateRankScore(user, distanceKm) {
+    const now = Date.now();
+
+    // ── 1. طبقة النشاط (الأساس) ──
     const lastLogin = user.lastLogin || user.updatedAt;
-    if (lastLogin) {
-        const minsSince = (now - new Date(lastLogin)) / (1000 * 60);
-        if (minsSince < 10) score += 40;            // يستخدم التطبيق الآن
-        else if (minsSince < 60) score += 32;        // نشط جداً
-        else if (minsSince < 180) score += 25;       // 1-3 ساعات
-        else if (minsSince < 360) score += 18;       // 3-6 ساعات
-        else if (minsSince < 720) score += 12;       // 6-12 ساعة
-        else if (minsSince < 1440) score += 7;       // 12-24 ساعة
-        else if (minsSince < 4320) score += 3;       // 1-3 أيام
-        else score += 1;                              // 3-7 أيام
+    const mins = lastLogin ? (now - new Date(lastLogin).getTime()) / 60000 : Infinity;
+    let score;
+    if (user.isOnline && mins < 15) score = 60000;   // 🟢 متصل الآن
+    else if (mins < 60) score = 50000;                // نشط ≤ ساعة
+    else if (mins < 1440) score = 40000;              // نشط ≤ 24 ساعة
+    else if (mins < 4320) score = 30000;              // نشط ≤ 3 أيام
+    else if (mins < 10080) score = 20000;             // نشط ≤ 7 أيام
+    else score = 10000;                                // أقدم
+
+    // ── 2. معدّلات داخل الطبقة (مجموع موجب < TIER_GAP) ──
+    if (user.isPremium) score += 4000;                                   // مشترك
+    if (user.verification?.isVerified || user.isVerified) score += 2000; // موثّق
+    const hasImage = (user.profileImage && user.profileImage !== '' && user.profileImage !== 'default.png')
+        || (Array.isArray(user.photos) && user.photos.length > 0);
+    if (hasImage) score += 2000;                                          // لديه صورة
+
+    // المسافة: خصم تدريجي 0..-1500 (الأقرب أعلى داخل نفس الطبقة)
+    if (distanceKm !== null && distanceKm !== undefined && !Number.isNaN(distanceKm)) {
+        score -= Math.min(distanceKm * 5, 1500);
     }
 
-    // --- 2. نقاط البريميوم (25 نقطة) ---
-    if (user.isPremium) score += 25;
+    // عشوائية تنويع صغيرة (0..1500) — variety كل refresh دون كسر الطبقات
+    score += Math.random() * 1500;
 
-    // --- 3. نقاط التوثيق (10 نقاط) ---
-    if (user.verification?.isVerified || user.isVerified) score += 10;
-
-    // --- 4. نقاط المستخدم الجديد (أقل من 7 أيام: 15 نقطة) ---
-    const createdAt = user.createdAt ? new Date(user.createdAt) : null;
-    if (createdAt) {
-        const daysSinceCreation = (now - createdAt) / (1000 * 60 * 60 * 24);
-        if (daysSinceCreation <= 7) score += 15;
+    // ── 3. throttle للمستخدم الجديد المعلّق (<24h) — ظهور مخفّض لا مخفي ──
+    // ينزل ~طبقة ونصف فيبقى ظاهراً لكن بأولوية أدنى حتى تتم مراجعته/مرور 24h
+    const createdAt = user.createdAt ? new Date(user.createdAt).getTime() : null;
+    const isPendingNewcomer = user.newcomer?.status === 'pending'
+        && createdAt && (now - createdAt) < 24 * 60 * 60 * 1000;
+    if (isPendingNewcomer) {
+        score -= 15000;
     }
-
-    // --- 5. مكافأة البروفايل الكامل (15 نقطة) ---
-    if (user.profileImage && user.profileImage !== '' && user.profileImage !== 'default.png') score += 10;
-    if (user.bio && user.bio.trim().length > 0) score += 5;
-
-    // --- 6. Random jitter (±15) — يضمن variety كل refresh ---
-    score += (Math.random() - 0.5) * 30;
 
     return score;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// دالة حساب نقاط المسافة (25 نقطة كحد أقصى)
-// ═══════════════════════════════════════════════════════════════
-function calculateDistanceScore(distanceKm) {
-    if (distanceKm <= 5) return 25;
-    if (distanceKm <= 15) return 20;
-    if (distanceKm <= 30) return 15;
-    if (distanceKm <= 50) return 10;
-    if (distanceKm <= 100) return 5;
-    return 0;
 }
 
 // @route   GET /api/swipes/cards
@@ -542,6 +537,8 @@ router.get('/cards', protect, async (req, res) => {
         const filter = {
             isActive: true,
             lastLogin: { $gte: ghostCutoff },
+            // ✅ استبعاد الجدد المخالفين (flagged) — لا يظهرون لأحد حتى مراجعة المشرف
+            'newcomer.status': { $ne: 'flagged' },
             _id: {
                 $ne: userId,
                 $nin: [...swipedIds, ...blockedIds]
@@ -627,8 +624,7 @@ router.get('/cards', protect, async (req, res) => {
                 .map(p => p.medium || p.original || p.thumbnail)
                 .filter(Boolean)
                 .map(getFullUrl);
-            const activityScore = calculateActivityScore(u);
-            const distScore = distanceKm !== null ? calculateDistanceScore(distanceKm) : 0;
+            const rankScore = calculateRankScore(u, distanceKm);
             // ✅ احترام إعداد showDistance
             const hideDistance = u.showDistance === false;
             // ✅ احترام إعداد showLastSeen + stealthMode (premium)
@@ -653,7 +649,7 @@ router.get('/cards', protect, async (req, res) => {
                 isVerified: u.verification?.isVerified || false,
                 lastLogin: hidePresence ? null : u.lastLogin,
                 distance: hideDistance ? null : distanceKm,
-                _score: activityScore + distScore
+                _score: rankScore
             };
         };
 
@@ -677,7 +673,8 @@ router.get('/cards', protect, async (req, res) => {
                         gender: 1, country: 1, bio: 1, isOnline: 1,
                         isPremium: 1, distance: 1, lastLogin: 1,
                         createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1,
-                        privacySettings: 1, stealthMode: 1, showAge: 1, showCountry: 1
+                        privacySettings: 1, stealthMode: 1, showAge: 1, showCountry: 1,
+                        newcomer: 1
                     }
                 },
                 { $limit: fetchLimit }
@@ -693,7 +690,7 @@ router.get('/cards', protect, async (req, res) => {
             };
 
             const noLocationUsers = await User.find(noGeoFilter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
                 .limit(Math.max(0, fetchLimit - geoUsers.length));
 
             // 3) دمج النتائج
@@ -709,13 +706,8 @@ router.get('/cards', protect, async (req, res) => {
 
             users = [...geoCards, ...noGeoCards];
 
-            // ✅ خوارزمية العرض: الأولوية للمشتركين، ثم الأنشط/الأقرب (النقاط = نشاط + مسافة)
-            users.sort((a, b) => {
-                const pa = a.isPremium ? 1 : 0;
-                const pb = b.isPremium ? 1 : 0;
-                if (pa !== pb) return pb - pa;
-                return b._score - a._score;
-            });
+            // ✅ خوارزمية العرض الطبقية: النشاط أولاً، و Premium/التوثيق/القرب معدّلات داخل الطبقة
+            users.sort((a, b) => b._score - a._score);
 
             totalUsers = users.length;
             const startIdx = (pageNum - 1) * limitNum;
@@ -725,18 +717,13 @@ router.get('/cards', protect, async (req, res) => {
         } else {
             // بدون موقع - ترتيب بالنقاط فقط
             const rawUsers = await User.find(filter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
                 .limit(fetchLimit);
 
             users = rawUsers.map(u => mapUserToCard(u.toObject(), null));
 
-            // ✅ الأولوية للمشتركين، ثم الأنشط/الأقرب
-            users.sort((a, b) => {
-                const pa = a.isPremium ? 1 : 0;
-                const pb = b.isPremium ? 1 : 0;
-                if (pa !== pb) return pb - pa;
-                return b._score - a._score;
-            });
+            // ✅ ترتيب طبقي بالنقاط (النشاط أولاً)
+            users.sort((a, b) => b._score - a._score);
 
             totalUsers = await User.countDocuments(filter);
             const startIdx = (pageNum - 1) * limitNum;

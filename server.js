@@ -342,6 +342,7 @@ app.use('/api/matches', require('./routes/matches'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/interests', require('./routes/interests'));
 app.use('/api/appeals', require('./routes/appeals'));
+app.use('/api/newcomers', require('./routes/newcomers'));
 
 // ✅ صفحات قانونية عامة لمتطلبات Google Play (/child-safety و /delete-account)
 // مسارات جذرية يوجّهها nginx إلى المنفذ 3000
