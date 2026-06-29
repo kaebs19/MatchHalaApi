@@ -49,9 +49,14 @@ const conversationSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'accepted', 'rejected', 'expired'],
+        // cancelled = أنهى أحد الطرفين المحادثة؛ الرسائل تبقى لكن الإرسال ممنوع
+        //             حتى يُرسل أحدهما طلباً جديداً يُقبل من الآخر (يعود pending→accepted)
+        enum: ['pending', 'accepted', 'rejected', 'expired', 'cancelled'],
         default: 'accepted' // المحادثات القديمة تكون مقبولة بشكل افتراضي
     },
+    // ✅ تتبّع إنهاء/إلغاء المحادثة (لا يحذف الرسائل)
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    cancelledAt: { type: Date, default: null },
     // ✅ وضع المحادثة (keep = الافتراضي — الرسائل تبقى للمستخدم)
     // snap = تنحذف عند الخروج من المحادثة (مثل سناب شات)
     // 24h = تنحذف بعد 24 ساعة من قراءتها

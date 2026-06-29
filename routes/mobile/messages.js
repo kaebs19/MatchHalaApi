@@ -137,6 +137,15 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             });
         }
 
+        // ✅ محادثة منتهية (ملغاة) — لا إرسال إلا بطلب جديد يُقبل من الطرف الآخر
+        if (conversation.status === 'cancelled') {
+            return res.status(400).json({
+                success: false,
+                message: 'انتهت هذه المحادثة. أرسل طلباً جديداً للاستئناف.',
+                code: 'CONVERSATION_CANCELLED'
+            });
+        }
+
         // التحقق من أن المحادثة نشطة
         if (!conversation.isActive) {
             return res.status(400).json({

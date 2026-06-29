@@ -89,6 +89,53 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }).lean();
 
         if (existingConversation) {
+            // ✅ محادثة منتهية (ملغاة/مرفوضة/غير نشطة) → أعد فتحها كطلب جديد
+            //    الرسائل القديمة تبقى ظاهرة، والطرف الآخر يستقبل طلباً جديداً يقبله.
+            const isEnded = existingConversation.status === 'cancelled'
+                || existingConversation.status === 'rejected'
+                || existingConversation.isActive === false;
+
+            if (isEnded) {
+                await Conversation.findByIdAndUpdate(existingConversation._id, {
+                    status: 'pending',
+                    isActive: true,
+                    creator: req.user._id,        // المُرسِل الجديد هو منشئ الطلب
+                    cancelledBy: null,
+                    cancelledAt: null,
+                    // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
+                    hiddenFor: []
+                });
+
+                if (initialMessage) {
+                    await Message.create({
+                        conversation: existingConversation._id,
+                        sender: req.user._id,
+                        content: initialMessage,
+                        type: 'text',
+                        status: 'sent'
+                    });
+                }
+
+                if (global.io) {
+                    global.io.to(`user:${targetUserId}`).emit('conversation:request', {
+                        conversationId: existingConversation._id,
+                        isSuperLike: false,
+                        from: {
+                            _id: req.user._id,
+                            name: req.user.name,
+                            profileImage: req.user.profileImage
+                        }
+                    });
+                }
+
+                const reopened = await Conversation.findById(existingConversation._id).lean();
+                return res.status(200).json({
+                    success: true,
+                    message: 'تم إرسال طلب محادثة جديد',
+                    data: { conversation: reopened, isExisting: true, reopened: true }
+                });
+            }
+
             // ✅ لو المحادثة مخفية عند المرسل (من reset chats/delete سابق)، أعد إظهارها
             const wasHidden = (existingConversation.hiddenFor || []).some(h =>
                 h.user && h.user.toString() === req.user._id.toString()
@@ -454,6 +501,70 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// @route   PUT /api/mobile/conversations/:id/cancel
+// @desc    إنهاء/إلغاء المحادثة للطرفين (تبقى الرسائل) — لا يمكن الإرسال إلا بطلب جديد يُقبل
+// @access  Private
+router.put('/conversations/:id/cancel', protect, async (req, res) => {
+    try {
+        const conversation = await Conversation.findById(req.params.id)
+            .populate('participants', 'name email deviceToken');
+
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+
+        const isParticipant = conversation.participants.some(
+            p => p._id.toString() === req.user._id.toString()
+        );
+        if (!isParticipant) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+
+        // إنهاء المحادثة للطرفين — الرسائل تبقى محفوظة
+        conversation.status = 'cancelled';
+        conversation.isActive = false;
+        conversation.cancelledBy = req.user._id;
+        conversation.cancelledAt = new Date();
+        await conversation.save();
+
+        // إخطار الطرف الآخر فوراً عبر Socket.IO
+        const otherParticipant = conversation.participants.find(
+            p => p._id.toString() !== req.user._id.toString()
+        );
+        if (global.io && otherParticipant) {
+            global.io.to(`user:${otherParticipant._id.toString()}`).emit('conversation:cancelled', {
+                conversationId: conversation._id,
+                cancelledBy: req.user.name
+            });
+        }
+
+        // إشعار push للطرف الآخر
+        if (otherParticipant && otherParticipant.deviceToken) {
+            await pushNotificationService.sendNotificationToUser(
+                otherParticipant._id,
+                {
+                    title: 'انتهت المحادثة',
+                    body: `${req.user.name} أنهى المحادثة. يمكنك إرسال طلب جديد للاستئناف.`
+                },
+                {
+                    type: 'conversation_request',
+                    conversationId: conversation._id.toString(),
+                    action: 'cancelled'
+                }
+            ).catch(() => {});
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'تم إنهاء المحادثة',
+            data: { conversation }
+        });
+    } catch (error) {
+        console.error('خطأ في إنهاء المحادثة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
     }
 });
 
@@ -839,8 +950,8 @@ router.get('/conversations', protect, async (req, res) => {
         //   - status=accepted → القائمة الرئيسية المقبولة فقط (يمنع مزاحمة الطلبات/المرفوضة لها)
         //   - يقبل قيمة واحدة أو عدة قيم مفصولة بفواصل (accepted,pending)
         //   - الافتراضي (بدون status) = السلوك القديم: accepted + pending + rejected
-        const ALLOWED_STATUSES = ['accepted', 'pending', 'rejected', 'expired'];
-        let statusValues = ['accepted', 'pending', 'rejected'];
+        const ALLOWED_STATUSES = ['accepted', 'pending', 'rejected', 'expired', 'cancelled'];
+        let statusValues = ['accepted', 'pending', 'rejected', 'cancelled'];
         if (typeof status === 'string' && status.trim()) {
             const requested = status.split(',')
                 .map(s => s.trim())
