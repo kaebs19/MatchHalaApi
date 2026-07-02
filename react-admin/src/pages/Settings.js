@@ -70,6 +70,16 @@ function Settings() {
         rewardedAdUnitAndroid: ''
     });
 
+    // ✅ إعدادات عجلة الحظ
+    const [luckyWheel, setLuckyWheel] = useState({
+        enabled: true,
+        freeSpinCooldownHours: 24,
+        gemSpinCost: 10,
+        gemSpinDailyLimit: 3,
+        adSpinDailyLimit: 10,
+        prizes: []
+    });
+
     // ✅ الأسماء المحظورة
     const [bannedNames, setBannedNames] = useState([]);
     const [newBannedName, setNewBannedName] = useState('');
@@ -114,6 +124,10 @@ function Settings() {
 
                     if (settings.ads) {
                         setAds(prev => ({ ...prev, ...settings.ads }));
+                    }
+
+                    if (settings.luckyWheel) {
+                        setLuckyWheel(prev => ({ ...prev, ...settings.luckyWheel, prizes: settings.luckyWheel.prizes || [] }));
                     }
                 }
             } catch (settingsErr) {
@@ -306,6 +320,54 @@ function Settings() {
         }
     };
 
+    // ✅ عجلة الحظ — تعديل جائزة / إضافة / حذف
+    const updatePrize = (idx, field, value) => {
+        setLuckyWheel(prev => {
+            const prizes = [...prev.prizes];
+            prizes[idx] = { ...prizes[idx], [field]: value };
+            return { ...prev, prizes };
+        });
+    };
+    const addPrize = () => setLuckyWheel(prev => ({
+        ...prev,
+        prizes: [...prev.prizes, { label: '', type: 'gems', amount: 0, weight: 1 }]
+    }));
+    const removePrize = (idx) => setLuckyWheel(prev => ({
+        ...prev,
+        prizes: prev.prizes.filter((_, i) => i !== idx)
+    }));
+
+    // ✅ حفظ إعدادات عجلة الحظ
+    const handleSaveWheel = async (e) => {
+        e.preventDefault();
+        // تنظيف الأرقام
+        const payload = {
+            ...luckyWheel,
+            freeSpinCooldownHours: Number(luckyWheel.freeSpinCooldownHours) || 0,
+            gemSpinCost: Number(luckyWheel.gemSpinCost) || 0,
+            gemSpinDailyLimit: Number(luckyWheel.gemSpinDailyLimit) || 0,
+            adSpinDailyLimit: Number(luckyWheel.adSpinDailyLimit) || 0,
+            prizes: luckyWheel.prizes.map(p => ({
+                label: p.label, type: p.type,
+                amount: Number(p.amount) || 0, weight: Number(p.weight) || 0
+            }))
+        };
+        try {
+            setSaving(true);
+            const response = await updateSettings({ luckyWheel: payload });
+            if (response.success) {
+                showToast('تم حفظ إعدادات عجلة الحظ ✅', 'success');
+            } else {
+                showToast(response.message || 'فشل الحفظ', 'error');
+            }
+        } catch (error) {
+            console.error('خطأ في حفظ العجلة:', error);
+            showToast('فشل حفظ إعدادات العجلة', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // ✅ جلب إعدادات الإصدار
     const fetchVersionControl = async () => {
         try {
@@ -453,6 +515,12 @@ function Settings() {
                     onClick={() => setActiveTab('ads')}
                 >
                     📺 الإعلانات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'wheel' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('wheel')}
+                >
+                    🎡 عجلة الحظ
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'banned-names' ? 'active' : ''}`}
@@ -1041,6 +1109,98 @@ function Settings() {
                             <p style={{ margin: '8px 0 0', color: '#92400e', fontSize: '14px' }}>
                                 التطبيق يقرأ هذه الإعدادات عبر <code dir="ltr">GET /api/mobile/config/ads</code>.
                                 يتطلب ربط تطبيق iOS بهذا الـ endpoint ليعمل زر "شاهد إعلان".
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* ✅ تبويب عجلة الحظ */}
+                {activeTab === 'wheel' && (
+                    <div className="settings-section">
+                        <h2>🎡 إعدادات عجلة الحظ</h2>
+                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                            السيرفر يقرر الجائزة ويمنحها (منع الغش). التطبيق يعرض الأنيميشن فقط.
+                        </p>
+
+                        <form onSubmit={handleSaveWheel}>
+                            {/* تفعيل */}
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <label style={{ marginBottom: 0 }}>تفعيل عجلة الحظ</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setLuckyWheel({ ...luckyWheel, enabled: !luckyWheel.enabled })}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: luckyWheel.enabled ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                >
+                                    {luckyWheel.enabled ? '✅ مفعّلة' : '❌ معطّلة'}
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                <div className="form-group" style={{ flex: 1, minWidth: '160px' }}>
+                                    <label>تبريد الدوران المجاني (ساعات)</label>
+                                    <input type="number" min="0" value={luckyWheel.freeSpinCooldownHours}
+                                        onChange={(e) => setLuckyWheel({ ...luckyWheel, freeSpinCooldownHours: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ flex: 1, minWidth: '160px' }}>
+                                    <label>تكلفة دوران الجواهر</label>
+                                    <input type="number" min="0" value={luckyWheel.gemSpinCost}
+                                        onChange={(e) => setLuckyWheel({ ...luckyWheel, gemSpinCost: e.target.value })} />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                <div className="form-group" style={{ flex: 1, minWidth: '160px' }}>
+                                    <label>حد دورانات الجواهر يومياً</label>
+                                    <input type="number" min="0" value={luckyWheel.gemSpinDailyLimit}
+                                        onChange={(e) => setLuckyWheel({ ...luckyWheel, gemSpinDailyLimit: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ flex: 1, minWidth: '160px' }}>
+                                    <label>حد دورانات الإعلان يومياً (0 = بلا حد)</label>
+                                    <input type="number" min="0" value={luckyWheel.adSpinDailyLimit}
+                                        onChange={(e) => setLuckyWheel({ ...luckyWheel, adSpinDailyLimit: e.target.value })} />
+                                </div>
+                            </div>
+
+                            {/* الجوائز */}
+                            <div style={{ marginTop: '16px', padding: '16px', background: '#faf5ff', borderRadius: '12px', border: '1px solid #c084fc' }}>
+                                <p style={{ margin: '0 0 12px', fontWeight: 'bold', color: '#6b21a8' }}>🎁 الجوائز (كلما زاد الوزن زاد احتمال ظهورها)</p>
+                                {luckyWheel.prizes.map((p, idx) => (
+                                    <div key={idx} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+                                        <input type="text" value={p.label} placeholder="الاسم"
+                                            onChange={(e) => updatePrize(idx, 'label', e.target.value)}
+                                            style={{ flex: 2, minWidth: '120px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                        <select value={p.type} onChange={(e) => updatePrize(idx, 'type', e.target.value)}
+                                            style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }}>
+                                            <option value="gems">جواهر</option>
+                                            <option value="points">نقاط</option>
+                                            <option value="extra_spin">دورة إضافية</option>
+                                            <option value="nothing">لا شيء</option>
+                                        </select>
+                                        <input type="number" value={p.amount} placeholder="القيمة" title="القيمة"
+                                            onChange={(e) => updatePrize(idx, 'amount', e.target.value)}
+                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                        <input type="number" value={p.weight} placeholder="الوزن" title="الوزن (الاحتمال)"
+                                            onChange={(e) => updatePrize(idx, 'weight', e.target.value)}
+                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                        <button type="button" onClick={() => removePrize(idx)}
+                                            style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '18px' }} title="حذف">✕</button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={addPrize}
+                                    style={{ marginTop: '8px', padding: '8px 16px', borderRadius: '8px', border: '1px dashed #a855f7', background: 'none', color: '#7c3aed', cursor: 'pointer' }}>
+                                    ➕ إضافة جائزة
+                                </button>
+                            </div>
+
+                            <button type="submit" className="btn-save" disabled={saving} style={{ marginTop: '16px' }}>
+                                {saving ? '⏳ جاري الحفظ...' : '💾 حفظ إعدادات العجلة'}
+                            </button>
+                        </form>
+
+                        <div style={{ marginTop: '24px', padding: '16px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fbbf24' }}>
+                            <p style={{ margin: 0, color: '#92400e', fontWeight: 'bold' }}>ℹ️ ملاحظة:</p>
+                            <p style={{ margin: '8px 0 0', color: '#92400e', fontSize: '14px' }}>
+                                التطبيق يقرأ العجلة عبر <code dir="ltr">GET /api/mobile/wheel</code> ويطلب الدوران عبر <code dir="ltr">POST /api/mobile/wheel/spin</code>.
+                                يتطلب ربط تطبيق iOS بهذين الـ endpoints.
                             </p>
                         </div>
                     </div>

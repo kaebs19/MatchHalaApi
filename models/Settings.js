@@ -192,6 +192,36 @@ const settingsSchema = new mongoose.Schema({
         rewardedAdUnitAndroid: { type: String, default: '' }
     },
 
+    // ✅ عجلة الحظ (Lucky Wheel) — خادمية بالكامل، يديرها الأدمن
+    luckyWheel: {
+        enabled: { type: Boolean, default: true },
+        // مدّة تبريد الدوران المجاني (بالساعات)
+        freeSpinCooldownHours: { type: Number, default: 24 },
+        // تكلفة الدوران بالجواهر + الحدّ اليومي له
+        gemSpinCost: { type: Number, default: 10 },
+        gemSpinDailyLimit: { type: Number, default: 3 },
+        // الحدّ اليومي لدورانات الإعلان (0 = بلا حد)
+        adSpinDailyLimit: { type: Number, default: 10 },
+        // الجوائز — السيرفر يختار حسب الأوزان (weight). type: gems | points | extra_spin | nothing
+        prizes: {
+            type: [{
+                label: { type: String, required: true },
+                type: { type: String, enum: ['gems', 'points', 'extra_spin', 'nothing'], default: 'gems' },
+                amount: { type: Number, default: 0 },
+                weight: { type: Number, default: 1, min: 0 }
+            }],
+            default: [
+                { label: '5 جواهر', type: 'gems', amount: 5, weight: 30 },
+                { label: '10 جواهر', type: 'gems', amount: 10, weight: 22 },
+                { label: '20 جوهرة', type: 'gems', amount: 20, weight: 12 },
+                { label: '50 جوهرة', type: 'gems', amount: 50, weight: 4 },
+                { label: '50 نقطة', type: 'points', amount: 50, weight: 15 },
+                { label: 'دورة إضافية', type: 'extra_spin', amount: 0, weight: 7 },
+                { label: 'حظ أفضل', type: 'nothing', amount: 0, weight: 10 }
+            ]
+        }
+    },
+
     // ✅ وضع الصيانة (Maintenance Mode)
     maintenanceMode: {
         enabled: { type: Boolean, default: false },

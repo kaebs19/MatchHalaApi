@@ -100,7 +100,8 @@ router.put('/', protect, adminOnly, async (req, res) => {
             'contactPhone',
             'websiteUrl',
             'socialMedia',
-            'ads'
+            'ads',
+            'luckyWheel'
         ];
 
         allowedFields.forEach(field => {

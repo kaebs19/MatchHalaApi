@@ -457,6 +457,26 @@ const userSchema = new mongoose.Schema({
         reviewedAt: { type: Date, default: null },
         flaggedReason: { type: String, default: null },   // سبب الرفع التلقائي/اليدوي
         flaggedAt: { type: Date, default: null }
+    },
+
+    // ✅ رصيد المكافآت (جواهر/نقاط) — يُمنح من السيرفر فقط (عجلة الحظ) لمنع الغش
+    rewards: {
+        gems: { type: Number, default: 0, min: 0 },
+        points: { type: Number, default: 0, min: 0 }
+    },
+
+    // ✅ حالة عجلة الحظ (خادمية بالكامل)
+    luckyWheel: {
+        // وقت إتاحة الدوران المجاني القادم (null = متاح الآن)
+        freeSpinAt: { type: Date, default: null },
+        // عدّاد دورانات الجواهر اليوم + تاريخه (لإعادة الضبط اليومي)
+        gemSpinsToday: { type: Number, default: 0 },
+        // عدّاد دورانات الإعلان اليوم
+        adSpinsToday: { type: Number, default: 0 },
+        // تاريخ آخر يوم عُدّت فيه الدورانات (YYYY-MM-DD) — لإعادة الضبط
+        countersDate: { type: String, default: null },
+        lastSpinAt: { type: Date, default: null },
+        totalSpins: { type: Number, default: 0 }
     }
 }, {
     timestamps: true // يضيف createdAt و updatedAt تلقائياً
