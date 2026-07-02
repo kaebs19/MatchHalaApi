@@ -59,6 +59,17 @@ function Settings() {
         ios: { minRequiredVersion: '', enforceUpdate: true, storeURL: '' }
     });
 
+    // ✅ إعدادات الإعلانات المكافئة
+    const [ads, setAds] = useState({
+        enabled: false,
+        provider: 'admob',
+        useTestAds: false,
+        admobAppIdIOS: '',
+        admobAppIdAndroid: '',
+        rewardedAdUnitIOS: '',
+        rewardedAdUnitAndroid: ''
+    });
+
     // ✅ الأسماء المحظورة
     const [bannedNames, setBannedNames] = useState([]);
     const [newBannedName, setNewBannedName] = useState('');
@@ -100,6 +111,10 @@ function Settings() {
                         aboutApp: settings.aboutApp || '',
                         contactUs: settings.contactUs || ''
                     });
+
+                    if (settings.ads) {
+                        setAds(prev => ({ ...prev, ...settings.ads }));
+                    }
                 }
             } catch (settingsErr) {
                 console.log('استخدام القيم الافتراضية للإعدادات');
@@ -272,6 +287,25 @@ function Settings() {
         }
     };
 
+    // ✅ حفظ إعدادات الإعلانات
+    const handleSaveAds = async (e) => {
+        e.preventDefault();
+        try {
+            setSaving(true);
+            const response = await updateSettings({ ads });
+            if (response.success) {
+                showToast('تم حفظ إعدادات الإعلانات ✅', 'success');
+            } else {
+                showToast(response.message || 'فشل الحفظ', 'error');
+            }
+        } catch (error) {
+            console.error('خطأ في حفظ الإعلانات:', error);
+            showToast('فشل حفظ إعدادات الإعلانات', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // ✅ جلب إعدادات الإصدار
     const fetchVersionControl = async () => {
         try {
@@ -413,6 +447,12 @@ function Settings() {
                     onClick={() => { setActiveTab('version'); fetchVersionControl(); }}
                 >
                     📱 إدارة الإصدارات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'ads' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('ads')}
+                >
+                    📺 الإعلانات
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'banned-names' ? 'active' : ''}`}
@@ -918,6 +958,90 @@ function Settings() {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ✅ تبويب الإعلانات */}
+                {activeTab === 'ads' && (
+                    <div className="settings-section">
+                        <h2>📺 إعدادات الإعلانات المكافئة</h2>
+                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                            التحكم في الإعلانات المكافئة (عجلة الحظ) — يقرأها التطبيق تلقائياً عبر الـ API.
+                        </p>
+
+                        <form onSubmit={handleSaveAds}>
+                            {/* kill switch */}
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <label style={{ marginBottom: 0 }}>تفعيل الإعلانات في التطبيق</label>
+                                <button
+                                    type="button"
+                                    className={`btn-toggle ${ads.enabled ? 'active' : ''}`}
+                                    onClick={() => setAds({ ...ads, enabled: !ads.enabled })}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.enabled ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                >
+                                    {ads.enabled ? '✅ مفعّلة' : '❌ معطّلة'}
+                                </button>
+                            </div>
+
+                            {/* test ads */}
+                            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <label style={{ marginBottom: 0 }}>استخدام إعلانات الاختبار (Test Ads)</label>
+                                <button
+                                    type="button"
+                                    className={`btn-toggle ${ads.useTestAds ? 'active' : ''}`}
+                                    onClick={() => setAds({ ...ads, useTestAds: !ads.useTestAds })}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.useTestAds ? '#f59e0b' : '#94a3b8', color: '#fff' }}
+                                >
+                                    {ads.useTestAds ? '🧪 اختبار' : 'إنتاج'}
+                                </button>
+                            </div>
+
+                            {/* iOS */}
+                            <div style={{ marginTop: '16px', padding: '16px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #60a5fa' }}>
+                                <p style={{ margin: '0 0 12px', fontWeight: 'bold', color: '#1e40af' }}>🍏 iOS</p>
+                                <div className="form-group">
+                                    <label>AdMob App ID (iOS)</label>
+                                    <input type="text" dir="ltr" value={ads.admobAppIdIOS}
+                                        onChange={(e) => setAds({ ...ads, admobAppIdIOS: e.target.value })}
+                                        placeholder="ca-app-pub-XXXXXXXX~XXXXXXXX" />
+                                </div>
+                                <div className="form-group">
+                                    <label>Rewarded Ad Unit ID (iOS)</label>
+                                    <input type="text" dir="ltr" value={ads.rewardedAdUnitIOS}
+                                        onChange={(e) => setAds({ ...ads, rewardedAdUnitIOS: e.target.value })}
+                                        placeholder="ca-app-pub-XXXXXXXX/XXXXXXXX" />
+                                </div>
+                            </div>
+
+                            {/* Android */}
+                            <div style={{ marginTop: '16px', padding: '16px', background: '#ecfdf5', borderRadius: '12px', border: '1px solid #34d399' }}>
+                                <p style={{ margin: '0 0 12px', fontWeight: 'bold', color: '#065f46' }}>🤖 أندرويد</p>
+                                <div className="form-group">
+                                    <label>AdMob App ID (Android)</label>
+                                    <input type="text" dir="ltr" value={ads.admobAppIdAndroid}
+                                        onChange={(e) => setAds({ ...ads, admobAppIdAndroid: e.target.value })}
+                                        placeholder="ca-app-pub-XXXXXXXX~XXXXXXXX" />
+                                </div>
+                                <div className="form-group">
+                                    <label>Rewarded Ad Unit ID (Android)</label>
+                                    <input type="text" dir="ltr" value={ads.rewardedAdUnitAndroid}
+                                        onChange={(e) => setAds({ ...ads, rewardedAdUnitAndroid: e.target.value })}
+                                        placeholder="ca-app-pub-XXXXXXXX/XXXXXXXX" />
+                                </div>
+                            </div>
+
+                            <button type="submit" className="btn-save" disabled={saving} style={{ marginTop: '16px' }}>
+                                {saving ? '⏳ جاري الحفظ...' : '💾 حفظ إعدادات الإعلانات'}
+                            </button>
+                        </form>
+
+                        <div style={{ marginTop: '24px', padding: '16px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fbbf24' }}>
+                            <p style={{ margin: 0, color: '#92400e', fontWeight: 'bold' }}>ℹ️ ملاحظة:</p>
+                            <p style={{ margin: '8px 0 0', color: '#92400e', fontSize: '14px' }}>
+                                التطبيق يقرأ هذه الإعدادات عبر <code dir="ltr">GET /api/mobile/config/ads</code>.
+                                يتطلب ربط تطبيق iOS بهذا الـ endpoint ليعمل زر "شاهد إعلان".
+                            </p>
                         </div>
                     </div>
                 )}

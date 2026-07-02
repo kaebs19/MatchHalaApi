@@ -1093,4 +1093,36 @@ router.get('/config/promo-keywords', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/mobile/config/ads
+// @desc    إعدادات الإعلانات المكافئة — التطبيق يقرأها ليعرف: هل يعرض أزرار "شاهد إعلان"،
+//          وأي Ad Unit / App ID يستخدم حسب المنصّة، وهل يستخدم معرّفات الاختبار.
+// @access  Private
+router.get('/config/ads', protect, async (req, res) => {
+    // إعداد افتراضي آمن عند أي خطأ (الإعلانات معطّلة)
+    const fallback = { enabled: false, provider: 'admob', useTestAds: false, admobAppId: '', rewardedAdUnitId: '' };
+    try {
+        const Settings = require('../../models/Settings');
+        const settings = await Settings.getSettings();
+        const a = settings.ads || {};
+
+        // اختيار المعرّفات حسب منصّة المستخدم (fallback: iOS)
+        const platform = (req.user?.deviceInfo?.platform || req.query.platform || 'ios').toString().toLowerCase();
+        const isAndroid = platform.includes('android');
+
+        res.json({
+            success: true,
+            data: {
+                enabled: Boolean(a.enabled),
+                provider: a.provider || 'admob',
+                useTestAds: Boolean(a.useTestAds),
+                admobAppId: isAndroid ? (a.admobAppIdAndroid || '') : (a.admobAppIdIOS || ''),
+                rewardedAdUnitId: isAndroid ? (a.rewardedAdUnitAndroid || '') : (a.rewardedAdUnitIOS || '')
+            }
+        });
+    } catch (error) {
+        console.error('config/ads error:', error);
+        res.json({ success: true, data: fallback });
+    }
+});
+
 module.exports = router;

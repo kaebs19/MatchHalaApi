@@ -176,6 +176,22 @@ const settingsSchema = new mongoose.Schema({
         minClientVersion: { type: String, default: '6.3' }
     },
 
+    // ✅ إعلانات مكافئة (Rewarded Ads) — يتحكّم بها الأدمن، يقرأها التطبيق عبر /api/mobile/config/ads
+    ads: {
+        // kill switch عام: false = التطبيق يخفي أزرار "شاهد إعلان"
+        enabled: { type: Boolean, default: false },
+        // مزوّد الإعلانات (حالياً AdMob)
+        provider: { type: String, default: 'admob' },
+        // استخدام معرّفات إعلانات Google الاختبارية (أثناء التطوير/TestFlight)
+        useTestAds: { type: Boolean, default: false },
+        // AdMob App IDs
+        admobAppIdIOS: { type: String, default: '' },
+        admobAppIdAndroid: { type: String, default: '' },
+        // Rewarded Ad Unit IDs
+        rewardedAdUnitIOS: { type: String, default: '' },
+        rewardedAdUnitAndroid: { type: String, default: '' }
+    },
+
     // ✅ وضع الصيانة (Maintenance Mode)
     maintenanceMode: {
         enabled: { type: Boolean, default: false },
