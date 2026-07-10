@@ -57,6 +57,8 @@ const conversationSchema = new mongoose.Schema({
     // ✅ تتبّع إنهاء/إلغاء المحادثة (لا يحذف الرسائل)
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     cancelledAt: { type: Date, default: null },
+    // ✅ تهدئة: لا يُسمح بدعوة استئناف جديدة قبل هذا الوقت (يُضبط بعد الرفض)
+    reinviteAllowedAt: { type: Date, default: null },
     // ✅ وضع المحادثة (keep = الافتراضي — الرسائل تبقى للمستخدم)
     // snap = تنحذف عند الخروج من المحادثة (مثل سناب شات)
     // 24h = تنحذف بعد 24 ساعة من قراءتها

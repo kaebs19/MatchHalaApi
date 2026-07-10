@@ -12,6 +12,40 @@ const pushNotificationService = require('../../services/pushNotificationService'
 const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned } = require('./helpers');
 const { conversationLimitMiddleware } = require('../../middleware/conversationLimits');
 
+// تهدئة بعد الرفض قبل السماح بدعوة استئناف جديدة (بالمللي ثانية)
+const REINVITE_COOLDOWN_MS = 60 * 1000;
+
+// ✅ إنشاء رسالة نظام في المحادثة وبثّها فوراً للطرفين (تبقى في السجل)
+// content = JSON { action, textAr, textEn } — التطبيق يعرض النص حسب اللغة
+async function createSystemMessage(conversationId, senderId, action, textAr, textEn) {
+    try {
+        const sys = await Message.create({
+            conversation: conversationId,
+            sender: senderId,
+            type: 'system',
+            status: 'sent',
+            content: JSON.stringify({ action, textAr, textEn })
+        });
+        const populated = await Message.findById(sys._id)
+            .populate('sender', 'name email profileImage isActive').lean();
+        if (global.io && populated) {
+            const conv = await Conversation.findById(conversationId).select('participants').lean();
+            const seen = new Set();
+            (conv?.participants || []).forEach(p => {
+                const id = p.toString();
+                if (seen.has(id)) return;
+                seen.add(id);
+                global.io.to(`user:${id}`).emit('new-message', { message: populated });
+            });
+            global.io.to(`conversation-${conversationId}`).emit('new-message', { message: populated });
+        }
+        return populated;
+    } catch (e) {
+        console.error('createSystemMessage error:', e);
+        return null;
+    }
+}
+
 // ==========================================
 // نظام المحادثات (طلب/قبول/رفض)
 // ==========================================
@@ -96,15 +130,33 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                 || existingConversation.isActive === false;
 
             if (isEnded) {
+                // ✅ تهدئة: امنع دعوة جديدة فوراً بعد رفض سابق
+                if (existingConversation.reinviteAllowedAt
+                    && new Date(existingConversation.reinviteAllowedAt) > new Date()) {
+                    const waitSec = Math.ceil(
+                        (new Date(existingConversation.reinviteAllowedAt).getTime() - Date.now()) / 1000
+                    );
+                    return res.status(429).json({
+                        success: false,
+                        code: 'REINVITE_COOLDOWN',
+                        message: `الرجاء الانتظار ${waitSec} ثانية قبل إرسال دعوة جديدة`,
+                        retryAfter: waitSec
+                    });
+                }
+
                 await Conversation.findByIdAndUpdate(existingConversation._id, {
                     status: 'pending',
                     isActive: true,
                     creator: req.user._id,        // المُرسِل الجديد هو منشئ الطلب
                     cancelledBy: null,
                     cancelledAt: null,
+                    reinviteAllowedAt: null,      // امسح التهدئة عند إرسال الدعوة
                     // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
                     hiddenFor: []
                 });
+
+                // ✅ رسالة نظام في المسار: تم إرسال دعوة جديدة
+                await createSystemMessage(existingConversation._id, req.user._id, 'conversation_reinvited', 'تم إرسال دعوة جديدة', 'New invite sent');
 
                 if (initialMessage) {
                     await Message.create({
@@ -375,7 +427,11 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
         // تفعيل المحادثة
         conversation.status = 'accepted';
         conversation.isActive = true;
+        conversation.reinviteAllowedAt = null;
         await conversation.save();
+
+        // ✅ رسالة نظام في المسار: تم قبول المحادثة
+        await createSystemMessage(conversation._id, req.user._id, 'conversation_accepted', 'تم قبول المحادثة', 'Conversation accepted');
 
         // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
@@ -458,7 +514,12 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
         // تحديث حالة المحادثة
         conversation.status = 'rejected';
         conversation.isActive = false;
+        // ✅ تهدئة: امنع دعوة استئناف جديدة فوراً بعد الرفض
+        conversation.reinviteAllowedAt = new Date(Date.now() + REINVITE_COOLDOWN_MS);
         await conversation.save();
+
+        // ✅ رسالة نظام في المسار: تم رفض المحادثة
+        await createSystemMessage(conversation._id, req.user._id, 'conversation_rejected', 'تم رفض المحادثة', 'Conversation declined');
 
         // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
@@ -529,6 +590,9 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
         conversation.cancelledBy = req.user._id;
         conversation.cancelledAt = new Date();
         await conversation.save();
+
+        // ✅ رسالة نظام في المسار: تم إغلاق المحادثة
+        await createSystemMessage(conversation._id, req.user._id, 'conversation_closed', 'تم إغلاق المحادثة', 'Conversation closed');
 
         // إخطار الطرف الآخر فوراً عبر Socket.IO
         const otherParticipant = conversation.participants.find(
