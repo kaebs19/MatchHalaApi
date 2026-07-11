@@ -75,10 +75,14 @@ const appealSchema = new mongoose.Schema({
         },
         content: {
             type: String,
-            required: true,
+            // ✅ المحتوى اختياري إذا كانت الرسالة صورة فقط
+            required: function () { return !this.image; },
             maxlength: 2000,
-            trim: true
+            trim: true,
+            default: ''
         },
+        // ✅ صورة يرفقها المشرف في طلب المراجعة (URL نسبي على السيرفر)
+        image: { type: String, default: null },
         readByUser: { type: Boolean, default: false },
         readByAdmin: { type: Boolean, default: false },
         createdAt: { type: Date, default: Date.now }

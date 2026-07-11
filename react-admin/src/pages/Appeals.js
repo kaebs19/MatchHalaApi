@@ -24,6 +24,7 @@ function Appeals({ onViewUserDetail }) {
     const [adminNote, setAdminNote] = useState("");
     const [saving, setSaving] = useState(false);
     const [replyText, setReplyText] = useState("");
+    const [replyImage, setReplyImage] = useState(null);   // ✅ صورة يرفقها المشرف
     const [sendingReply, setSendingReply] = useState(false);
     const { showToast } = useToast();
 
@@ -111,25 +112,40 @@ function Appeals({ onViewUserDetail }) {
         }
     };
 
-    // ✅ إرسال رسالة من الأدمن في محادثة الاستئناف
+    // ✅ إرسال رسالة من الأدمن في محادثة الاستئناف (نص و/أو صورة)
     const handleSendAdminReply = async (text) => {
         const content = (text || "").trim();
-        if (!selectedAppeal || !content) return;
+        if (!selectedAppeal || (!content && !replyImage)) return;
         try {
             setSendingReply(true);
             const token = localStorage.getItem("token");
-            const response = await fetch(config.API_URL + "/appeals/" + selectedAppeal._id + "/admin-reply", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: "Bearer " + token
-                },
-                body: JSON.stringify({ content })
-            });
+            let options;
+            if (replyImage) {
+                // multipart عند إرفاق صورة
+                const form = new FormData();
+                if (content) form.append("content", content);
+                form.append("image", replyImage);
+                options = {
+                    method: "POST",
+                    headers: { Authorization: "Bearer " + token },
+                    body: form
+                };
+            } else {
+                options = {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + token
+                    },
+                    body: JSON.stringify({ content })
+                };
+            }
+            const response = await fetch(config.API_URL + "/appeals/" + selectedAppeal._id + "/admin-reply", options);
             const data = await response.json();
             if (data.success) {
                 showToast("تم إرسال الرد", "success");
                 setReplyText("");
+                setReplyImage(null);
                 // تحديث الـ appeal في القائمة + في المودال بالبيانات الجديدة
                 if (data.data) {
                     setSelectedAppeal(data.data);
@@ -808,9 +824,19 @@ function Appeals({ onViewUserDetail }) {
                                                     <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, opacity: 0.7 }}>
                                                         {isAdmin ? "🛡️ الإدارة" : "👤 المستخدم"}
                                                     </div>
-                                                    <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                                                        {msg.content}
-                                                    </div>
+                                                    {msg.image && (
+                                                        <img
+                                                            src={msg.image}
+                                                            alt="مرفق"
+                                                            onClick={() => window.open(msg.image, "_blank")}
+                                                            style={{ maxWidth: 220, maxHeight: 260, borderRadius: 10, marginBottom: msg.content ? 6 : 0, cursor: "pointer", display: "block" }}
+                                                        />
+                                                    )}
+                                                    {msg.content && (
+                                                        <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                            {msg.content}
+                                                        </div>
+                                                    )}
                                                     <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4, textAlign: isAdmin ? "left" : "right" }}>
                                                         {formatDateTime(msg.createdAt)}
                                                     </div>
@@ -859,8 +885,48 @@ function Appeals({ onViewUserDetail }) {
                                 </div>
                             </div>
 
+                            {/* ✅ معاينة الصورة المرفقة */}
+                            {replyImage && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                    <img
+                                        src={URL.createObjectURL(replyImage)}
+                                        alt="مرفق"
+                                        style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid #d0d7e5" }}
+                                    />
+                                    <span style={{ fontSize: 13, color: "#555" }}>{replyImage.name}</span>
+                                    <button
+                                        onClick={() => setReplyImage(null)}
+                                        style={{ border: "none", background: "#f3d6d6", color: "#b02a2a", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 13 }}
+                                    >
+                                        إزالة
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Reply Input */}
                             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                                {/* ✅ زر إرفاق صورة */}
+                                <label
+                                    title="إرفاق صورة"
+                                    style={{
+                                        padding: "10px 12px",
+                                        borderRadius: 10,
+                                        border: "1px solid #d0d7e5",
+                                        background: "#f7f9fc",
+                                        cursor: "pointer",
+                                        fontSize: 18,
+                                        lineHeight: 1
+                                    }}
+                                >
+                                    🖼️
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        style={{ display: "none" }}
+                                        disabled={sendingReply}
+                                        onChange={(e) => setReplyImage(e.target.files?.[0] || null)}
+                                    />
+                                </label>
                                 <textarea
                                     value={replyText}
                                     onChange={(e) => setReplyText(e.target.value)}
@@ -885,15 +951,15 @@ function Appeals({ onViewUserDetail }) {
                                 />
                                 <button
                                     onClick={() => handleSendAdminReply(replyText)}
-                                    disabled={sendingReply || !replyText.trim()}
+                                    disabled={sendingReply || (!replyText.trim() && !replyImage)}
                                     style={{
                                         padding: "10px 18px",
                                         borderRadius: 10,
                                         border: "none",
-                                        background: replyText.trim() ? "#667eea" : "#c5cde0",
+                                        background: (replyText.trim() || replyImage) ? "#667eea" : "#c5cde0",
                                         color: "#fff",
                                         fontWeight: 700,
-                                        cursor: replyText.trim() ? "pointer" : "not-allowed",
+                                        cursor: (replyText.trim() || replyImage) ? "pointer" : "not-allowed",
                                         fontSize: 14,
                                         whiteSpace: "nowrap"
                                     }}

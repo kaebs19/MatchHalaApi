@@ -11,6 +11,41 @@ const { protect, adminOnly } = require('../middleware/auth');
 const { sendToDevice } = require('../config/firebase');
 const { checkBannedWords } = require('./bannedWords');
 const { sendAppealUpdate } = require('../services/emailService');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// ✅ إعداد multer لرفع صور المشرف في طلبات المراجعة
+const appealsUploadDir = path.join(__dirname, '..', 'uploads', 'appeals');
+if (!fs.existsSync(appealsUploadDir)) {
+    fs.mkdirSync(appealsUploadDir, { recursive: true });
+}
+const appealImageUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, appealsUploadDir),
+        filename: (req, file, cb) => {
+            const uniqueName = `appeal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}${path.extname(file.originalname)}`;
+            cb(null, uniqueName);
+        }
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: (req, file, cb) => {
+        const ok = /jpeg|jpg|png|gif|webp/;
+        if (ok.test(path.extname(file.originalname).toLowerCase()) && ok.test(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط الصور مسموحة (JPEG, PNG, GIF, WEBP)'));
+        }
+    }
+});
+
+/// رابط كامل لصورة طلب المراجعة
+function appealImageFullUrl(req, relativePath) {
+    if (!relativePath) return null;
+    if (/^https?:\/\//.test(relativePath)) return relativePath;
+    const base = `${req.protocol}://${req.get('host')}`;
+    return relativePath.startsWith('/') ? base + relativePath : `${base}/${relativePath}`;
+}
 
 // ════════════════════════════════════════════════════════════════
 // @route   POST /api/appeals/public/device-ban
@@ -296,11 +331,13 @@ router.post('/:id/reply', protect, async (req, res) => {
 // @route   POST /api/appeals/:id/admin-reply
 // @desc    رد الإدارة في محادثة الاستئناف (+ push للمستخدم)
 // @access  Private/Admin
-router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
+router.post('/:id/admin-reply', protect, adminOnly, appealImageUpload.single('image'), async (req, res) => {
     try {
         const { content } = req.body;
-        if (!content || !content.trim()) {
-            return res.status(400).json({ success: false, message: 'محتوى الرسالة مطلوب' });
+        const imagePath = req.file ? `/uploads/appeals/${req.file.filename}` : null;
+        // ✅ يجب وجود نص أو صورة على الأقل
+        if ((!content || !content.trim()) && !imagePath) {
+            return res.status(400).json({ success: false, message: 'أرفق نصاً أو صورة' });
         }
 
         const appeal = await Appeal.findById(req.params.id);
@@ -311,7 +348,8 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
         const newMessage = {
             sender: 'admin',
             authorId: req.user._id,
-            content: content.trim(),
+            content: (content || '').trim(),
+            image: imagePath,
             readByUser: false,
             readByAdmin: true,
             createdAt: new Date()
@@ -340,6 +378,7 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
                     sender: savedMsg.sender,
                     authorId: savedMsg.authorId?.toString(),
                     content: savedMsg.content,
+                    image: appealImageFullUrl(req, savedMsg.image),
                     createdAt: savedMsg.createdAt
                 },
                 status: appeal.status,
@@ -360,8 +399,11 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
 
         // إشعار + push
         try {
-            const title = 'رد جديد على استئنافك';
-            const body = content.trim().length > 80 ? content.trim().slice(0, 80) + '…' : content.trim();
+            const title = 'رد جديد على طلب مراجعتك';
+            const trimmed = (content || '').trim();
+            const body = trimmed
+                ? (trimmed.length > 80 ? trimmed.slice(0, 80) + '…' : trimmed)
+                : '📷 أرسل المشرف صورة';
             await Notification.create({
                 title,
                 body,
@@ -387,7 +429,12 @@ router.post('/:id/admin-reply', protect, adminOnly, async (req, res) => {
             console.error('خطأ في إرسال إشعار رد الاستئناف:', notifErr);
         }
 
-        res.json({ success: true, data: appeal });
+        // ✅ حوّل مسارات الصور إلى روابط كاملة قبل الإرسال
+        const out = appeal.toObject();
+        if (Array.isArray(out.messages)) {
+            out.messages = out.messages.map(m => ({ ...m, image: appealImageFullUrl(req, m.image) }));
+        }
+        res.json({ success: true, data: out });
     } catch (error) {
         console.error('خطأ في رد الإدارة على الاستئناف:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
@@ -461,6 +508,10 @@ router.get('/my', protect, async (req, res) => {
         const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
         const enriched = await Promise.all(appeals.map(async (a) => {
             const obj = a.toObject();
+            // ✅ روابط كاملة لصور المشرف في الرسائل
+            if (Array.isArray(obj.messages)) {
+                obj.messages = obj.messages.map(m => ({ ...m, image: appealImageFullUrl(req, m.image) }));
+            }
             if (externalPromoRegex.test(a.reason || '')) {
                 obj.previousSuspensionsCount = await Appeal.countDocuments({
                     user: req.user._id,
@@ -518,6 +569,10 @@ router.get('/:id', protect, async (req, res) => {
         // ✅ عدد الإيقافات السابقة بسبب الترويج الخارجي
         const externalPromoRegex = /خارجية|external|promo|حسابات|سناب|انستا|واتس|تيليجرام|زنجي|تيك ?توك/i;
         const result = appeal.toObject();
+        // ✅ روابط كاملة لصور المشرف في الرسائل
+        if (Array.isArray(result.messages)) {
+            result.messages = result.messages.map(m => ({ ...m, image: appealImageFullUrl(req, m.image) }));
+        }
         if (externalPromoRegex.test(appeal.reason || '')) {
             result.previousSuspensionsCount = await Appeal.countDocuments({
                 user: req.user._id,
