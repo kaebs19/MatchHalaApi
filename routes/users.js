@@ -62,7 +62,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         const [users, total] = await Promise.all([
             User.find(queryFilter)
-                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId')
+                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId authProvider deviceInfo.platform gender bannedWords.isBanned bannedWords.violations')
                 .sort(sortObj)
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)
@@ -663,15 +663,26 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
 
             // Increment violations
             const currentViolations = user.bannedWords?.violations || 0;
-            user.set('bannedWords.violations', currentViolations + 1);
+            const newViolations = currentViolations + 1;
+            user.set('bannedWords.violations', newViolations);
             user.set('bannedWords.lastViolationDate', new Date());
+
+            // ✅ تطبيق فترة تهدئة تصاعدية: لا يمكن إضافة نبذة جديدة إلا بعدها
+            //   24 ساعة للمخالفة الأولى، +24 لكل تكرار، بحدّ أقصى أسبوع
+            const cooldownHours = Math.min(24 * newViolations, 168);
+            const bioBlockedUntil = new Date(Date.now() + cooldownHours * 60 * 60 * 1000);
+            user.restrictions = user.restrictions || {};
+            user.set('restrictions.bioBlocked', true);
+            user.set('restrictions.bioBlockedUntil', bioBlockedUntil);
+            user.set('restrictions.bioBlockedReason', reason || 'نبذة مخالفة');
 
             // Send notification
             try {
+                const durText = cooldownHours >= 168 ? 'أسبوع' : `${cooldownHours} ساعة`;
                 const pushNotificationService = require('../services/pushNotificationService');
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: '⚠️ تم حذف النبذة تلقائياً',
-                    body: 'اكتشف نظام الحماية مخالفة في النبذة الشخصية، وتمّت إزالتها تلقائياً. مخالفة ' + (currentViolations + 1) + ' — يُرجى الالتزام بالشروط.'
+                    body: `اكتشف نظام الحماية مخالفة في النبذة، وتمّت إزالتها. لا يمكنك إضافة نبذة جديدة قبل ${durText}. مخالفة ${newViolations} — يُرجى الالتزام بالشروط.`
                 }, { type: 'warning' });
             } catch(e) { console.error('Push error:', e.message); }
 
@@ -703,6 +714,10 @@ router.put('/:id/bio-action', protect, adminOnly, async (req, res) => {
                 reason: null,
                 bannedAt: null
             };
+            // ✅ رفع تهدئة النبذة عند الاستعادة
+            user.set('restrictions.bioBlocked', false);
+            user.set('restrictions.bioBlockedUntil', null);
+            user.set('restrictions.bioBlockedReason', null);
         } else {
             return res.status(400).json({ success: false, message: 'إجراء غير صالح' });
         }
