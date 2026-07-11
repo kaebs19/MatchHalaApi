@@ -433,8 +433,11 @@ function Users({ onViewDetail }) {
                                             <td>
                                                 <div className="email-col">
                                                     <span dir="ltr" className="email-text">{user.email}</span>
-                                                    <span className="auth-badge auth-{(user.authProvider || 'app')}">
-                                                        {user.authProvider === 'google' ? 'G' : user.authProvider === 'apple' ? '' : '📧'}
+                                                    <span
+                                                        className={`auth-badge auth-${user.authProvider || 'app'}`}
+                                                        title={user.authProvider === 'google' ? 'تسجيل عبر Google' : user.authProvider === 'apple' ? 'تسجيل عبر Apple' : 'تسجيل بالبريد (App)'}
+                                                    >
+                                                        {user.authProvider === 'google' ? 'G' : user.authProvider === 'apple' ? '🍎' : '📧'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -443,7 +446,11 @@ function Users({ onViewDetail }) {
                                                     {user.gender && <span className="uinfo">{user.gender === 'male' ? '♂' : '♀'}</span>}
                                                     {user.country && <span className="uinfo">{user.country}</span>}
                                                     {user.city && <span className="uinfo">{user.city}</span>}
-                                                    {user.deviceInfo?.platform && <span className="uinfo">{user.deviceInfo.platform === 'ios' ? '📱' : '🤖'}</span>}
+                                                    {user.deviceInfo?.platform && (
+                                                        <span className="uinfo" title={`الجهاز: ${user.deviceInfo.platform}`}>
+                                                            {user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻 ' + user.deviceInfo.platform}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td>
