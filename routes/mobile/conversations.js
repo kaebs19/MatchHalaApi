@@ -1146,6 +1146,27 @@ router.get('/conversations', protect, async (req, res) => {
             }
         }
 
+        // ✅ محادثات بلا lastMessage (مثل المقبولة التي أُرسلت فيها رسالة طلب فقط) →
+        //    اجلب آخر رسالة فعلية لعرضها في القائمة بدل نص ثابت
+        const noLastMsgIds = conversations
+            .filter(c => !c.lastMessage)
+            .map(c => c._id);
+        if (noLastMsgIds.length > 0) {
+            const latestMsgs = await Message.aggregate([
+                { $match: { conversation: { $in: noLastMsgIds }, isDeleted: { $ne: true } } },
+                { $sort: { createdAt: -1 } },
+                { $group: { _id: '$conversation', msg: { $first: '$$ROOT' } } }
+            ]);
+            const latestMap = new Map();
+            latestMsgs.forEach(l => latestMap.set(l._id.toString(), l.msg));
+            for (const conv of conversations) {
+                if (!conv.lastMessage) {
+                    const m = latestMap.get(conv._id.toString());
+                    if (m) conv.lastMessage = m;
+                }
+            }
+        }
+
         const conversationsWithUnread = conversations.map(conv => {
             // إضافة isRead + isDelivered لآخر رسالة
             if (conv.lastMessage && conv.lastMessage.sender) {
