@@ -21,6 +21,40 @@
     position: sticky;
     top: 0;
     z-index: 50;
+    gap: 12px;
+}
+
+/* زر فتح القائمة (hamburger) — يظهر على الجوال فقط */
+.sidebar-toggle-btn {
+    display: none;
+    background: #f5f5f5;
+    color: #333;
+    border: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.sidebar-toggle-btn:hover {
+    background: #e8e8e8;
+}
+
+/* خلفية معتمة خلف القائمة المنزلقة */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 90;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.sidebar-overlay.show {
+    display: block;
+    opacity: 1;
 }
 
 .top-header h1 {
@@ -222,19 +256,64 @@
 @media (max-width: 768px) {
     .main-content {
         margin-right: 0;
+        min-width: 0;
+    }
+
+    .sidebar-toggle-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .top-header {
-        padding: 15px 20px;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        row-gap: 10px;
     }
 
     .top-header h1 {
+        font-size: 17px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* شريط الإجراءات ينزل لصف كامل ويلتفّ */
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-start;
+    }
+
+    .global-search-container {
+        flex: 1 1 100%;
+        order: -1;
+    }
+
+    .search-input-wrapper,
+    .search-input {
+        width: 100%;
+    }
+
+    .header-icon-btn {
+        padding: 8px 12px;
         font-size: 18px;
+    }
+
+    .logout-btn {
+        margin-right: auto;
     }
 
     .notification-modal {
         width: 95%;
         padding: 20px;
+    }
+}
+
+/* شاشات صغيرة جداً */
+@media (max-width: 480px) {
+    .top-header h1 {
+        font-size: 15px;
     }
 }
 
@@ -501,7 +580,16 @@
 }
 
 @media (max-width: 768px) {
+    /* إظهار البحث على الجوال بعرض كامل (بدل إخفائه) */
     .global-search-container {
-        display: none;
+        display: block;
+        flex: 1 1 100%;
+        order: -1;
+    }
+    .search-input {
+        width: 100%;
+    }
+    .search-input:focus {
+        width: 100%;
     }
 }

@@ -10,6 +10,28 @@
     top: 0;
     box-shadow: -2px 0 10px rgba(0,0,0,0.1);
     z-index: 100;
+    transition: transform 0.3s ease;
+}
+
+/* زر إغلاق القائمة (يظهر على الجوال فقط) */
+.sidebar-close-btn {
+    display: none;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 2;
+}
+.sidebar-close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .sidebar-header {
@@ -163,16 +185,33 @@
     opacity: 0.8;
 }
 
-/* Responsive */
+/* Responsive — drawer منزلق (off-canvas) */
 @media (max-width: 768px) {
     .sidebar {
-        width: 100%;
-        position: relative;
-        height: auto;
+        width: 82%;
+        max-width: 300px;
+        height: 100vh;
+        position: fixed;
+        top: 0;
+        right: 0;
+        /* مخفي خارج الشاشة (يمين) افتراضياً — RTL */
+        transform: translateX(100%);
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .sidebar-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .sidebar-nav {
         padding: 15px;
-        max-height: 50vh;
+        max-height: none;
+        flex: 1;
     }
 }

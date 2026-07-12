@@ -37,6 +37,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [newcomersCount, setNewcomersCount] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [notificationData, setNotificationData] = useState({
         title: '',
@@ -454,18 +455,34 @@ function MainLayout({ onLogout, user: initialUser }) {
         <div className="main-layout">
             <Sidebar
                 currentPage={currentPage}
-                onPageChange={setCurrentPage}
+                onPageChange={(p) => { setCurrentPage(p); setSidebarOpen(false); }}
                 user={user}
-                onProfileClick={() => setCurrentPage('profile')}
+                onProfileClick={() => { setCurrentPage('profile'); setSidebarOpen(false); }}
+                isOpen={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
                 badges={{
                     reports: pendingReportsCount,
                     appeals: appealsStats.total + appealsStats.awaitingReply,
                     newcomers: newcomersCount
                 }}
             />
-            
+
+            {/* Overlay backdrop (mobile drawer) */}
+            <div
+                className={`sidebar-overlay ${sidebarOpen ? 'show' : ''}`}
+                onClick={() => setSidebarOpen(false)}
+            ></div>
+
             <div className="main-content">
                 <header className="top-header">
+                    <button
+                        className="sidebar-toggle-btn"
+                        onClick={() => setSidebarOpen(true)}
+                        aria-label="القائمة"
+                        title="القائمة"
+                    >
+                        ☰
+                    </button>
                     <h1>
                         {currentPage === 'dashboard' && '📊 لوحة التحكم'}
                         {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}

@@ -2,7 +2,7 @@ import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import './Sidebar.css';
 
-function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} }) {
+function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {}, isOpen = false, onClose }) {
     const menuItems = [
         {
             id: 'dashboard',
@@ -88,7 +88,8 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {} 
     };
 
     return (
-        <div className="sidebar">
+        <div className={`sidebar ${isOpen ? 'open' : ''}`}>
+            <button className="sidebar-close-btn" onClick={onClose} aria-label="إغلاق القائمة">✕</button>
             <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
                 <img src="/app-logo.png" alt="ماتش هلا" className="sidebar-logo" />
                 <h2>ماتش هلا</h2>
