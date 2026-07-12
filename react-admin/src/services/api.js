@@ -609,6 +609,12 @@ export const uploadUserProfileImage = async (userId, file, reason = '', notify =
     return response.data;
 };
 
+// منح استثناء — تصفير الحد الشهري لتغيير الاسم و/أو cooldown الصورة + إشعار المستخدم
+export const resetUserChangeLimits = async (userId, { targets, notify = true } = {}) => {
+    const response = await api.post(`/users/${userId}/reset-change-limits`, { targets, notify });
+    return response.data;
+};
+
 // حذف صورة مستخدم
 export const deleteUserPhoto = async (userId, photoIndex, reason) => {
     const response = await api.delete(`/users/${userId}/photo`, {

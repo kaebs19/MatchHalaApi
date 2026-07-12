@@ -2760,6 +2760,97 @@ router.put('/:id/profile-image', protect, adminOnly, upload.single('profileImage
     }
 });
 
+// @route   POST /api/users/:id/reset-change-limits
+// @desc    منح استثناء لمستخدم — تصفير الحد الشهري لتغيير الاسم و/أو cooldown الصورة + إشعاره
+// @access  Private/Admin
+router.post('/:id/reset-change-limits', protect, adminOnly, async (req, res) => {
+    try {
+        const { notify = true, targets } = req.body;
+        // targets: مصفوفة اختيارية ['name','photo'] — الافتراضي: الاثنان معاً
+        const validTargets = Array.isArray(targets) && targets.length > 0 ? targets : ['name', 'photo'];
+        const doName = validTargets.includes('name');
+        const doPhoto = validTargets.includes('photo');
+
+        if (!doName && !doPhoto) {
+            return res.status(400).json({ success: false, message: 'حدّد نوع الحد المراد تصفيره (name/photo)' });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        const done = [];
+        if (doName) {
+            user.nameChangeHistory = [];
+            user.lastNameChange = null;
+            user.markModified('nameChangeHistory');
+            done.push('name');
+        }
+        if (doPhoto) {
+            user.lastPhotoChange = null;
+            done.push('photo');
+        }
+
+        await user.save();
+        invalidateUsers();
+
+        // ✅ Socket event — التطبيق يعرف أن القيد رُفع
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('limits-reset', {
+                userId: user._id.toString(),
+                targets: done
+            });
+        }
+
+        // ✅ إشعار المستخدم (push + داخل التطبيق)
+        const shouldNotify = notify === true || notify === 'true';
+        if (shouldNotify) {
+            let subject;
+            if (doName && doPhoto) subject = 'اسمك وصورتك الشخصية';
+            else if (doName) subject = 'اسمك';
+            else subject = 'صورتك الشخصية';
+
+            const notifTitle = '✅ يمكنك التعديل الآن';
+            const notifBody = `منحتك الإدارة إمكانية تغيير ${subject} من جديد. يمكنك التعديل الآن من الإعدادات.`;
+
+            try {
+                await pushNotificationService.sendNotificationToUser(user._id, {
+                    title: notifTitle,
+                    body: notifBody
+                }, { type: 'limits_reset', targets: done.join(',') });
+
+                await Notification.create({
+                    title: notifTitle,
+                    body: notifBody,
+                    type: 'system',
+                    recipients: 'specific',
+                    targetUsers: [user._id],
+                    sender: req.user._id,
+                    data: { type: 'limits_reset', targets: done.join(','), userId: user._id.toString() },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+            } catch (e) { console.error('notify (limits_reset) error:', e.message); }
+        }
+
+        const label = doName && doPhoto ? 'حد الاسم والصورة' : doName ? 'حد تغيير الاسم' : 'قيد تغيير الصورة';
+        res.json({
+            success: true,
+            message: `تم تصفير ${label}${shouldNotify ? ' وإشعار المستخدم' : ''}`,
+            data: {
+                _id: user._id,
+                nameChangeHistory: user.nameChangeHistory,
+                lastNameChange: user.lastNameChange,
+                lastPhotoChange: user.lastPhotoChange
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في تصفير حدود التغيير:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/users/search
 // @desc    بحث عن مستخدم بالبريد أو الاسم أو المعرف
 // @access  Private/Admin

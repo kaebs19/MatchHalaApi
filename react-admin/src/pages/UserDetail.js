@@ -8,6 +8,7 @@ import { userBioAction,
     userNameAction,
     deleteUserPhoto,
     uploadUserProfileImage,
+    resetUserChangeLimits,
     sendUserNotification,
     restrictUser,
     getUserReportsCount,
@@ -402,6 +403,31 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
         }
     };
 
+    // ✅ منح استثناء — تصفير الحد الشهري لتغيير الاسم + قيد الصورة + إشعار المستخدم
+    const handleResetChangeLimits = async () => {
+        const ok = window.confirm(
+            '🔓 السماح للمستخدم بتغيير الاسم والصورة من جديد؟\n\n' +
+            'سيتم:\n' +
+            '• تصفير الحد الشهري لتغيير الاسم (3 مرات / 30 يوم)\n' +
+            '• رفع قيد الصورة (cooldown)\n' +
+            '• إشعار المستخدم أنه يستطيع التعديل الآن\n\n' +
+            'ملاحظة: هذا لا يرفع أي حظر إداري على الاسم/الصورة (يُدار من التقييد).'
+        );
+        if (!ok) return;
+        try {
+            setActionLoading(true);
+            const res = await resetUserChangeLimits(userId, { targets: ['name', 'photo'], notify: true });
+            if (res.success) {
+                showToast(res.message || 'تم منح الاستثناء وإشعار المستخدم', 'success');
+                fetchUserActivity();
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل في تصفير الحد', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleRestrict = async () => {
         try {
             setActionLoading(true);
@@ -667,6 +693,21 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
         } finally {
             setActionLoading(false);
         }
+    };
+
+    // ✅ حساب عدد تغييرات الاسم المستخدمة خلال آخر 30 يوم (الحد = 3)
+    const getNameChangeUsage = () => {
+        const MAX = 3;
+        const windowMs = 30 * 24 * 60 * 60 * 1000;
+        const cutoff = Date.now() - windowMs;
+        let history = (userData?.user?.nameChangeHistory || [])
+            .map(d => new Date(d).getTime())
+            .filter(t => t > cutoff);
+        if (history.length === 0 && userData?.user?.lastNameChange) {
+            const last = new Date(userData.user.lastNameChange).getTime();
+            if (last > cutoff) history = [last];
+        }
+        return { used: history.length, max: MAX, reached: history.length >= MAX };
     };
 
     const formatDate = (date) => formatDateTimeLong(date) === '-' ? 'غير محدد' : formatDateTimeLong(date);
@@ -2479,6 +2520,25 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             {/* Name Action */}
                             <button className="admin-action-btn name-action" onClick={() => setShowNameModal(true)} disabled={actionLoading}>
                                 📛 إجراء على الاسم
+                            </button>
+
+                            {/* Reset monthly change limits (grant exception) */}
+                            <button
+                                className="admin-action-btn"
+                                style={{ background: '#10b981', color: '#fff', border: 'none' }}
+                                onClick={handleResetChangeLimits}
+                                disabled={actionLoading}
+                                title="تصفير الحد الشهري لتغيير الاسم + قيد الصورة وإشعار المستخدم"
+                            >
+                                🔓 السماح بتغيير الاسم/الصورة
+                                {(() => {
+                                    const u = getNameChangeUsage();
+                                    return (
+                                        <span style={{ display: 'block', fontSize: 11, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>
+                                            تغييرات الاسم: {u.used}/{u.max}{u.reached ? ' — بلغ الحد ⚠️' : ''}
+                                        </span>
+                                    );
+                                })()}
                             </button>
 
                             {/* Delete Photo */}
