@@ -1153,7 +1153,8 @@ router.get('/conversations', protect, async (req, res) => {
             .map(c => c._id);
         if (noLastMsgIds.length > 0) {
             const latestMsgs = await Message.aggregate([
-                { $match: { conversation: { $in: noLastMsgIds }, isDeleted: { $ne: true } } },
+                // ✅ استثناء رسائل النظام (تم قبول/رفض/إغلاق) — نعرض رسالة المستخدم فقط
+                { $match: { conversation: { $in: noLastMsgIds }, isDeleted: { $ne: true }, type: { $ne: 'system' } } },
                 { $sort: { createdAt: -1 } },
                 { $group: { _id: '$conversation', msg: { $first: '$$ROOT' } } }
             ]);
