@@ -7,6 +7,7 @@ import { userBioAction,
     setUserViolations,
     userNameAction,
     deleteUserPhoto,
+    uploadUserProfileImage,
     sendUserNotification,
     restrictUser,
     getUserReportsCount,
@@ -170,6 +171,10 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [violationsCount, setViolationsCount] = useState(0);
     // Photo delete form
     const [photoDeleteForm, setPhotoDeleteForm] = useState({ photoIndex: 'profile', reason: '' });
+    // ✅ رفع/استبدال الصورة الشخصية
+    const [showPhotoUploadModal, setShowPhotoUploadModal] = useState(false);
+    const [photoUploadForm, setPhotoUploadForm] = useState({ file: null, preview: null, reason: '', notify: true });
+    const [photoUploadLoading, setPhotoUploadLoading] = useState(false);
     // Reports count
     const [reportsCount, setReportsCount] = useState(null);
     // Photo lightbox
@@ -352,6 +357,48 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             showToast(error.response?.data?.message || 'فشل في حذف الصورة', 'error');
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    // ✅ اختيار ملف الصورة الجديدة
+    const handlePhotoFileSelect = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showToast('يُرجى اختيار صورة صالحة', 'error');
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            showToast('حجم الصورة يجب أن يكون أقل من 2 ميجابايت', 'error');
+            return;
+        }
+        setPhotoUploadForm(prev => ({ ...prev, file, preview: URL.createObjectURL(file) }));
+    };
+
+    // ✅ رفع/استبدال الصورة الشخصية + إشعار المستخدم
+    const handleUploadPhoto = async () => {
+        if (!photoUploadForm.file) {
+            showToast('يُرجى اختيار صورة أولاً', 'error');
+            return;
+        }
+        try {
+            setPhotoUploadLoading(true);
+            const res = await uploadUserProfileImage(
+                userId,
+                photoUploadForm.file,
+                photoUploadForm.reason.trim(),
+                photoUploadForm.notify
+            );
+            if (res.success) {
+                showToast(res.message || 'تم تحديث الصورة الشخصية', 'success');
+                setShowPhotoUploadModal(false);
+                setPhotoUploadForm({ file: null, preview: null, reason: '', notify: true });
+                fetchUserActivity();
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل في تحديث الصورة', 'error');
+        } finally {
+            setPhotoUploadLoading(false);
         }
     };
 
@@ -1737,7 +1784,16 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 {/* Photos Tab */}
                 {activeTab === 'photos' && (
                     <div className="photos-section">
-                        <h3>🖼️ صور المستخدم</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                            <h3 style={{ margin: 0 }}>🖼️ صور المستخدم</h3>
+                            <button
+                                onClick={() => { setPhotoUploadForm({ file: null, preview: null, reason: '', notify: true }); setShowPhotoUploadModal(true); }}
+                                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#4f46e5)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                                title="رفع/استبدال الصورة الشخصية وإشعار المستخدم"
+                            >
+                                {user.profileImage ? '🔄 استبدال الصورة الشخصية' : '⬆️ رفع صورة شخصية'}
+                            </button>
+                        </div>
 
                         {/* Profile Image */}
                         {user.profileImage && (
@@ -1754,6 +1810,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         />
                                         <div className="photo-actions">
                                             <button className="photo-view-btn" onClick={() => setLightboxImage(getImageUrl(user.profileImage))}>🔍 عرض</button>
+                                            <button className="photo-view-btn" onClick={() => { setPhotoUploadForm({ file: null, preview: null, reason: '', notify: true }); setShowPhotoUploadModal(true); }}>🔄 استبدال</button>
                                             <button className="photo-delete-btn" onClick={() => { setPhotoDeleteForm({ photoIndex: 'profile', reason: '' }); setShowPhotoDeleteModal(true); }}>🗑️ حذف</button>
                                         </div>
                                         <span className="photo-label">الرئيسية</span>
@@ -3131,6 +3188,56 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <button className="cancel-btn" onClick={() => setShowPhotoDeleteModal(false)} disabled={actionLoading}>إلغاء</button>
                             <button className="submit-btn danger" onClick={handleDeletePhoto} disabled={actionLoading}>
                                 {actionLoading ? 'جاري الحذف...' : '🗑️ حذف الصورة + إشعار المستخدم'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ✅ Upload / Replace Profile Image Modal */}
+            {showPhotoUploadModal && (
+                <div className="modal-overlay" onClick={() => setShowPhotoUploadModal(false)}>
+                    <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>🖼️ {user.profileImage ? 'استبدال' : 'رفع'} الصورة الشخصية لـ {user.name}</h3>
+                            <button className="close-modal-btn" onClick={() => setShowPhotoUploadModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>الصورة الجديدة (حد أقصى 2 ميجابايت)</label>
+                                <input type="file" accept="image/*" onChange={handlePhotoFileSelect} />
+                            </div>
+                            {photoUploadForm.preview && (
+                                <div style={{ textAlign: 'center', margin: '12px 0' }}>
+                                    <img
+                                        src={photoUploadForm.preview}
+                                        alt="معاينة"
+                                        style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 12, border: '2px solid #6366f1' }}
+                                    />
+                                </div>
+                            )}
+                            <div className="form-group">
+                                <label>سبب/ملاحظة للمستخدم (اختياري)</label>
+                                <textarea
+                                    value={photoUploadForm.reason}
+                                    onChange={(e) => setPhotoUploadForm({ ...photoUploadForm, reason: e.target.value })}
+                                    placeholder="مثال: تم استبدال الصورة المخالفة بصورة مناسبة"
+                                    rows={2}
+                                />
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={photoUploadForm.notify}
+                                    onChange={(e) => setPhotoUploadForm({ ...photoUploadForm, notify: e.target.checked })}
+                                />
+                                إشعار المستخدم بالتغيير (push + داخل التطبيق)
+                            </label>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="cancel-btn" onClick={() => setShowPhotoUploadModal(false)} disabled={photoUploadLoading}>إلغاء</button>
+                            <button className="submit-btn" onClick={handleUploadPhoto} disabled={photoUploadLoading || !photoUploadForm.file}>
+                                {photoUploadLoading ? 'جاري الرفع...' : '⬆️ حفظ الصورة' + (photoUploadForm.notify ? ' + إشعار' : '')}
                             </button>
                         </div>
                     </div>

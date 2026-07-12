@@ -8,6 +8,8 @@ const Report = require('../models/Report');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/cache');
 const { checkSignals: checkFpNoise, NOISE_THRESHOLD } = require('../utils/deviceFingerprintNoise');
+const upload = require('../config/multer');
+const { processImage } = require('../utils/imageProcessor');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -2480,8 +2482,8 @@ router.put('/:id/name-action', protect, adminOnly, async (req, res) => {
                     notifBody = 'تمّ إعادة الاسم الأصلي بنجاح. شكراً لالتزامك بسياسة الاستخدام.';
                     break;
                 case 'change':
-                    notifTitle = '📝 تم تحديث الاسم';
-                    notifBody = `تمّ تحديث الاسم تلقائياً إلى "${newName}". يمكنك تعديله من الإعدادات.`;
+                    notifTitle = '📝 تم تحديث اسمك';
+                    notifBody = `قامت الإدارة بتحديث اسمك إلى "${newName}". يمكنك تعديله من الإعدادات في أي وقت.`;
                     break;
             }
 
@@ -2652,6 +2654,109 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
     } catch (error) {
         console.error('خطأ في حذف صورة المستخدم:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   PUT /api/users/:id/profile-image
+// @desc    استبدال/تعيين الصورة الشخصية لمستخدم من لوحة التحكم + إشعاره
+// @access  Private/Admin
+router.put('/:id/profile-image', protect, adminOnly, upload.single('profileImage'), async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'لم يتم إرفاق صورة' });
+        }
+
+        const { reason, notify = 'true' } = req.body;
+        const shouldNotify = notify === true || notify === 'true';
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            if (req.file && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+            }
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // معالجة الصورة بأحجام متعددة (thumbnail / medium / original)
+        const processed = await processImage(req.file.path, { prefix: 'profile' });
+
+        // حذف الصورة الرئيسية القديمة (إن لم تكن افتراضية)
+        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
+            const oldImagePath = path.join(__dirname, '..', user.profileImage);
+            if (fs.existsSync(oldImagePath)) {
+                try { fs.unlinkSync(oldImagePath); } catch (e) { /* ignore */ }
+            }
+        }
+
+        // إزالة الصورة الرئيسية من photos[] (order:0) لمنع التكرار — تطابق نمط auth
+        if (user.photos && user.photos.length > 0) {
+            user.photos = user.photos.filter(p => p.order !== 0);
+        }
+
+        user.profileImage = processed.original;
+        user.markModified('profileImage');
+        user.lastPhotoChange = new Date();
+
+        await user.save();
+        invalidateUsers();
+
+        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+        const fullUrl = processed.original.startsWith('http')
+            ? processed.original
+            : `${baseUrl}${processed.original.startsWith('/') ? '' : '/'}${processed.original}`;
+
+        // ✅ Socket event — التطبيق يُحدّث الصورة فوراً
+        if (global.io) {
+            global.io.to(`user:${user._id}`).emit('profile-updated', {
+                userId: user._id.toString(),
+                profileImage: fullUrl,
+                action: 'photo_changed'
+            });
+        }
+
+        // ✅ إشعار المستخدم (push + داخل التطبيق)
+        if (shouldNotify) {
+            const notifTitle = '🖼️ تم تحديث صورتك الشخصية';
+            const notifBody = reason && reason.trim()
+                ? `قامت الإدارة بتحديث صورتك الشخصية. ${reason.trim()}`
+                : 'قامت الإدارة بتحديث صورتك الشخصية. يمكنك تغييرها من الإعدادات في أي وقت.';
+
+            try {
+                await pushNotificationService.sendNotificationToUser(user._id, {
+                    title: notifTitle,
+                    body: notifBody
+                }, { type: 'photo_changed', reason: reason || '' });
+
+                await Notification.create({
+                    title: notifTitle,
+                    body: notifBody,
+                    type: 'system',
+                    recipients: 'specific',
+                    targetUsers: [user._id],
+                    sender: req.user._id,
+                    data: { type: 'photo_changed', reason: reason || '', userId: user._id.toString() },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+            } catch (e) { console.error('notify (photo_changed) error:', e.message); }
+        }
+
+        res.json({
+            success: true,
+            message: `تم تحديث صورة ${user.name}${shouldNotify ? ' وإشعاره' : ''}`,
+            data: {
+                _id: user._id,
+                profileImage: fullUrl
+            }
+        });
+    } catch (error) {
+        if (req.file && fs.existsSync(req.file.path)) {
+            try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+        }
+        console.error('خطأ في تحديث صورة المستخدم:', error);
+        res.status(500).json({ success: false, message: error.message || 'خطأ في السيرفر' });
     }
 });
 

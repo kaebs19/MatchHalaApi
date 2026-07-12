@@ -596,6 +596,19 @@ export const getUserNameHistory = async (userId, limit = 50) => {
     return response.data;
 };
 
+// استبدال/تعيين الصورة الشخصية لمستخدم من لوحة التحكم + إشعاره
+export const uploadUserProfileImage = async (userId, file, reason = '', notify = true) => {
+    const formData = new FormData();
+    formData.append('profileImage', file);
+    formData.append('reason', reason);
+    formData.append('notify', notify ? 'true' : 'false');
+
+    const response = await api.put(`/users/${userId}/profile-image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
 // حذف صورة مستخدم
 export const deleteUserPhoto = async (userId, photoIndex, reason) => {
     const response = await api.delete(`/users/${userId}/photo`, {
