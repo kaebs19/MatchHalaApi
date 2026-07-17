@@ -13,5 +13,6 @@ router.use('/', require('./device'));
 router.use('/', require('./reports'));
 router.use('/', require('./warnings'));
 router.use('/', require('./wheel'));
+router.use('/', require('./friends'));
 
 module.exports = router;

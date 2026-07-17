@@ -56,6 +56,8 @@ const NOTIFICATION_TYPES = {
     'profile_view':         { category: 'social', groupable: true, adminOnly: false },
     'new_follower':         { category: 'social', groupable: true, adminOnly: false },
     'comment':              { category: 'social', groupable: true, adminOnly: false },
+    'friend_request':       { category: 'social', groupable: false, adminOnly: false },
+    'friend_accepted':      { category: 'social', groupable: false, adminOnly: false },
     'conversation_request': { category: 'social', groupable: false, adminOnly: false },
     'conversation_accepted':{ category: 'social', groupable: false, adminOnly: false },
     'conversation_reminder':{ category: 'social', groupable: false, adminOnly: false },
