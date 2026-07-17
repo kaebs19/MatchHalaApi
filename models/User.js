@@ -183,6 +183,15 @@ const userSchema = new mongoose.Schema({
         },
         // ✅ Premium: قراءة سرية — لا يخبر المرسل
         invisibleRead: { type: Boolean, default: false },
+        // 👥 من يستطيع إرسال طلب صداقة لي؟
+        // everyone (الجميع) | contacts (من لديهم محادثة مقبولة معي) | nobody (لا أحد)
+        friendRequests: {
+            type: String,
+            enum: ['everyone', 'contacts', 'nobody'],
+            default: 'everyone'
+        },
+        // 👥 إشعار أصدقائي عند اتصالي (friend:online)
+        notifyFriendsOnline: { type: Boolean, default: true },
         // ✅ Sensitive Content (Phase 1) — السماح بكشف المحتوى الحساس
         // default: false (الفلتر مفعّل للجميع)
         allowSensitiveContent: { type: Boolean, default: false },

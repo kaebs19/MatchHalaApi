@@ -5,6 +5,7 @@ const router = express.Router();
 const User = require('../../models/User');
 const Friendship = require('../../models/Friendship');
 const Conversation = require('../../models/Conversation');
+const Message = require('../../models/Message');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
@@ -12,6 +13,71 @@ const { getFullUrl, getBestUserImage, isUserFullyBanned } = require('./helpers')
 
 // بعد الرفض: يُسمح بإعادة الإرسال بعد 7 أيام
 const REDECLINE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+// 🛡️ حدود الحماية من السبام
+const MAX_PENDING_SENT = 20;               // أقصى طلبات معلقة مرسلة في نفس الوقت
+const DAILY_REQUEST_LIMIT_FREE = 10;       // طلبات/يوم (مجاني)
+const DAILY_REQUEST_LIMIT_PREMIUM = 30;    // طلبات/يوم (Premium)
+const MAX_FRIENDS_FREE = 100;              // أقصى أصدقاء (مجاني) — Premium غير محدود
+
+// Helper: هل اشتراك Premium فعّال؟
+const isPremiumActive = (user) =>
+    !!(user && user.isPremium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date()));
+
+// Helper: عدد أصدقائي المقبولين
+const countAcceptedFriends = (userId) => Friendship.countDocuments({
+    status: 'accepted',
+    $or: [{ requester: userId }, { recipient: userId }]
+});
+
+// Helper: هل توجد محادثة مقبولة بين الطرفين؟ (لخصوصية "contacts")
+const hasAcceptedConversation = async (a, b) => {
+    const conv = await Conversation.findOne({
+        type: 'private',
+        participants: { $all: [a, b] },
+        status: 'accepted'
+    }).select('_id').lean();
+    return !!conv;
+};
+
+// 👥 ميزة الأصدقاء: محادثة مفتوحة دائماً
+// عند قبول الصداقة — إعادة فتح المحادثة الموجودة (أياً كانت حالتها) أو إنشاء واحدة مقبولة
+async function ensureFriendConversation(userA, userB, aName = '', bName = '') {
+    try {
+        let conversation = await Conversation.findOne({
+            type: 'private',
+            participants: { $all: [userA, userB] }
+        });
+
+        if (conversation) {
+            if (conversation.status !== 'accepted' || !conversation.isActive) {
+                conversation.status = 'accepted';
+                conversation.isActive = true;
+                await conversation.save();
+            }
+        } else {
+            conversation = await Conversation.create({
+                type: 'private',
+                participants: [userA, userB],
+                creator: userA,
+                status: 'accepted',
+                isActive: true,
+                title: `محادثة بين ${aName} و ${bName}`
+            });
+        }
+
+        // مسح كاش شركاء المحادثات للطرفين
+        if (global.invalidatePartnersCache) {
+            global.invalidatePartnersCache(String(userA));
+            global.invalidatePartnersCache(String(userB));
+        }
+
+        return conversation;
+    } catch (e) {
+        console.error('ensureFriendConversation error:', e.message);
+        return null;
+    }
+}
 
 // Helper: صورة المستخدم كـ URL كامل
 const userImageUrl = (user) => getFullUrl(getBestUserImage(user)) || null;
@@ -51,7 +117,7 @@ router.post('/friends/request', protect, async (req, res) => {
         }
 
         const target = await User.findById(targetUserId)
-            .select('name isActive bannedWords suspension deviceToken notificationPreferences')
+            .select('name isActive bannedWords suspension deviceToken notificationPreferences privacySettings')
             .lean();
         if (!target || isUserFullyBanned(target)) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -61,7 +127,77 @@ router.post('/friends/request', protect, async (req, res) => {
             return res.status(403).json({ success: false, message: 'لا يمكن إرسال طلب صداقة لهذا المستخدم' });
         }
 
+        // 🔒 خصوصية المستقبِل: من يستطيع إرسال طلب صداقة له؟
+        const targetPref = target.privacySettings?.friendRequests || 'everyone';
+        if (targetPref === 'nobody') {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم لا يستقبل طلبات صداقة',
+                code: 'FRIEND_REQUESTS_DISABLED'
+            });
+        }
+        if (targetPref === 'contacts' && !(await hasAcceptedConversation(myId, targetUserId))) {
+            return res.status(403).json({
+                success: false,
+                message: 'هذا المستخدم يستقبل طلبات الصداقة ممن تحدث معهم فقط — ابدأ محادثة أولاً',
+                code: 'FRIEND_REQUESTS_CONTACTS_ONLY'
+            });
+        }
+
         const existing = await findFriendshipBetween(myId, targetUserId);
+
+        // 🛡️ الحدود — تنطبق فقط عند إنشاء/إحياء طلب جديد (وليس على القبول التلقائي المتبادل)
+        const isMutualAutoAccept = existing
+            && existing.status === 'pending'
+            && String(existing.requester) === String(targetUserId);
+
+        if (!isMutualAutoAccept && (!existing || existing.status === 'declined')) {
+            const me = await User.findById(myId).select('isPremium premiumExpiresAt').lean();
+            const premium = isPremiumActive(me);
+
+            // 1) حد الأصدقاء الكلي (مجاني فقط)
+            if (!premium) {
+                const myFriendsCount = await countAcceptedFriends(myId);
+                if (myFriendsCount >= MAX_FRIENDS_FREE) {
+                    return res.status(403).json({
+                        success: false,
+                        message: `وصلت الحد الأقصى (${MAX_FRIENDS_FREE} صديق) — اشترك في Premium لأصدقاء بلا حدود`,
+                        code: 'FRIENDS_LIMIT_REACHED',
+                        data: { limit: MAX_FRIENDS_FREE, requiresPremium: true }
+                    });
+                }
+            }
+
+            // 2) حد الطلبات المعلقة المرسلة
+            const pendingSent = await Friendship.countDocuments({ requester: myId, status: 'pending' });
+            if (pendingSent >= MAX_PENDING_SENT) {
+                return res.status(429).json({
+                    success: false,
+                    message: `لديك ${MAX_PENDING_SENT} طلباً معلقاً — انتظر الردود أو ألغِ بعضها`,
+                    code: 'PENDING_LIMIT_REACHED',
+                    data: { limit: MAX_PENDING_SENT }
+                });
+            }
+
+            // 3) الحد اليومي
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            const sentToday = await Friendship.countDocuments({
+                requester: myId,
+                createdAt: { $gte: startOfDay }
+            });
+            const dailyLimit = premium ? DAILY_REQUEST_LIMIT_PREMIUM : DAILY_REQUEST_LIMIT_FREE;
+            if (sentToday >= dailyLimit) {
+                return res.status(429).json({
+                    success: false,
+                    message: premium
+                        ? `وصلت الحد اليومي (${dailyLimit} طلب) — حاول غداً`
+                        : `وصلت الحد اليومي (${dailyLimit} طلبات) — اشترك في Premium لحد أعلى`,
+                    code: 'DAILY_LIMIT_REACHED',
+                    data: { limit: dailyLimit, requiresPremium: !premium }
+                });
+            }
+        }
 
         if (existing) {
             if (existing.status === 'accepted') {
@@ -73,8 +209,14 @@ router.post('/friends/request', protect, async (req, res) => {
                     existing.status = 'accepted';
                     existing.respondedAt = new Date();
                     await existing.save();
+                    // 👥 ميزة: محادثة مفتوحة دائماً بين الأصدقاء
+                    const conv = await ensureFriendConversation(myId, targetUserId, req.user.name, target.name);
                     await notifyAccepted(req.user, targetUserId, existing._id);
-                    return res.json({ success: true, message: 'أصبحتما صديقين', data: { status: 'friends', friendshipId: existing._id } });
+                    return res.json({
+                        success: true,
+                        message: 'أصبحتما صديقين',
+                        data: { status: 'friends', friendshipId: existing._id, conversationId: conv?._id || null }
+                    });
                 }
                 return res.status(409).json({ success: false, message: 'الطلب مرسل مسبقاً', data: { status: 'pending_sent' } });
             }
@@ -177,13 +319,38 @@ router.post('/friends/requests/:id/accept', protect, async (req, res) => {
             return res.status(403).json({ success: false, message: 'غير مصرح' });
         }
 
+        // 🛡️ حد الأصدقاء للمستقبِل (مجاني فقط)
+        const me = await User.findById(req.user._id).select('isPremium premiumExpiresAt').lean();
+        if (!isPremiumActive(me)) {
+            const myFriendsCount = await countAcceptedFriends(req.user._id);
+            if (myFriendsCount >= MAX_FRIENDS_FREE) {
+                return res.status(403).json({
+                    success: false,
+                    message: `وصلت الحد الأقصى (${MAX_FRIENDS_FREE} صديق) — اشترك في Premium لقبول المزيد`,
+                    code: 'FRIENDS_LIMIT_REACHED',
+                    data: { limit: MAX_FRIENDS_FREE, requiresPremium: true }
+                });
+            }
+        }
+
         friendship.status = 'accepted';
         friendship.respondedAt = new Date();
         await friendship.save();
 
+        // 👥 ميزة: محادثة مفتوحة دائماً بين الأصدقاء
+        const requesterUser = await User.findById(friendship.requester).select('name').lean();
+        const conv = await ensureFriendConversation(
+            req.user._id, friendship.requester,
+            req.user.name, requesterUser?.name || ''
+        );
+
         await notifyAccepted(req.user, friendship.requester, friendship._id);
 
-        res.json({ success: true, message: 'أصبحتما صديقين', data: { status: 'friends', friendshipId: friendship._id } });
+        res.json({
+            success: true,
+            message: 'أصبحتما صديقين',
+            data: { status: 'friends', friendshipId: friendship._id, conversationId: conv?._id || null }
+        });
     } catch (error) {
         console.error('friends/accept error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
@@ -296,7 +463,9 @@ router.get('/friends', protect, async (req, res) => {
             const u = userMap[otherId];
             if (!u || isUserFullyBanned(u)) return null;
 
-            const hidePresence = u.privacySettings?.showLastSeen === false || u.stealthMode === true;
+            // 👥 ميزة الأصدقاء: يرون الحالة حتى مع إخفاء "آخر ظهور" عن العامة
+            // stealthMode (التخفي الكامل — Premium) يبقى محترماً
+            const hidePresence = u.stealthMode === true;
 
             return {
                 friendshipId: f._id,
@@ -352,6 +521,133 @@ router.get('/friends/requests', protect, async (req, res) => {
         res.json({ success: true, data: { requests: data, totalCount: data.length } });
     } catch (error) {
         console.error('friends/requests error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// ==========================================
+// GET /friends/suggestions — اقتراحات أصدقاء ذكية ("قد تعرفهم")
+// مبنية على كثافة التفاعل في المحادثات (آخر 30 يوم) — يستبعد الأصدقاء والطلبات القائمة
+// ==========================================
+router.get('/friends/suggestions', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+
+        // 1. كل من تربطني بهم علاقة صداقة (أي حالة) — نستبعدهم
+        const existingFriendships = await Friendship.find({
+            $or: [{ requester: userId }, { recipient: userId }]
+        }).select('requester recipient status respondedAt updatedAt').lean();
+
+        const excludedIds = new Set();
+        for (const f of existingFriendships) {
+            const otherId = String(f.requester) === String(userId) ? String(f.recipient) : String(f.requester);
+            if (f.status === 'declined') {
+                // المرفوض يُستبعد فقط خلال الـ cooldown
+                const declinedAt = f.respondedAt || f.updatedAt;
+                if (declinedAt && (Date.now() - new Date(declinedAt).getTime()) < REDECLINE_COOLDOWN_MS) {
+                    excludedIds.add(otherId);
+                }
+            } else {
+                excludedIds.add(otherId);
+            }
+        }
+
+        // 2. المحظورون (من الطرفين لا يمكن فحصهما بكفاءة هنا — نفحص قائمتي)
+        const me = await User.findById(userId).select('blockedUsers').lean();
+        (me?.blockedUsers || []).forEach(id => excludedIds.add(String(id)));
+
+        // 3. محادثاتي النشطة المقبولة
+        const conversations = await Conversation.find({
+            participants: userId,
+            status: 'accepted',
+            isActive: true
+        }).select('_id participants').lean();
+
+        const candidates = [];
+        const convByOther = {};
+        for (const c of conversations) {
+            const otherId = c.participants.find(p => String(p) !== String(userId));
+            if (otherId && !excludedIds.has(String(otherId))) {
+                candidates.push(c._id);
+                convByOther[String(c._id)] = String(otherId);
+            }
+        }
+
+        if (candidates.length === 0) {
+            return res.json({ success: true, data: { suggestions: [] } });
+        }
+
+        // 4. كثافة التفاعل آخر 30 يوم (رسائل متبادلة = إشارة صداقة حقيقية)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const messageCounts = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: candidates },
+                    createdAt: { $gte: thirtyDaysAgo },
+                    isDeleted: false
+                }
+            },
+            {
+                $group: {
+                    _id: '$conversation',
+                    total: { $sum: 1 },
+                    myMessages: { $sum: { $cond: [{ $eq: ['$sender', userId] }, 1, 0] } },
+                    lastMessageAt: { $max: '$createdAt' }
+                }
+            }
+        ]);
+
+        // score: يشترط تبادلاً فعلياً من الطرفين (وليس رسائل من طرف واحد)
+        const ranked = messageCounts
+            .map(m => {
+                const theirs = m.total - m.myMessages;
+                const balance = (m.myMessages > 0 && theirs > 0)
+                    ? Math.min(m.myMessages, theirs) / Math.max(m.myMessages, theirs)
+                    : 0;
+                return {
+                    conversationId: String(m._id),
+                    otherId: convByOther[String(m._id)],
+                    score: Math.round(m.total * balance * 10),
+                    messageCount: m.total
+                };
+            })
+            .filter(m => m.score > 0 && m.otherId)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+
+        if (ranked.length === 0) {
+            return res.json({ success: true, data: { suggestions: [] } });
+        }
+
+        // 5. بيانات المستخدمين
+        const users = await User.find({ _id: { $in: ranked.map(r => r.otherId) } })
+            .select('name profileImage photos isPremium isActive bannedWords suspension verification.isVerified privacySettings')
+            .lean();
+        const userMap = {};
+        users.forEach(u => { userMap[String(u._id)] = u; });
+
+        const suggestions = ranked.map(r => {
+            const u = userMap[r.otherId];
+            if (!u || isUserFullyBanned(u)) return null;
+            // احترام خصوصية الطرف الآخر — لا نقترح من لا يستقبل طلبات
+            if ((u.privacySettings?.friendRequests || 'everyone') === 'nobody') return null;
+            return {
+                conversationId: r.conversationId,
+                messageCount: r.messageCount,
+                user: {
+                    _id: u._id,
+                    name: u.name,
+                    profileImage: userImageUrl(u),
+                    isPremium: !!u.isPremium,
+                    isVerified: u.verification?.isVerified || false
+                }
+            };
+        }).filter(Boolean);
+
+        res.json({ success: true, data: { suggestions } });
+    } catch (error) {
+        console.error('friends/suggestions error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
 });

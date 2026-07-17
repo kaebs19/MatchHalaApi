@@ -6,6 +6,7 @@ const User = require('../../models/User');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const Notification = require('../../models/Notification');
+const Friendship = require('../../models/Friendship');
 const FlaggedMessage = require('../../models/FlaggedMessage');
 const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
@@ -135,6 +136,28 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 message: 'لا يمكن إرسال رسالة — المستخدم موقوف',
                 code: 'RECIPIENT_SUSPENDED'
             });
+        }
+
+        // 👥 ميزة الأصدقاء: محادثة مفتوحة دائماً —
+        // لو المحادثة مغلقة/منتهية/غير نشطة والطرفان صديقان → إعادة فتح تلقائية
+        if (['cancelled', 'expired', 'rejected'].includes(conversation.status) || !conversation.isActive) {
+            const otherParticipant = conversation.participants.find(
+                p => p._id.toString() !== req.user._id.toString()
+            );
+            if (otherParticipant) {
+                const friendship = await Friendship.findOne({
+                    status: 'accepted',
+                    $or: [
+                        { requester: req.user._id, recipient: otherParticipant._id },
+                        { requester: otherParticipant._id, recipient: req.user._id }
+                    ]
+                }).select('_id').lean();
+                if (friendship) {
+                    conversation.status = 'accepted';
+                    conversation.isActive = true;
+                    await conversation.save();
+                }
+            }
         }
 
         // ✅ محادثة منتهية (ملغاة) — لا إرسال إلا بطلب جديد يُقبل من الطرف الآخر

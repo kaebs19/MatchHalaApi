@@ -419,6 +419,56 @@ async function notifyConversationPartners(userId, event, data) {
     }
 }
 
+// ══════════════════════════════════════════
+// 👥 إشعار "صديقك متصل الآن" (friend:online)
+// ══════════════════════════════════════════
+// Rate-limit: مرة واحدة لكل زوج (صديق→صديق) كل 4 ساعات — يمنع الإزعاج عند تقلّب الاتصال
+const FRIEND_ONLINE_COOLDOWN = 4 * 60 * 60 * 1000;
+const friendOnlineNotified = new Map();   // key: `${userId}:${friendId}` → timestamp
+
+// تنظيف السجلات القديمة كل ساعة
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, ts] of friendOnlineNotified) {
+        if (now - ts > FRIEND_ONLINE_COOLDOWN) friendOnlineNotified.delete(key);
+    }
+}, 60 * 60 * 1000);
+
+async function notifyFriendsUserOnline(userId) {
+    try {
+        const me = await User.findById(userId)
+            .select('name profileImage stealthMode privacySettings.notifyFriendsOnline').lean();
+        if (!me) return;
+        // التخفي الكامل (Premium) أو إيقاف الإعداد → لا إشعار
+        if (me.stealthMode === true) return;
+        if (me.privacySettings?.notifyFriendsOnline === false) return;
+
+        const Friendship = require('./models/Friendship');
+        const friendships = await Friendship.find({
+            status: 'accepted',
+            $or: [{ requester: userId }, { recipient: userId }]
+        }).select('requester recipient').lean();
+
+        if (friendships.length === 0) return;
+
+        const now = Date.now();
+        for (const f of friendships) {
+            const friendId = String(f.requester) === String(userId) ? String(f.recipient) : String(f.requester);
+            const key = `${userId}:${friendId}`;
+            const last = friendOnlineNotified.get(key) || 0;
+            if (now - last < FRIEND_ONLINE_COOLDOWN) continue;
+            friendOnlineNotified.set(key, now);
+            // socket فقط (لا push) — يظهر toast لو الصديق داخل التطبيق الآن
+            io.to(`user:${friendId}`).emit('friend:online', {
+                userId: String(userId),
+                name: me.name || ''
+            });
+        }
+    } catch (error) {
+        console.error('خطأ في notifyFriendsUserOnline:', error.message);
+    }
+}
+
 // Socket.IO Connection Handler
 io.on('connection', async (socket) => {
     if (process.env.NODE_ENV !== 'production') console.log(`👤 متصل: ${socket.user.name}`);
@@ -447,6 +497,8 @@ io.on('connection', async (socket) => {
     // إن كان مجرّد إعادة اتصال خلال فترة السماح، فهو أصلاً «متصل» عندهم — لا داعي للإبلاغ
     if (!wasReconnecting) {
         notifyConversationPartners(socket.userId, 'user:online', { userId: socket.userId });
+        // 👥 إشعار الأصدقاء المتصلين "صديقك متصل الآن" (rate-limited، fire-and-forget)
+        notifyFriendsUserOnline(socket.userId);
     }
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)

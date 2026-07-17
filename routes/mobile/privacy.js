@@ -136,7 +136,10 @@ router.get('/privacy/settings', protect, async (req, res) => {
                     enabled: pauseActive,
                     until: pauseActive ? (paused.until || null) : null
                 },
-                allowSensitiveContent: user.privacySettings?.allowSensitiveContent ?? false
+                allowSensitiveContent: user.privacySettings?.allowSensitiveContent ?? false,
+                // 👥 نظام الأصدقاء
+                friendRequests: user.privacySettings?.friendRequests || 'everyone',
+                notifyFriendsOnline: user.privacySettings?.notifyFriendsOnline ?? true
             }
         });
     } catch (error) {
@@ -165,6 +168,62 @@ router.patch('/privacy/accepting-requests', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في تغيير إعداد استقبال الطلبات:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/friend-requests
+// @desc    👥 من يستطيع إرسال طلب صداقة لي؟ everyone | contacts | nobody
+// @access  Private
+router.patch('/privacy/friend-requests', protect, async (req, res) => {
+    try {
+        const { friendRequests } = req.body;
+
+        if (!['everyone', 'contacts', 'nobody'].includes(friendRequests)) {
+            return res.status(400).json({ success: false, message: 'قيمة غير صالحة (everyone/contacts/nobody)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            $set: { 'privacySettings.friendRequests': friendRequests }
+        });
+
+        const labels = {
+            everyone: 'الجميع يستطيع إرسال طلب صداقة',
+            contacts: 'فقط من تحدثت معهم يستطيعون إرسال طلب صداقة',
+            nobody: 'تم إيقاف استقبال طلبات الصداقة'
+        };
+
+        res.json({ success: true, message: labels[friendRequests], data: { friendRequests } });
+    } catch (error) {
+        console.error('خطأ في تغيير خصوصية طلبات الصداقة:', error);
+        res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
+    }
+});
+
+// @route   PATCH /api/mobile/privacy/notify-friends-online
+// @desc    👥 إشعار أصدقائي عند اتصالي (friend:online)
+// @access  Private
+router.patch('/privacy/notify-friends-online', protect, async (req, res) => {
+    try {
+        const { notifyFriendsOnline } = req.body;
+
+        if (typeof notifyFriendsOnline !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'القيمة مطلوبة (true/false)' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            $set: { 'privacySettings.notifyFriendsOnline': notifyFriendsOnline }
+        });
+
+        res.json({
+            success: true,
+            message: notifyFriendsOnline
+                ? 'سيتم إشعار أصدقائك عند اتصالك'
+                : 'لن يتم إشعار أصدقائك عند اتصالك',
+            data: { notifyFriendsOnline }
+        });
+    } catch (error) {
+        console.error('خطأ في تغيير إعداد إشعار الأصدقاء:', error);
         res.status(500).json({ success: false, message: 'فشل في تغيير الإعداد' });
     }
 });
