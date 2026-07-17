@@ -111,31 +111,10 @@ router.post('/friends/request', protect, async (req, res) => {
     }
 });
 
-// إشعار + push + socket لطلب الصداقة
+// إشعار (يُحفظ في DB تلقائياً عبر pushNotificationService) + push + socket لطلب الصداقة
 async function notifyRequest(sender, recipientId, friendshipId) {
     const title = '👥 طلب صداقة جديد';
     const body = `${sender.name} يريد إضافتك كصديق`;
-
-    try {
-        await Notification.create({
-            title, body,
-            type: 'friend_request',
-            sender: sender._id,
-            recipients: 'specific',
-            targetUsers: [recipientId],
-            data: {
-                friendshipId: String(friendshipId),
-                requesterId: String(sender._id),
-                requesterName: sender.name,
-                requesterAvatar: userImageUrl(sender),
-                status: 'pending'
-            },
-            status: 'sent',
-            sentAt: new Date()
-        });
-    } catch (e) {
-        console.error('friend_request notification error:', e.message);
-    }
 
     if (global.io) {
         global.io.to(`user:${recipientId}`).emit('friend:request', {
@@ -151,34 +130,15 @@ async function notifyRequest(sender, recipientId, friendshipId) {
         friendshipId: String(friendshipId),
         senderId: String(sender._id),
         senderName: sender.name,
-        senderImage: userImageUrl(sender) || ''
+        senderImage: userImageUrl(sender) || '',
+        status: 'pending'
     }).catch(() => {});
 }
 
-// إشعار + push + socket لقبول الصداقة (يصل لمرسل الطلب الأصلي)
+// إشعار (يُحفظ في DB تلقائياً عبر pushNotificationService) + push + socket لقبول الصداقة
 async function notifyAccepted(accepter, requesterId, friendshipId) {
     const title = '🎉 تم قبول طلب الصداقة';
     const body = `${accepter.name} قبل طلب صداقتك — أصبحتما صديقين`;
-
-    try {
-        await Notification.create({
-            title, body,
-            type: 'friend_accepted',
-            sender: accepter._id,
-            recipients: 'specific',
-            targetUsers: [requesterId],
-            data: {
-                friendshipId: String(friendshipId),
-                accepterId: String(accepter._id),
-                accepterName: accepter.name,
-                accepterAvatar: userImageUrl(accepter)
-            },
-            status: 'sent',
-            sentAt: new Date()
-        });
-    } catch (e) {
-        console.error('friend_accepted notification error:', e.message);
-    }
 
     // تحديث إشعار الطلب الأصلي حتى يعرف التطبيق أنه تمت معالجته
     Notification.updateMany(

@@ -119,6 +119,9 @@ const PREFERENCE_KEY_BY_TYPE = {
     'conversation_request':  'invitations',
     'conversation_accepted': 'invitations',
     'conversation_reminder': 'invitations',
+    // طلبات الصداقة
+    'friend_request':        'invitations',
+    'friend_accepted':       'invitations',
     // الرسائل
     'message':               'messages',
     'new_message':           'messages',
