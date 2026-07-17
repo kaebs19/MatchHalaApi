@@ -749,6 +749,35 @@ router.put('/accepting-requests', auth, async (req, res) => {
     }
 });
 
+// 👥 Privacy: من يستطيع إرسال طلب صداقة لي؟ everyone | contacts | nobody
+router.put('/friend-requests', auth, async (req, res) => {
+    try {
+        const { friendRequests } = req.body;
+        if (!['everyone', 'contacts', 'nobody'].includes(friendRequests)) {
+            return res.status(400).json({ success: false, message: 'قيمة غير صالحة (everyone/contacts/nobody)' });
+        }
+        await User.findByIdAndUpdate(req.user._id, {
+            $set: { 'privacySettings.friendRequests': friendRequests }
+        });
+        res.json({ success: true, data: { friendRequests } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// 👥 Privacy: إشعار أصدقائي عند اتصالي
+router.put('/notify-friends-online', auth, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        await User.findByIdAndUpdate(req.user._id, {
+            $set: { 'privacySettings.notifyFriendsOnline': !!enabled }
+        });
+        res.json({ success: true, data: { notifyFriendsOnline: !!enabled } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
 // ✅ Privacy: Premium-only requests
 router.put('/premium-only-requests', auth, async (req, res) => {
     try {
