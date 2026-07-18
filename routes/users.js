@@ -497,11 +497,21 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
         const Conversation = require('../models/Conversation');
         const Message = require('../models/Message');
         const FlaggedMessage = require('../models/FlaggedMessage');
+        const Friendship = require('../models/Friendship');
 
-        const [conversationCount, messageCount, flaggedCount] = await Promise.all([
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const [conversationCount, messageCount, flaggedCount,
+               friendsCount, pendingSentCount, pendingReceivedCount, requestsSentToday] = await Promise.all([
             Conversation.countDocuments({ participants: user._id }),
             Message.countDocuments({ sender: user._id }),
-            FlaggedMessage.countDocuments({ sender: user._id })
+            FlaggedMessage.countDocuments({ sender: user._id }),
+            // 👥 نظام الأصدقاء
+            Friendship.countDocuments({ status: 'accepted', $or: [{ requester: user._id }, { recipient: user._id }] }),
+            Friendship.countDocuments({ status: 'pending', requester: user._id }),
+            Friendship.countDocuments({ status: 'pending', recipient: user._id }),
+            Friendship.countDocuments({ requester: user._id, createdAt: { $gte: startOfDay } })
         ]);
 
         res.status(200).json({
@@ -511,7 +521,12 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
                 stats: {
                     conversations: conversationCount,
                     messages: messageCount,
-                    flaggedMessages: flaggedCount
+                    flaggedMessages: flaggedCount,
+                    // 👥 الأصدقاء — لكشف أنماط السبام (requestsSentToday المرتفع = مؤشر)
+                    friends: friendsCount,
+                    friendRequestsSent: pendingSentCount,
+                    friendRequestsReceived: pendingReceivedCount,
+                    friendRequestsSentToday: requestsSentToday
                 }
             }
         });
@@ -906,6 +921,17 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
         // بلاغات السبام
         const spamReportsCount = await SpamReport.countDocuments({ userId: userId });
 
+        // 👥 إحصائيات الأصدقاء (لكشف أنماط السبام — sentToday المرتفع = مؤشر)
+        const Friendship = require('../models/Friendship');
+        const friendsStartOfDay = new Date();
+        friendsStartOfDay.setHours(0, 0, 0, 0);
+        const [friendsCount, friendRequestsSent, friendRequestsReceived, friendRequestsSentToday] = await Promise.all([
+            Friendship.countDocuments({ status: 'accepted', $or: [{ requester: userId }, { recipient: userId }] }),
+            Friendship.countDocuments({ status: 'pending', requester: userId }),
+            Friendship.countDocuments({ status: 'pending', recipient: userId }),
+            Friendship.countDocuments({ requester: userId, createdAt: { $gte: friendsStartOfDay } })
+        ]);
+
         // حساب الإحصائيات
         const stats = {
             totalConversations: userConversations.length,
@@ -924,7 +950,12 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
             // إحصائيات البلاغات
             reportsReceived,
             reportsSent,
-            spamReportsCount
+            spamReportsCount,
+            // 👥 الأصدقاء
+            friendsCount,
+            friendRequestsSent,
+            friendRequestsReceived,
+            friendRequestsSentToday
         };
 
         // ✅ عدد مخالفات لكل محادثة (banned_word violations)

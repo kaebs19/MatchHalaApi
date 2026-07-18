@@ -1563,6 +1563,27 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     <p className="stat-value">{stats.spamReportsCount || 0}</p>
                                 </div>
                             </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">👥</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">الأصدقاء</p>
+                                    <p className="stat-value">{stats.friendsCount || 0}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">📤</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">طلبات صداقة معلقة (أرسلها)</p>
+                                    <p className="stat-value">{stats.friendRequestsSent || 0}</p>
+                                </div>
+                            </div>
+                            <div className="stat-card" style={(stats.friendRequestsSentToday || 0) >= 8 ? {border: '1px solid #dc2626', background: '#fef2f2'} : undefined}>
+                                <div className="stat-icon">⚡</div>
+                                <div className="stat-info">
+                                    <p className="stat-label">طلبات صداقة اليوم{(stats.friendRequestsSentToday || 0) >= 8 ? ' ⚠️' : ''}</p>
+                                    <p className="stat-value">{stats.friendRequestsSentToday || 0}</p>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Additional Stats */}

@@ -676,7 +676,11 @@ router.get('/friends/status/:userId', protect, async (req, res) => {
             success: true,
             data: {
                 status,
-                friendshipId: friendship && friendship.status !== 'declined' ? friendship._id : null
+                friendshipId: friendship && friendship.status !== 'declined' ? friendship._id : null,
+                // 👥 تاريخ بدء الصداقة (للعرض: "أصدقاء منذ ...")
+                since: (friendship && friendship.status === 'accepted')
+                    ? (friendship.respondedAt || friendship.updatedAt)
+                    : null
             }
         });
     } catch (error) {
