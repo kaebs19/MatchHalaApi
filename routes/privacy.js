@@ -283,14 +283,21 @@ router.post('/block/:userId', [
             await sharedConv.save();
         }
 
-        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه)
+        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه) + التنظيف من القوائم والتثبيت
         const Friendship = require('../models/Friendship');
-        await Friendship.deleteMany({
-            $or: [
-                { requester: req.user.id, recipient: userId },
-                { requester: userId, recipient: req.user.id }
-            ]
-        });
+        const FriendList = require('../models/FriendList');
+        await Promise.all([
+            Friendship.deleteMany({
+                $or: [
+                    { requester: req.user.id, recipient: userId },
+                    { requester: userId, recipient: req.user.id }
+                ]
+            }),
+            FriendList.updateMany({ owner: req.user.id }, { $pull: { members: userId } }),
+            FriendList.updateMany({ owner: userId }, { $pull: { members: req.user.id } }),
+            User.updateOne({ _id: req.user.id }, { $pull: { pinnedFriends: userId } }),
+            User.updateOne({ _id: userId }, { $pull: { pinnedFriends: req.user.id } })
+        ]);
 
         res.json({
             success: true,

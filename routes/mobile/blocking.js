@@ -51,13 +51,20 @@ router.post('/users/block/:userId', protect, async (req, res) => {
             }
         );
 
-        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه)
-        await Friendship.deleteMany({
-            $or: [
-                { requester: req.user._id, recipient: userId },
-                { requester: userId, recipient: req.user._id }
-            ]
-        });
+        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه) + التنظيف من القوائم والتثبيت
+        const FriendList = require('../../models/FriendList');
+        await Promise.all([
+            Friendship.deleteMany({
+                $or: [
+                    { requester: req.user._id, recipient: userId },
+                    { requester: userId, recipient: req.user._id }
+                ]
+            }),
+            FriendList.updateMany({ owner: req.user._id }, { $pull: { members: userId } }),
+            FriendList.updateMany({ owner: userId }, { $pull: { members: req.user._id } }),
+            User.updateOne({ _id: req.user._id }, { $pull: { pinnedFriends: userId } }),
+            User.updateOne({ _id: userId }, { $pull: { pinnedFriends: req.user._id } })
+        ]);
 
         res.json({
             success: true,

@@ -217,6 +217,11 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }],
+    // 👥 أصدقاء مثبتون (يظهرون أعلى قوائم الأصدقاء — تثبيت عام)
+    pinnedFriends: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     // قائمة المحادثات المكتومة
     mutedConversations: [{
         conversationId: {

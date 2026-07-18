@@ -13,6 +13,8 @@ router.use('/', require('./device'));
 router.use('/', require('./reports'));
 router.use('/', require('./warnings'));
 router.use('/', require('./wheel'));
+// ⚠️ friendLists قبل friends — حتى لا يلتقط DELETE /friends/:userId مسار /friends/lists/:id
+router.use('/', require('./friendLists'));
 router.use('/', require('./friends'));
 
 module.exports = router;

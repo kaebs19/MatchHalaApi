@@ -407,6 +407,17 @@ router.delete('/friends/:userId', protect, async (req, res) => {
 
         await Friendship.deleteOne({ _id: friendship._id });
 
+        // 👥 تنظيف: إزالة الطرفين من قوائم/تثبيتات بعضهما
+        if (friendship.status === 'accepted') {
+            const FriendList = require('../../models/FriendList');
+            await Promise.all([
+                FriendList.updateMany({ owner: myId }, { $pull: { members: otherId } }),
+                FriendList.updateMany({ owner: otherId }, { $pull: { members: myId } }),
+                User.updateOne({ _id: myId }, { $pull: { pinnedFriends: otherId } }),
+                User.updateOne({ _id: otherId }, { $pull: { pinnedFriends: myId } })
+            ]);
+        }
+
         res.json({ success: true, message: friendship.status === 'accepted' ? 'تمت إزالة الصديق' : 'تم إلغاء الطلب' });
     } catch (error) {
         console.error('friends/delete error:', error);
