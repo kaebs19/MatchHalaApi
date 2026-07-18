@@ -283,6 +283,15 @@ router.post('/block/:userId', [
             await sharedConv.save();
         }
 
+        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه)
+        const Friendship = require('../models/Friendship');
+        await Friendship.deleteMany({
+            $or: [
+                { requester: req.user.id, recipient: userId },
+                { requester: userId, recipient: req.user.id }
+            ]
+        });
+
         res.json({
             success: true,
             message: `تم حظر ${userToBlock.name} بنجاح. لن يتمكن من رؤيتك أو التواصل معك`,

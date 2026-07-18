@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
+const Friendship = require('../../models/Friendship');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl } = require('./helpers');
 
@@ -49,6 +50,14 @@ router.post('/users/block/:userId', protect, async (req, res) => {
                 $push: { hiddenFor: { user: req.user._id, hiddenAt: new Date(), reason: 'block' } }
             }
         );
+
+        // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه)
+        await Friendship.deleteMany({
+            $or: [
+                { requester: req.user._id, recipient: userId },
+                { requester: userId, recipient: req.user._id }
+            ]
+        });
 
         res.json({
             success: true,
