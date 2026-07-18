@@ -1649,14 +1649,6 @@ router.delete('/delete-account', protect, async (req, res) => {
                 });
             }
         }
-        // حذف صورة الملف الشخصي إذا كانت موجودة
-        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
-            const imagePath = path.join(__dirname, '..', user.profileImage);
-            if (fs.existsSync(imagePath)) {
-                fs.unlinkSync(imagePath);
-            }
-        }
-
         // ✅ إخفاء المحادثات عند المستخدم فقط — الطرف الآخر يحتفظ بسجله
         // (الرسائل والمحادثات تبقى للطرف الآخر، المستخدم نفسه يُحذف)
         await Conversation.updateMany(
@@ -1668,6 +1660,11 @@ router.delete('/delete-account', protect, async (req, res) => {
                 $push: { hiddenFor: { user: req.user.id, hiddenAt: new Date(), reason: 'account_deleted' } }
             }
         );
+
+        // 🧹 تنظيف شامل: تمريرات/إعجابات/زيارات/مطابقات/إشعارات/أصدقاء/قوائم/ملفات صور
+        // (وفاءً بوعد صفحة "حذف الحساب والبيانات" القانونية)
+        const cleanupDeletedUser = require('../utils/cleanupDeletedUser');
+        await cleanupDeletedUser(user._id, user);
 
         // حذف المستخدم
         await user.deleteOne();

@@ -554,6 +554,10 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
             });
         }
 
+        // 🧹 تنظيف شامل: تمريرات/إعجابات/زيارات/مطابقات/إشعارات/أصدقاء/قوائم/ملفات صور
+        const cleanupDeletedUser = require('../utils/cleanupDeletedUser');
+        await cleanupDeletedUser(user._id, user);
+
         await user.deleteOne();
 
         // إبطال الـ Cache
