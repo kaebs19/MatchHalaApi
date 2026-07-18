@@ -5,8 +5,10 @@ module.exports = {
       script: 'server.js',
       instances: 4,
       exec_mode: 'cluster',
-      max_memory_restart: '400M',
-      node_args: '--max-old-space-size=512',
+      // ✅ 2026-07-18: رفع الحد من 400M — كان يسبب إعادة تشغيل كل 1-2 دقيقة
+      //    (ردود مقطوعة → decode_failure عند المستخدمين). السيرفر فيه 47GB.
+      max_memory_restart: '1G',
+      node_args: '--max-old-space-size=1024',
       env: {
         NODE_ENV: 'production'
       },
