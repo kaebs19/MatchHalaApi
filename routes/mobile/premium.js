@@ -6,7 +6,16 @@ const Conversation = require('../../models/Conversation');
 const Notification = require('../../models/Notification');
 const { protect } = require('../../middleware/auth');
 const pushNotificationService = require('../../services/pushNotificationService');
+const { getSubscriptionV2 } = require('../../services/googlePlayService');
 const { getFullUrl } = require('./helpers');
+
+// خريطة productId (Google Play) → plan (مطابقة لـ PremiumPlan في تطبيق أندرويد)
+const GOOGLE_PRODUCT_PLAN = {
+    premium_weekly: 'weekly',
+    premium_monthly: 'monthly',
+    premium_quarterly: 'quarterly'
+};
+const EXPECTED_ANDROID_PACKAGE = process.env.ANDROID_PACKAGE_NAME || 'com.chathala.hala';
 
 // ==========================================
 // Super Like + الاشتراكات (Premium)
@@ -302,6 +311,94 @@ router.post('/subscription/verify', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('خطأ في التحقق من الاشتراك:', error);
+        res.status(500).json({ success: false, message: 'فشل في التحقق من الاشتراك' });
+    }
+});
+
+// @route   POST /api/mobile/subscription/verify-google
+// @desc    التحقق من شراء Google Play عبر Play Developer API وتفعيل الاشتراك
+// @access  Protected
+router.post('/subscription/verify-google', protect, async (req, res) => {
+    try {
+        const { purchaseToken, productId, plan, packageName } = req.body;
+
+        if (!purchaseToken || !productId || !packageName) {
+            return res.status(400).json({ success: false, message: 'بيانات الشراء ناقصة' });
+        }
+
+        // منع انتحال اسم الحزمة
+        if (packageName !== EXPECTED_ANDROID_PACKAGE) {
+            return res.status(400).json({ success: false, message: 'اسم الحزمة غير معروف' });
+        }
+
+        // التحقق من مطابقة productId ↔ plan
+        const mappedPlan = GOOGLE_PRODUCT_PLAN[productId];
+        if (!mappedPlan) {
+            return res.status(400).json({ success: false, message: 'منتج غير معروف' });
+        }
+        if (plan && plan !== mappedPlan) {
+            return res.status(400).json({ success: false, message: 'عدم تطابق الخطة مع المنتج' });
+        }
+
+        // التحقق الفعلي عبر Google Play Developer API — لا نثق بالعميل
+        let sub;
+        try {
+            sub = await getSubscriptionV2(packageName, purchaseToken);
+        } catch (e) {
+            console.error('فشل التحقق من Google Play:', e?.response?.data || e.message);
+            return res.status(400).json({ success: false, message: 'تعذّر التحقق من الشراء لدى Google Play' });
+        }
+
+        // الحالات المقبولة فقط: نشط أو في فترة السماح
+        const activeStates = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD'];
+        if (!activeStates.includes(sub.subscriptionState)) {
+            return res.status(400).json({
+                success: false,
+                message: 'الاشتراك غير نشط',
+                data: { isPremium: false }
+            });
+        }
+
+        // تاريخ الانتهاء من أول lineItem
+        const lineItem = Array.isArray(sub.lineItems) ? sub.lineItems[0] : null;
+        const expiresAt = lineItem?.expiryTime ? new Date(lineItem.expiryTime) : null;
+        if (!expiresAt || isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
+            return res.status(400).json({
+                success: false,
+                message: 'انتهت صلاحية الاشتراك',
+                data: { isPremium: false }
+            });
+        }
+
+        // منع ربط نفس الشراء بحساب آخر (مشاركة الاشتراك)
+        const otherOwner = await User.findOne({
+            googlePurchaseToken: purchaseToken,
+            _id: { $ne: req.user._id }
+        }).select('_id').lean();
+        if (otherOwner) {
+            return res.status(409).json({ success: false, message: 'هذا الاشتراك مرتبط بحساب آخر' });
+        }
+
+        await User.findByIdAndUpdate(req.user._id, {
+            isPremium: true,
+            premiumPlan: mappedPlan,
+            premiumExpiresAt: expiresAt,
+            subscriptionProvider: 'google',
+            googlePurchaseToken: purchaseToken,
+            ...(sub.latestOrderId ? { subscriptionTransactionId: sub.latestOrderId } : {})
+        });
+
+        return res.json({
+            success: true,
+            message: 'تم تفعيل الاشتراك بنجاح',
+            data: {
+                isPremium: true,
+                plan: mappedPlan,
+                expiresAt: expiresAt.toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في verify-google:', error);
         res.status(500).json({ success: false, message: 'فشل في التحقق من الاشتراك' });
     }
 });

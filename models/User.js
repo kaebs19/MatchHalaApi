@@ -250,6 +250,15 @@ const userSchema = new mongoose.Schema({
     subscriptionTransactionId: { type: String, default: null },
     subscriptionOriginalTransactionId: { type: String, default: null },
 
+    // مزوّد الاشتراك ('apple' | 'google')
+    subscriptionProvider: {
+        type: String,
+        enum: ['apple', 'google', null],
+        default: null
+    },
+    // Google Play: purchaseToken الحالي (للتحقق وإعادة الفحص ومنع المشاركة بين الحسابات)
+    googlePurchaseToken: { type: String, default: null },
+
     // الموقع الجغرافي (GeoJSON)
     location: {
         type: { type: String, enum: ['Point'], default: 'Point' },
