@@ -377,12 +377,24 @@ router.get('/is-blocked/:userId', [
             });
         }
 
-        const user = await User.findById(req.user.id);
-        const isBlocked = user.blockedUsers?.includes(req.params.userId) || false;
+        // ✅ الحظر متبادل الأثر — نُرجع الاتجاهين حتى يقفل العميل المراسلة في الحالتين
+        const [user, target] = await Promise.all([
+            User.findById(req.user.id).select('blockedUsers').lean(),
+            User.findById(req.params.userId).select('blockedUsers').lean()
+        ]);
+
+        const me = String(req.user.id);
+        const them = String(req.params.userId);
+        const isBlocked = (user?.blockedUsers || []).some(id => String(id) === them);
+        const blockedByThem = (target?.blockedUsers || []).some(id => String(id) === me);
 
         res.json({
             success: true,
-            data: { isBlocked }
+            data: {
+                isBlocked,                              // أنا حظرته
+                blockedByThem,                          // هو حظرني
+                cannotContact: isBlocked || blockedByThem
+            }
         });
     } catch (error) {
         console.error('خطأ في التحقق من الحظر:', error);

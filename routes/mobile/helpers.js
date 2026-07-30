@@ -48,6 +48,58 @@ const isUserFullyBanned = (user) => {
     return false;
 };
 
+// ==========================================
+// 🚫 الحظر بين مستخدمين — فحص ثنائي الاتجاه
+// ==========================================
+// القاعدة: الحظر متبادل الأثر. لو حظر أحدهما الآخر فلا مراسلة ولا طلبات
+// ولا ظهور في الاكتشاف/البحث بأي اتجاه.
+const getBlockState = async (meId, otherId) => {
+    if (!meId || !otherId) return { blocked: false, iBlockedThem: false, theyBlockedMe: false };
+    const User = require('../../models/User');
+    const me = String(meId);
+    const them = String(otherId);
+    if (me === them) return { blocked: false, iBlockedThem: false, theyBlockedMe: false };
+
+    const [meDoc, themDoc] = await Promise.all([
+        User.findById(me).select('blockedUsers').lean(),
+        User.findById(them).select('blockedUsers').lean()
+    ]);
+
+    const iBlockedThem = (meDoc?.blockedUsers || []).some(id => String(id) === them);
+    const theyBlockedMe = (themDoc?.blockedUsers || []).some(id => String(id) === me);
+
+    return { blocked: iBlockedThem || theyBlockedMe, iBlockedThem, theyBlockedMe };
+};
+
+// Helper: استخراج معرّفات الطرف الآخر من محادثة (participants قد تكون populated أو IDs)
+const otherParticipantIds = (conversation, meId) => {
+    const me = String(meId);
+    return (conversation?.participants || [])
+        .map(p => String(p?._id || p))
+        .filter(id => id !== me);
+};
+
+// Helper: هل يمنع الحظر الإرسال في هذه المحادثة؟
+// يرجع كائن الخطأ الجاهز للإرسال (403) أو null لو لا يوجد حظر.
+const blockGuardForConversation = async (conversation, meId) => {
+    const others = otherParticipantIds(conversation, meId);
+    if (others.length === 0) return null;
+
+    for (const otherId of others) {
+        const state = await getBlockState(meId, otherId);
+        if (!state.blocked) continue;
+        return {
+            success: false,
+            code: 'USER_BLOCKED',
+            message: state.iBlockedThem
+                ? 'لا يمكنك مراسلة مستخدم قمت بحظره. ألغِ الحظر أولاً.'
+                : 'لا يمكن إرسال الرسالة لهذا المستخدم',
+            data: { iBlockedThem: state.iBlockedThem }
+        };
+    }
+    return null;
+};
+
 // Helper: قناع بيانات المستخدم المحظور — يحافظ على _id لكن يخفي الاسم/الصورة
 // يستخدم في الـ list endpoints ورسائل المحادثات لإظهار "مستخدم موقوف"
 const maskBannedUser = (user) => {
@@ -191,6 +243,9 @@ module.exports = {
     getUserImage,
     isUserFullyBanned,
     maskBannedUser,
+    getBlockState,
+    otherParticipantIds,
+    blockGuardForConversation,
     uploadMessageImage,
     uploadMessageAudio,
     uploadVerificationSelfie,

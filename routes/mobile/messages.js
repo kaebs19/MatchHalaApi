@@ -15,7 +15,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
 
@@ -48,6 +48,76 @@ function checkMessagingRestriction(req, mediaType = 'text') {
         };
     }
     // level === 'new_only': يُسمح فقط في المحادثات القائمة (يُفحص لاحقاً)
+    return null;
+}
+
+// ✅ Helper موحَّد: بوابة الإرسال في محادثة
+// يفحص (بهذا الترتيب): الحظر المتبادل → المحادثة منتهية → غير نشطة → معلّقة (طلب)
+// يُرجع { status, body } لو ممنوع، أو null لو مسموح.
+// ملاحظة: في حالة pending يُسمح للمنشئ برسالة واحدة فقط حتى يقبل الطرف الآخر
+// (مكافحة الإزعاج: إغلاق المحادثة ثم قصفها برسائل "طلب" متتالية).
+async function checkConversationSendGate(conversation, user) {
+    const userId = String(user._id);
+
+    // 1) الحظر — بأي اتجاه
+    const blockGuard = await blockGuardForConversation(conversation, userId);
+    if (blockGuard) return { status: 403, body: blockGuard };
+
+    // 2) محادثة منتهية (أنهاها أحد الطرفين)
+    if (conversation.status === 'cancelled') {
+        return {
+            status: 400,
+            body: {
+                success: false,
+                message: 'انتهت هذه المحادثة. أرسل طلباً جديداً للاستئناف.',
+                code: 'CONVERSATION_CANCELLED'
+            }
+        };
+    }
+
+    // 3) غير نشطة / مرفوضة / منتهية الصلاحية
+    if (!conversation.isActive || conversation.status === 'rejected' || conversation.status === 'expired') {
+        return {
+            status: 400,
+            body: { success: false, message: 'المحادثة غير نشطة', code: 'CONVERSATION_INACTIVE' }
+        };
+    }
+
+    // 4) معلّقة — فقط المنشئ يرسل، ورسالة واحدة فقط
+    if (conversation.status === 'pending') {
+        if (String(conversation.creator) !== userId) {
+            return {
+                status: 400,
+                body: {
+                    success: false,
+                    message: 'لا يمكنك الإرسال حتى تقبل المحادثة',
+                    code: 'CONVERSATION_PENDING'
+                }
+            };
+        }
+
+        const since = conversation.requestedAt || conversation.createdAt || new Date(0);
+        const sentInRequest = await Message.countDocuments({
+            conversation: conversation._id,
+            sender: user._id,
+            type: { $ne: 'system' },
+            isDeleted: { $ne: true },
+            createdAt: { $gte: since }
+        });
+
+        if (sentInRequest >= 1) {
+            return {
+                status: 403,
+                body: {
+                    success: false,
+                    message: 'أرسلت طلبك بالفعل. انتظر رد الطرف الآخر قبل إرسال رسالة أخرى.',
+                    code: 'PENDING_REQUEST_LIMIT',
+                    data: { allowed: 1, sent: sentInRequest }
+                }
+            };
+        }
+    }
+
     return null;
 }
 
@@ -126,6 +196,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             });
         }
 
+        // 🚫 الحظر — لا إرسال بأي اتجاه بين طرفين أحدهما حاظر للآخر
+        const blockGuard = await blockGuardForConversation(conversation, req.user._id);
+        if (blockGuard) return res.status(403).json(blockGuard);
+
         // ✅ منع إرسال/الرد لمستخدم موقوف بشكل كامل
         const anyRecipientBanned = conversation.participants.some(
             p => p._id.toString() !== req.user._id.toString() && isUserFullyBanned(p)
@@ -140,7 +214,15 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
         // 👥 ميزة الأصدقاء: محادثة مفتوحة دائماً —
         // لو المحادثة مغلقة/منتهية/غير نشطة والطرفان صديقان → إعادة فتح تلقائية
-        if (['cancelled', 'expired', 'rejected'].includes(conversation.status) || !conversation.isActive) {
+        // ⚠️ استثناء: لو أنهى الطرف الآخر المحادثة صراحةً وما زالت التهدئة سارية،
+        //    لا إعادة فتح تلقائية — حتى للأصدقاء (منع إزعاج بعد قرار إنهاء صريح).
+        const cancelCooldownActive = conversation.status === 'cancelled'
+            && conversation.reinviteAllowedAt
+            && new Date(conversation.reinviteAllowedAt) > new Date()
+            && String(conversation.cancelledBy) !== String(req.user._id);
+
+        if ((['cancelled', 'expired', 'rejected'].includes(conversation.status) || !conversation.isActive)
+            && !cancelCooldownActive) {
             const otherParticipant = conversation.participants.find(
                 p => p._id.toString() !== req.user._id.toString()
             );
@@ -160,32 +242,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
-        // ✅ محادثة منتهية (ملغاة) — لا إرسال إلا بطلب جديد يُقبل من الطرف الآخر
-        if (conversation.status === 'cancelled') {
-            return res.status(400).json({
-                success: false,
-                message: 'انتهت هذه المحادثة. أرسل طلباً جديداً للاستئناف.',
-                code: 'CONVERSATION_CANCELLED'
-            });
-        }
-
-        // التحقق من أن المحادثة نشطة
-        if (!conversation.isActive) {
-            return res.status(400).json({
-                success: false,
-                message: 'المحادثة غير نشطة'
-            });
-        }
-
-        // لو معلقة، بس المنشئ يقدر يرسل
-        if (conversation.status === 'pending') {
-            if (conversation.creator.toString() !== req.user._id.toString()) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'لا يمكنك الإرسال حتى تقبل المحادثة'
-                });
-            }
-        }
+        // ✅ بوابة الإرسال الموحَّدة: منتهية / غير نشطة / معلّقة (رسالة واحدة للمنشئ)
+        const sendGate = await checkConversationSendGate(conversation, req.user);
+        if (sendGate) return res.status(sendGate.status).json(sendGate.body);
 
         // ✅ Phase 2: لو messaging مقفول بسبب external promo violations → أبلغ المرسل بـ dialog (201)
         if (isMessagingLockedByPromo(req.user)) {
@@ -852,6 +911,13 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             });
         }
 
+        // ✅ بوابة الإرسال (حظر / منتهية / معلّقة)
+        const gateImg = await checkConversationSendGate(conversation, req.user);
+        if (gateImg) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(gateImg.status).json(gateImg.body);
+        }
+
         const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
@@ -993,14 +1059,11 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
         }
 
-        // ✅ منع إرسال الرسائل في المحادثات المعلّقة
-        if (conversation.status === 'pending') {
+        // ✅ بوابة الإرسال (حظر / منتهية / معلّقة)
+        const gateAudio = await checkConversationSendGate(conversation, req.user);
+        if (gateAudio) {
             try { fs.unlinkSync(req.file.path); } catch (e) {}
-            return res.status(403).json({
-                success: false,
-                message: 'لا يمكن إرسال رسالة قبل قبول الطلب',
-                code: 'CONVERSATION_PENDING'
-            });
+            return res.status(gateAudio.status).json(gateAudio.body);
         }
 
         // فحص حظر الكلمات (الرسائل الصوتية لا نفحصها نصياً — لكن نحترم ban)
@@ -1188,6 +1251,13 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
             });
         }
 
+        // ✅ بوابة الإرسال (حظر / منتهية / معلّقة) — كانت ناقصة في هذا المسار
+        const gateAltImg = await checkConversationSendGate(conversation, req.user);
+        if (gateAltImg) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(gateAltImg.status).json(gateAltImg.body);
+        }
+
         // رابط الصورة
         const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
@@ -1299,6 +1369,10 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                 message: 'ليس لديك صلاحية لهذه المحادثة'
             });
         }
+
+        // ✅ بوابة الإرسال (حظر / منتهية / معلّقة) — كانت ناقصة في هذا المسار
+        const gateAlt = await checkConversationSendGate(conversation, req.user);
+        if (gateAlt) return res.status(gateAlt.status).json(gateAlt.body);
 
         // إنشاء الرسالة
         const message = await Message.create({
@@ -1695,6 +1769,10 @@ router.post('/messages/forward', protect, async (req, res) => {
                 message: 'ليس لديك صلاحية لهذه المحادثة'
             });
         }
+
+        // ✅ بوابة الإرسال في المحادثة المستهدفة (حظر / منتهية / معلّقة)
+        const gateFwd = await checkConversationSendGate(targetConversation, req.user);
+        if (gateFwd) return res.status(gateFwd.status).json(gateFwd.body);
 
         // إنشاء الرسالة المُعاد توجيهها
         const forwardedMessage = await Message.create({

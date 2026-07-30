@@ -11,6 +11,7 @@ const Notification = require('../models/Notification');
 const { protect, adminOnly } = require('../middleware/auth');
 const { requirePremium } = require('../middleware/premium');
 const { sendNotificationToUser } = require('../services/pushNotificationService');
+const { getBlockState } = require('./mobile/helpers');
 const NodeCache = require('node-cache');
 // ✅ cache لـ /cards endpoint — 60 ثانية لكل user (يقلل CPU)
 const cardsCache = new NodeCache({ stdTTL: 60, checkperiod: 90 });
@@ -71,6 +72,18 @@ router.post('/', protect, async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'المستخدم غير موجود'
+            });
+        }
+
+        // 🚫 الحظر — لا إعجاب/سوبر لايك بأي اتجاه (كان يسمح بالوصول لقائمة «من أعجب بي»)
+        const blockState = await getBlockState(swiperId, userId);
+        if (blockState.blocked) {
+            return res.status(403).json({
+                success: false,
+                code: 'USER_BLOCKED',
+                message: blockState.iBlockedThem
+                    ? 'لا يمكنك التفاعل مع مستخدم قمت بحظره'
+                    : 'لا يمكن التفاعل مع هذا المستخدم'
             });
         }
 
@@ -291,9 +304,19 @@ router.post('/batch', protect, async (req, res) => {
         }).distinct('swiped');
         const existingSet = new Set(existingSwipes.map(id => id.toString()));
 
-        // جلب المستخدمين المستهدفين مرة واحدة
+        // 🚫 الحظر — استبعد أي هدف بيني وبينه حظر (بأي اتجاه)
+        const [meDoc, blockedMeIds] = await Promise.all([
+            User.findById(swiperId).select('blockedUsers').lean(),
+            User.distinct('_id', { _id: { $in: targetIds }, blockedUsers: swiperId })
+        ]);
+        const blockedSet = new Set([
+            ...((meDoc?.blockedUsers || []).map(String)),
+            ...blockedMeIds.map(String)
+        ]);
+
+        // جلب المستخدمين المستهدفين مرة واحدة (بدون المحظورين)
         const targetUsers = await User.find({
-            _id: { $in: targetIds },
+            _id: { $in: targetIds.filter(id => !blockedSet.has(String(id))) },
             isActive: true
         }).select('name profileImage deviceToken');
         const targetUsersMap = new Map(targetUsers.map(u => [u._id.toString(), u]));
@@ -320,6 +343,12 @@ router.post('/batch', protect, async (req, res) => {
 
             if (existingSet.has(targetUserId)) {
                 results.push({ targetUserId, success: false, message: 'تم السوايب مسبقاً' });
+                continue;
+            }
+
+            // 🚫 حظر بأي اتجاه → تخطَّ بصمت (لا سوايب ولا إشعار)
+            if (blockedSet.has(targetUserId)) {
+                results.push({ targetUserId, success: false, code: 'USER_BLOCKED', message: 'لا يمكن التفاعل مع هذا المستخدم' });
                 continue;
             }
 
@@ -512,9 +541,11 @@ router.get('/cards', protect, async (req, res) => {
         // ✅ أسرع: distinct مباشر بدون find
         const swipedIds = await Swipe.distinct('swiped', { swiper: userId });
 
-        // جلب IDs المستخدمين المحظورين
+        // جلب IDs المستخدمين المحظورين — بالاتجاهين:
+        // من حظرتهم + من حظروني (الحظر متبادل الأثر في الاكتشاف)
         const currentUser = await User.findById(userId);
-        const blockedIds = currentUser.blockedUsers || [];
+        const blockedByOthers = await User.distinct('_id', { blockedUsers: userId });
+        const blockedIds = [...(currentUser.blockedUsers || []), ...blockedByOthers];
 
         // استخدام الموقع من الطلب (أحدث) بدل المحفوظ في DB
         const lat = parseFloat(latitude);
@@ -769,10 +800,21 @@ router.get('/likes-me', protect, requirePremium, async (req, res) => {
         // جلب من أعجب بي ولم أعمل لهم سوايب بعد
         const mySwipedIds = await Swipe.find({ swiper: userId }).distinct('swiped');
 
+        // 🚫 استبعد المحظورين بالاتجاهين — إعجاب سابق للحظر يجب ألا يظهر بعده
+        const [meDoc, blockedMeIds] = await Promise.all([
+            User.findById(userId).select('blockedUsers').lean(),
+            User.distinct('_id', { blockedUsers: userId })
+        ]);
+        const excludedSwipers = [
+            ...mySwipedIds,
+            ...(meDoc?.blockedUsers || []),
+            ...blockedMeIds
+        ];
+
         const likesFilter = {
             swiped: userId,
             type: { $in: ['like', 'superlike'] },
-            swiper: { $nin: mySwipedIds }
+            swiper: { $nin: excludedSwipers }
         };
 
         const likes = await Swipe.find(likesFilter)

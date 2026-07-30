@@ -9,11 +9,27 @@ const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
-const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned } = require('./helpers');
+const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned, getBlockState } = require('./helpers');
 const { conversationLimitMiddleware } = require('../../middleware/conversationLimits');
 
 // تهدئة بعد الرفض قبل السماح بدعوة استئناف جديدة (بالمللي ثانية)
 const REINVITE_COOLDOWN_MS = 60 * 1000;
+// تهدئة بعد إنهاء المحادثة — أطول بكثير، لأن الإنهاء قرار صريح بإيقاف التواصل
+const CANCEL_COOLDOWN_MS = 24 * 60 * 60 * 1000;   // 24 ساعة
+const MAX_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;  // سقف: 7 أيام
+
+// تصعيد التهدئة مع تكرار محاولات الاستئناف بلا قبول: 24س → 48س → 96س … حتى 7 أيام
+const escalatedCooldownMs = (reinviteCount = 0) =>
+    Math.min(CANCEL_COOLDOWN_MS * Math.pow(2, Math.max(0, reinviteCount)), MAX_COOLDOWN_MS);
+
+// صياغة عربية لمدة الانتظار المتبقية
+const formatWait = (ms) => {
+    const mins = Math.ceil(ms / 60000);
+    if (mins < 60) return `${mins} دقيقة`;
+    const hours = Math.ceil(mins / 60);
+    if (hours < 24) return `${hours} ساعة`;
+    return `${Math.ceil(hours / 24)} يوم`;
+};
 
 // ✅ إنشاء رسالة نظام في المحادثة وبثّها فوراً للطرفين (تبقى في السجل)
 // content = JSON { action, textAr, textEn } — التطبيق يعرض النص حسب اللغة
@@ -98,6 +114,19 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             });
         }
 
+        // 🚫 الحظر — لا طلبات محادثة بأي اتجاه
+        const blockState = await getBlockState(req.user._id, targetUserId);
+        if (blockState.blocked) {
+            return res.status(403).json({
+                success: false,
+                code: 'USER_BLOCKED',
+                message: blockState.iBlockedThem
+                    ? 'لا يمكنك مراسلة مستخدم قمت بحظره. ألغِ الحظر أولاً.'
+                    : 'لا يمكن إرسال طلب محادثة لهذا المستخدم',
+                data: { iBlockedThem: blockState.iBlockedThem }
+            });
+        }
+
         // ✅ Privacy: المستخدم المستهدف أوقف استقبال الطلبات
         if (targetUser.acceptingRequests === false) {
             return res.status(403).json({
@@ -130,29 +159,34 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                 || existingConversation.isActive === false;
 
             if (isEnded) {
-                // ✅ تهدئة: امنع دعوة جديدة فوراً بعد رفض سابق
+                // ✅ تهدئة: امنع دعوة جديدة فوراً بعد رفض/إنهاء سابق
                 if (existingConversation.reinviteAllowedAt
                     && new Date(existingConversation.reinviteAllowedAt) > new Date()) {
-                    const waitSec = Math.ceil(
-                        (new Date(existingConversation.reinviteAllowedAt).getTime() - Date.now()) / 1000
-                    );
+                    const waitMs = new Date(existingConversation.reinviteAllowedAt).getTime() - Date.now();
                     return res.status(429).json({
                         success: false,
                         code: 'REINVITE_COOLDOWN',
-                        message: `الرجاء الانتظار ${waitSec} ثانية قبل إرسال دعوة جديدة`,
-                        retryAfter: waitSec
+                        message: `أنهى الطرف الآخر المحادثة. يمكنك إرسال دعوة جديدة بعد ${formatWait(waitMs)}.`,
+                        retryAfter: Math.ceil(waitMs / 1000),
+                        data: { allowedAt: new Date(existingConversation.reinviteAllowedAt).toISOString() }
                     });
                 }
 
+                const now = new Date();
                 await Conversation.findByIdAndUpdate(existingConversation._id, {
-                    status: 'pending',
-                    isActive: true,
-                    creator: req.user._id,        // المُرسِل الجديد هو منشئ الطلب
-                    cancelledBy: null,
-                    cancelledAt: null,
-                    reinviteAllowedAt: null,      // امسح التهدئة عند إرسال الدعوة
-                    // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
-                    hiddenFor: []
+                    $set: {
+                        status: 'pending',
+                        isActive: true,
+                        creator: req.user._id,        // المُرسِل الجديد هو منشئ الطلب
+                        cancelledBy: null,
+                        cancelledAt: null,
+                        reinviteAllowedAt: null,      // امسح التهدئة عند إرسال الدعوة
+                        requestedAt: now,             // بداية نافذة "رسالة واحدة فقط"
+                        // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
+                        hiddenFor: []
+                    },
+                    // تصعيد التهدئة لو رُفض/أُنهي هذا الاستئناف أيضاً
+                    $inc: { reinviteCount: 1 }
                 });
 
                 // ✅ رسالة نظام في المسار: تم إرسال دعوة جديدة
@@ -255,6 +289,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             creator: req.user._id,
             status: 'pending',
             isActive: true,
+            requestedAt: new Date(),
             title: `محادثة بين ${req.user.name} و ${targetUser.name}`
         });
         // مسح كاش شركاء المحادثات
@@ -428,6 +463,9 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
         conversation.status = 'accepted';
         conversation.isActive = true;
         conversation.reinviteAllowedAt = null;
+        // ✅ القبول يصفّر عدّاد الاستئنافات والنافذة (لا تصعيد بعد تواصل ناجح)
+        conversation.reinviteCount = 0;
+        conversation.requestedAt = null;
         await conversation.save();
 
         // ✅ رسالة نظام في المسار: تم قبول المحادثة
@@ -514,8 +552,12 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
         // تحديث حالة المحادثة
         conversation.status = 'rejected';
         conversation.isActive = false;
-        // ✅ تهدئة: امنع دعوة استئناف جديدة فوراً بعد الرفض
-        conversation.reinviteAllowedAt = new Date(Date.now() + REINVITE_COOLDOWN_MS);
+        conversation.requestedAt = null;
+        // ✅ تهدئة: امنع دعوة استئناف جديدة فوراً بعد الرفض.
+        //    أول رفض لطلب جديد = تهدئة قصيرة؛ رفض استئناف على محادثة سبق إنهاؤها = تصعيد.
+        conversation.reinviteAllowedAt = (conversation.reinviteCount || 0) > 0
+            ? new Date(Date.now() + escalatedCooldownMs(conversation.reinviteCount - 1))
+            : new Date(Date.now() + REINVITE_COOLDOWN_MS);
         await conversation.save();
 
         // ✅ رسالة نظام في المسار: تم رفض المحادثة
@@ -589,6 +631,12 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
         conversation.isActive = false;
         conversation.cancelledBy = req.user._id;
         conversation.cancelledAt = new Date();
+        conversation.requestedAt = null;
+        // ✅ مكافحة الإزعاج: الإنهاء قرار صريح بإيقاف التواصل —
+        //    لا دعوة استئناف جديدة قبل انتهاء التهدئة (24س، تتضاعف مع التكرار حتى 7 أيام).
+        conversation.reinviteAllowedAt = new Date(
+            Date.now() + escalatedCooldownMs(conversation.reinviteCount || 0)
+        );
         await conversation.save();
 
         // ✅ رسالة نظام في المسار: تم إغلاق المحادثة

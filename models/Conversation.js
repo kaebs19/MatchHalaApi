@@ -57,8 +57,12 @@ const conversationSchema = new mongoose.Schema({
     // ✅ تتبّع إنهاء/إلغاء المحادثة (لا يحذف الرسائل)
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     cancelledAt: { type: Date, default: null },
-    // ✅ تهدئة: لا يُسمح بدعوة استئناف جديدة قبل هذا الوقت (يُضبط بعد الرفض)
+    // ✅ تهدئة: لا يُسمح بدعوة استئناف جديدة قبل هذا الوقت (يُضبط بعد الرفض/الإنهاء)
     reinviteAllowedAt: { type: Date, default: null },
+    // ✅ وقت آخر طلب/دعوة (بداية حالة pending) — يُستخدم لحصر المنشئ برسالة واحدة
+    requestedAt: { type: Date, default: null },
+    // ✅ عدد محاولات الاستئناف المتتالية بلا قبول — تصعيد مدة التهدئة
+    reinviteCount: { type: Number, default: 0 },
     // ✅ وضع المحادثة (keep = الافتراضي — الرسائل تبقى للمستخدم)
     // snap = تنحذف عند الخروج من المحادثة (مثل سناب شات)
     // 24h = تنحذف بعد 24 ساعة من قراءتها

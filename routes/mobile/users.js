@@ -8,7 +8,7 @@ const Notification = require('../../models/Notification');
 const ProfileView = require('../../models/ProfileView');
 const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
-const { getFullUrl, getBestUserImage, getUserImage, isUserFullyBanned } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, isUserFullyBanned, getBlockState } = require('./helpers');
 const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadgeSource } = require('../../utils/profileEnrichment');
 
 // ==========================================
@@ -267,13 +267,15 @@ router.get('/users/search', protect, async (req, res) => {
             ]
         };
 
-        // استثناء المستخدمين المحظورين
-        if (req.user.blockedUsers && req.user.blockedUsers.length > 0) {
-            filter._id = {
-                $ne: req.user._id,
-                $nin: req.user.blockedUsers
-            };
-        }
+        // استثناء المستخدمين المحظورين — بالاتجاهين (من حظرتهم + من حظروني)
+        const blockedByOthers = await User.distinct('_id', { blockedUsers: req.user._id });
+        const excludedIds = [
+            ...(req.user.blockedUsers || []),
+            ...blockedByOthers
+        ];
+
+        // ملاحظة: يُطبَّق عبر $and حتى لا يدهسه البحث بالمعرّف (filter._id = q)
+        filter.$and.push({ _id: { $ne: req.user._id, $nin: excludedIds } });
 
         // فلتر البحث: اسم أو إيميل أو معرف
         if (q && q.length >= 2) {
@@ -679,6 +681,12 @@ router.post('/profile-views', protect, async (req, res) => {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
 
+        // 🚫 الحظر — لا تُسجَّل زيارة بأي اتجاه (كان المحظور يظهر في شاشة الزوّار)
+        const blockState = await getBlockState(viewerId, viewedUserId);
+        if (blockState.blocked) {
+            return res.json({ success: true, message: 'الزيارة غير مسجلة' });
+        }
+
         // لا تسجل زيارة مكررة خلال 24 ساعة
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const existingView = await ProfileView.findOne({
@@ -803,19 +811,26 @@ router.get('/profile-views', protect, async (req, res) => {
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
-        const totalViews = await ProfileView.countDocuments({
+        // 🚫 استبعد المحظورين بالاتجاهين — زيارة سابقة للحظر يجب ألا تظهر بعده
+        const blockedMeIds = await User.distinct('_id', { blockedUsers: req.user._id });
+        const excludedViewers = [
+            ...(req.user.blockedUsers || []),
+            ...blockedMeIds
+        ];
+
+        const viewsBaseFilter = {
             viewed: req.user._id,
-            isHidden: false
-        });
+            isHidden: false,
+            viewer: { $nin: excludedViewers }
+        };
+
+        const totalViews = await ProfileView.countDocuments(viewsBaseFilter);
 
         const isPremium = req.user.isPremium && req.user.premiumExpiresAt > new Date();
 
         if (isPremium) {
             // المشترك: يشوف التفاصيل
-            const views = await ProfileView.find({
-                viewed: req.user._id,
-                isHidden: false
-            })
+            const views = await ProfileView.find(viewsBaseFilter)
                 .populate('viewer', 'name profileImage country isOnline isPremium verification.isVerified')
                 .sort({ createdAt: -1 })
                 .limit(limitNum)
@@ -847,10 +862,7 @@ router.get('/profile-views', protect, async (req, res) => {
             });
         } else {
             // المجاني: عدد فقط + بيانات مخفية
-            const views = await ProfileView.find({
-                viewed: req.user._id,
-                isHidden: false
-            })
+            const views = await ProfileView.find(viewsBaseFilter)
                 .sort({ createdAt: -1 })
                 .limit(3)
                 .lean();
@@ -892,8 +904,12 @@ router.get('/stats', protect, async (req, res) => {
         const user = await User.findById(userId).select('streak blockedUsers');
         const streakStatus = await updateUserStreak(user);
 
-        // قائمة المحظورين — لاستبعادهم من العدّ
-        const blockedIds = (user.blockedUsers || []).map(id => id.toString());
+        // قائمة المحظورين بالاتجاهين — لاستبعادهم من العدّ (اتساقاً مع القوائم نفسها)
+        const blockedMeIds = await User.distinct('_id', { blockedUsers: userId });
+        const blockedIds = [
+            ...(user.blockedUsers || []),
+            ...blockedMeIds
+        ];
 
         // عدّ ثلاثة بالتوازي
         const [visitorsCount, likesCount, conversationsCount] = await Promise.all([
