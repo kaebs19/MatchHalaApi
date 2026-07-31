@@ -94,7 +94,12 @@ const messageSchema = new mongoose.Schema({
             user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
             viewedAt: { type: Date, default: Date.now },
             expired: { type: Boolean, default: false }
-        }]
+        }],
+        // ✅ أُبطل الرابط ونُقل الملف لأرشيف الأدمن (لا يُخدَم عبر الويب)
+        destroyed: { type: Boolean, default: false },
+        destroyedAt: { type: Date, default: null },
+        // مسار الأرشيف — للإشراف فقط عبر endpoint خاص بالأدمن
+        archivedPath: { type: String, default: null }
     },
     // ✅ إشعارات الأمان
     securityAlerts: [{

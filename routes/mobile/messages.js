@@ -8,7 +8,7 @@ const Conversation = require('../../models/Conversation');
 const Notification = require('../../models/Notification');
 const Friendship = require('../../models/Friendship');
 const FlaggedMessage = require('../../models/FlaggedMessage');
-const { protect } = require('../../middleware/auth');
+const { protect, adminOnly } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
@@ -49,6 +49,31 @@ function checkMessagingRestriction(req, mediaType = 'text') {
     }
     // level === 'new_only': يُسمح فقط في المحادثات القائمة (يُفحص لاحقاً)
     return null;
+}
+
+// ✅ نقل ملف صورة مؤقتة منتهية إلى أرشيف الأدمن (لا يُخدَم عبر /uploads).
+//    يُرجع المسار النسبي داخل الأرشيف، أو null لو تعذّر.
+//    ملاحظة: لا نحذف الملف — الإشراف يحتاجه في البلاغات.
+const EXPIRED_DIR = require('path').join(__dirname, '..', '..', 'uploads', '_expired');
+function archiveDisappearingFile(mediaUrl) {
+    try {
+        if (!mediaUrl) return null;
+        const path = require('path');
+        const fileName = path.basename(String(mediaUrl).split('?')[0]);
+        if (!fileName) return null;
+
+        const source = path.join(__dirname, '..', '..', 'uploads', 'messages', fileName);
+        if (!fs.existsSync(source)) return null;
+
+        fs.mkdirSync(EXPIRED_DIR, { recursive: true });
+        const target = path.join(EXPIRED_DIR, fileName);
+        fs.renameSync(source, target);
+        return `_expired/${fileName}`;
+    } catch (e) {
+        // لا نُفشل الطلب — الأهم أن mediaUrl أُبطل في قاعدة البيانات
+        console.error('⚠️ أرشفة الصورة المؤقتة فشلت:', e.message);
+        return null;
+    }
 }
 
 // ✅ Helper موحَّد: بوابة الإرسال في محادثة
@@ -683,7 +708,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
                     getBestUserImage(req.user),
-                    req.user._id
+                    req.user._id,
+                    message._id
                 );
             }
         }
@@ -979,7 +1005,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                         disappearingDuration ? '📷 صورة مؤقتة' : '📷 صورة',
                         conversationId,
                         getBestUserImage(req.user),
-                        req.user._id
+                        req.user._id,
+                        message._id
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
@@ -1141,7 +1168,8 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
                         '🎤 رسالة صوتية',
                         conversationId,
                         getBestUserImage(req.user),
-                        req.user._id
+                        req.user._id,
+                        message._id
                     );
                 } catch (pushErr) {
                     console.error('Push error (audio):', pushErr.message);
@@ -1303,7 +1331,8 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     '📷 أرسل صورة',
                     conversationId,
                     getBestUserImage(req.user),
-                    req.user._id
+                    req.user._id,
+                    message._id
                 );
             }
         }
@@ -1421,7 +1450,8 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
                     conversationId,
                     getBestUserImage(req.user),
-                    req.user._id
+                    req.user._id,
+                    message._id
                 );
             }
         }
@@ -1555,6 +1585,22 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
         const messagesWithReadStatus = messages.reverse().map(msg => {
             const msgObj = { ...msg };
             const isMine = msgObj.sender && msgObj.sender._id && msgObj.sender._id.toString() === userId;
+
+            // ✅ صورة مؤقتة انتهت لهذا المستخدم → لا يُعاد الرابط إطلاقاً
+            //    (كان بإمكانه استرجاعها بمجرد إعادة جلب الرسائل)
+            if (msgObj.disappearing?.enabled && !isMine) {
+                const myView = (msgObj.disappearing.viewedBy || []).find(
+                    v => String(v.user) === userId
+                );
+                if (msgObj.disappearing.destroyed || myView?.expired) {
+                    msgObj.mediaUrl = null;
+                    msgObj.disappearing = {
+                        ...msgObj.disappearing,
+                        archivedPath: undefined,   // لا نكشف مسار الأرشيف للعميل
+                        isExpiredForMe: true
+                    };
+                }
+            }
 
             if (isMine) {
                 // رسالتي أنا
@@ -1850,7 +1896,8 @@ router.post('/messages/forward', protect, async (req, res) => {
                         originalMessage.type === 'image' ? '📷 صورة' : (originalMessage.content || ''),
                         targetConversationId,
                         getBestUserImage(req.user),
-                        req.user._id
+                        req.user._id,
+                        forwardedMessage._id
                     );
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
@@ -1953,6 +2000,33 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
 // @route   POST /api/mobile/messages/:messageId/expire-photo
 // @desc    تأكيد انتهاء صلاحية الصورة بعد انتهاء المؤقت
 // @access  Private
+// @route   GET /api/mobile/admin/expired-photo/:messageId
+// @desc    عرض صورة مؤقتة منتهية — للإشراف فقط (الملف خارج /uploads)
+// @access  Admin
+router.get('/admin/expired-photo/:messageId', protect, adminOnly, async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.messageId)
+            .select('disappearing').lean();
+
+        const archived = message?.disappearing?.archivedPath;
+        if (!archived) {
+            return res.status(404).json({ success: false, message: 'لا يوجد أرشيف لهذه الصورة' });
+        }
+
+        const path = require('path');
+        // حماية من path traversal — نأخذ اسم الملف فقط
+        const filePath = path.join(EXPIRED_DIR, path.basename(archived));
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: 'الملف غير موجود في الأرشيف' });
+        }
+
+        return res.sendFile(filePath);
+    } catch (error) {
+        console.error('خطأ في جلب صورة الأرشيف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
     try {
         const { messageId } = req.params;
@@ -1973,19 +2047,50 @@ router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
         );
         if (viewEntry) {
             viewEntry.expired = true;
-            await message.save();
         }
+
+        // ✅ تدمير فوري: أبطل الرابط وانقل الملف لأرشيف الأدمن.
+        //    الشرط: كل المستلمين (غير المرسل) أنهوا المشاهدة.
+        //    الملف يبقى للإشراف لكن لا يُخدَم عبر /uploads إطلاقاً.
+        if (!message.disappearing.destroyed) {
+            const conv = await Conversation.findById(message.conversation)
+                .select('participants').lean();
+            const recipients = (conv?.participants || [])
+                .map(String)
+                .filter(id => id !== String(message.sender));
+
+            const allExpired = recipients.length > 0 && recipients.every(rid =>
+                message.disappearing.viewedBy.some(
+                    v => String(v.user) === rid && v.expired
+                )
+            );
+
+            if (allExpired) {
+                const archived = archiveDisappearingFile(message.mediaUrl);
+                message.disappearing.destroyed = true;
+                message.disappearing.destroyedAt = new Date();
+                message.disappearing.archivedPath = archived;
+                message.mediaUrl = null;   // ✅ الرابط لم يعد صالحاً لأحد
+            }
+        }
+
+        await message.save();
 
         // إشعار المرسل
         if (global.io) {
             global.io.to(`user:${message.sender}`).emit('photo-expired', {
                 messageId: message._id,
                 conversationId: message.conversation,
-                expiredFor: req.user.name
+                expiredFor: req.user.name,
+                destroyed: message.disappearing.destroyed === true
             });
         }
 
-        res.json({ success: true, message: 'تم تأكيد انتهاء الصورة' });
+        res.json({
+            success: true,
+            message: 'تم تأكيد انتهاء الصورة',
+            data: { destroyed: message.disappearing.destroyed === true }
+        });
 
     } catch (error) {
         console.error('Expire photo error:', error);

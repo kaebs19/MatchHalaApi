@@ -317,7 +317,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
  */
-const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null, senderId = null) => {
+const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null, senderId = null, messageId = null) => {
     try {
         // التحقق من كتم المحادثة
         const user = await User.findById(recipientId);
@@ -367,10 +367,37 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             senderName,
             senderImage: fullSenderImage,
             senderId: senderId ? senderId.toString() : '',
-            threadId: conversationId.toString()
+            threadId: conversationId.toString(),
+            messageId: messageId ? messageId.toString() : ''
         };
 
-        return sendNotificationToUser(recipientId, notification, data, true);
+        const result = await sendNotificationToUser(recipientId, notification, data, true);
+
+        // ✅ قبول FCM للإشعار = الرسالة وصلت لجهاز المستلم → علّمها «مُسلَّمة».
+        //    بدون هذا يبقى السهم الواحد حتى يفتح المستلم المحادثة، رغم وصول
+        //    الإشعار إليه فعلاً — وهو ما يلاحظه المستخدمون.
+        if (result?.pushed && messageId) {
+            try {
+                const Message = require('../models/Message');
+                const updated = await Message.findOneAndUpdate(
+                    { _id: messageId, status: 'sent' },
+                    { $set: { status: 'delivered' } }
+                ).select('sender').lean();
+
+                if (updated && global.io) {
+                    const payload = {
+                        messageId: messageId.toString(),
+                        conversationId: conversationId.toString()
+                    };
+                    global.io.to(`user:${updated.sender}`).emit('message-delivered', payload);
+                    global.io.to(`conversation-${conversationId}`).emit('message-delivered', payload);
+                }
+            } catch (e) {
+                console.error('⚠️ تعليم الرسالة كمُسلَّمة بعد الـ push فشل:', e.message);
+            }
+        }
+
+        return result;
     } catch (error) {
         console.error('❌ خطأ في إرسال إشعار الرسالة:', error.message);
         return { success: false, error: error.message };

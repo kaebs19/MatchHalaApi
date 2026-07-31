@@ -277,6 +277,15 @@ app.use('/uploads/violations', (req, res) => {
         message: 'هذا المحتوى محمي — الوصول مسموح للإدارة فقط عبر لوحة التحكم'
     });
 });
+// ⚠️ أرشيف الصور المؤقتة المنتهية — يُنقل إليه الملف فور انتهاء المشاهدة.
+//    الرابط يُبطَل للمستخدمين نهائياً، والأدمن يصل عبر
+//    /api/mobile/admin/expired-photo/:messageId فقط.
+app.use('/uploads/_expired', (req, res) => {
+    return res.status(403).json({
+        success: false,
+        message: 'هذه الصورة انتهت صلاحيتها'
+    });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ✅ صفحة حذف الحساب العامة (مطلوبة من Google Play Data Safety)
