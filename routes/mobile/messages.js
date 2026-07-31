@@ -1512,6 +1512,44 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 
         const total = await Message.countDocuments(messageQuery);
 
+        // ✅ فتح المحادثة = استلام فعلي لرسائل الطرف الآخر.
+        //    بدون هذا، الرسائل التي وصلت والتطبيق مغلق تبقى «مُرسَلة» للأبد،
+        //    لأن تأكيد الاستلام يُرسَل فقط من حدث السوكِت اللحظي.
+        try {
+            const incomingSent = messages
+                .filter(m => m.status === 'sent'
+                    && m.sender && String(m.sender._id || m.sender) !== String(req.user._id))
+                .map(m => m._id);
+
+            if (incomingSent.length > 0) {
+                await Message.updateMany(
+                    { _id: { $in: incomingSent }, status: 'sent' },
+                    { $set: { status: 'delivered' } }
+                );
+
+                // أبلغ كل مُرسِل على غرفته الخاصة + غرفة المحادثة (تحديث فوري للسهم)
+                if (global.io) {
+                    for (const m of messages) {
+                        if (!incomingSent.some(id => String(id) === String(m._id))) continue;
+                        const payload = {
+                            messageId: String(m._id),
+                            conversationId: String(conversationId)
+                        };
+                        global.io.to(`user:${String(m.sender._id || m.sender)}`)
+                            .emit('message-delivered', payload);
+                        global.io.to(`conversation-${conversationId}`)
+                            .emit('message-delivered', payload);
+                    }
+                }
+                // اعكس الحالة في الرد الحالي بدل انتظار جلب آخر
+                messages.forEach(m => {
+                    if (incomingSent.some(id => String(id) === String(m._id))) m.status = 'delivered';
+                });
+            }
+        } catch (deliverErr) {
+            console.error('⚠️ تعليم الرسائل كمُستلَمة فشل:', deliverErr.message);
+        }
+
         // إضافة isRead + isDelivered لكل رسالة + sensitive content للمرسل
         const userId = req.user._id.toString();
         const messagesWithReadStatus = messages.reverse().map(msg => {

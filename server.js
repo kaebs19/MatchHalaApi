@@ -613,17 +613,22 @@ io.on('connection', async (socket) => {
         try {
             if (!messageId) return;
 
-            const result = await Message.updateOne(
+            // ✅ نحتاج sender لنبلّغه مباشرةً على غرفته الخاصة
+            const msg = await Message.findOneAndUpdate(
                 { _id: messageId, status: 'sent' },
                 { $set: { status: 'delivered' } }
-            );
+            ).select('sender conversation').lean();
 
-            if (result.modifiedCount > 0) {
-                socket.to(`conversation-${conversationId}`).emit('message-delivered', {
-                    messageId,
-                    conversationId
-                });
-            }
+            if (!msg) return; // لم تتغيّر (مُسلَّمة/مقروءة أصلاً)
+
+            const convId = conversationId || String(msg.conversation);
+            const payload = { messageId, conversationId: convId };
+
+            // غرفة المحادثة — لمن يفتح الشاشة الآن
+            socket.to(`conversation-${convId}`).emit('message-delivered', payload);
+            // ✅ غرفة المُرسِل الخاصة — ليصل السهم وهو في قائمة المحادثات
+            //    (join-conversation يحدث داخل شاشة المحادثة فقط، فالبثّ للغرفة وحدها لا يكفي)
+            io.to(`user:${msg.sender}`).emit('message-delivered', payload);
         } catch (error) {
             console.error('خطأ في message-delivered:', error.message);
         }
@@ -647,9 +652,16 @@ io.on('connection', async (socket) => {
             );
 
             if (result.modifiedCount > 0) {
-                socket.to(`conversation-${conversationId}`).emit('messages-read', {
-                    conversationId,
-                    readBy: socket.userId
+                const payload = { conversationId, readBy: socket.userId, count: result.modifiedCount };
+                socket.to(`conversation-${conversationId}`).emit('messages-read', payload);
+
+                // ✅ غرفة كل طرف آخر — ليتحدّث لون السهم في قائمة المحادثات أيضاً
+                //    (نفس ما يفعله مسار HTTP في conversations.js — كان السوكِت يخالفه)
+                const conv = await Conversation.findById(conversationId).select('participants').lean();
+                (conv?.participants || []).forEach(p => {
+                    if (String(p) !== String(socket.userId)) {
+                        io.to(`user:${p}`).emit('messages-read', payload);
+                    }
                 });
             }
         } catch (error) {
