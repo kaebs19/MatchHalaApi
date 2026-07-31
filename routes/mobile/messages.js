@@ -15,7 +15,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isUserSocketConnected } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
 
@@ -673,7 +673,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             const recipientId = recipient._id.toString();
 
             // تحقق هل المستقبل متصل بالسوكت
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            const isOnline = await isUserSocketConnected(recipientId);
 
             if (!isOnline) {
                 // إرسال Push Notification عبر Firebase للـ offline users فقط
@@ -969,7 +969,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
 
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            const isOnline = await isUserSocketConnected(recipientId);
 
             if (!isOnline && recipient.deviceToken) {
                 try {
@@ -1132,7 +1132,7 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
         );
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            const isOnline = await isUserSocketConnected(recipientId);
             if (!isOnline && recipient.deviceToken) {
                 try {
                     await pushNotificationService.sendNewMessageNotification(
@@ -1294,7 +1294,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
 
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            const isOnline = await isUserSocketConnected(recipientId);
 
             if (!isOnline) {
                 await pushNotificationService.sendNewMessageNotification(
@@ -1412,7 +1412,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipientId);
+            const isOnline = await isUserSocketConnected(recipientId);
 
             if (!isOnline) {
                 await pushNotificationService.sendNewMessageNotification(
@@ -1803,7 +1803,7 @@ router.post('/messages/forward', protect, async (req, res) => {
             p => p._id.toString() !== userId.toString()
         );
         for (const recipient of recipients) {
-            const isOnline = global.connectedUsers && global.connectedUsers.has(recipient._id.toString());
+            const isOnline = await isUserSocketConnected(recipient._id);
             if (!isOnline) {
                 try {
                     await pushNotificationService.sendNewMessageNotification(
@@ -2036,7 +2036,7 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
 
         // Push notification للمستخدم غير المتصل
         for (const participantId of otherParticipants) {
-            const isOnline = global.connectedUsers && global.connectedUsers.has(participantId.toString());
+            const isOnline = await isUserSocketConnected(participantId);
             if (!isOnline) {
                 try {
                     await pushNotificationService.sendNotificationToUser(participantId, {

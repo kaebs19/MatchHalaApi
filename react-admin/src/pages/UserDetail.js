@@ -1444,6 +1444,24 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                     )}
                                                 </div>
                                             )}
+                                            {/* ✅ تفاصيل آخر فشل — تُعرض دائماً متى وُجد فشل،
+                                                حتى لو كانت الحالة العامة سليمة (كان يُخفى إلا عند 3 فشل متتالي فأكثر) */}
+                                            {totalFailures > 0 && (ph.lastError || ph.lastFailureAt) && !ph.notificationsDisabled && consec < 3 && (
+                                                <div style={{marginTop:8, paddingTop:8, borderTop:'1px dashed #d1d5db', fontSize:11, color:'#6b7280', marginRight:26}}>
+                                                    <div style={{fontWeight:600, marginBottom:2, color:'#4b5563'}}>تفاصيل آخر فشل:</div>
+                                                    {ph.lastFailureAt && <div>متى: {formatDate(ph.lastFailureAt)}</div>}
+                                                    {ph.lastError && (
+                                                        <div style={{direction:'ltr', textAlign:'right', wordBreak:'break-word', fontFamily:'monospace', marginTop:2}}>
+                                                            {ph.lastError}
+                                                        </div>
+                                                    )}
+                                                    <div style={{marginTop:4, color:'#9ca3af'}}>
+                                                        {String(ph.lastError || '').includes('registration-token-not-registered')
+                                                            ? 'الرمز لم يعد صالحاً (حذف التطبيق أو تجدّد الرمز) — طبيعي، يُحل عند فتح التطبيق.'
+                                                            : 'فشل متفرّق — لا يؤثر ما دام معدل النجاح مرتفعاً والعداد المتتالي = 0.'}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })()}
