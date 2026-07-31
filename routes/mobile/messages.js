@@ -76,6 +76,36 @@ function archiveDisappearingFile(mediaUrl) {
     }
 }
 
+// ✅ تدمير صورة مؤقتة انقضى وقتها — بغضّ النظر عن كون العارض مفتوحاً.
+//    المدة تُحسب بساعة الحائط من أول مشاهدة (expiresAt)، فلو أغلق المستخدم
+//    العارض مبكراً ثم انقضت المدة وهو خارجها يجب أن تُدمَّر أيضاً.
+//    يُستدعى كسلاً عند القراءة/المحاولة — لا يحتاج cron.
+//    يُرجع true لو دُمِّرت الآن.
+async function destroyDisappearingIfDue(message) {
+    const d = message?.disappearing;
+    if (!d?.enabled || d.destroyed) return false;
+    if (!d.expiresAt || new Date(d.expiresAt) > new Date()) return false;
+
+    const archived = archiveDisappearingFile(message.mediaUrl);
+    d.destroyed = true;
+    d.destroyedAt = new Date();
+    d.archivedPath = archived;
+    (d.viewedBy || []).forEach(v => { v.expired = true; });
+    message.mediaUrl = null;
+    await message.save();
+
+    if (global.io) {
+        const payload = {
+            messageId: String(message._id),
+            conversationId: String(message.conversation),
+            destroyed: true
+        };
+        global.io.to(`user:${message.sender}`).emit('photo-expired', payload);
+        global.io.to(`conversation-${message.conversation}`).emit('photo-expired', payload);
+    }
+    return true;
+}
+
 // ✅ Helper موحَّد: بوابة الإرسال في محادثة
 // يفحص (بهذا الترتيب): الحظر المتبادل → المحادثة منتهية → غير نشطة → معلّقة (طلب)
 // يُرجع { status, body } لو ممنوع، أو null لو مسموح.
@@ -1542,6 +1572,33 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
 
         const total = await Message.countDocuments(messageQuery);
 
+        // ✅ افرض انقضاء الصور المؤقتة قبل بناء الرد — تدمير كسول لا يحتاج cron.
+        //    بدونه تبقى الصورة ظاهرة للطرفين إلى الأبد لو أُغلق العارض مبكراً.
+        try {
+            const dueIds = messages
+                .filter(m => m.disappearing?.enabled
+                    && !m.disappearing.destroyed
+                    && m.disappearing.expiresAt
+                    && new Date(m.disappearing.expiresAt) <= new Date())
+                .map(m => m._id);
+
+            for (const id of dueIds) {
+                const doc = await Message.findById(id);
+                if (doc && await destroyDisappearingIfDue(doc)) {
+                    const idx = messages.findIndex(m => String(m._id) === String(id));
+                    if (idx >= 0) {
+                        messages[idx].mediaUrl = null;
+                        messages[idx].disappearing = {
+                            ...messages[idx].disappearing,
+                            destroyed: true
+                        };
+                    }
+                }
+            }
+        } catch (dueErr) {
+            console.error('⚠️ فرض انقضاء الصور المؤقتة فشل:', dueErr.message);
+        }
+
         // ✅ فتح المحادثة = استلام فعلي لرسائل الطرف الآخر.
         //    بدون هذا، الرسائل التي وصلت والتطبيق مغلق تبقى «مُرسَلة» للأبد،
         //    لأن تأكيد الاستلام يُرسَل فقط من حدث السوكِت اللحظي.
@@ -1945,6 +2002,15 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
         // تحقق هل المشاهد مش المرسل
         if (message.sender.toString() === userId.toString()) {
             return res.json({ success: true, message: 'المرسل يقدر يشوف صورته دائماً' });
+        }
+
+        // ✅ انقضى وقتها وهو خارج العارض → دمّرها الآن بدل فتحها
+        if (await destroyDisappearingIfDue(message)) {
+            return res.status(410).json({
+                success: false,
+                message: 'انتهت مدة الصورة المؤقتة',
+                code: 'PHOTO_EXPIRED'
+            });
         }
 
         // هل شاهدها مسبقاً وانتهت؟
