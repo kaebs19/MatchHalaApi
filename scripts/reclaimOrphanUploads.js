@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+/**
+ * استرجاع مساحة الملفات اليتيمة في uploads/.
+ *
+ * الملف "يتيم" إذا لم يَرِد اسمه في أي مستند بقاعدة البيانات — أي أن الرسالة
+ * أو المحادثة التي كانت تحتويه حُذفت، بينما بقي الملف على القرص. لا يوجد أي
+ * تنظيف تلقائي للملفات حالياً، فتراكمت.
+ *
+ * الأمان:
+ *   - وضع المعاينة هو الافتراضي؛ الحذف يحتاج --apply صراحةً.
+ *   - لا يُحذف شيء نهائياً: تُنقل الملفات إلى uploads/_reclaimed/<تاريخ>/
+ *     ليمكن التراجع. احذف ذلك المجلد يدوياً بعد التأكد.
+ *   - تُستثنى الملفات الأحدث من --min-age-days (افتراضياً 90) حتى لا تُمَس
+ *     ملفات رفعت للتو ولم يُكتب مستندها بعد.
+ *   - يُبنى مرجع الأسماء من كل المجموعات، لا من messages فقط، حتى لا تُمَس
+ *     أدلة البلاغات والمخالفات.
+ *
+ * الاستخدام:
+ *   node scripts/reclaimOrphanUploads.js                    # معاينة
+ *   node scripts/reclaimOrphanUploads.js --min-age-days=180 # معاينة أكثر تحفظاً
+ *   node scripts/reclaimOrphanUploads.js --apply            # تنفيذ فعلي
+ */
+
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const UPLOADS = path.join(__dirname, '../uploads');
+const SCAN_DIRS = ['messages', 'audio'];
+const MEDIA_RE = /\.(webp|jpe?g|png|gif|mp3|m4a|aac|wav|ogg|mp4|webm)$/i;
+
+const args = process.argv.slice(2);
+const APPLY = args.includes('--apply');
+const MIN_AGE_DAYS = Number(
+  (args.find((a) => a.startsWith('--min-age-days=')) || '').split('=')[1] || 90
+);
+
+const MONGO =
+  process.env.MONGODB_URI || 'mongodb://localhost:27017/matchhala';
+
+const gb = (b) => (b / 1e9).toFixed(2);
+
+async function buildReferenceSet(db) {
+  const referenced = new Set();
+  const addIfMedia = (v) => {
+    if (typeof v === 'string' && MEDIA_RE.test(v)) {
+      referenced.add(path.basename(v.split('?')[0]));
+    }
+  };
+  const walk = (val, depth = 0) => {
+    if (val == null || depth > 5) return;
+    if (typeof val === 'string') return addIfMedia(val);
+    if (Array.isArray(val)) return val.forEach((v) => walk(v, depth + 1));
+    if (typeof val === 'object') {
+      for (const v of Object.values(val)) walk(v, depth + 1);
+    }
+  };
+
+  // كل المجموعات — أرخص من صيانة قائمة حقول تتغيّر مع الوقت
+  const collections = await db.listCollections().toArray();
+  for (const { name } of collections) {
+    for await (const doc of db.collection(name).find({})) walk(doc);
+  }
+  return referenced;
+}
+
+function listFiles(dir, out = []) {
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) listFiles(full, out);
+    else out.push(full);
+  }
+  return out;
+}
+
+(async () => {
+  console.log(
+    `الوضع: ${APPLY ? 'تنفيذ فعلي' : 'معاينة فقط'} | الحد الأدنى للعمر: ${MIN_AGE_DAYS} يوم`
+  );
+
+  await mongoose.connect(MONGO);
+  const db = mongoose.connection.db;
+
+  console.log('بناء مرجع الأسماء من قاعدة البيانات...');
+  const referenced = await buildReferenceSet(db);
+  console.log(`  أسماء مرجعية: ${referenced.size}`);
+
+  if (referenced.size === 0) {
+    console.error('توقّف: مجموعة المراجع فارغة — هذا يعني خطأ اتصال لا قرصاً نظيفاً.');
+    await mongoose.disconnect();
+    process.exit(1);
+  }
+
+  const cutoff = Date.now() - MIN_AGE_DAYS * 864e5;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const quarantine = path.join(UPLOADS, '_reclaimed', stamp);
+
+  let totalCandidates = 0;
+  let totalBytes = 0;
+
+  for (const dir of SCAN_DIRS) {
+    const files = listFiles(path.join(UPLOADS, dir));
+    let n = 0;
+    let bytes = 0;
+
+    for (const file of files) {
+      const name = path.basename(file);
+      if (referenced.has(name)) continue;
+
+      const st = fs.statSync(file);
+      if (st.mtimeMs > cutoff) continue; // حديث جداً — اتركه
+
+      n++;
+      bytes += st.size;
+
+      if (APPLY) {
+        const dest = path.join(quarantine, dir, name);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.renameSync(file, dest);
+      }
+    }
+
+    console.log(
+      `  ${dir.padEnd(10)} ${String(n).padStart(6)} ملف   ${gb(bytes).padStart(6)} GB`
+    );
+    totalCandidates += n;
+    totalBytes += bytes;
+  }
+
+  console.log(`\nالإجمالي: ${totalCandidates} ملف، ${gb(totalBytes)} GB`);
+  if (APPLY) {
+    console.log(`نُقلت إلى: ${quarantine}`);
+    console.log('راجعها ثم احذف المجلد يدوياً لتحرير المساحة فعلياً.');
+  } else {
+    console.log('لم يُمَس شيء. أضف --apply للتنفيذ.');
+  }
+
+  await mongoose.disconnect();
+})().catch((err) => {
+  console.error('فشل:', err.message);
+  process.exit(1);
+});
