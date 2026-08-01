@@ -1301,9 +1301,20 @@ router.delete('/conversations/:id', protect, async (req, res) => {
             h.user && h.user.toString() === userId.toString()
         );
         if (!alreadyHidden) {
+            const now = new Date();
+            // ✅ الحذف = إخفاء المحادثة + مسح سجلّ الرسائل لهذا المستخدم وحده.
+            //    بدون clearedAt كانت الرسائل القديمة تعود كاملة لو ظهرت
+            //    المحادثة مجدداً — وهو ليس ما يتوقعه من ضغط «حذف».
             await Conversation.updateOne(
                 { _id: id },
-                { $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'user_delete' } } }
+                {
+                    $push: { hiddenFor: { user: userId, hiddenAt: now, reason: 'user_delete' } },
+                    $pull: { clearedAt: { user: userId } }
+                }
+            );
+            await Conversation.updateOne(
+                { _id: id },
+                { $push: { clearedAt: { user: userId, date: now } } }
             );
         }
 

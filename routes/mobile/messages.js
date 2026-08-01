@@ -76,6 +76,31 @@ function archiveDisappearingFile(mediaUrl) {
     }
 }
 
+// ✅ رسالة جديدة تُعيد إظهار المحادثة لمن حذفها.
+//    من يحذف محادثة يُضاف إلى hiddenFor، وقوائم المحادثات تستبعده منها.
+//    بلا هذا كانت الرسائل الجديدة تصل إلى محادثة مخفية فلا يراها أبداً —
+//    أي أن «حذف المحادثة» كان يعني حجب هذا الشخص إلى الأبد دون قصد.
+//    (الرسائل القديمة تبقى مخفية بفضل clearedAt — يبدأ سجلّ نظيف)
+async function unhideConversationForRecipients(conversationId, senderId) {
+    try {
+        // ⚠️ لا تمسّ الإخفاء الناتج عن الحظر (reason: 'block') —
+        //    إزالته تُعيد إظهار محادثة أخفاها المستخدم بحظره للطرف الآخر.
+        await Conversation.updateOne(
+            { _id: conversationId },
+            {
+                $pull: {
+                    hiddenFor: {
+                        user: { $ne: senderId },
+                        reason: { $ne: 'block' }
+                    }
+                }
+            }
+        );
+    } catch (e) {
+        console.error('⚠️ إعادة إظهار المحادثة فشلت:', e.message);
+    }
+}
+
 // ✅ تدمير صورة مؤقتة انقضى وقتها — بغضّ النظر عن كون العارض مفتوحاً.
 //    المدة تُحسب بساعة الحائط من أول مشاهدة (expiresAt)، فلو أغلق المستخدم
 //    العارض مبكراً ثم انقضت المدة وهو خارجها يجب أن تُدمَّر أيضاً.
@@ -667,6 +692,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         }
 
         // تحديث آخر رسالة + عداد الرسائل
+        await unhideConversationForRecipients(conversation._id, req.user._id);
         conversation.lastMessage = message._id;
         if (!conversation.metadata) conversation.metadata = {};
         conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
@@ -1007,6 +1033,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
 
         const message = await Message.create(messageData);
 
+        await unhideConversationForRecipients(conversation._id, req.user._id);
         conversation.lastMessage = message._id;
         await conversation.save();
 
@@ -1165,6 +1192,7 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
 
         const message = await Message.create(messageData);
 
+        await unhideConversationForRecipients(conversation._id, req.user._id);
         conversation.lastMessage = message._id;
         await conversation.save();
 
@@ -1331,6 +1359,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         });
 
         // تحديث آخر رسالة في المحادثة
+        await unhideConversationForRecipients(conversation._id, req.user._id);
         conversation.lastMessage = message._id;
         await conversation.save();
 
@@ -1445,6 +1474,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
         });
 
         // تحديث آخر رسالة + عداد الرسائل
+        await unhideConversationForRecipients(conversation._id, req.user._id);
         conversation.lastMessage = message._id;
         if (!conversation.metadata) conversation.metadata = {};
         conversation.metadata.totalMessages = (conversation.metadata.totalMessages || 0) + 1;
@@ -1829,11 +1859,14 @@ router.delete('/messages/:messageId', protect, async (req, res) => {
         }
 
         // حذف ناعم
-        message.isDeleted = true;
-        message.deletedAt = new Date();
-        message.content = '';
-        message.mediaUrl = '';
-        await message.save();
+        // ⚠️ لا تستخدم save(): تفريغ content على رسالة type='text' يفشل
+        //    التحقق (content مطلوب للنصوص) فيرجع 500 ولا تُحذف الرسالة إطلاقاً.
+        //    كان يملأ سجلّ الإنتاج بـ ValidationError. updateOne يتخطّى
+        //    التحقق على المستند ويطبّق الحذف فعلاً.
+        await Message.updateOne(
+            { _id: message._id },
+            { $set: { isDeleted: true, deletedAt: new Date(), content: '', mediaUrl: '' } }
+        );
 
         // بث الحدث عبر Socket
         if (global.io) {
