@@ -65,6 +65,15 @@ const messageSchema = new mongoose.Schema({
         ref: 'User',
         default: null
     },
+    // ✅ تعديل الرسالة (نصّية فقط، للمرسل، ضمن نافذة زمنية) — ميزة بريميوم
+    isEdited: {
+        type: Boolean,
+        default: false
+    },
+    editedAt: {
+        type: Date,
+        default: null
+    },
     // ✅ تشفير الرسالة كنجوم (من الأدمن) — النص يتحول لـ ★★★★
     isCensored: {
         type: Boolean,

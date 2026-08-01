@@ -1892,6 +1892,136 @@ router.delete('/messages/:messageId', protect, async (req, res) => {
 });
 
 // ==========================================
+// تعديل رسالة | Edit Message
+// ==========================================
+
+// نافذة التعديل: 15 دقيقة من الإرسال
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+// @route   PUT /api/mobile/messages/:messageId
+// @desc    تعديل نصّ رسالة (المرسل فقط، نصّية فقط، خلال 15 دقيقة) — ميزة بريميوم
+// @access  Private (Premium)
+router.put('/messages/:messageId', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const userId = req.user._id;
+        const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
+
+        if (!req.user.isPremium) {
+            return res.status(403).json({
+                success: false,
+                message: 'تعديل الرسائل متاح للمشتركين فقط',
+                code: 'PREMIUM_REQUIRED'
+            });
+        }
+
+        if (!content) {
+            return res.status(400).json({
+                success: false,
+                message: 'نصّ الرسالة مطلوب',
+                code: 'EMPTY_CONTENT'
+            });
+        }
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+
+        if (message.sender.toString() !== userId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'لا يمكنك تعديل رسالة شخص آخر',
+                code: 'NOT_SENDER'
+            });
+        }
+
+        if (message.isDeleted) {
+            return res.status(400).json({
+                success: false,
+                message: 'الرسالة محذوفة',
+                code: 'MESSAGE_DELETED'
+            });
+        }
+
+        if (message.type !== 'text') {
+            return res.status(400).json({
+                success: false,
+                message: 'يمكن تعديل الرسائل النصّية فقط',
+                code: 'NOT_TEXT_MESSAGE'
+            });
+        }
+
+        if (Date.now() - new Date(message.createdAt).getTime() > EDIT_WINDOW_MS) {
+            return res.status(400).json({
+                success: false,
+                message: 'انتهت مهلة تعديل هذه الرسالة (15 دقيقة)',
+                code: 'EDIT_WINDOW_EXPIRED'
+            });
+        }
+
+        // ⚠️ التعديل يمرّ بنفس فلاتر الإرسال — وإلا صار ثغرة لتجاوزها
+        //    (أرسل نصّاً بريئاً ثم عدّله إلى حساب خارجي).
+        const promo = detectExternalPromotion(content);
+        if (promo.detected) {
+            await recordExternalPromoViolation(req.user, {
+                source: 'message_edit',
+                categories: promo.categories,
+                patterns: promo.patterns,
+                conversationId: message.conversation,
+                originalText: content
+            });
+            return res.status(403).json({
+                success: false,
+                message: 'تم حجب التعديل — لا يمكن مشاركة حسابات خارجية',
+                code: 'EXTERNAL_PROMO_BLOCKED',
+                externalPromoBlocked: { categories: promo.categories }
+            });
+        }
+
+        const bannedResult = await checkBannedWords(content);
+        const finalContent = bannedResult.hasBannedWords ? bannedResult.censoredText : content;
+
+        const editedAt = new Date();
+        await Message.updateOne(
+            { _id: message._id },
+            { $set: { content: finalContent, isEdited: true, editedAt } }
+        );
+
+        const payload = {
+            messageId: String(message._id),
+            conversationId: String(message.conversation),
+            content: finalContent,
+            isEdited: true,
+            editedAt: editedAt.toISOString()
+        };
+
+        if (global.io) {
+            global.io.to(`conversation-${message.conversation}`).emit('message-edited', payload);
+            // غرف المستخدمين أيضاً — الطرف الآخر قد لا يكون داخل المحادثة الآن
+            const conv = await Conversation.findById(message.conversation).select('participants').lean();
+            (conv?.participants || []).forEach(p => {
+                global.io.to(`user:${p}`).emit('message-edited', payload);
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'تم تعديل الرسالة',
+            data: payload
+        });
+
+    } catch (error) {
+        console.error('خطأ في تعديل الرسالة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// ==========================================
 // إعادة توجيه رسالة | Forward Message
 // ==========================================
 
