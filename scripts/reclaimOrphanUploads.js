@@ -8,8 +8,9 @@
  *
  * الأمان:
  *   - وضع المعاينة هو الافتراضي؛ الحذف يحتاج --apply صراحةً.
- *   - لا يُحذف شيء نهائياً: تُنقل الملفات إلى uploads/_reclaimed/<تاريخ>/
- *     ليمكن التراجع. احذف ذلك المجلد يدوياً بعد التأكد.
+ *   - لا يُحذف شيء فوراً: تُنقل الملفات إلى uploads/_reclaimed/<تاريخ>/ ثم
+ *     تُحذف نهائياً بعد --quarantine-days (افتراضياً 30) في تشغيلة لاحقة.
+ *     أي أن نافذة التراجع = 30 يوماً بعد 90 يوماً من اليُتم.
  *   - تُستثنى الملفات الأحدث من --min-age-days (افتراضياً 90) حتى لا تُمَس
  *     ملفات رفعت للتو ولم يُكتب مستندها بعد.
  *   - يُبنى مرجع الأسماء من كل المجموعات، لا من messages فقط، حتى لا تُمَس
@@ -34,6 +35,10 @@ const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
 const MIN_AGE_DAYS = Number(
   (args.find((a) => a.startsWith('--min-age-days=')) || '').split('=')[1] || 90
+);
+// كم يبقى الملف في الحجر قبل الحذف النهائي
+const QUARANTINE_DAYS = Number(
+  (args.find((a) => a.startsWith('--quarantine-days=')) || '').split('=')[1] || 30
 );
 
 const MONGO =
@@ -100,9 +105,36 @@ function listFiles(dir, out = []) {
   return out;
 }
 
+/**
+ * إفراغ الحجر القديم — بدونه تتراكم مجلدات _reclaimed/ ولا تتحرر المساحة
+ * فعلياً أبداً. الملفات تكون قد أمضت QUARANTINE_DAYS يوماً بعد أن أمضت
+ * MIN_AGE_DAYS يوماً يتيمة، فنافذة التراجع واسعة.
+ */
+function purgeExpiredQuarantine() {
+  const root = path.join(UPLOADS, '_reclaimed');
+  if (!fs.existsSync(root)) return { dirs: 0, bytes: 0 };
+
+  const cutoff = Date.now() - QUARANTINE_DAYS * 864e5;
+  let dirs = 0;
+  let bytes = 0;
+
+  for (const name of fs.readdirSync(root)) {
+    const dir = path.join(root, name);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    // اسم المجلد هو تاريخ الحجر — أوثق من mtime الذي يتغيّر بأي لمسة
+    const stamped = Date.parse(name);
+    if (Number.isNaN(stamped) || stamped > cutoff) continue;
+
+    for (const f of listFiles(dir)) bytes += fs.statSync(f).size;
+    if (APPLY) fs.rmSync(dir, { recursive: true, force: true });
+    dirs++;
+  }
+  return { dirs, bytes };
+}
+
 (async () => {
   console.log(
-    `الوضع: ${APPLY ? 'تنفيذ فعلي' : 'معاينة فقط'} | الحد الأدنى للعمر: ${MIN_AGE_DAYS} يوم`
+    `الوضع: ${APPLY ? 'تنفيذ فعلي' : 'معاينة فقط'} | الحد الأدنى للعمر: ${MIN_AGE_DAYS} يوم | الحجر: ${QUARANTINE_DAYS} يوم`
   );
 
   await mongoose.connect(MONGO);
@@ -157,9 +189,17 @@ function listFiles(dir, out = []) {
   console.log(`\nالإجمالي: ${totalCandidates} ملف، ${gb(totalBytes)} GB`);
   if (APPLY) {
     console.log(`نُقلت إلى: ${quarantine}`);
-    console.log('راجعها ثم احذف المجلد يدوياً لتحرير المساحة فعلياً.');
   } else {
     console.log('لم يُمَس شيء. أضف --apply للتنفيذ.');
+  }
+
+  const purged = purgeExpiredQuarantine();
+  if (purged.dirs > 0) {
+    console.log(
+      `${APPLY ? 'حُذف نهائياً' : 'مرشّح للحذف النهائي'}: ${purged.dirs} مجلد حجر أقدم من ${QUARANTINE_DAYS} يوم، ${gb(purged.bytes)} GB`
+    );
+  } else {
+    console.log(`لا يوجد حجر أقدم من ${QUARANTINE_DAYS} يوم بعد.`);
   }
 
   await mongoose.disconnect();
