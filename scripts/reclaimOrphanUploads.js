@@ -57,10 +57,35 @@ async function buildReferenceSet(db) {
     }
   };
 
-  // كل المجموعات — أرخص من صيانة قائمة حقول تتغيّر مع الوقت
-  const collections = await db.listCollections().toArray();
-  for (const { name } of collections) {
-    for await (const doc of db.collection(name).find({})) walk(doc);
+  // مسح كل المجموعات غير عملي: swipes وحدها 18 مليون مستند و notifications
+  // 2.6 مليون، ولا تحمل وسائط إطلاقاً. نقتصر على ما قد يشير لملف، ونستخدم
+  // projection على الكبيرة منها.
+  //
+  // ⚠️ إن أُضيف حقل وسائط لمجموعة جديدة، أضفها هنا — وإلا ستُعتبر ملفاتها
+  //    يتيمة وتُنقل إلى الحجر.
+  const SOURCES = [
+    { name: 'messages', projection: { mediaUrl: 1, mediaCapture: 1, content: 1 } },
+    { name: 'users', projection: { profileImage: 1, photos: 1, verificationPhoto: 1 } },
+    { name: 'reports', projection: null },
+    { name: 'violations', projection: null },
+    { name: 'appeals', projection: null },
+    { name: 'flaggedmessages', projection: null },
+    { name: 'sensitivecontentreveals', projection: null },
+    { name: 'officialwarnings', projection: null },
+    { name: 'spamreports', projection: null },
+  ];
+
+  for (const { name, projection } of SOURCES) {
+    if (!(await db.listCollections({ name }).hasNext())) {
+      console.log(`  تحذير: المجموعة '${name}' غير موجودة — تخطٍّ`);
+      continue;
+    }
+    const before = referenced.size;
+    const cursor = projection
+      ? db.collection(name).find({}, { projection })
+      : db.collection(name).find({});
+    for await (const doc of cursor) walk(doc);
+    console.log(`  ${name.padEnd(24)} +${referenced.size - before}`);
   }
   return referenced;
 }
