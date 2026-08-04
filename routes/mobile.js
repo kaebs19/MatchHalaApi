@@ -3613,7 +3613,7 @@ router.put('/device/update-token', protect, async (req, res) => {
 // @access  Private
 router.put('/device-token', protect, async (req, res) => {
     try {
-        const { deviceToken, platform, osVersion, appVersion } = req.body;
+        const { deviceToken, platform, osVersion, appVersion, language } = req.body;
 
         if (!deviceToken) {
             return res.status(400).json({
@@ -3622,15 +3622,22 @@ router.put('/device-token', protect, async (req, res) => {
             });
         }
 
-        await User.findByIdAndUpdate(req.user._id, {
+        // تحديث حقلي deviceInfo المعنيّين فقط: إسناد الكائن كاملاً كان يمحو
+        // deviceModel و language المحفوظين من التسجيل/الدخول.
+        const update = {
             deviceToken: deviceToken,
             fcmToken: deviceToken,
-            deviceInfo: {
-                platform: platform || 'ios',
-                osVersion: osVersion || null,
-                appVersion: appVersion || null
-            }
-        });
+            'deviceInfo.platform': platform || 'ios',
+            'deviceInfo.osVersion': osVersion || null,
+            'deviceInfo.appVersion': appVersion || null
+        };
+        // لغة الواجهة تتغيّر بتبديل المستخدم لها، لا بإعادة تثبيت التطبيق —
+        // نحدّثها فقط حين يرسلها العميل حتى لا يمحوها عميل قديم لا يعرفها.
+        if (language === 'ar' || language === 'en') {
+            update['deviceInfo.language'] = language;
+        }
+
+        await User.findByIdAndUpdate(req.user._id, update);
 
         console.log(`📱 Device Token updated for ${req.user.name}`);
 
