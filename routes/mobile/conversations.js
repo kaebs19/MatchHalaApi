@@ -469,7 +469,9 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
         await conversation.save();
 
         // ✅ رسالة نظام في المسار: تم قبول المحادثة
-        await createSystemMessage(conversation._id, req.user._id, 'conversation_accepted', 'تم قبول المحادثة', 'Conversation accepted');
+        // ملاحظة: التطبيق يبني نصّ هذه الرسالة من action (بطاقة خصوصية)، والنص
+        // هنا يبقى للقوائم والنسخ القديمة — فليبقَ قصيراً.
+        await createSystemMessage(conversation._id, req.user._id, 'conversation_accepted', 'تمت الموافقة على المحادثة', 'Chat request accepted');
 
         // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
