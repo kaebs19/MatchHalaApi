@@ -71,6 +71,33 @@ const isUserSocketConnected = async (userId) => {
     return Boolean(global.connectedUsers && global.connectedUsers.has(id));
 };
 
+// ✅ تعليم رسالة «مُسلَّمة» وإبلاغ المرسل (✓ → ✓✓)
+// يُستدعى متى ثبت وصول الرسالة لجهاز المستلم: سوكِت متصل، أو قبول FCM للإشعار،
+// أو عند اتصال المستلم لاحقاً. آمن للتكرار — يحدّث فقط ما زال status='sent'.
+const markMessageDelivered = async (messageId, conversationId, senderId = null) => {
+    try {
+        if (!messageId) return false;
+        const Message = require('../../models/Message');
+        const updated = await Message.findOneAndUpdate(
+            { _id: messageId, status: 'sent' },
+            { $set: { status: 'delivered' } }
+        ).select('sender conversation').lean();
+
+        if (!updated) return false;   // مُسلَّمة/مقروءة أصلاً
+
+        if (global.io) {
+            const convId = String(conversationId || updated.conversation);
+            const payload = { messageId: String(messageId), conversationId: convId };
+            global.io.to(`user:${senderId || updated.sender}`).emit('message-delivered', payload);
+            global.io.to(`conversation-${convId}`).emit('message-delivered', payload);
+        }
+        return true;
+    } catch (e) {
+        console.error('⚠️ markMessageDelivered فشل:', e.message);
+        return false;
+    }
+};
+
 // ==========================================
 // 🚫 الحظر بين مستخدمين — فحص ثنائي الاتجاه
 // ==========================================
@@ -283,6 +310,7 @@ module.exports = {
     maskBannedUser,
     getBlockState,
     isUserSocketConnected,
+    markMessageDelivered,
     otherParticipantIds,
     isOtherParticipantDeleted,
     blockGuardForConversation,

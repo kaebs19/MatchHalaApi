@@ -15,7 +15,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected, markMessageDelivered } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
 
@@ -779,6 +779,11 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     req.user._id,
                     message._id
                 );
+            } else {
+                // ✅ المستلم متصل بالسوكِت → الرسالة وصلت جهازه عبر user:room فوراً.
+                //    لا ننتظر تأكيد العميل (message-delivered) — قد يضيع لو كان
+                //    التطبيق في انتقال حالة، فتبقى ✓ واحدة رغم وصولها.
+                await markMessageDelivered(message._id, conversationId, req.user._id);
             }
         }
 
@@ -1080,6 +1085,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
                 }
+            } else if (isOnline) {
+                await markMessageDelivered(message._id, conversationId, req.user._id);
             }
         }
 
@@ -1244,6 +1251,8 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
                 } catch (pushErr) {
                     console.error('Push error (audio):', pushErr.message);
                 }
+            } else if (isOnline) {
+                await markMessageDelivered(message._id, conversationId, req.user._id);
             }
         }
 
@@ -1405,6 +1414,8 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     req.user._id,
                     message._id
                 );
+            } else {
+                await markMessageDelivered(message._id, conversationId, req.user._id);
             }
         }
 
@@ -1525,6 +1536,8 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     req.user._id,
                     message._id
                 );
+            } else {
+                await markMessageDelivered(message._id, conversationId, req.user._id);
             }
         }
 
@@ -2134,6 +2147,8 @@ router.post('/messages/forward', protect, async (req, res) => {
                 } catch (pushErr) {
                     console.error('Push error:', pushErr.message);
                 }
+            } else {
+                await markMessageDelivered(forwardedMessage._id, targetConversationId, req.user._id);
             }
         }
 

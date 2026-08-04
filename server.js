@@ -457,15 +457,21 @@ async function notifyConversationPartners(userId, event, data) {
 // الرسائل بين يدي جهازه فعلاً — نعلّمها كلها ونُبلغ المرسلين ليتحوّل ✓ إلى ✓✓.
 const DELIVERY_SWEEP_LIMIT = 300;
 
-async function markPendingMessagesDelivered(userId) {
+async function markPendingMessagesDelivered(userId, conversationId = null) {
     try {
-        const convs = await Conversation.find({ participants: userId })
-            .select('_id')
-            .lean();
-        if (convs.length === 0) return;
+        let convIds;
+        if (conversationId) {
+            convIds = [conversationId];
+        } else {
+            const convs = await Conversation.find({ participants: userId })
+                .select('_id')
+                .lean();
+            if (convs.length === 0) return;
+            convIds = convs.map(c => c._id);
+        }
 
         const pending = await Message.find({
-            conversation: { $in: convs.map(c => c._id) },
+            conversation: { $in: convIds },
             sender: { $ne: userId },
             status: 'sent',
             isDeleted: { $ne: true }
@@ -489,6 +495,8 @@ async function markPendingMessagesDelivered(userId) {
             io.to(`user:${msg.sender}`).emit('message-delivered', payload);
             io.to(`conversation-${msg.conversation}`).emit('message-delivered', payload);
         }
+
+        console.log(`📬 delivered-sweep: ${pending.length} رسالة → مُسلَّمة (user=${String(userId).slice(-6)}${conversationId ? ', conv=' + String(conversationId).slice(-6) : ''})`);
     } catch (error) {
         console.error('خطأ في markPendingMessagesDelivered:', error.message);
     }
@@ -646,6 +654,11 @@ io.on('connection', async (socket) => {
             }
 
             socket.join(`conversation-${conversationId}`);
+
+            // 📬 دخل المحادثة → كل رسائلها الواردة وصلته قطعاً
+            if (isMember) {
+                setImmediate(() => markPendingMessagesDelivered(socket.userId, conversationId));
+            }
 
             // إرسال عدد المتصلين
             const room = io.sockets.adapter.rooms.get(`conversation-${conversationId}`);
