@@ -1116,6 +1116,11 @@ router.get('/conversations', protect, async (req, res) => {
         // تحويل صور المشاركين إلى thumbnails + قناع المحظورين
         for (const conv of conversations) {
             if (conv.participants) {
+                // ✅ populate يُسقط المستخدم المحذوف — بقاء طرف واحد فقط في محادثة
+                //    خاصة يعني أن الطرف الآخر حذف حسابه (التطبيق يعرضها «مستخدم محذوف»)
+                conv.participants = conv.participants.filter(p => p);
+                conv.otherUserDeleted = conv.type !== 'group' &&
+                    !conv.participants.some(p => String(p._id) !== String(userId));
                 conv.participants = conv.participants.map(p => {
                     // إذا محظور بشكل كامل → قناع (اسم/صورة)
                     if (isUserFullyBanned(p)) {
@@ -1359,6 +1364,10 @@ router.get('/conversations/:id', protect, async (req, res) => {
 
         // قناع المشاركين المحظورين + thumbnails
         if (conv.participants) {
+            // ✅ الطرف الآخر حذف حسابه؟ (populate يُسقطه من المصفوفة)
+            conv.participants = conv.participants.filter(p => p);
+            conv.otherUserDeleted = conv.type !== 'group' &&
+                !conv.participants.some(p => String(p._id) !== String(userId));
             conv.participants = conv.participants.map(p => {
                 if (isUserFullyBanned(p)) return maskBannedUser(p);
                 const mainPhoto = p.photos && p.photos.length > 0

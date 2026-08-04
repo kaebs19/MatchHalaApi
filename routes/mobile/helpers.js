@@ -95,11 +95,26 @@ const getBlockState = async (meId, otherId) => {
 };
 
 // Helper: استخراج معرّفات الطرف الآخر من محادثة (participants قد تكون populated أو IDs)
+// ✅ يتجاهل العناصر الفارغة — populate لمستخدم محذوف يترك null مكانه
 const otherParticipantIds = (conversation, meId) => {
     const me = String(meId);
     return (conversation?.participants || [])
+        .filter(p => p)
         .map(p => String(p?._id || p))
-        .filter(id => id !== me);
+        .filter(id => id !== me && /^[0-9a-fA-F]{24}$/.test(id));
+};
+
+// Helper: هل حذف الطرف الآخر حسابه؟ (محادثة خاصة بلا طرف آخر قائم)
+// المحادثة والرسائل تبقى بعد حذف الحساب (نسخة الطرف الباقي)، لكن مرجع
+// المستخدم يصبح معلّقاً — نستخدم هذا للكشف عنه في العرض وبوابة الإرسال.
+const isOtherParticipantDeleted = async (conversation, meId) => {
+    if (!conversation || conversation.type === 'group') return false;
+    const others = otherParticipantIds(conversation, meId);
+    if (others.length === 0) return true;   // populate أسقط المحذوف
+
+    const User = require('../../models/User');
+    const alive = await User.countDocuments({ _id: { $in: others } });
+    return alive === 0;
 };
 
 // Helper: هل يمنع الحظر الإرسال في هذه المحادثة؟
@@ -269,6 +284,7 @@ module.exports = {
     getBlockState,
     isUserSocketConnected,
     otherParticipantIds,
+    isOtherParticipantDeleted,
     blockGuardForConversation,
     uploadMessageImage,
     uploadMessageAudio,

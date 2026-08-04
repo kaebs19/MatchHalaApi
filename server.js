@@ -449,6 +449,52 @@ async function notifyConversationPartners(userId, event, data) {
 }
 
 // ══════════════════════════════════════════
+// 📬 تعليم الرسائل الواردة «مُسلَّمة» عند اتصال المستلم
+// ══════════════════════════════════════════
+// الرسالة تُعلَّم delivered عند قبول FCM للإشعار (pushNotificationService)، لكن
+// ذلك لا يغطي: الإشعارات المعطّلة/المكتومة، ساعات الهدوء، فشل الـ token، أو
+// المستلم الذي فتح التطبيق قبل وصول الـ push. عند اتصال المستلم بالسوكِت تكون
+// الرسائل بين يدي جهازه فعلاً — نعلّمها كلها ونُبلغ المرسلين ليتحوّل ✓ إلى ✓✓.
+const DELIVERY_SWEEP_LIMIT = 300;
+
+async function markPendingMessagesDelivered(userId) {
+    try {
+        const convs = await Conversation.find({ participants: userId })
+            .select('_id')
+            .lean();
+        if (convs.length === 0) return;
+
+        const pending = await Message.find({
+            conversation: { $in: convs.map(c => c._id) },
+            sender: { $ne: userId },
+            status: 'sent',
+            isDeleted: { $ne: true }
+        })
+            .select('_id conversation sender')
+            .sort({ createdAt: -1 })
+            .limit(DELIVERY_SWEEP_LIMIT)
+            .lean();
+        if (pending.length === 0) return;
+
+        await Message.updateMany(
+            { _id: { $in: pending.map(m => m._id) } },
+            { $set: { status: 'delivered' } }
+        );
+
+        for (const msg of pending) {
+            const payload = {
+                messageId: String(msg._id),
+                conversationId: String(msg.conversation)
+            };
+            io.to(`user:${msg.sender}`).emit('message-delivered', payload);
+            io.to(`conversation-${msg.conversation}`).emit('message-delivered', payload);
+        }
+    } catch (error) {
+        console.error('خطأ في markPendingMessagesDelivered:', error.message);
+    }
+}
+
+// ══════════════════════════════════════════
 // 👥 إشعار "صديقك متصل الآن" (friend:online)
 // ══════════════════════════════════════════
 // Rate-limit: مرة واحدة لكل زوج (صديق→صديق) كل 4 ساعات — يمنع الإزعاج عند تقلّب الاتصال
@@ -532,6 +578,9 @@ io.on('connection', async (socket) => {
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
+
+    // 📬 الرسائل التي وصلت وهو خارج التطبيق → «مُسلَّمة» الآن (بدون تعطيل الاتصال)
+    setImmediate(() => markPendingMessagesDelivered(socket.userId));
 
     // ✅ الأدمن ينضم لـ admin-dashboard room — يستقبل تنبيهات (استئنافات/بلاغات/إلخ)
     if (socket.user.role === 'admin') {

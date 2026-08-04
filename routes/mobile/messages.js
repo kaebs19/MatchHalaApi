@@ -15,7 +15,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isUserSocketConnected } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
 
@@ -138,6 +138,18 @@ async function destroyDisappearingIfDue(message) {
 // (مكافحة الإزعاج: إغلاق المحادثة ثم قصفها برسائل "طلب" متتالية).
 async function checkConversationSendGate(conversation, user) {
     const userId = String(user._id);
+
+    // 0) الطرف الآخر حذف حسابه — لا وجهة للرسالة أصلاً
+    if (await isOtherParticipantDeleted(conversation, userId)) {
+        return {
+            status: 410,
+            body: {
+                success: false,
+                message: 'تم حذف حساب هذا المستخدم — لا يمكن إرسال رسائل',
+                code: 'USER_DELETED'
+            }
+        };
+    }
 
     // 1) الحظر — بأي اتجاه
     const blockGuard = await blockGuardForConversation(conversation, userId);
