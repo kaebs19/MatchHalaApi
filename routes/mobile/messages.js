@@ -784,6 +784,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 //    لا ننتظر تأكيد العميل (message-delivered) — قد يضيع لو كان
                 //    التطبيق في انتقال حالة، فتبقى ✓ واحدة رغم وصولها.
                 await markMessageDelivered(message._id, conversationId, req.user._id);
+                // ✅ وأعِدها في ردّ HTTP أيضاً — حدث السوكِت يسبق ردّ الإرسال،
+                //    فالمرسل ما زال يحمل معرّفاً مؤقتاً ولا يجد الرسالة ليحدّثها.
+                senderMessage.status = 'delivered';
+                senderMessage.isDelivered = true;
             }
         }
 
@@ -1067,6 +1071,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             p => p._id.toString() !== senderId.toString()
         );
 
+        let deliveredNow = false;
         for (const recipient of recipients) {
             const recipientId = recipient._id.toString();
             const isOnline = await isUserSocketConnected(recipientId);
@@ -1086,7 +1091,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                     console.error('Push error:', pushErr.message);
                 }
             } else if (isOnline) {
-                await markMessageDelivered(message._id, conversationId, req.user._id);
+                deliveredNow = await markMessageDelivered(message._id, conversationId, req.user._id) || deliveredNow;
             }
         }
 
@@ -1103,6 +1108,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                     mediaUrl: populatedMessage.mediaUrl,
                     imageSource: populatedMessage.imageSource,
                     disappearing: populatedMessage.disappearing,
+                    isDelivered: deliveredNow,
                     isRead: false,
                     createdAt: populatedMessage.createdAt,
                     updatedAt: populatedMessage.updatedAt
@@ -1252,7 +1258,9 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
                     console.error('Push error (audio):', pushErr.message);
                 }
             } else if (isOnline) {
-                await markMessageDelivered(message._id, conversationId, req.user._id);
+                if (await markMessageDelivered(message._id, conversationId, req.user._id)) {
+                    populatedMessage.isDelivered = true;
+                }
             }
         }
 
@@ -1415,7 +1423,9 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
                     message._id
                 );
             } else {
-                await markMessageDelivered(message._id, conversationId, req.user._id);
+                if (await markMessageDelivered(message._id, conversationId, req.user._id)) {
+                    populatedMessage.isDelivered = true;
+                }
             }
         }
 
@@ -1537,7 +1547,9 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
                     message._id
                 );
             } else {
-                await markMessageDelivered(message._id, conversationId, req.user._id);
+                if (await markMessageDelivered(message._id, conversationId, req.user._id)) {
+                    populatedMessage.isDelivered = true;
+                }
             }
         }
 
@@ -2148,7 +2160,9 @@ router.post('/messages/forward', protect, async (req, res) => {
                     console.error('Push error:', pushErr.message);
                 }
             } else {
-                await markMessageDelivered(forwardedMessage._id, targetConversationId, req.user._id);
+                if (await markMessageDelivered(forwardedMessage._id, targetConversationId, req.user._id)) {
+                    populatedMessage.isDelivered = true;
+                }
             }
         }
 
