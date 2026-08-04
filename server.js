@@ -503,6 +503,53 @@ async function markPendingMessagesDelivered(userId, conversationId = null) {
 }
 
 // ══════════════════════════════════════════
+// ⌨️ بثّ «يكتب…» لقائمة المحادثات
+// ══════════════════════════════════════════
+// غرفة conversation-<id> لا ينضم لها المستخدم إلا داخل شاشة المحادثة، فمؤشر
+// الكتابة لم يكن يصل قائمة المحادثات إطلاقاً. نبثّه أيضاً لغرفة كل مشارك.
+// المشاركون يُخزَّنون مؤقتاً (5 دقائق) — حدث الكتابة متكرر ولا يحتمل استعلاماً
+// لكل ضغطة مفتاح.
+const typingParticipantsCache = new Map();   // convId → { ids, expiresAt }
+const TYPING_CACHE_TTL = 5 * 60 * 1000;
+
+async function participantsForTyping(conversationId) {
+    const cached = typingParticipantsCache.get(conversationId);
+    if (cached && cached.expiresAt > Date.now()) return cached.ids;
+
+    const conv = await Conversation.findById(conversationId).select('participants').lean();
+    const ids = (conv?.participants || []).map(p => String(p));
+    typingParticipantsCache.set(conversationId, {
+        ids,
+        expiresAt: Date.now() + TYPING_CACHE_TTL
+    });
+    return ids;
+}
+
+async function emitTypingToParticipants(socket, conversationId, payload) {
+    try {
+        if (!conversationId) return;
+        const ids = await participantsForTyping(conversationId);
+        // العضوية شرط — لا يبثّ أحد «يكتب» في محادثة ليست له
+        if (!ids.includes(String(socket.userId))) return;
+
+        for (const id of ids) {
+            if (id === String(socket.userId)) continue;
+            io.to(`user:${id}`).emit('user-typing', payload);
+        }
+    } catch (error) {
+        console.error('خطأ في بثّ الكتابة:', error.message);
+    }
+}
+
+// تنظيف دوري لكاش المشاركين
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of typingParticipantsCache) {
+        if (value.expiresAt <= now) typingParticipantsCache.delete(key);
+    }
+}, TYPING_CACHE_TTL);
+
+// ══════════════════════════════════════════
 // 👥 إشعار "صديقك متصل الآن" (friend:online)
 // ══════════════════════════════════════════
 // Rate-limit: مرة واحدة لكل زوج (صديق→صديق) كل 4 ساعات — يمنع الإزعاج عند تقلّب الاتصال
@@ -682,21 +729,19 @@ io.on('connection', async (socket) => {
     });
 
     // عند الكتابة
-    socket.on('typing', ({ conversationId, userName }) => {
-        socket.to(`conversation-${conversationId}`).emit('user-typing', {
-            conversationId,
-            userName,
-            isTyping: true
-        });
+    // ✅ activity: typing | recording | selecting_image | selecting_file — كان
+    //    التطبيق يرسلها والخادم يُسقطها، فتظهر كلها «يكتب…»
+    socket.on('typing', async ({ conversationId, userName, activity }) => {
+        const payload = { conversationId, userName, activity: activity || 'typing', isTyping: true };
+        socket.to(`conversation-${conversationId}`).emit('user-typing', payload);
+        await emitTypingToParticipants(socket, conversationId, payload);
     });
 
     // عند التوقف عن الكتابة
-    socket.on('stop-typing', ({ conversationId }) => {
-        socket.to(`conversation-${conversationId}`).emit('user-typing', {
-            conversationId,
-            userName: null,
-            isTyping: false
-        });
+    socket.on('stop-typing', async ({ conversationId }) => {
+        const payload = { conversationId, userName: null, isTyping: false };
+        socket.to(`conversation-${conversationId}`).emit('user-typing', payload);
+        await emitTypingToParticipants(socket, conversationId, payload);
     });
 
     // عند استلام الرسالة من الطرف الآخر (message-delivered)
