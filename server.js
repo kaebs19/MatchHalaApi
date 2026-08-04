@@ -304,12 +304,32 @@ app.get('/', (req, res) => {
     });
 });
 
+// الكوميت المنشور — يُقرأ مرة واحدة عند الإقلاع من المستودع المجرّد.
+// شجرة العمل ليست مستودع git، فبدون هذا لا سبيل لمعرفة ما يعمل فعلاً إلا عبر SSH،
+// وكان «هل نُشر التعديل؟» سؤالاً بلا جواب سريع.
+const mongoose = require('mongoose');
+
+const DEPLOYED_COMMIT = (() => {
+    try {
+        return require('child_process')
+            .execSync('git --git-dir=/var/www/matchhala-api.git rev-parse --short HEAD', {
+                encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore']
+            })
+            .trim();
+    } catch {
+        return 'unknown'; // بيئة تطوير أو مستودع غائب — لا يُعطّل الإقلاع
+    }
+})();
+
 // Route للتحقق من حالة API
 app.get('/api/health', (req, res) => {
-    res.json({ 
+    res.json({
         status: 'success',
         message: 'السيرفر يعمل بنجاح ✅',
-        database: 'connected'
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        version: require('./package.json').version,
+        commit: DEPLOYED_COMMIT,
+        startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString()
     });
 });
 
