@@ -97,10 +97,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true
     }],
-    // نوع التسجيل (app, google, apple)
+    // نوع التسجيل (app, google, apple, facebook)
     authProvider: {
         type: String,
-        enum: ['app', 'google', 'apple'],
+        enum: ['app', 'google', 'apple', 'facebook'],
         default: 'app'
     },
     // معرفات التسجيل الخارجية
@@ -110,6 +110,11 @@ const userSchema = new mongoose.Schema({
         sparse: true
     },
     appleId: {
+        type: String,
+        default: null,
+        sparse: true
+    },
+    facebookId: {
         type: String,
         default: null,
         sparse: true

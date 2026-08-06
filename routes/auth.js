@@ -146,6 +146,8 @@ const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadg
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const googleWebClient = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
+// Facebook Graph API — يُستخدم في /facebook للتحقق من access token
+const FB_GRAPH = 'https://graph.facebook.com/v21.0';
 
 // Apple Auth
 const appleSignin = require('apple-signin-auth');
@@ -1853,6 +1855,199 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
 
     } catch (error) {
         console.error('خطأ في تسجيل الدخول عبر Google:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/facebook
+// @desc    تسجيل/دخول عبر Facebook
+// @access  Public
+router.post('/facebook', bannedDeviceCheck, async (req, res) => {
+    try {
+        const { accessToken, deviceInfo } = req.body;
+
+        // ✅ التقاط معرّفات الجهاز (body مع fallback للترويسات) مثل login/register
+        const deviceFingerprint = req.body.deviceFingerprint || req.headers['x-device-fingerprint'];
+        const deviceToken = req.body.deviceToken || req.headers['x-device-token'];
+        const vendorId = req.body.vendorId || req.headers['x-vendor-id'];
+
+        if (!accessToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Facebook Access Token مطلوب'
+            });
+        }
+
+        if (!process.env.FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET) {
+            console.error('FACEBOOK_APP_ID/FACEBOOK_APP_SECRET غير معرّفين في .env');
+            return res.status(500).json({
+                success: false,
+                message: 'خطأ في السيرفر'
+            });
+        }
+
+        // 1) التحقق من أن التوكن صادر لتطبيقنا نحن — بدون هذه الخطوة يمكن لأي
+        //    شخص أن يدخل بتوكن من تطبيق فيسبوك آخر.
+        let profile;
+        try {
+            const appToken = `${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+            const debugRes = await fetch(
+                `${FB_GRAPH}/debug_token?input_token=${encodeURIComponent(accessToken)}` +
+                `&access_token=${encodeURIComponent(appToken)}`
+            );
+            const debug = await debugRes.json();
+            const info = debug?.data;
+
+            if (!info?.is_valid || String(info.app_id) !== String(process.env.FACEBOOK_APP_ID)) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Facebook Token غير صالح'
+                });
+            }
+
+            // 2) جلب بيانات المستخدم
+            const meRes = await fetch(
+                `${FB_GRAPH}/me?fields=id,name,email,picture.width(400).height(400)` +
+                `&access_token=${encodeURIComponent(accessToken)}`
+            );
+            profile = await meRes.json();
+
+            if (!profile?.id) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Facebook Token غير صالح'
+                });
+            }
+        } catch (error) {
+            console.error('خطأ في التحقق من Facebook Token:', error);
+            return res.status(401).json({
+                success: false,
+                message: 'Facebook Token غير صالح'
+            });
+        }
+
+        const facebookId = profile.id;
+        const name = profile.name;
+        const picture = profile.picture?.data?.url || null;
+        // بعض حسابات فيسبوك (المسجّلة برقم هاتف) لا تُعيد بريداً حتى مع صلاحية email،
+        // والبريد حقل مطلوب وفريد في النموذج — نولّد بديلاً ثابتاً مشتقاً من معرّف فيسبوك.
+        const email = (profile.email || `fb-${facebookId}@facebook.chathala.com`).toLowerCase();
+
+        // البحث عن المستخدم أو إنشاؤه
+        let user = await User.findOne({
+            $or: [
+                { facebookId },
+                { email }
+            ]
+        });
+
+        let isNewUser = false;
+
+        if (user) {
+            // ربط حساب فيسبوك بحساب قائم بنفس البريد
+            if (!user.facebookId) {
+                user.facebookId = facebookId;
+                if (user.authProvider === 'app' && !user.password) {
+                    user.authProvider = 'facebook';
+                }
+            }
+            if (!user.profileImage && picture) {
+                user.profileImage = picture;
+            }
+        } else {
+            // فحص الاسم ضد الكلمات المحظورة
+            let safeName = name;
+            if (name) {
+                const nameCheck = await checkBannedWords(name);
+                if (nameCheck.hasBannedWords) safeName = nameCheck.censoredText;
+            }
+
+            isNewUser = true;
+            user = new User({
+                name: safeName,
+                email,
+                facebookId,
+                authProvider: 'facebook',
+                profileImage: picture || null,
+                isActive: true
+            });
+        }
+
+        // فحص الحظر
+        if (!isNewUser && user.bannedWords?.isBanned) {
+            await recordDeviceBanForUser(user, req, 'violation', user.bannedWords.banReason || 'banned_words');
+            return res.status(403).json({
+                success: false,
+                message: 'تم حظر حسابك بسبب مخالفات متكررة. تواصل مع الإدارة',
+                code: 'ACCOUNT_BANNED'
+            });
+        }
+
+        // فحص التعليق + isActive
+        if (!isNewUser && user.suspension?.isSuspended) {
+            const now = new Date();
+            const stillSuspended = !user.suspension.suspendedUntil || now < user.suspension.suspendedUntil;
+            if (stillSuspended) {
+                if (!user.suspension.suspendedUntil) {
+                    await recordDeviceBanForUser(user, req, 'manual', user.suspension.reason || 'permanent_suspension');
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: user.suspension.suspendedUntil ? 'تم تعليق حسابك مؤقتًا' : 'تم تعليق حسابك بشكل دائم',
+                    code: 'ACCOUNT_SUSPENDED',
+                    data: {
+                        reason: user.suspension.reason,
+                        suspendedUntil: user.suspension.suspendedUntil,
+                        level: user.suspension.level || 0
+                    }
+                });
+            }
+        }
+        if (!isNewUser && user.isActive === false) {
+            await recordDeviceBanForUser(user, req, 'manual', 'inactive_account');
+            return res.status(401).json({
+                success: false,
+                message: 'الحساب غير مفعل، تواصل مع الإدارة'
+            });
+        }
+
+        // حفظ بصمة الجهاز بالحقول الصحيحة (مطابقة لـ login/register)
+        if (deviceFingerprint) user.deviceFingerprint = deviceFingerprint;
+        if (deviceToken) user.keychainToken = deviceToken;
+        if (vendorId) user.vendorId = vendorId;
+        if (deviceInfo) user.deviceDetails = deviceInfo;
+
+        user.fcmToken = deviceToken;
+        if (deviceInfo) user.deviceInfo = deviceInfo;
+
+        await user.save();
+        await saveLoginRecord(user, req);
+
+        res.status(200).json({
+            success: true,
+            message: isNewUser ? 'تم التسجيل بنجاح عبر Facebook' : 'تم تسجيل الدخول بنجاح عبر Facebook',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: user.profileImage,
+                    authProvider: user.authProvider,
+                    lastLogin: user.lastLogin
+                },
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id),
+                isNewUser
+            }
+        });
+
+    } catch (error) {
+        console.error('خطأ في تسجيل الدخول عبر Facebook:', error);
         res.status(500).json({
             success: false,
             message: 'خطأ في السيرفر',
