@@ -337,6 +337,7 @@ function Users({ onViewDetail }) {
                             <option value="app">التطبيق</option>
                             <option value="google">Google</option>
                             <option value="apple">Apple</option>
+                            <option value="facebook">Facebook</option>
                         </select>
                         <select value={filterBanned} onChange={(e) => setFilterBanned(e.target.value)}>
                             <option value="all">جميع - محظور/معلّق</option>
@@ -435,9 +436,9 @@ function Users({ onViewDetail }) {
                                                     <span dir="ltr" className="email-text">{user.email}</span>
                                                     <span
                                                         className={`auth-badge auth-${user.authProvider || 'app'}`}
-                                                        title={user.authProvider === 'google' ? 'تسجيل عبر Google' : user.authProvider === 'apple' ? 'تسجيل عبر Apple' : 'تسجيل بالبريد (App)'}
+                                                        title={user.authProvider === 'google' ? 'تسجيل عبر Google' : user.authProvider === 'apple' ? 'تسجيل عبر Apple' : user.authProvider === 'facebook' ? 'تسجيل عبر Facebook' : 'تسجيل بالبريد (App)'}
                                                     >
-                                                        {user.authProvider === 'google' ? 'G' : user.authProvider === 'apple' ? '🍎' : '📧'}
+                                                        {user.authProvider === 'google' ? 'G' : user.authProvider === 'apple' ? '🍎' : user.authProvider === 'facebook' ? 'f' : '📧'}
                                                     </span>
                                                 </div>
                                             </td>

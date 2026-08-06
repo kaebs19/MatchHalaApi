@@ -408,6 +408,7 @@
 .auth-badge.auth-google { background: #fef3c7; color: #92400e; }
 .auth-badge.auth-apple { background: #1f2937; color: white; }
 .auth-badge.auth-app { background: #eff6ff; color: #3b82f6; }
+.auth-badge.auth-facebook { background: #1877f2; color: white; }
 
 /* Info Column */
 .user-info-col {

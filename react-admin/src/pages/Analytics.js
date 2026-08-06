@@ -65,6 +65,7 @@ function Analytics({ onViewUserDetail }) {
     const getAuthLabel = (id) => {
         if (id === 'google') return 'Google';
         if (id === 'apple') return 'Apple';
+        if (id === 'facebook') return 'Facebook';
         if (id === 'app') return 'تطبيق';
         return id || 'غير محدد';
     };
@@ -157,7 +158,7 @@ function Analytics({ onViewUserDetail }) {
                             {data.authProviderStats.map((a, i) => (
                                 <div key={i} className="auth-stat-item">
                                     <span className="auth-icon">
-                                        {a._id === 'google' ? '🔵' : a._id === 'apple' ? '🍎' : '📱'}
+                                        {a._id === 'google' ? '🔵' : a._id === 'apple' ? '🍎' : a._id === 'facebook' ? '🔷' : '📱'}
                                     </span>
                                     <span className="auth-label">{getAuthLabel(a._id)}</span>
                                     <span className="auth-count">{a.count}</span>

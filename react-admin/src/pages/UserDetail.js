@@ -737,6 +737,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
         switch (provider) {
             case 'google': return 'Google';
             case 'apple': return 'Apple';
+            case 'facebook': return 'Facebook';
             case 'app': return 'التطبيق';
             default: return 'غير محدد';
         }
@@ -746,6 +747,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
         switch (provider) {
             case 'google': return '🔵';
             case 'apple': return '🍎';
+            case 'facebook': return '🔷';
             case 'app': return '📱';
             default: return '❓';
         }
