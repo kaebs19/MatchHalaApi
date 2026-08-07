@@ -356,27 +356,63 @@ const LOCK_DECAY_DAYS = 90;   // lockCount يتصفّر بعد 90 يوم من ح
 const SUSPENSION_DURATION_DAYS = 7;
 
 /**
- * ✅ نظام التصعيد التدريجي: مدة التقييد حسب عدد التقييدات السابقة
- *    أول مرة (lockCount=1)  → 24h
- *    ثاني مرة (lockCount=2) → 48h
- *    ثالث مرة (lockCount=3) → 72h
- *    رابع مرة+ (lockCount≥4) → تعليق 7 أيام
+ * ✅ سُلّم التصعيد التدريجي — مدة التقييد بالدقائق حسب عدد التقييدات السابقة.
+ *
+ * الفلسفة: أول مخالفة تنبيه عملي لا عقوبة (10 دقائق)، فمن أخطأ عن جهل يتعلّم
+ * دون أن يهجر التطبيق. التصعيد يشتدّ بسرعة على المصرّ.
+ *
+ *    1 → 10 دقائق      4 → 12 ساعة
+ *    2 → 30 دقيقة      5 → يوم
+ *    3 → ساعة          6 → أسبوع
+ *    7 فأكثر → 30 يوماً
+ *
+ * أي مدة تبلغ 7 أيام أو أكثر تتحوّل إلى تعليق حساب لا مجرّد قفل مراسلة.
  */
-function calculateLockHours(lockCount) {
-    if (lockCount <= 0) return 24;
-    if (lockCount >= 4) return SUSPENSION_DURATION_DAYS * 24; // 7 أيام
-    return lockCount * 24; // 24, 48, 72
+const LOCK_LADDER_MINUTES = [
+    10,          // 1: عشر دقائق
+    30,          // 2: نصف ساعة
+    60,          // 3: ساعة
+    12 * 60,     // 4: 12 ساعة
+    24 * 60,     // 5: يوم
+    7 * 24 * 60  // 6: أسبوع
+];
+const LOCK_BEYOND_LADDER_MINUTES = 30 * 24 * 60; // 7 فأكثر: شهر
+
+function calculateLockMinutes(lockCount) {
+    if (lockCount <= 0) return LOCK_LADDER_MINUTES[0];
+    if (lockCount > LOCK_LADDER_MINUTES.length) return LOCK_BEYOND_LADDER_MINUTES;
+    return LOCK_LADDER_MINUTES[lockCount - 1];
 }
 
 /**
- * صياغة نص المدة بالعربية (24 ساعة / يومان / 3 أيام / أسبوع)
+ * متبقٍّ للتوافق مع من يستدعيها بالساعات (routes/mobile/users.js).
+ * نُقرّب لأعلى كي لا يظهر «0 ساعة» لقفل مدته دقائق.
  */
-function formatDurationArabic(hours) {
-    if (hours < 48) return '24 ساعة';
-    if (hours === 48) return 'يومين (48 ساعة)';
-    if (hours === 72) return '3 أيام (72 ساعة)';
-    if (hours >= 24 * 7) return 'أسبوع كامل';
-    const days = Math.round(hours / 24);
+function calculateLockHours(lockCount) {
+    return Math.ceil(calculateLockMinutes(lockCount) / 60);
+}
+
+/**
+ * صياغة نص المدة بالعربية من الدقائق (10 دقائق / نصف ساعة / ساعة / يوم / أسبوع)
+ */
+function formatDurationArabic(minutes) {
+    // تمييز العدد العربي: 3–10 جمع (دقائق/ساعات/أيام)، و11 فأكثر مفرد منصوب.
+    if (minutes < 60) {
+        if (minutes === 1) return 'دقيقة واحدة';
+        if (minutes === 2) return 'دقيقتين';
+        return minutes <= 10 ? `${minutes} دقائق` : `${minutes} دقيقة`;
+    }
+    if (minutes === 60) return 'ساعة واحدة';
+    if (minutes < 24 * 60) {
+        const hours = Math.round(minutes / 60);
+        if (hours === 2) return 'ساعتين';
+        return hours <= 10 ? `${hours} ساعات` : `${hours} ساعة`;
+    }
+    if (minutes === 24 * 60) return 'يوماً كاملاً';
+    if (minutes === 7 * 24 * 60) return 'أسبوعاً كاملاً';
+    if (minutes === 30 * 24 * 60) return 'شهراً كاملاً';
+    const days = Math.round(minutes / (24 * 60));
+    if (days === 2) return 'يومين';
     return `${days} أيام`;
 }
 
@@ -477,7 +513,7 @@ async function recordExternalPromoViolation(user, logContext = null) {
     let lockApplied = false;
     let suspended = false;
     let message = null;
-    let durationHours = 0;
+    let durationMinutes = 0;
 
     // HARD threshold (نفس الدورة 10 مخالفات): suspension طارئ 7 أيام
     if (user.externalPromo.violations >= HARD_THRESHOLD) {
@@ -494,18 +530,18 @@ async function recordExternalPromoViolation(user, logContext = null) {
         user.externalPromo.lastLockAt = now;
         user.externalPromo.violations = 0;  // reset للدورة التالية
         suspended = true;
-        durationHours = SUSPENSION_DURATION_DAYS * 24;
+        durationMinutes = SUSPENSION_DURATION_DAYS * 24 * 60;
         message = `تم تعليق حسابك أسبوعاً بسبب التكرار في نشر حسابات خارجية. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
     }
     // SOFT threshold: lock تدريجي حسب lockCount
     else if (user.externalPromo.violations >= SOFT_THRESHOLD) {
         user.externalPromo.lockCount += 1;
         const newLockCount = user.externalPromo.lockCount;
-        durationHours = calculateLockHours(newLockCount);
+        durationMinutes = calculateLockMinutes(newLockCount);
 
-        // التقييد الرابع فأكثر → suspension بدلاً من lock
-        if (durationHours >= SUSPENSION_DURATION_DAYS * 24) {
-            const suspensionUntil = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
+        // المدة التي تبلغ أسبوعاً فأكثر → تعليق حساب بدل قفل المراسلة
+        if (durationMinutes >= SUSPENSION_DURATION_DAYS * 24 * 60) {
+            const suspensionUntil = new Date(now.getTime() + durationMinutes * 60 * 1000);
             user.suspension = user.suspension || {};
             user.suspension.isSuspended = true;
             user.suspension.suspendedAt = now;
@@ -514,10 +550,10 @@ async function recordExternalPromoViolation(user, logContext = null) {
             user.suspension.adminMessage = `تم تعليق الحساب (تقييد رقم ${newLockCount}) بسبب تكرار نشر حسابات خارجية`;
             user.externalPromo.suspendedAt = now;
             suspended = true;
-            message = `تم تعليق حسابك ${formatDurationArabic(durationHours)} — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
+            message = `تم تعليق حسابك ${formatDurationArabic(durationMinutes)} — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
         } else {
-            // lock عادي 24/48/72 ساعة
-            const lockUntil = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
+            // قفل مراسلة عادي (10 دقائق … يوم)
+            const lockUntil = new Date(now.getTime() + durationMinutes * 60 * 1000);
             user.externalPromo.bioLockedUntil = lockUntil;
             if (!user.restrictions) user.restrictions = {};
             user.restrictions.messagingRestricted = true;
@@ -525,7 +561,7 @@ async function recordExternalPromoViolation(user, logContext = null) {
             user.restrictions.messagingRestrictedLevel = 'all';
             user.restrictions.restrictionReason = 'external_promotion';
             lockApplied = true;
-            message = `تم تقييد حسابك ${formatDurationArabic(durationHours)} بسبب تكرار نشر حسابات خارجية — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
+            message = `تم تقييد حسابك ${formatDurationArabic(durationMinutes)} بسبب تكرار نشر حسابات خارجية — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
         }
 
         user.externalPromo.lastLockAt = now;
@@ -568,7 +604,9 @@ async function recordExternalPromoViolation(user, logContext = null) {
         violations: user.externalPromo.violations,
         threshold: SOFT_THRESHOLD,
         lockCount: user.externalPromo.lockCount,
-        durationHours,
+        durationMinutes,
+        // يبقى للتوافق مع أي مستدعٍ قديم — مُقرَّب لأعلى كي لا يكون 0 لقفل بالدقائق
+        durationHours: Math.ceil(durationMinutes / 60),
         lockApplied,
         suspended,
         message
@@ -644,7 +682,10 @@ module.exports = {
     isMessagingLockedByPromo,
     aggressiveNormalize,
     looksLikeExternalHandle,    // ✅ heuristic للـ banned-words auto-classification
-    calculateLockHours,         // ✅ لحساب مدة القفل لكل مستوى تصعيد
+    calculateLockHours,         // ✅ لحساب مدة القفل لكل مستوى تصعيد (بالساعات، مُقرَّبة)
+    calculateLockMinutes,       // ✅ المصدر الحقيقي للمدة — السُلّم يبدأ بـ 10 دقائق
+    formatDurationArabic,
+    LOCK_LADDER_MINUTES,
     SOFT_THRESHOLD,
     HARD_THRESHOLD,
     LOCK_DECAY_DAYS,

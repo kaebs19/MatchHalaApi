@@ -1011,8 +1011,8 @@ router.get('/violations-history', protect, async (req, res) => {
 router.get('/account-standing', protect, async (req, res) => {
     try {
         const {
-            calculateLockHours, SOFT_THRESHOLD, HARD_THRESHOLD,
-            LOCK_DECAY_DAYS, SUSPENSION_DURATION_DAYS
+            SOFT_THRESHOLD, HARD_THRESHOLD, LOCK_DECAY_DAYS,
+            SUSPENSION_DURATION_DAYS, LOCK_LADDER_MINUTES, formatDurationArabic
         } = require('../../utils/externalPromotionDetector');
 
         const u = req.user;
@@ -1025,8 +1025,14 @@ router.get('/account-standing', protect, async (req, res) => {
         const restrictedUntil = u.restrictions?.messagingRestrictedUntil;
         const isRestricted = !!(u.restrictions?.messagingRestricted &&
             restrictedUntil && new Date(restrictedUntil).getTime() > now);
+        // المتبقّي بالدقائق هو القيمة الدقيقة الآن بعد أن صار السُلّم يبدأ بـ 10 دقائق.
+        // hoursLeft يبقى للتوافق مع نسخ التطبيق المنشورة التي تقرأه، ومُقرَّب لأعلى
+        // كي لا يظهر «0 ساعة» لقفل بالدقائق — واجهة التطبيق تفضّل العدّاد الحيّ من until.
+        const restrictionMinutesLeft = isRestricted
+            ? Math.max(1, Math.ceil((new Date(restrictedUntil).getTime() - now) / 60000))
+            : 0;
         const restrictionHoursLeft = isRestricted
-            ? Math.max(1, Math.ceil((new Date(restrictedUntil).getTime() - now) / 3600000))
+            ? Math.max(1, Math.ceil(restrictionMinutesLeft / 60))
             : 0;
 
         // التعليق الحالي
@@ -1047,15 +1053,20 @@ router.get('/account-standing', protect, async (req, res) => {
             daysUntilLockReset = Math.max(0, Math.ceil((resetAt - now) / 86400000));
         }
 
-        // سُلّم التصعيد — مبني على lockCount الحالي
-        const ladder = [
-            { step: 1, label: 'تقييد المراسلة 24 ساعة', hours: calculateLockHours(1) },
-            { step: 2, label: 'تقييد المراسلة 48 ساعة', hours: calculateLockHours(2) },
-            { step: 3, label: 'تقييد المراسلة 72 ساعة', hours: calculateLockHours(3) },
-            { step: 4, label: 'تعليق الحساب 7 أيام', hours: calculateLockHours(4) }
-        ];
+        // سُلّم التصعيد — يُبنى من LOCK_LADDER_MINUTES نفسه لا مكتوباً يدوياً،
+        // فأي تعديل على المدد ينعكس هنا تلقائياً بدل أن تتناقض الشاشة مع الواقع.
+        const SUSPENSION_MINUTES = SUSPENSION_DURATION_DAYS * 24 * 60;
+        const ladder = LOCK_LADDER_MINUTES.map((minutes, i) => {
+            const isSuspension = minutes >= SUSPENSION_MINUTES;
+            return {
+                step: i + 1,
+                label: `${isSuspension ? 'تعليق الحساب' : 'تقييد المراسلة'} ${formatDurationArabic(minutes)}`,
+                minutes,
+                hours: Math.ceil(minutes / 60)
+            };
+        });
         // الخطوة التالية = lockCount + 1
-        const nextStep = Math.min(lockCount + 1, 4);
+        const nextStep = Math.min(lockCount + 1, ladder.length);
 
         // ✅ قابلية المراجعة: مخالفات الصور الإباحية/الجنسية والأسماء المخالفة
         //    غير قابلة للمراجعة. الترويج الخارجي قابل للمراجعة.
@@ -1084,6 +1095,7 @@ router.get('/account-standing', protect, async (req, res) => {
                 restriction: {
                     active: isRestricted,
                     hoursLeft: restrictionHoursLeft,
+                    minutesLeft: restrictionMinutesLeft,
                     until: restrictedUntil || null,
                     reason: u.restrictions?.restrictionReason || null
                 },
