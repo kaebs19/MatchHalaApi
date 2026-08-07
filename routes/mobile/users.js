@@ -518,7 +518,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry'
+            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry'
         ).lean();
 
         if (!user) {
@@ -584,6 +584,16 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         const hideAge = !isOwn && user.showAge === false;
         const hideCountry = !isOwn && user.showCountry === false;
 
+        // ✅ يوم/شهر الميلاد فقط (بدون سنة) — يظهر حتى مع إخفاء العمر،
+        //    لأن «إخفاء العمر» يخفي الرقم فقط لا تاريخ الميلاد والبرج.
+        let birthDayMonth = null;
+        if (user.birthDate) {
+            const bd = new Date(user.birthDate);
+            if (!isNaN(bd.getTime())) {
+                birthDayMonth = { day: bd.getUTCDate(), month: bd.getUTCMonth() + 1 };
+            }
+        }
+
         // ✅ isPremium محسوب لحظياً — لا نرجع المخزن stale
         const nowDate = new Date();
         const userExpiresAt = user.premiumExpiresAt ? new Date(user.premiumExpiresAt) : null;
@@ -614,9 +624,11 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                 }))
                 : [],
             birthDate: hideAge ? null : user.birthDate,
+            birthDayMonth,
             gender: user.gender,
             country: hideCountry ? null : user.country,
             bio: user.bio,
+            interests: user.interests || [],
             isOnline: hidePresence ? false : user.isOnline,
             lastLogin: hidePresence ? null : user.lastLogin,
             isPremium: userIsPremiumValid,
@@ -628,9 +640,10 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             distance,
             // ✅ حقول محسوبة للملف الشخصي
             joinDate: user.createdAt,
-            zodiacSign: hideAge ? null : getZodiacSign(user.birthDate),
+            // ✅ البرج وعيد الميلاد لا يتأثران بإخفاء العمر — الرقم فقط هو المخفي
+            zodiacSign: getZodiacSign(user.birthDate),
             userRank: computeUserRank(user),
-            isBirthdayToday: hideAge ? false : isBirthdayToday(user.birthDate),
+            isBirthdayToday: isBirthdayToday(user.birthDate),
             hasVipBadge: hasVipBadge(user),
             vipBadgeSource: getVipBadgeSource(user),
             // ✅ إعدادات الخصوصية للعرض الشرطي في iOS (تعطيل زر الإرسال مسبقاً)
