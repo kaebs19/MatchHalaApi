@@ -1,6 +1,7 @@
 // MatchHala - Swipes Routes
 // مسارات السوايب
 
+const mongoose = require('mongoose');
 const express = require('express');
 const router = express.Router();
 const Swipe = require('../models/Swipe');
@@ -271,6 +272,57 @@ router.post('/', protect, async (req, res) => {
             message: 'خطأ في السيرفر',
             error: error.message
         });
+    }
+});
+
+// @route   DELETE /api/swipes/:userId
+// @desc    التراجع عن الإعجاب (إلغاء اللايك)
+// @access  Protected
+router.delete('/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const swiperId = req.user._id;
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ success: false, message: 'معرف المستخدم غير صالح' });
+        }
+
+        // نحذف الإعجاب فقط. الـ dislike يبقى — هو قرار «تخطّي» يمنع إعادة ظهور
+        // البطاقة، وحذفه بزرّ القلب سيعيد ظهور من رفضهم المستخدم عمداً.
+        const swipe = await Swipe.findOneAndDelete({
+            swiper: swiperId,
+            swiped: userId,
+            type: { $in: ['like', 'superlike'] }
+        });
+
+        if (!swipe) {
+            return res.status(404).json({ success: false, message: 'لا يوجد إعجاب لإلغائه' });
+        }
+
+        // لو كان الإعجاب قد أنتج تطابقاً، يُلغى التطابق أيضاً — إبقاؤه يعني
+        // محادثة مفتوحة بين طرفين أحدهما لم يعد معجباً.
+        let matchRemoved = false;
+        const match = await Match.findOne({ users: { $all: [swiperId, userId] }, isActive: true });
+        if (match) {
+            match.isActive = false;
+            await match.save();
+            matchRemoved = true;
+
+            if (global.io) {
+                global.io.to(`user:${userId}`).emit('match-removed', { matchId: match._id });
+                global.io.to(`user:${swiperId}`).emit('match-removed', { matchId: match._id });
+            }
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'تم إلغاء الإعجاب',
+            data: { matchRemoved }
+        });
+
+    } catch (error) {
+        console.error('خطأ في إلغاء الإعجاب:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
     }
 });
 

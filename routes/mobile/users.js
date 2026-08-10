@@ -482,6 +482,25 @@ router.get('/users/search', protect, async (req, res) => {
             });
         }
 
+        // ✅ حالة الإعجاب — استعلام واحد لكل الصفحة بدل N استعلامات، ليعرف
+        //    التطبيق أي القلوب مملوءة عند رسم البطاقات.
+        try {
+            const Swipe = require('../../models/Swipe');
+            const ids = users.map(u => u._id).filter(Boolean);
+            if (ids.length) {
+                const liked = await Swipe.find({
+                    swiper: req.user._id,
+                    swiped: { $in: ids },
+                    type: { $in: ['like', 'superlike'] }
+                }).select('swiped').lean();
+                const likedSet = new Set(liked.map(s => String(s.swiped)));
+                users = users.map(u => ({ ...u, isLiked: likedSet.has(String(u._id)) }));
+            }
+        } catch (likeErr) {
+            // غير حرج: البحث يعمل بدون حالة الإعجاب، القلوب تظهر فارغة فقط
+            console.error('تعذّر جلب حالة الإعجاب في البحث:', likeErr.message);
+        }
+
         res.status(200).json({
             success: true,
             data: {
