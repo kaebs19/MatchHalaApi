@@ -73,6 +73,23 @@ function sanitizeFCMData(data) {
     return out;
 }
 
+/**
+ * هل الخطأ يعني أن التوكن ميت نهائياً (لا فائدة من إعادة المحاولة)؟
+ * يشمل التوكن المشوّه الذي يرجع بكود invalid-argument عام.
+ */
+function isDeadTokenError(error) {
+    const code = error?.code || '';
+    if (code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-registration-token') {
+        return true;
+    }
+    if (code === 'messaging/invalid-argument') {
+        const msg = String(error?.message || '').toLowerCase();
+        return msg.includes('registration token');
+    }
+    return false;
+}
+
 const sendToDevice = async (token, notification, data = {}) => {
     try {
         const collapseId = data.conversationId || data.type || 'general';
@@ -134,8 +151,10 @@ const sendToDevice = async (token, notification, data = {}) => {
         return { success: true, messageId: response };
     } catch (error) {
         // تنظيف التوكن الفاسد
-        if (error.code === 'messaging/registration-token-not-registered' ||
-            error.code === 'messaging/invalid-registration-token') {
+        // ⚠️ التوكن المشوّه (توكن APNs خام مخزّن مكان توكن FCM) يرجع بكود
+        //    invalid-argument لا invalid-registration-token، فكان ينجو من
+        //    التنظيف ويُستهلك طلباً فاشلاً مع كل إشعار إلى الأبد.
+        if (isDeadTokenError(error)) {
             try {
                 const User = require('../models/User');
                 await User.updateMany(
