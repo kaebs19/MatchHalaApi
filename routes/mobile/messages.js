@@ -23,6 +23,26 @@ const Settings = require('../../models/Settings');
 // نظام الرسائل
 // ==========================================
 
+// ✅ Helper: أبعاد الصورة المرفوعة — يحجز التطبيق مساحتها قبل التحميل فلا
+//    تقفز المحادثة عند وصول كل صورة. الفشل غير حرج: الرسالة تُرسل بلا أبعاد
+//    ويستخدم التطبيق نسبته الافتراضية.
+async function readImageDimensions(filePath) {
+    try {
+        const sharp = require('sharp');
+        const meta = await sharp(filePath).metadata();
+        if (!meta?.width || !meta?.height) return {};
+        // orientation 5..8 يعني أن الصورة مدوّرة 90° — الأبعاد المعروضة معكوسة
+        const rotated = meta.orientation >= 5 && meta.orientation <= 8;
+        return {
+            mediaWidth: rotated ? meta.height : meta.width,
+            mediaHeight: rotated ? meta.width : meta.height
+        };
+    } catch (err) {
+        console.error('تعذّر قراءة أبعاد الصورة:', err.message);
+        return {};
+    }
+}
+
 // ✅ Helper: فحص قيد المراسلة (يطبَّق على النص + الصور + الصوت)
 // يُرجع response object لو مقيّد، أو null لو مسموح
 // mediaType: 'text' | 'image' | 'audio' — يُستخدم في رسالة الخطأ فقط
@@ -1028,13 +1048,16 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
         const imageSource = req.body.imageSource || null; // 'camera' | 'gallery'
         const disappearingDuration = req.body.disappearingDuration ? parseInt(req.body.disappearingDuration) : null; // ثواني
 
+        const dimensions = await readImageDimensions(req.file.path);
+
         const messageData = {
             conversation: conversationId,
             sender: senderId,
             type: 'image',
             mediaUrl: mediaUrl,
             content: req.body.caption || '',
-            status: 'sent'
+            status: 'sent',
+            ...dimensions
         };
 
         // مصدر الصورة
@@ -1106,6 +1129,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                     content: populatedMessage.content,
                     type: populatedMessage.type,
                     mediaUrl: populatedMessage.mediaUrl,
+                    mediaWidth: populatedMessage.mediaWidth,
+                    mediaHeight: populatedMessage.mediaHeight,
                     imageSource: populatedMessage.imageSource,
                     disappearing: populatedMessage.disappearing,
                     isDelivered: deliveredNow,
@@ -1378,13 +1403,15 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
         const mediaUrl = `${baseUrl}/uploads/messages/${req.file.filename}`;
 
         // إنشاء الرسالة
+        const dimensionsAlt = await readImageDimensions(req.file.path);
         const message = await Message.create({
             conversation: conversationId,
             sender: senderId,
             type: 'image',
             mediaUrl: mediaUrl,
             content: req.body.caption || '',
-            status: 'sent'
+            status: 'sent',
+            ...dimensionsAlt
         });
 
         // تحديث آخر رسالة في المحادثة

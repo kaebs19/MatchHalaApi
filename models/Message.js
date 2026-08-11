@@ -94,6 +94,16 @@ const messageSchema = new mongoose.Schema({
         enum: ['camera', 'gallery', null],
         default: null
     },
+    // ✅ أبعاد الصورة — يحجز التطبيق مساحتها قبل التحميل فلا تقفز المحادثة
+    //    عند وصول كل صورة. الرسائل القديمة بلا أبعاد تُعرض بنسبة افتراضية.
+    mediaWidth: {
+        type: Number,
+        default: null
+    },
+    mediaHeight: {
+        type: Number,
+        default: null
+    },
     // ✅ الصور المؤقتة (تختفي بعد المشاهدة)
     disappearing: {
         enabled: { type: Boolean, default: false },
