@@ -28,7 +28,7 @@ import { userBioAction,
     clearUserReports
 } from '../services/api';
 import { useToast } from '../components/Toast';
-import { getImageUrl, getDefaultAvatar } from '../config';
+import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
@@ -1840,18 +1840,30 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                             </div>
                                         </div>
                                         {msg.content && <p className="message-content">{msg.content}</p>}
-                                        {msg.type === 'image' && msg.mediaUrl && (
-                                            <div className="message-media">
-                                                <img
-                                                    src={getImageUrl(msg.mediaUrl)}
-                                                    alt="صورة"
-                                                    className="message-image-preview"
-                                                    onClick={(e) => { e.stopPropagation(); setLightboxImage(getImageUrl(msg.mediaUrl)); }}
-                                                    style={{cursor:'zoom-in'}}
-                                                    onError={(e) => { e.target.style.display = 'none'; }}
-                                                />
-                                            </div>
-                                        )}
+                                        {msg.type === 'image' && (() => {
+                                            // ✅ الصورة المؤقتة المنتهية تُعرض من أرشيف الإشراف
+                                            const src = getMessagePhotoUrl(msg);
+                                            if (!src) {
+                                                return msg.isDisappearingPhoto
+                                                    ? <p style={{fontSize:12,opacity:0.7}}>⏱️ صورة مؤقتة — غير متوفرة</p>
+                                                    : null;
+                                            }
+                                            return (
+                                                <div className="message-media">
+                                                    {msg.isExpiredPhoto && (
+                                                        <p style={{fontSize:11,color:'#7c3aed',fontWeight:700,margin:'4px 0'}}>⏱️ صورة مؤقتة منتهية — أرشيف الإشراف</p>
+                                                    )}
+                                                    <img
+                                                        src={src}
+                                                        alt="صورة"
+                                                        className="message-image-preview"
+                                                        onClick={(e) => { e.stopPropagation(); setLightboxImage(src); }}
+                                                        style={{cursor:'zoom-in'}}
+                                                        onError={(e) => { e.target.style.display = 'none'; }}
+                                                    />
+                                                </div>
+                                            );
+                                        })()}
                                         <p className="message-date" style={{marginTop:6,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11,color:'#6b7280'}}>
                                             <span>{formatDate(msg.createdAt)}</span>
                                             {msg.conversation && <span style={{color:'#6366f1'}}>اضغط لفتح المحادثة →</span>}

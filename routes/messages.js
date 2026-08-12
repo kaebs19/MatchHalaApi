@@ -6,6 +6,16 @@ const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
+const path = require('path');
+const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+// ✅ أرشيف الصور المؤقتة المنتهية — خارج /uploads فلا يُخدَم للمستخدمين
+const EXPIRED_DIR = path.join(__dirname, '..', 'uploads', '_expired');
+
+// ✅ الصورة المؤقتة تختفي عن الطرفين لكنها تبقى للإشراف
+const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 
 // @route   GET /api/messages/conversation/:conversationId
 // @desc    جلب جميع رسائل محادثة معينة
@@ -56,7 +66,7 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
         res.json({
             success: true,
             data: {
-                messages,
+                messages: messages.map(withExpiredPhotoForAdmin),
                 currentPage: page,
                 totalPages: Math.ceil(total / limit),
                 totalMessages: total
@@ -69,6 +79,50 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
             message: 'خطأ في جلب الرسائل',
             error: error.message
         });
+    }
+});
+
+// @route   GET /api/messages/:id/expired-photo
+// @desc    عرض صورة مؤقتة انتهت — للإشراف فقط (الملف في /uploads/_expired خارج الويب)
+// @access  Admin
+// ملاحظة: <img src> لا يرسل هيدر Authorization، لذا نقبل التوكن من ?token= أيضاً
+router.get('/:id/expired-photo', async (req, res) => {
+    try {
+        const bearer = req.headers.authorization?.startsWith('Bearer')
+            ? req.headers.authorization.split(' ')[1]
+            : null;
+        const token = bearer || req.query.token;
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'غير مصرح' });
+        }
+
+        let admin;
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            admin = await User.findById(decoded.id).select('role');
+        } catch (e) {
+            return res.status(401).json({ success: false, message: 'توكن غير صالح' });
+        }
+        if (!admin || admin.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'صلاحيات غير كافية' });
+        }
+
+        const message = await Message.findById(req.params.id).select('disappearing').lean();
+        const archived = message?.disappearing?.archivedPath;
+        if (!archived) {
+            return res.status(404).json({ success: false, message: 'لا يوجد أرشيف لهذه الصورة' });
+        }
+
+        // حماية من path traversal — اسم الملف فقط
+        const filePath = path.join(EXPIRED_DIR, path.basename(archived));
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, message: 'الملف غير موجود في الأرشيف' });
+        }
+
+        return res.sendFile(filePath);
+    } catch (error) {
+        console.error('خطأ في جلب صورة الأرشيف:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });
 

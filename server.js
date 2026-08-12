@@ -279,7 +279,8 @@ app.use('/uploads/violations', (req, res) => {
 });
 // ⚠️ أرشيف الصور المؤقتة المنتهية — يُنقل إليه الملف فور انتهاء المشاهدة.
 //    الرابط يُبطَل للمستخدمين نهائياً، والأدمن يصل عبر
-//    /api/mobile/admin/expired-photo/:messageId فقط.
+//    /api/mobile/admin/expired-photo/:messageId أو /api/messages/:id/expired-photo
+//    (الثاني تستخدمه لوحة الأدمن لعرض الصورة داخل المحادثة).
 app.use('/uploads/_expired', (req, res) => {
     return res.status(403).json({
         success: false,

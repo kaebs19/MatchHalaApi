@@ -106,6 +106,15 @@ const appealSchema = new mongoose.Schema({
     },
     resolvedAt: {
         type: Date
+    },
+    // ✅ إغلاق تلقائي: تنتهي مدة العقوبة المستأنفة → يختفي الاستئناف من لوحة الأدمن
+    autoClosed: {
+        type: Boolean,
+        default: false
+    },
+    autoClosedAt: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true
@@ -116,6 +125,7 @@ appealSchema.index({ status: 1 });
 appealSchema.index({ actionType: 1 });
 appealSchema.index({ createdAt: -1 });
 appealSchema.index({ user: 1, status: 1 });
+appealSchema.index({ status: 1, autoClosed: 1 });
 
 const Appeal = mongoose.model('Appeal', appealSchema);
 

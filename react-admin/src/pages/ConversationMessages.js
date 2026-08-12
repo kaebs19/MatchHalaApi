@@ -5,7 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import AudioMessageBubble from '../components/AudioMessageBubble';
 import socketService from '../services/socket';
 import notificationService from '../services/notifications';
-import { getImageUrl } from '../config';
+import { getImageUrl, getMessagePhotoUrl } from '../config';
 import config from '../config';
 import { formatDate } from '../utils/formatters';
 import './ConversationMessages.css';
@@ -805,15 +805,40 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                     <>
                                                         {message.content && <div style={{ fontSize: 14, lineHeight: 1.5 }}>{message.content}</div>}
                                                         {/* ✅ D: صورة قابلة للتكبير */}
-                                                        {message.type === 'image' && message.mediaUrl && (
-                                                            <img
-                                                                src={getImageUrl(message.mediaUrl)}
-                                                                alt="صورة"
-                                                                onClick={() => setZoomImage({ url: getImageUrl(message.mediaUrl), sender: message.sender })}
-                                                                style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, cursor: 'zoom-in', marginTop: message.content ? 6 : 0 }}
-                                                                onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
-                                                            />
-                                                        )}
+                                                        {message.type === 'image' && (() => {
+                                                            const src = getMessagePhotoUrl(message);
+                                                            if (!src) {
+                                                                // صورة مؤقتة بلا أرشيف (رسائل قديمة قبل الأرشفة)
+                                                                return message.isDisappearingPhoto ? (
+                                                                    <span style={{ fontSize: 12, opacity: 0.7 }}>⏱️ صورة مؤقتة — غير متوفرة في الأرشيف</span>
+                                                                ) : null;
+                                                            }
+                                                            return (
+                                                                <>
+                                                                    {message.isExpiredPhoto && (
+                                                                        <div style={{
+                                                                            display: 'inline-block',
+                                                                            background: '#7c3aed',
+                                                                            color: '#fff',
+                                                                            padding: '2px 8px',
+                                                                            borderRadius: 6,
+                                                                            fontSize: 11,
+                                                                            fontWeight: 700,
+                                                                            marginTop: message.content ? 6 : 0
+                                                                        }}>
+                                                                            ⏱️ صورة مؤقتة منتهية — أرشيف الإشراف
+                                                                        </div>
+                                                                    )}
+                                                                    <img
+                                                                        src={src}
+                                                                        alt="صورة"
+                                                                        onClick={() => setZoomImage({ url: src, sender: message.sender })}
+                                                                        style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, cursor: 'zoom-in', marginTop: message.content || message.isExpiredPhoto ? 6 : 0 }}
+                                                                        onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                                    />
+                                                                </>
+                                                            );
+                                                        })()}
                                                         {message.type === 'audio' && message.mediaUrl && (
                                                             <AudioMessageBubble message={message} />
                                                         )}

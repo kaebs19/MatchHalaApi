@@ -48,6 +48,67 @@ function appealImageFullUrl(req, relativePath) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// إغلاق تلقائي للاستئنافات المنتهية
+// إذا انتهت مدة الإيقاف/التقييد (أو رُفعت) ولم يبقَ على المستخدم أي عقوبة
+// فعّالة → لم يعد هناك ما يُستأنف عليه، فيختفي الاستئناف من لوحة الأدمن.
+// (حظر الجهاز مستثنى — لأنه محفوظ في BannedDevice ولا ينتهي بمدة)
+// ════════════════════════════════════════════════════════════════
+const OPEN_STATUSES = ['pending', 'forwarded', 'under_review'];
+
+function hasActivePenalty(user, now) {
+    if (!user) return false;
+
+    const stillOn = (flag, until) => !!flag && (!until || new Date(until) > now);
+
+    const s = user.suspension || {};
+    if (stillOn(s.isSuspended, s.suspendedUntil)) return true;
+
+    const h = user.hidden || {};
+    if (stillOn(h.isHidden, h.hiddenUntil)) return true;
+
+    const r = user.restrictions || {};
+    if (stillOn(r.messagingRestricted, r.messagingRestrictedUntil)) return true;
+    if (stillOn(r.photoBlocked, r.photoBlockedUntil)) return true;
+    if (stillOn(r.nameBlocked, r.nameBlockedUntil)) return true;
+    if (stillOn(r.bioBlocked, r.bioBlockedUntil)) return true;
+
+    if (user.bannedWords?.isBanned) return true;
+    if (user.isActive === false) return true;
+
+    return false;
+}
+
+// يُعلّم الاستئنافات المفتوحة التي انتهت عقوبتها بـ autoClosed
+async function sweepExpiredAppeals() {
+    try {
+        const now = new Date();
+        const openAppeals = await Appeal.find({
+            status: { $in: OPEN_STATUSES },
+            autoClosed: { $ne: true },
+            actionType: { $ne: 'device_ban' }
+        })
+            .select('user actionType')
+            .populate('user', 'suspension hidden restrictions bannedWords isActive')
+            .lean();
+
+        const expiredIds = openAppeals
+            .filter(a => a.user && !hasActivePenalty(a.user, now))
+            .map(a => a._id);
+
+        if (expiredIds.length) {
+            await Appeal.updateMany(
+                { _id: { $in: expiredIds } },
+                { $set: { autoClosed: true, autoClosedAt: now } }
+            );
+        }
+        return expiredIds.length;
+    } catch (e) {
+        console.error('خطأ في إغلاق الاستئنافات المنتهية:', e.message);
+        return 0;
+    }
+}
+
+// ════════════════════════════════════════════════════════════════
 // @route   POST /api/appeals/public/device-ban
 // @desc    استئناف عام لحظر الجهاز — بدون auth (لأن المستخدم لا يقدر يسجل دخول)
 // @access  Public (rate-limited)
@@ -207,9 +268,11 @@ router.post('/', protect, async (req, res) => {
         }
 
         // التحقق من عدم وجود استئناف معلق
+        // ✅ الاستئنافات المغلقة تلقائياً (انتهت العقوبة) لا تمنع استئنافاً جديداً
         const existingPending = await Appeal.findOne({
             user: req.user._id,
-            status: { $in: ['pending', 'forwarded', 'under_review'] }
+            status: { $in: OPEN_STATUSES },
+            autoClosed: { $ne: true }
         });
 
         if (existingPending) {
@@ -469,13 +532,18 @@ router.post('/:id/mark-read', protect, adminOnly, async (req, res) => {
 // ⚠️ يجب أن يأتي قبل /:id وإلا Express يطابق "admin" كـ id
 router.get('/admin/stats', protect, adminOnly, async (req, res) => {
     try {
+        // ✅ إخفاء الاستئنافات التي انتهت مدة عقوبتها قبل العد
+        await sweepExpiredAppeals();
+        const notClosed = { autoClosed: { $ne: true } };
+
         const [pending, underReview, awaitingReply] = await Promise.all([
-            Appeal.countDocuments({ status: 'pending' }),
-            Appeal.countDocuments({ status: 'under_review' }),
+            Appeal.countDocuments({ status: 'pending', ...notClosed }),
+            Appeal.countDocuments({ status: 'under_review', ...notClosed }),
             // ردود مستخدمين لم يقرأها الأدمن (في استئنافات مفتوحة فقط)
             Appeal.countDocuments({
-                status: { $in: ['pending', 'forwarded', 'under_review'] },
-                unreadForAdmin: { $gt: 0 }
+                status: { $in: OPEN_STATUSES },
+                unreadForAdmin: { $gt: 0 },
+                ...notClosed
             })
         ]);
         res.json({
@@ -602,7 +670,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
             status
         } = req.query;
 
-        const filter = {};
+        // ✅ إخفاء الاستئنافات التي انتهت مدة عقوبتها قبل الجلب
+        await sweepExpiredAppeals();
+
+        // autoClosed = انتهت العقوبة → لا تظهر في اللوحة إطلاقاً
+        const filter = { autoClosed: { $ne: true } };
         if (status) filter.status = status;
 
         // ✅ ترتيب أولوي: قيد الانتظار → قيد المراجعة → forwarded → مقبولة → مرفوضة
@@ -668,12 +740,13 @@ router.get('/', protect, adminOnly, async (req, res) => {
         }));
 
         // ✅ stats من DB مباشرة (مش من الـ list — لأن visible فلتر بعض)
+        const notClosed = { autoClosed: { $ne: true } };
         const [pending, underReview, forwarded, approved, rejected] = await Promise.all([
-            Appeal.countDocuments({ status: 'pending' }),
-            Appeal.countDocuments({ status: 'under_review' }),
-            Appeal.countDocuments({ status: 'forwarded' }),
-            Appeal.countDocuments({ status: 'approved' }),
-            Appeal.countDocuments({ status: 'rejected' })
+            Appeal.countDocuments({ status: 'pending', ...notClosed }),
+            Appeal.countDocuments({ status: 'under_review', ...notClosed }),
+            Appeal.countDocuments({ status: 'forwarded', ...notClosed }),
+            Appeal.countDocuments({ status: 'approved', ...notClosed }),
+            Appeal.countDocuments({ status: 'rejected', ...notClosed })
         ]);
 
         res.status(200).json({

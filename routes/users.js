@@ -10,6 +10,7 @@ const { get, set, CACHE_KEYS, CACHE_TTL, invalidateUsers } = require('../utils/c
 const { checkSignals: checkFpNoise, NOISE_THRESHOLD } = require('../utils/deviceFingerprintNoise');
 const upload = require('../config/multer');
 const { processImage } = require('../utils/imageProcessor');
+const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -984,7 +985,8 @@ router.get('/:id/activity', protect, adminOnly, async (req, res) => {
                 user,
                 stats,
                 conversations: conversationsWithViolations,
-                recentMessages: userMessages.slice(0, 30),  // ✅ زيادة من 10 إلى 30
+                // ✅ زيادة من 10 إلى 30 + كشف الصور المؤقتة المنتهية للإشراف
+                recentMessages: userMessages.slice(0, 30).map(withExpiredPhotoForAdmin),
                 recentReportsReceived,
                 appeals
             }

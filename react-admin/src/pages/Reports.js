@@ -3,7 +3,7 @@ import { getAllReports, getReportsStats, updateReportStatus, takeReportAction, u
 import { useToast } from '../components/Toast';
 import Pagination from '../components/Pagination';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { getImageUrl } from '../config';
+import { getImageUrl, getMessagePhotoUrl } from '../config';
 import { formatDateTime } from '../utils/formatters';
 import ConfirmModal from '../components/ConfirmModal';
 import './Reports.css';
@@ -523,13 +523,18 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                                             }
                                                         </p>
                                                     )}
-                                                    {report.reportedMessage.type === 'image' && report.reportedMessage.mediaUrl && (
-                                                        <img
-                                                            src={getImageUrl(report.reportedMessage.mediaUrl)}
-                                                            alt="صورة مبلغ عنها"
-                                                            className="reported-message-image"
-                                                            onError={(e) => { e.target.style.display = 'none'; }}
-                                                        />
+                                                    {report.reportedMessage.type === 'image' && getMessagePhotoUrl(report.reportedMessage) && (
+                                                        <>
+                                                            {report.reportedMessage.isExpiredPhoto && (
+                                                                <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>⏱️ صورة مؤقتة منتهية — أرشيف الإشراف</span>
+                                                            )}
+                                                            <img
+                                                                src={getMessagePhotoUrl(report.reportedMessage)}
+                                                                alt="صورة مبلغ عنها"
+                                                                className="reported-message-image"
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        </>
                                                     )}
                                                     {report.reportedMessage.hasBannedWords && report.reportedMessage.bannedWordsFound?.length > 0 && (
                                                         <div className="banned-words-badges">
@@ -778,8 +783,13 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                     <p className="context-msg-text">{selectedReport.reportedMessage.content}</p>
                                 </div>
                             )}
-                            {selectedReport.reportedMessage?.type === 'image' && selectedReport.reportedMessage?.mediaUrl && (
-                                <img src={getImageUrl(selectedReport.reportedMessage.mediaUrl)} alt="" className="context-msg-image" onError={(e) => { e.target.style.display = 'none'; }} />
+                            {selectedReport.reportedMessage?.type === 'image' && getMessagePhotoUrl(selectedReport.reportedMessage) && (
+                                <>
+                                    {selectedReport.reportedMessage.isExpiredPhoto && (
+                                        <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>⏱️ صورة مؤقتة منتهية — أرشيف الإشراف</span>
+                                    )}
+                                    <img src={getMessagePhotoUrl(selectedReport.reportedMessage)} alt="" className="context-msg-image" onError={(e) => { e.target.style.display = 'none'; }} />
+                                </>
                             )}
 
                             {/* ✅ Phase 3: لقطة شاشة من المُبلِّغ */}

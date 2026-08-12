@@ -26,6 +26,21 @@ export const getImageUrl = (imagePath) => {
     return `${config.SERVER_URL}${cleanPath}`;
 };
 
+// ✅ رابط صورة الرسالة للأدمن
+// الصور المؤقتة (disappearing) تُبطَل بعد المشاهدة (mediaUrl = null) ويُنقل
+// الملف لأرشيف خارج /uploads، فكانت تختفي من اللوحة. السيرفر يرجّع للأدمن
+// adminMediaUrl يقرأ من الأرشيف — و<img> لا يرسل هيدر Authorization فنمرر
+// التوكن في الرابط.
+export const getMessagePhotoUrl = (message) => {
+    if (!message) return null;
+    if (message.mediaUrl) return getImageUrl(message.mediaUrl);
+    if (message.adminMediaUrl) {
+        const token = localStorage.getItem('token') || '';
+        return `${getImageUrl(message.adminMediaUrl)}?token=${encodeURIComponent(token)}`;
+    }
+    return null;
+};
+
 // صورة افتراضية للمستخدم
 export const getDefaultAvatar = (name) => {
     const initial = name?.charAt(0)?.toUpperCase() || 'U';

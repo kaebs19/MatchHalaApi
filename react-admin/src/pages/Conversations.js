@@ -17,7 +17,7 @@ import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
 import socketService from '../services/socket';
-import { getImageUrl, getDefaultAvatar } from '../config';
+import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
 import config from '../config';
 import './Conversations.css';
 
@@ -612,17 +612,29 @@ function Conversations({ onViewUserDetail }) {
                                                         ) : (
                                                             <>
                                                                 {msg.content && <p className="conv-msg-text">{msg.content}</p>}
-                                                                {msg.type === 'image' && msg.mediaUrl && (
-                                                                    <div className="conv-msg-image-wrap">
-                                                                        <img
-                                                                            src={getImageUrl(msg.mediaUrl)}
-                                                                            alt="صورة"
-                                                                            className="conv-msg-image"
-                                                                            onClick={() => setImageViewer({ url: getImageUrl(msg.mediaUrl), sender: msg.sender })}
-                                                                            onError={(e) => { e.target.style.display = 'none'; }}
-                                                                        />
-                                                                    </div>
-                                                                )}
+                                                                {msg.type === 'image' && (() => {
+                                                                    // ✅ الصورة المؤقتة المنتهية تُعرض من أرشيف الإشراف
+                                                                    const src = getMessagePhotoUrl(msg);
+                                                                    if (!src) {
+                                                                        return msg.isDisappearingPhoto
+                                                                            ? <span className="conv-msg-type-badge">⏱️ صورة مؤقتة — غير متوفرة</span>
+                                                                            : null;
+                                                                    }
+                                                                    return (
+                                                                        <div className="conv-msg-image-wrap">
+                                                                            {msg.isExpiredPhoto && (
+                                                                                <span className="conv-msg-type-badge">⏱️ صورة مؤقتة منتهية — أرشيف الإشراف</span>
+                                                                            )}
+                                                                            <img
+                                                                                src={src}
+                                                                                alt="صورة"
+                                                                                className="conv-msg-image"
+                                                                                onClick={() => setImageViewer({ url: src, sender: msg.sender })}
+                                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                                            />
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                                 {msg.type === 'audio' && <span className="conv-msg-type-badge">🎵 مقطع صوتي</span>}
                                                                 {msg.type === 'video' && <span className="conv-msg-type-badge">🎥 فيديو</span>}
                                                                 {msg.type === 'file' && <span className="conv-msg-type-badge">📎 ملف</span>}

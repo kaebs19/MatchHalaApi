@@ -10,6 +10,7 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { protect, adminOnly } = require('../middleware/auth');
 const { get, set } = require('../utils/cache');
+const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 
 // @route   GET /api/reports
 // @desc    الحصول على جميع البلاغات
@@ -51,7 +52,8 @@ router.get('/', protect, adminOnly, async (req, res) => {
                 .populate('reportedConversation', 'title type')
                 .populate({
                     path: 'reportedMessage',
-                    select: 'content type mediaUrl sender createdAt',
+                    // ✅ disappearing مطلوب لكشف الصور المؤقتة المنتهية للإشراف
+                    select: 'content type mediaUrl sender createdAt disappearing',
                     populate: { path: 'sender', select: 'name' }
                 })
                 .populate('assignedTo', 'name')
@@ -84,6 +86,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
                 }
             });
         }
+
+        // ✅ الصورة المؤقتة المنتهية تبقى مرئية للإشراف عبر أرشيف الأدمن
+        reportsData.forEach(r => {
+            if (r.reportedMessage) r.reportedMessage = withExpiredPhotoForAdmin(r.reportedMessage);
+        });
 
         res.status(200).json({
             success: true,
@@ -438,9 +445,15 @@ router.get('/:id', protect, adminOnly, async (req, res) => {
             });
         }
 
+        // ✅ الصورة المؤقتة المنتهية تبقى مرئية للإشراف عبر أرشيف الأدمن
+        const reportOut = report.toObject();
+        if (reportOut.reportedMessage) {
+            reportOut.reportedMessage = withExpiredPhotoForAdmin(reportOut.reportedMessage);
+        }
+
         res.status(200).json({
             success: true,
-            data: { report }
+            data: { report: reportOut }
         });
 
     } catch (error) {
