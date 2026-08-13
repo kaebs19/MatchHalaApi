@@ -376,6 +376,19 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             });
         }
 
+        // ⚠️ رسالة الموقع تُرسل كنص بالصيغة: "📍 lat,lng|العنوان"
+        //    الإحداثيات وحدها 12+ رقماً، فكان \b\d{6,15}\b يعتبرها رقم هاتف:
+        //    الرسالة تُطمَس إلى *** وتُسجَّل مخالفة ترويج خارجي على المُرسِل
+        //    (وتتراكم حتى تقييد المراسلة). نفحص العنوان فقط — يبقى تهريب
+        //    الحسابات داخل العنوان مكشوفاً بينما لا تُدان الإحداثيات.
+        const locationPrefixMatch = (type === 'text' && typeof content === 'string')
+            ? content.trim().match(/^📍\s*-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?\|/)
+            : null;
+        const locationPrefix = locationPrefixMatch ? locationPrefixMatch[0] : '';
+        const filterText = locationPrefix
+            ? content.trim().slice(locationPrefix.length)
+            : content;
+
         // فحص الكلمات المحظورة + الترويج الخارجي (Snap/Insta/...)
         let censoredContent = content;
         let bannedResult = { hasBannedWords: false, matchedWords: [], categories: [] };
@@ -383,14 +396,14 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         let externalPromoCategories = [];
         let externalPromoViolation = null;
         let promo = { detected: false, redacted: content, categories: [], patterns: [] };
-        if (type === 'text' && content) {
+        if (type === 'text' && filterText) {
             // 1. ترويج خارجي — يُفحَص أولاً على النص الأصلي (قبل أي censoring)
             //    أولوية على banned words لأن الحسابات الخارجية تحتاج violation tracking منفصل
             //    ولا نريد أن يطمسها banned-words filter قبل أن يلتقطها الـ detector
-            promo = detectExternalPromotion(content);
+            promo = detectExternalPromotion(filterText);
             const originalContent = content;
             if (promo.detected) {
-                censoredContent = promo.redacted;
+                censoredContent = locationPrefix + promo.redacted;
                 externalPromoDetected = true;
                 externalPromoCategories = promo.categories;
                 externalPromoViolation = await recordExternalPromoViolation(req.user, {
@@ -405,9 +418,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             // 2. كلمات محظورة — تُفحَص فقط لو لم يُكتشف ترويج خارجي
             //    (لو فيه كلاهما، الـ external promo يأخذ الأولوية)
             if (!externalPromoDetected) {
-                bannedResult = await checkBannedWords(content);
+                bannedResult = await checkBannedWords(filterText);
                 if (bannedResult.hasBannedWords) {
-                    censoredContent = bannedResult.censoredText;
+                    censoredContent = locationPrefix + bannedResult.censoredText;
 
                     // ✅ تصنيف ذكي للـ external promo:
                     //   (أ) category صريح = contact / promotion
@@ -443,10 +456,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 const multiNum = checkMultiMessageNumbers(
                     String(req.user._id),
                     String(conversationId),
-                    content
+                    filterText
                 );
                 if (multiNum.detected) {
-                    censoredContent = '***';
+                    censoredContent = locationPrefix + '***';
                     externalPromoDetected = true;
                     externalPromoCategories = ['split_number'];
                     externalPromoViolation = await recordExternalPromoViolation(req.user, {
