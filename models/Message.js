@@ -47,6 +47,14 @@ const messageSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Message'
     },
+
+    // مشاركة موقع مباشر — الفقاعة تعرض الموقع الحيّ بدل نص ثابت.
+    // العملاء القدامى يتجاهلون الحقل ويعرضون content كموقع عادي (نقطة البداية).
+    liveLocation: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LiveLocation',
+        default: null
+    },
     // ردود الفعل (Reactions)
     reactions: [{
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

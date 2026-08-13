@@ -8,6 +8,7 @@ router.use('/', require('./premium'));
 router.use('/', require('./blocking'));
 router.use('/', require('./conversations'));
 router.use('/', require('./messages'));
+router.use('/', require('./liveLocation'));
 router.use('/', require('./notifications'));
 router.use('/', require('./device'));
 router.use('/', require('./reports'));

@@ -1671,6 +1671,8 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                 select: 'content type sender mediaUrl',
                 populate: { path: 'sender', select: 'name' }
             })
+            // مشاركة الموقع المباشر — الفقاعة تحتاج آخر إحداثي ووقت الانتهاء
+            .populate('liveLocation')
             .select('+originalContent')   // ✅ Phase 2: نحتاجه لإرجاع النص الأصلي للمرسل
             .sort({ createdAt: -1 })
             .limit(limit * 1)
