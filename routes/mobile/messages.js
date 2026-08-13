@@ -537,7 +537,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             multiLetterDetection = await checkMultiMessageLetters(
                 String(req.user._id),
                 String(conversationId),
-                content,
+                filterText,
                 message._id.toString()
             );
 
