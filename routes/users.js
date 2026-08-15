@@ -65,7 +65,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         const [users, total] = await Promise.all([
             User.find(queryFilter)
-                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId authProvider deviceInfo.platform gender bannedWords.isBanned bannedWords.violations')
+                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId authProvider deviceInfo.platform gender bannedWords.isBanned bannedWords.violations country city gpsLocation ipLocation location')
                 .sort(sortObj)
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)

@@ -270,6 +270,30 @@ const userSchema = new mongoose.Schema({
         coordinates: { type: [Number], default: [0, 0] } // [longitude, latitude]
     },
 
+    // ── الموقع في لوحة التحكم ─────────────────────────────────────
+    // مصدران متكاملان: GPS دقيق لمن منح الإذن، و IP يغطّي الجميع.
+    // `location` أعلاه يبقى مصدر إحداثيات GPS (عليه فهرس 2dsphere للمسافات)،
+    // وهذان الحقلان يحملان ما يحتاجه الأدمن: المدينة والدولة ووقت التحديث.
+
+    // موقع GPS كما أرسله التطبيق (بعد ترجمة الإحداثيات لمدينة على الجهاز)
+    gpsLocation: {
+        city: { type: String, default: null },
+        country: { type: String, default: null },
+        accuracy: { type: Number, default: null }, // بالأمتار
+        updatedAt: { type: Date, default: null }
+    },
+
+    // موقع مستنتج من عنوان IP عند كل تسجيل دخول — تقريبي ويخطئ مع VPN
+    ipLocation: {
+        ip: { type: String, default: null },
+        city: { type: String, default: null },
+        region: { type: String, default: null },
+        country: { type: String, default: null },
+        timezone: { type: String, default: null },
+        coordinates: { type: [Number], default: undefined }, // [longitude, latitude]
+        updatedAt: { type: Date, default: null }
+    },
+
     // وضع التخفي (للمشتركين فقط)
     stealthMode: { type: Boolean, default: false },
     // إخفاء/إظهار المسافة عن المستخدمين الآخرين

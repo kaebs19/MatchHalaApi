@@ -1831,3 +1831,57 @@
     background: #d1fae5;
     color: #065f46;
 }
+
+/* ── قسم الموقع ──────────────────────────────────────────────
+   بطاقتان متجاورتان، واحدة لكل مصدر، حتى يرى الأدمن التعارض بينهما فوراً. */
+.location-section { margin-top: 20px; }
+.location-section h4 { margin: 0 0 10px; }
+
+.location-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.location-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: #fff;
+}
+.loc-card-gps { border-color: #a7f3d0; background: #f0fdf4; }
+.loc-card-ip  { border-color: #bfdbfe; background: #f5f9ff; }
+
+.location-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.location-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+.location-badge.gps { background: #d1fae5; color: #047857; }
+.location-badge.ip  { background: #dbeafe; color: #1d4ed8; }
+
+.location-time { font-size: 11px; color: #6b7280; }
+.location-place { margin: 0; font-size: 15px; font-weight: 600; color: #111827; }
+.location-coords { margin: 4px 0 0; font-size: 13px; color: #374151; direction: ltr; text-align: right; }
+.location-meta { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
+.location-empty { font-size: 13px; color: #6b7280; }
+
+.location-mismatch {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 13px;
+    font-weight: 600;
+}

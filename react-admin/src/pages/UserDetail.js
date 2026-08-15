@@ -30,6 +30,9 @@ import { userBioAction,
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
+import {
+    gpsCoords, ipCoords, mapsUrl, formatCoords, placeText, distanceKm, MISMATCH_KM
+} from '../utils/location';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
@@ -1178,27 +1181,6 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     <p className="info-value">{user.country || 'غير محدد'}</p>
                                 </div>
                             </div>
-                            {user.location && user.location.coordinates &&
-                             user.location.coordinates.length === 2 &&
-                             (user.location.coordinates[0] !== 0 || user.location.coordinates[1] !== 0) && (
-                                <div className="info-item">
-                                    <span className="info-icon">📍</span>
-                                    <div className="info-content">
-                                        <p className="info-label">الموقع الجغرافي</p>
-                                        <p className="info-value">
-                                            {user.location.coordinates[1].toFixed(4)}, {user.location.coordinates[0].toFixed(4)}
-                                            <a
-                                                href={`https://www.google.com/maps?q=${user.location.coordinates[1]},${user.location.coordinates[0]}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="map-link"
-                                            >
-                                                عرض على الخريطة
-                                            </a>
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
                             <div className="info-item">
                                 <span className="info-icon">🔐</span>
                                 <div className="info-content">
@@ -1209,6 +1191,89 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* موقع المستخدم — مصدران منفصلان عمداً:
+                            GPS دقيق لمن منح الإذن، و IP تقريبي يغطّي الجميع.
+                            دمجهما في سطر واحد يخفي عن الأدمن أيّهما يقرأ. */}
+                        {(() => {
+                            const gps = gpsCoords(user);
+                            const ip = ipCoords(user);
+                            const gpsPlace = placeText(user.gpsLocation?.city, user.gpsLocation?.country);
+                            const ipPlace = placeText(user.ipLocation?.city, user.ipLocation?.region)
+                                || placeText(user.ipLocation?.city, user.ipLocation?.country);
+                            const hasGps = !!(gps || gpsPlace);
+                            const hasIp = !!(ip || ipPlace || user.ipLocation?.ip);
+                            if (!hasGps && !hasIp) {
+                                return (
+                                    <div className="location-section">
+                                        <h4>📍 الموقع</h4>
+                                        <p className="location-empty">
+                                            لا يوجد موقع بعد — لم يمنح المستخدم إذن الموقع ولم يُسجَّل دخول جديد منذ تفعيل استنتاج IP.
+                                        </p>
+                                    </div>
+                                );
+                            }
+                            const gap = (gps && ip) ? distanceKm(gps, ip) : null;
+                            return (
+                                <div className="location-section">
+                                    <h4>📍 الموقع</h4>
+                                    <div className="location-cards">
+                                        {hasGps && (
+                                            <div className="location-card loc-card-gps">
+                                                <div className="location-card-head">
+                                                    <span className="location-badge gps">GPS — من التطبيق</span>
+                                                    {user.gpsLocation?.updatedAt && (
+                                                        <span className="location-time">{formatDateTimeLong(user.gpsLocation.updatedAt)}</span>
+                                                    )}
+                                                </div>
+                                                <p className="location-place">{gpsPlace || 'مدينة غير معروفة'}</p>
+                                                {gps && (
+                                                    <p className="location-coords">
+                                                        {formatCoords(gps)}
+                                                        <a href={mapsUrl(gps)} target="_blank" rel="noopener noreferrer" className="map-link">
+                                                            عرض على الخريطة
+                                                        </a>
+                                                    </p>
+                                                )}
+                                                {user.gpsLocation?.accuracy != null && (
+                                                    <p className="location-meta">دقة تقريبية: ±{Math.round(user.gpsLocation.accuracy)} م</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {hasIp && (
+                                            <div className="location-card loc-card-ip">
+                                                <div className="location-card-head">
+                                                    <span className="location-badge ip">IP — تقريبي</span>
+                                                    {user.ipLocation?.updatedAt && (
+                                                        <span className="location-time">{formatDateTimeLong(user.ipLocation.updatedAt)}</span>
+                                                    )}
+                                                </div>
+                                                <p className="location-place">{ipPlace || 'مدينة غير معروفة'}</p>
+                                                {ip && (
+                                                    <p className="location-coords">
+                                                        {formatCoords(ip)}
+                                                        <a href={mapsUrl(ip)} target="_blank" rel="noopener noreferrer" className="map-link">
+                                                            عرض على الخريطة
+                                                        </a>
+                                                    </p>
+                                                )}
+                                                {user.ipLocation?.ip && (
+                                                    <p className="location-meta">IP: {user.ipLocation.ip}</p>
+                                                )}
+                                                {user.ipLocation?.timezone && (
+                                                    <p className="location-meta">المنطقة الزمنية: {user.ipLocation.timezone}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {gap != null && gap >= MISMATCH_KM && (
+                                        <p className="location-mismatch">
+                                            ⚠️ تباعد {gap} كم بين موقع GPS وموقع IP — مؤشّر VPN أو موقع مزيّف.
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         {/* Interests Section */}
                         {user.interests && user.interests.length > 0 && (

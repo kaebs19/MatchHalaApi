@@ -6,6 +6,7 @@ import Pagination from '../components/Pagination';
 import { TableRowSkeleton } from '../components/Skeleton';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDate } from '../utils/formatters';
+import { bestLocation, sourceLabel, mapsUrl, formatCoords } from '../utils/location';
 import ConfirmModal from '../components/ConfirmModal';
 import './Users.css';
 
@@ -397,6 +398,7 @@ function Users({ onViewDetail }) {
                                     <th onClick={() => handleSort('name')} className="sortable">الاسم {getSortIcon('name')}</th>
                                     <th onClick={() => handleSort('email')} className="sortable">البريد {getSortIcon('email')}</th>
                                     <th>معلومات</th>
+                                    <th>الموقع</th>
                                     <th onClick={() => handleSort('isActive')} className="sortable">الحالة {getSortIcon('isActive')}</th>
                                     <th onClick={() => handleSort('violations')} className="sortable">مخالفات {getSortIcon('violations')}</th>
                                     <th onClick={() => handleSort('lastLogin')} className="sortable">آخر ظهور {getSortIcon('lastLogin')}</th>
@@ -406,7 +408,7 @@ function Users({ onViewDetail }) {
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <><TableRowSkeleton columns={8} /><TableRowSkeleton columns={8} /><TableRowSkeleton columns={8} /></>
+                                    <><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /></>
                                 ) : (
                                     paginatedUsers.map((user) => (
                                         <tr key={user._id} className={user.bannedWords?.isBanned ? 'row-banned' : ''}>
@@ -453,6 +455,34 @@ function Users({ onViewDetail }) {
                                                         </span>
                                                     )}
                                                 </div>
+                                            </td>
+                                            <td>
+                                                {(() => {
+                                                    const loc = bestLocation(user);
+                                                    if (!loc) return <span className="loc-empty">-</span>;
+                                                    const url = mapsUrl(loc.coords);
+                                                    const title = [
+                                                        sourceLabel(loc.source),
+                                                        loc.coords ? formatCoords(loc.coords) : null,
+                                                        loc.updatedAt ? `آخر تحديث: ${formatDate(loc.updatedAt)}` : null
+                                                    ].filter(Boolean).join(' · ');
+                                                    return (
+                                                        <div className={`loc-col loc-${loc.source}`} title={title}>
+                                                            <span className="loc-text">{loc.icon} {loc.text}</span>
+                                                            {url && (
+                                                                <a
+                                                                    href={url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="loc-map-link"
+                                                                    title="عرض على الخريطة"
+                                                                >
+                                                                    🗺️
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td>
                                                 <div className="status-col">

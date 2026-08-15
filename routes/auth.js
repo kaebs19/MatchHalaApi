@@ -11,6 +11,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const FlaggedMessage = require('../models/FlaggedMessage');
 const { generateToken, generateRefreshToken } = require('../utils/generateToken');
+const { buildIpLocation } = require('../utils/geo');
 const sendEmail = require('../utils/sendEmail');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -166,10 +167,13 @@ const saveLoginRecord = async (user, req) => {
     const ip = getClientIP(req);
     const { deviceModel, platform, appVersion, city, country } = req.body;
 
+    // موقع مستنتج من IP — يغطّي من لم يمنح إذن الموقع، ويظهر للأدمن في لوحة التحكم
+    const ipLocation = buildIpLocation(ip);
+
     const loginEntry = {
         ip,
-        country: country || user.country,
-        city: city || user.city,
+        country: country || ipLocation?.country || user.country,
+        city: city || ipLocation?.city || user.city,
         deviceModel: deviceModel || user.deviceInfo?.deviceModel,
         platform: platform || user.deviceInfo?.platform,
         appVersion: appVersion || user.deviceInfo?.appVersion,
@@ -180,6 +184,7 @@ const saveLoginRecord = async (user, req) => {
     const updateData = {
         lastLogin: new Date(),
         lastIP: ip,
+        ...(ipLocation ? { ipLocation } : {}),
         $push: {
             loginHistory: {
                 $each: [loginEntry],

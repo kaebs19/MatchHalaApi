@@ -10,6 +10,7 @@ const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, getBestUserImage, getUserImage, isUserFullyBanned, getBlockState } = require('./helpers');
 const { getZodiacSign, computeUserRank, isBirthdayToday, hasVipBadge, getVipBadgeSource } = require('../../utils/profileEnrichment');
+const { buildIpLocation, getClientIP } = require('../../utils/geo');
 
 // ==========================================
 // Batch Home Endpoint - طلب واحد لكل بيانات الصفحة الرئيسية
@@ -176,7 +177,7 @@ router.get('/home', protect, async (req, res) => {
 // @access  Protected
 router.put('/users/location', protect, async (req, res) => {
     try {
-        const { latitude, longitude, city, country } = req.body;
+        const { latitude, longitude, city, country, accuracy } = req.body;
 
         if (typeof latitude !== 'number' || typeof longitude !== 'number') {
             return res.status(400).json({
@@ -196,10 +197,22 @@ router.put('/users/location', protect, async (req, res) => {
             location: {
                 type: 'Point',
                 coordinates: [longitude, latitude] // GeoJSON: [lng, lat]
+            },
+            // نسخة للأدمن: المصدر والوقت — `location` وحده لا يميّز الموقع الحيّ
+            // عن القيمة الافتراضية [0,0] ولا يقول متى وصل
+            gpsLocation: {
+                city: city || null,
+                country: country || null,
+                accuracy: typeof accuracy === 'number' ? accuracy : null,
+                updatedAt: new Date()
             }
         };
         if (city) updateData.city = city;
         if (country) updateData.country = country;
+
+        // نحدّث موقع IP أيضاً في نفس الطلب — يكشف تعارض GPS/IP (مؤشّر VPN أو تزييف)
+        const ipLocation = buildIpLocation(getClientIP(req));
+        if (ipLocation) updateData.ipLocation = ipLocation;
 
         await User.findByIdAndUpdate(req.user._id, updateData);
 
