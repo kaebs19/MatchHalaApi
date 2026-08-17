@@ -615,7 +615,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio isOnline lastLogin isPremium verification location blockedUsers isActive'
+            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium verification location blockedUsers isActive'
         );
 
         if (!user) {
@@ -662,6 +662,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             gender: user.gender,
             country: user.country,
             bio: user.bio,
+            interests: user.interests || [],
             isOnline: user.isOnline,
             lastLogin: user.lastLogin,
             isPremium: user.isPremium,
