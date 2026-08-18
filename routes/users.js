@@ -1019,6 +1019,11 @@ router.put('/:id/ban', protect, adminOnly, async (req, res) => {
             user.set('bannedWords.isBanned', false);
             user.set('bannedWords.bannedAt', null);
             user.set('bannedWords.banReason', null);
+            // ✅ مسح التعليق أيضاً — وإلا يبقى المستخدم مقنّعاً «مستخدم موقوف»
+            // للطرف الآخر إذا كان معلقاً نهائياً (isSuspended + level 5)
+            user.set('suspension.isSuspended', false);
+            user.set('suspension.suspendedUntil', null);
+            user.set('suspension.reason', null);
             user.isActive = true;
         } else {
             // حظر
@@ -1588,6 +1593,11 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
             user.set('suspension.isSuspended', false);
             user.set('suspension.suspendedUntil', null);
             user.set('suspension.reason', null);
+            // ✅ مسح حظر الكلمات أيضاً — وإلا يبقى المستخدم مقنّعاً «مستخدم موقوف»
+            // للطرف الآخر (isUserFullyBanned يفحص bannedWords.isBanned)
+            user.set('bannedWords.isBanned', false);
+            user.set('bannedWords.bannedAt', null);
+            user.set('bannedWords.banReason', null);
             user.isActive = true;
             await user.save();
             invalidateUsers();
