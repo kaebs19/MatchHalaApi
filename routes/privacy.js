@@ -271,16 +271,37 @@ router.post('/block/:userId', [
             $addToSet: { blockedUsers: userId }
         });
 
-        // ✅ إخفاء المحادثة المشتركة
+        // ✅ المحادثة تختفي عند المحظور — هذا هو الحظر نفسه.
+        //    ⚠️ كان يضبط status='rejected' وisActive=false، و'rejected' ضمن
+        //    الحالات الافتراضية التي تعرضها قائمة المحادثات، فتبقى ظاهرة
+        //    للطرفين. وفكّ الحظر لا يلمس status إطلاقاً فالضرر دائم.
+        //    الإخفاء عبر hiddenFor قابل للتراجع، ومنع الإرسال مكفول أصلاً
+        //    بـ blockGuardForConversation في بوابة الإرسال.
         const Conversation = require('../models/Conversation');
-        const sharedConv = await Conversation.findOne({
-            type: 'private',
-            participants: { $all: [req.user.id, userId] }
-        });
-        if (sharedConv) {
-            sharedConv.isActive = false;
-            sharedConv.status = 'rejected';
-            await sharedConv.save();
+        const hideForBlocked = await Conversation.updateMany(
+            {
+                type: 'private',
+                participants: { $all: [req.user.id, userId] },
+                'hiddenFor.user': { $ne: userId }
+            },
+            {
+                $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'block' } }
+            }
+        );
+
+        // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند
+        //    الإبلاغ. تُخفى فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
+        if (req.body?.deleteConversation === true) {
+            await Conversation.updateMany(
+                {
+                    type: 'private',
+                    participants: { $all: [req.user.id, userId] },
+                    'hiddenFor.user': { $ne: req.user.id }
+                },
+                {
+                    $push: { hiddenFor: { user: req.user.id, hiddenAt: new Date(), reason: 'block' } }
+                }
+            );
         }
 
         // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه) + التنظيف من القوائم والتثبيت
@@ -302,7 +323,10 @@ router.post('/block/:userId', [
         res.json({
             success: true,
             message: `تم حظر ${userToBlock.name} بنجاح. لن يتمكن من رؤيتك أو التواصل معك`,
-            data: { blockedUserId: userId, conversationHidden: !!sharedConv }
+            data: {
+                blockedUserId: userId,
+                conversationHidden: (hideForBlocked?.modifiedCount || 0) > 0
+            }
         });
     } catch (error) {
         console.error('خطأ في حظر المستخدم:', error);
@@ -344,6 +368,19 @@ router.delete('/unblock/:userId', [
         await User.findByIdAndUpdate(req.user.id, {
             $pull: { blockedUsers: userId }
         });
+
+        // ✅ إعادة إظهار المحادثة لمن أُخفيت عنه بسبب الحظر — الطرفين.
+        //    بدونها يبقى الإخفاء دائماً ولا يُصلحه فكّ الحظر.
+        const Conversation = require('../models/Conversation');
+        await Conversation.updateMany(
+            {
+                type: 'private',
+                participants: { $all: [req.user.id, userId] }
+            },
+            {
+                $pull: { hiddenFor: { user: { $in: [req.user.id, userId] }, reason: 'block' } }
+            }
+        );
 
         res.json({
             success: true,
