@@ -558,8 +558,15 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         // تحقق إذا الطالب محظور
+        // ⚠️ رسالة محايدة عمداً: «لا يمكنك عرض هذا البروفايل» تُخبر المحظور
+        //    أنه محظور، وهذا يدفع المضايِق لحساب جديد أو للتصعيد خارج التطبيق.
+        //    نفس صياغة الحساب المحذوف/الموقوف حتى لا يميّز بين الحالات.
         if (user.blockedUsers && user.blockedUsers.some(blockedId => blockedId.toString() === req.user._id.toString())) {
-            return res.status(403).json({ success: false, message: 'لا يمكنك عرض هذا البروفايل' });
+            return res.status(403).json({
+                success: false,
+                code: 'ACCOUNT_UNAVAILABLE',
+                message: 'هذا الحساب غير متاح'
+            });
         }
 
         // ✅ مستخدم موقوف بشكل كامل → رجّع بيانات مقنّعة

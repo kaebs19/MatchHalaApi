@@ -156,9 +156,10 @@ const blockGuardForConversation = async (conversation, meId) => {
         return {
             success: false,
             code: 'USER_BLOCKED',
+            // ⚠️ فرع «هم حظروني» محايد عمداً — لا يكشف أن الحظر هو السبب
             message: state.iBlockedThem
                 ? 'لا يمكنك مراسلة مستخدم قمت بحظره. ألغِ الحظر أولاً.'
-                : 'لا يمكن إرسال الرسالة لهذا المستخدم',
+                : 'هذا الحساب غير متاح',
             data: { iBlockedThem: state.iBlockedThem }
         };
     }

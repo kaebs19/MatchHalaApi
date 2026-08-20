@@ -39,17 +39,35 @@ router.post('/users/block/:userId', protect, async (req, res) => {
             $addToSet: { blockedUsers: userId }
         });
 
-        // ✅ إخفاء المحادثة عند الحاظر فقط (soft hide) — الطرف الآخر لا يتأثر
+        // ✅ المحادثة تختفي عند المحظور — هذا هو الحظر نفسه.
+        //    إبقاؤها عنده يعني إعادة قراءة ولقطات شاشة ومحاولات إرسال متكررة.
+        //    والاختفاء لا يفضح الحظر: المحادثة تختفي أصلاً حين يحذفها الطرف
+        //    الآخر (reason: 'user_delete')، فلا يمكنه التمييز بين الحالتين.
         await Conversation.updateMany(
             {
                 type: 'private',
                 participants: { $all: [req.user._id, userId] },
-                'hiddenFor.user': { $ne: req.user._id }
+                'hiddenFor.user': { $ne: userId }
             },
             {
-                $push: { hiddenFor: { user: req.user._id, hiddenAt: new Date(), reason: 'block' } }
+                $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'block' } }
             }
         );
+
+        // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند الإبلاغ.
+        //    تُحذف فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
+        if (req.body?.deleteConversation === true) {
+            await Conversation.updateMany(
+                {
+                    type: 'private',
+                    participants: { $all: [req.user._id, userId] },
+                    'hiddenFor.user': { $ne: req.user._id }
+                },
+                {
+                    $push: { hiddenFor: { user: req.user._id, hiddenAt: new Date(), reason: 'block' } }
+                }
+            );
+        }
 
         // 👥 الحظر يزيل الصداقة/الطلبات القائمة تلقائياً (أي اتجاه) + التنظيف من القوائم والتثبيت
         const FriendList = require('../../models/FriendList');
@@ -102,14 +120,15 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
             $pull: { blockedUsers: userId }
         });
 
-        // ✅ إعادة إظهار المحادثة التي أُخفيت بسبب الحظر
+        // ✅ إعادة إظهار المحادثة لمن أُخفيت عنه بسبب الحظر — الطرفين.
+        //    كان يُعيدها للحاظر فقط، فتبقى مخفية عند الطرف الآخر إلى الأبد.
         await Conversation.updateMany(
             {
                 type: 'private',
                 participants: { $all: [req.user._id, userId] }
             },
             {
-                $pull: { hiddenFor: { user: req.user._id, reason: 'block' } }
+                $pull: { hiddenFor: { user: { $in: [req.user._id, userId] }, reason: 'block' } }
             }
         );
 
