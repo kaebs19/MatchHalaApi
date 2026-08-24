@@ -167,11 +167,17 @@ app.use(cors({
 
 // 4. Rate Limiting - منع الهجمات بالطلبات المتكررة
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 دقيقة
+    windowMs: 5 * 60 * 1000, // 5 دقائق
     max: parseInt(process.env.RATE_LIMIT_MAX) || 2000,
+    // ⚠️ الطلبات المصادَقة تُستثنى: يحميها userLimiter أدناه بمفتاح التوكن
+    //    (60 طلب/دقيقة لكل مستخدم) وهو عادل ومناعته من CGNAT كاملة.
+    //    هذا المحدِّد مفتاحه IP، وشبكات الجوال تُخرج آلاف المشتركين من
+    //    عناوين قليلة، فكان مستخدمو مشغّل واحد يتقاسمون ميزانية واحدة
+    //    ويُحجبون جماعياً بلا ذنب. يبقى الحدّ سارياً على الطلبات المجهولة.
+    skip: (req) => Boolean(req.headers.authorization),
     message: {
         success: false,
-        message: 'عدد كبير من المحاولات. يرجى المحاولة بعد 15 دقيقة'
+        message: 'عدد كبير من المحاولات. يرجى المحاولة بعد 5 دقائق'
     },
     standardHeaders: true,
     legacyHeaders: false,
