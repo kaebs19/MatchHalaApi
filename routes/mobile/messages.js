@@ -333,7 +333,9 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             && new Date(conversation.reinviteAllowedAt) > new Date()
             && String(conversation.cancelledBy) !== String(req.user._id);
 
-        if ((['cancelled', 'expired', 'rejected'].includes(conversation.status) || !conversation.isActive)
+        // ⚠️ pending مستثناة دائماً: طلب المحادثة يحتاج موافقة صريحة حتى بين الأصدقاء
+        if ((['cancelled', 'expired', 'rejected'].includes(conversation.status)
+                || (!conversation.isActive && conversation.status !== 'pending'))
             && !cancelCooldownActive) {
             const otherParticipant = conversation.participants.find(
                 p => p._id.toString() !== req.user._id.toString()

@@ -41,7 +41,10 @@ const hasAcceptedConversation = async (a, b) => {
 };
 
 // 👥 ميزة الأصدقاء: محادثة مفتوحة دائماً
-// عند قبول الصداقة — إعادة فتح المحادثة الموجودة (أياً كانت حالتها) أو إنشاء واحدة مقبولة
+// عند قبول الصداقة — إعادة فتح المحادثة المنتهية أو إنشاء واحدة مقبولة
+// ⚠️ لا تمسّ المحادثات pending: طلب المحادثة يحتاج موافقة صريحة من مستلمه
+//    دائماً — قبول الصداقة (أو تبادل طلبيها) كان يقبل طلب المحادثة ضمنياً
+//    دون علم المستخدم.
 async function ensureFriendConversation(userA, userB, aName = '', bName = '') {
     try {
         let conversation = await Conversation.findOne({
@@ -50,8 +53,12 @@ async function ensureFriendConversation(userA, userB, aName = '', bName = '') {
         });
 
         if (conversation) {
-            if (conversation.status !== 'accepted' || !conversation.isActive) {
+            if (conversation.status !== 'accepted'
+                && conversation.status !== 'pending') {
                 conversation.status = 'accepted';
+                conversation.isActive = true;
+                await conversation.save();
+            } else if (conversation.status === 'accepted' && !conversation.isActive) {
                 conversation.isActive = true;
                 await conversation.save();
             }
