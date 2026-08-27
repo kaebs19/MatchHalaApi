@@ -628,6 +628,43 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
         }
 
+        // ✅ سحب طلب معلّق لم يُجَب — ليس «إنهاء محادثة».
+        //    لا تهدئة ولا تصعيد ولا إشعار للمستلم: المُرسِل ينظّف طلباته
+        //    ليبقى تحت سقف المعلّق، ومعاقبته على ذلك تجعله يتوقّف عن التنظيف.
+        //    والمستلم لم يفتح الطلب أصلاً حتى يُخبَر بانتهائه.
+        if (conversation.status === 'pending'
+            && conversation.creator
+            && conversation.creator.toString() === req.user._id.toString()) {
+            conversation.status = 'cancelled';
+            conversation.isActive = false;
+            conversation.cancelledBy = req.user._id;
+            conversation.cancelledAt = new Date();
+            conversation.requestedAt = null;
+            await conversation.save();
+
+            if (global.invalidatePartnersCache) {
+                global.invalidatePartnersCache(req.user._id.toString());
+            }
+
+            // إخفاء الطلب من قائمة المستلم فوراً (بلا push)
+            const receiver = conversation.participants.find(
+                p => p._id.toString() !== req.user._id.toString()
+            );
+            if (global.io && receiver) {
+                global.io.to(`user:${receiver._id.toString()}`).emit('conversation:cancelled', {
+                    conversationId: conversation._id,
+                    withdrawn: true
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: 'تم سحب الطلب',
+                code: 'REQUEST_WITHDRAWN',
+                data: { conversation }
+            });
+        }
+
         // إنهاء المحادثة للطرفين — الرسائل تبقى محفوظة
         conversation.status = 'cancelled';
         conversation.isActive = false;
