@@ -965,6 +965,17 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
         }
 
+        // ⚠️ المُرسِل لا يقبل طلبه بنفسه — نفس حارس PUT /accept.
+        //    غيابه هنا كان يسمح لمنشئ الطلب بقبوله عبر «التحية السريعة»،
+        //    فتصير المحادثة مقبولة عند المستلم دون موافقته.
+        if (conv.creator && conv.creator.toString() === userId.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يمكنك قبول طلب أنت أرسلته',
+                code: 'CANNOT_ACCEPT_OWN_REQUEST'
+            });
+        }
+
         // ✅ Idempotent على الحالات النهائية
         if (conv.status === 'accepted') {
             return res.status(200).json({
@@ -1001,9 +1012,16 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
             });
         }
 
-        // 1. قبول
+        // 1. قبول (نفس تنظيف PUT /accept: لا نافذة طلب ولا تصعيد بعد تواصل ناجح)
         conv.status = 'accepted';
+        conv.isActive = true;
+        conv.reinviteAllowedAt = null;
+        conv.reinviteCount = 0;
+        conv.requestedAt = null;
         await conv.save();
+
+        // ✅ رسالة نظام في المسار — نفس ما يفعله PUT /accept
+        await createSystemMessage(conv._id, userId, 'conversation_accepted', 'تمت الموافقة على المحادثة', 'Chat request accepted');
 
         // 2. إرسال رسالة الترحيب (إن وُجدت)
         let welcomeMessage = null;
