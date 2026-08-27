@@ -140,6 +140,8 @@ conversationSchema.index({ createdAt: -1 });
 conversationSchema.index({ isActive: 1 });
 // ✅ Compound index لفلترة محادثات المستخدم (يسرّع /home و /conversations)
 conversationSchema.index({ participants: 1, status: 1, isActive: 1, updatedAt: -1 });
+// سقف الطلبات المعلّقة المرسَلة — يُفحص عند كل طلب محادثة جديد
+conversationSchema.index({ creator: 1, status: 1 });
 
 // دالة لحساب عدد المشاركين تلقائياً
 conversationSchema.pre('save', function() {
