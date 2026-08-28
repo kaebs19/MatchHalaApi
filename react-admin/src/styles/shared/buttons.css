@@ -19,7 +19,7 @@
 .btn-primary,
 .btn-submit,
 .submit-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
@@ -85,7 +85,7 @@
 /* Refresh Button */
 .refresh-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 8px;

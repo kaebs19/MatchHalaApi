@@ -52,7 +52,7 @@
     width: 120px;
     height: 120px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -183,7 +183,7 @@
 }
 
 .user-detail .tab-btn.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
 }
 
@@ -659,7 +659,7 @@
 }
 
 .conversation-item.clickable:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .conversation-actions-row {
@@ -1227,7 +1227,7 @@
 }
 
 .photo-card:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
@@ -1258,7 +1258,7 @@
 
 .photo-view-btn {
     background: #eef2ff;
-    color: #667eea;
+    color: #2F9E85;
 }
 .photo-view-btn:hover {
     background: #c7d2fe;
@@ -1487,7 +1487,7 @@
     border-radius: 20px;
     font-size: 13px;
     font-weight: 500;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #2F9E85, #1F6AA8);
     color: #fff;
     display: inline-block;
     transition: transform 0.15s;
@@ -1554,9 +1554,9 @@
     background: #e9ecef;
 }
 .conv-filters button.active {
-    background: #667eea;
+    background: #2F9E85;
     color: #fff;
-    border-color: #667eea;
+    border-color: #2F9E85;
     font-weight: 600;
 }
 

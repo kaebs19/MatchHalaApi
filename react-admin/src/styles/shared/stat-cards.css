@@ -89,7 +89,7 @@
 .stat-card.low { border-right: 4px solid #2563eb; }
 
 /* Status borders */
-.stat-card.total-border { border-left: 4px solid #667eea; }
+.stat-card.total-border { border-left: 4px solid #2F9E85; }
 .stat-card.pending-border { border-left: 4px solid #f39c12; }
 .stat-card.approved-border { border-left: 4px solid #27ae60; }
 .stat-card.rejected-border { border-left: 4px solid #e74c3c; }

@@ -61,6 +61,8 @@ function Dashboard({ user, onPageChange }) {
         appeals: { pending: 0, approved: 0, rejected: 0, last7Days: 0 },
         growth: []
     });
+    const [platforms, setPlatforms] = useState({ ios: 0, android: 0, web: 0, unknown: 0, known: 0 });
+    const [appVersions, setAppVersions] = useState([]);
     const [latestUsers, setLatestUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -107,6 +109,8 @@ function Dashboard({ user, onPageChange }) {
                 if (d.superLikes) setSuperLikeStats(d.superLikes);
                 if (d.stealthMode) setStealthStats(d.stealthMode);
                 if (d.moderation) setModerationStats(d.moderation);
+                if (d.platforms) setPlatforms(d.platforms);
+                if (d.appVersions) setAppVersions(d.appVersions);
                 setLiveStats({
                     onlineNow: d.onlineNow || 0,
                     bannedDevices: d.bannedDevices || { total: 0, today: 0 },
@@ -197,49 +201,93 @@ function Dashboard({ user, onPageChange }) {
         <div className="dashboard-content">
             {error && <div className="error-banner">{error}</div>}
 
-            {/* الإجراءات السريعة */}
-            {isAdmin && (
-                <div className="quick-actions-section">
-                    <h3 className="section-title">⚡ إجراءات سريعة</h3>
-                    <div className="quick-actions-grid">
-                        <button className="quick-action-btn users" onClick={() => onPageChange && onPageChange('users')}>
-                            <span className="action-icon">👥</span>
-                            <span className="action-text">إدارة المستخدمين</span>
-                        </button>
-                        <button className="quick-action-btn conversations" onClick={() => onPageChange && onPageChange('conversations')}>
-                            <span className="action-icon">💬</span>
-                            <span className="action-text">المحادثات</span>
-                        </button>
-                        <button className="quick-action-btn swipes" onClick={() => onPageChange && onPageChange('swipes')}>
-                            <span className="action-icon">👆</span>
-                            <span className="action-text">Swipes</span>
-                        </button>
-                        <button className="quick-action-btn matches" onClick={() => onPageChange && onPageChange('matches')}>
-                            <span className="action-icon">💕</span>
-                            <span className="action-text">التطابقات</span>
-                        </button>
-                        <button className="quick-action-btn reports" onClick={() => onPageChange && onPageChange('reports')}>
-                            <span className="action-icon">⚠️</span>
-                            <span className="action-text">البلاغات</span>
-                            {reportsStats.pending > 0 && <span className="action-badge">{reportsStats.pending}</span>}
-                        </button>
-                        <button className="quick-action-btn settings" onClick={() => onPageChange && onPageChange('settings')}>
-                            <span className="action-icon">⚙️</span>
-                            <span className="action-text">الإعدادات</span>
-                        </button>
-                        <button className="quick-action-btn notification" onClick={() => setShowNotificationModal(true)}>
-                            <span className="action-icon">📢</span>
-                            <span className="action-text">إرسال إشعار</span>
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* الإحصائيات */}
             {loading ? (
                 <LoadingSpinner text="جاري تحميل الإحصائيات..." />
             ) : (
                 <>
+                    {/* ===== المنصّات ونموّ التسجيل ===== */}
+                    <div className="stats-section">
+                        <h3 className="section-title">📱 المنصّات</h3>
+                        <div className="platform-grid">
+                            {[
+                                { key: 'ios', label: 'آيفون', icon: '', cls: 'ios' },
+                                { key: 'android', label: 'أندرويد', icon: '🤖', cls: 'android' },
+                                { key: 'web', label: 'الويب', icon: '🌐', cls: 'web' },
+                                { key: 'unknown', label: 'غير معروف', icon: '❔', cls: 'unknown' }
+                            ].map(p => {
+                                const value = platforms[p.key] || 0;
+                                const pct = stats.totalUsers ? (value / stats.totalUsers * 100) : 0;
+                                return (
+                                    <div key={p.key} className={`platform-card ${p.cls}`}>
+                                        <div className="platform-head">
+                                            <span className="platform-icon">{p.icon}</span>
+                                            <span className="platform-label">{p.label}</span>
+                                        </div>
+                                        <div className="platform-value">{value.toLocaleString('en-US')}</div>
+                                        <div className="platform-bar">
+                                            <div className="platform-fill" style={{ width: `${pct}%` }}></div>
+                                        </div>
+                                        <div className="platform-pct">{pct.toFixed(1)}%</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {platforms.unknown > 0 && (
+                            <p className="platform-note">
+                                «غير معروف» حسابات سجّلت قبل تفعيل تسجيل بيانات الجهاز — تُحتسب ضمن الإجمالي ولا تُخفى.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* نموّ التسجيل + نسخ التطبيق */}
+                    <div className="stats-section">
+                        <h3 className="section-title">📈 آخر ٧ أيام</h3>
+                        <div className="charts-grid">
+                            <div className="chart-card">
+                                <h4>تسجيلات جديدة</h4>
+                                {liveStats.growth.length === 0 ? (
+                                    <p className="chart-empty">لا تسجيلات في آخر سبعة أيام</p>
+                                ) : (
+                                    <div className="growth-chart">
+                                        {(() => {
+                                            const max = Math.max(...liveStats.growth.map(g => g.count), 1);
+                                            return liveStats.growth.map(g => (
+                                                <div key={g._id} className="growth-col" title={`${g._id}: ${g.count}`}>
+                                                    <span className="growth-count">{g.count}</span>
+                                                    <div className="growth-bar" style={{ height: `${(g.count / max) * 100}%` }}></div>
+                                                    <span className="growth-day">{g._id.slice(5)}</span>
+                                                </div>
+                                            ));
+                                        })()}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="chart-card">
+                                <h4>نسخ التطبيق</h4>
+                                {appVersions.length === 0 ? (
+                                    <p className="chart-empty">لا بيانات نسخ بعد</p>
+                                ) : (
+                                    <div className="version-list">
+                                        {appVersions.map(v => {
+                                            const max = appVersions[0].count || 1;
+                                            return (
+                                                <div key={v.version} className="version-row">
+                                                    <span className="version-name">{v.version}</span>
+                                                    <div className="version-bar">
+                                                        <div className="version-fill" style={{ width: `${(v.count / max) * 100}%` }}></div>
+                                                    </div>
+                                                    <span className="version-count">{v.count.toLocaleString('en-US')}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* ===== القسم 1: نظرة عامة ===== */}
                     <div className="stats-section">
                         <h3 className="section-title">📊 نظرة عامة</h3>

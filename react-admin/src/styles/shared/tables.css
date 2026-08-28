@@ -50,7 +50,7 @@
 
 /* Gradient Header Variant */
 .data-table--gradient thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
 }
 
 .data-table--gradient th {
@@ -84,7 +84,7 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     display: flex;
     align-items: center;

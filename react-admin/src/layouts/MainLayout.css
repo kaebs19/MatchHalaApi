@@ -90,7 +90,7 @@
 }
 
 .header-icon-btn.notifications-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
@@ -355,7 +355,7 @@
 }
 
 .search-input:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
     background: white;
     box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.12);
     width: 320px;
@@ -388,7 +388,7 @@
     width: 16px;
     height: 16px;
     border: 2px solid #e0e0e0;
-    border-top: 2px solid #667eea;
+    border-top: 2px solid #2F9E85;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
 }
@@ -470,7 +470,7 @@
 }
 
 .search-verified-badge {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
     width: 20px;
     height: 20px;

@@ -16,8 +16,8 @@
 .back-btn {
     padding: 10px 20px;
     background: white;
-    border: 2px solid #667eea;
-    color: #667eea;
+    border: 2px solid #2F9E85;
+    color: #2F9E85;
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
@@ -26,7 +26,7 @@
 }
 
 .back-btn:hover {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
     transform: translateX(-5px);
 }
@@ -34,7 +34,7 @@
 .detail-header h2 {
     flex: 1;
     font-size: 28px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin: 0;
@@ -42,7 +42,7 @@
 
 .view-messages-btn {
     padding: 12px 24px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 10px;
@@ -80,13 +80,13 @@
 }
 
 .tab:hover {
-    color: #667eea;
+    color: #2F9E85;
     background: rgba(102, 126, 234, 0.05);
 }
 
 .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: #2F9E85;
+    border-bottom-color: #2F9E85;
     background: rgba(102, 126, 234, 0.1);
 }
 
@@ -121,7 +121,7 @@
 .info-card h3 {
     margin: 0 0 15px 0;
     font-size: 16px;
-    color: #667eea;
+    color: #2F9E85;
     font-weight: 600;
 }
 
@@ -171,7 +171,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     border-radius: 12px;
 }
 
@@ -205,7 +205,7 @@
 }
 
 .participant-card:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
 }
@@ -214,7 +214,7 @@
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     display: flex;
     align-items: center;

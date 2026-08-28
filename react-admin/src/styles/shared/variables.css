@@ -1,9 +1,9 @@
 /* ===== Design Tokens ===== */
 :root {
     /* Primary Gradient */
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --color-primary: #667eea;
-    --color-primary-dark: #764ba2;
+    --gradient-primary: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
+    --color-primary: #2F9E85;
+    --color-primary-dark: #1F6AA8;
 
     /* Status Colors */
     --color-success: #28a745;
@@ -12,7 +12,7 @@
     --color-info: #3498db;
 
     /* Gradient Colors (for stat card icons) */
-    --gradient-purple: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-purple: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     --gradient-blue: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
     --gradient-green: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
     --gradient-orange: linear-gradient(135deg, #fa709a 0%, #fee140 100%);

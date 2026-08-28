@@ -44,7 +44,7 @@
 
 .mark-all-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -78,14 +78,14 @@
 }
 
 .notifications-page .filter-btn:hover {
-    border-color: #667eea;
-    color: #667eea;
+    border-color: #2F9E85;
+    color: #2F9E85;
 }
 
 .notifications-page .filter-btn.active {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 /* Notifications List */
@@ -326,7 +326,7 @@
     width: 40px;
     height: 40px;
     border: 3px solid #f0f0f0;
-    border-top-color: #667eea;
+    border-top-color: #2F9E85;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 16px;

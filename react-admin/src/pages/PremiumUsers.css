@@ -41,7 +41,7 @@
 .premium-filters .filter-group select:focus,
 .premium-filters .filter-group .premium-search-input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .premium-filters .filter-reset-btn {
@@ -169,7 +169,7 @@
 }
 
 .premium-modal-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border-radius: 20px 20px 0 0;
     border-bottom: none;
@@ -281,7 +281,7 @@
 }
 
 .toggle-switch input:checked + .toggle-slider {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {

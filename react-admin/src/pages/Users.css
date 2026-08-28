@@ -11,7 +11,7 @@
 .users-stats-bar {
     display: flex;
     gap: 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     border-radius: 14px;
     margin-bottom: 20px;
     overflow: hidden;
@@ -81,7 +81,7 @@
 }
 
 .users-page .search-box input:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
 }
 
@@ -106,8 +106,8 @@
 }
 
 .users-filter-toggle:hover, .users-filter-toggle.active {
-    border-color: #667eea;
-    color: #667eea;
+    border-color: #2F9E85;
+    color: #2F9E85;
 }
 
 .users-page .refresh-btn {
@@ -121,7 +121,7 @@
 }
 
 .users-page .refresh-btn:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
     background: #f8f9ff;
 }
 
@@ -146,7 +146,7 @@
 }
 
 .users-filters-grid select:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .users-reset-filters {
@@ -221,7 +221,7 @@
 }
 
 .users-table thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
 }
 
@@ -512,7 +512,7 @@
 }
 
 .no-results button {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #2F9E85, #1F6AA8);
     color: white;
     border: none;
     padding: 10px 22px;
@@ -535,7 +535,7 @@
     width: 44px;
     height: 44px;
     border: 4px solid #f3f3f3;
-    border-top: 4px solid #667eea;
+    border-top: 4px solid #2F9E85;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: 16px;

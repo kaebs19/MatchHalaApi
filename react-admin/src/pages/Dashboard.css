@@ -12,66 +12,13 @@
 }
 
 /* Quick Actions Section */
-.quick-actions-section {
-    background: white;
-    padding: 25px;
-    border-radius: 15px;
-    margin-bottom: 30px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
 
-.quick-actions-section .section-title {
-    margin-top: 0;
-}
 
-.quick-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 15px;
-}
 
-.quick-action-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 20px 15px;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-}
 
-.quick-action-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 100%);
-    opacity: 0;
-    transition: opacity 0.3s;
-}
 
-.quick-action-btn:hover::before { opacity: 1; }
 
-.quick-action-btn:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-}
 
-.quick-action-btn.users { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-.quick-action-btn.conversations { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
-.quick-action-btn.rooms { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; }
-.quick-action-btn.swipes { background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); color: white; }
-.quick-action-btn.matches { background: linear-gradient(135deg, #e91e63 0%, #9333ea 100%); color: white; }
-.quick-action-btn.reports { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%); color: white; }
-.quick-action-btn.settings { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; }
-.quick-action-btn.notification { background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); color: white; }
 
 .action-icon { font-size: 28px; }
 .action-text { font-size: 13px; font-weight: 600; text-align: center; }
@@ -238,7 +185,7 @@
     height: 50px;
     min-width: 50px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     display: flex;
     align-items: center;
@@ -287,4 +234,170 @@ img.user-avatar { background: #f0f0f0; }
 
     .notification-modal .modal-header,
     .notification-form { padding: 20px; }
+}
+
+
+/* ===== المنصّات ===== */
+.platform-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+}
+
+.platform-card {
+    background: #fff;
+    border-radius: var(--radius-lg, 15px);
+    padding: 18px;
+    box-shadow: var(--shadow-sm, 0 2px 10px rgba(0,0,0,0.05));
+    border-top: 3px solid var(--color-primary);
+}
+
+.platform-card.ios      { border-top-color: #2F9E85; }
+.platform-card.android  { border-top-color: #3ddc84; }
+.platform-card.web      { border-top-color: #1F6AA8; }
+.platform-card.unknown  { border-top-color: #b0b6bd; }
+
+.platform-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.platform-icon { font-size: 18px; }
+
+.platform-label {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.platform-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 10px;
+}
+
+.platform-bar {
+    height: 6px;
+    background: #eef0f2;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.platform-fill {
+    height: 100%;
+    background: var(--gradient-primary);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.platform-card.android .platform-fill { background: linear-gradient(135deg, #3ddc84, #17a35c); }
+.platform-card.unknown .platform-fill { background: linear-gradient(135deg, #c3c9d0, #9aa3ac); }
+
+.platform-pct {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.platform-note {
+    margin: 14px 2px 0;
+    font-size: 12.5px;
+    color: #6b7280;
+    line-height: 1.7;
+}
+
+/* ===== مخطط النموّ ===== */
+.growth-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    height: 190px;
+    padding-top: 10px;
+}
+
+.growth-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    gap: 6px;
+}
+
+.growth-count {
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+}
+
+.growth-bar {
+    width: 100%;
+    max-width: 40px;
+    min-height: 4px;
+    background: var(--gradient-primary);
+    border-radius: 6px 6px 0 0;
+    transition: height 0.4s ease;
+}
+
+.growth-day {
+    font-size: 11px;
+    color: #9ca3af;
+    direction: ltr;
+}
+
+.chart-empty {
+    color: #9ca3af;
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 0;
+}
+
+/* ===== نسخ التطبيق ===== */
+.version-list {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding-top: 8px;
+}
+
+.version-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.version-name {
+    width: 46px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    direction: ltr;
+    text-align: right;
+}
+
+.version-bar {
+    flex: 1;
+    height: 8px;
+    background: #eef0f2;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.version-fill {
+    height: 100%;
+    background: var(--gradient-primary);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.version-count {
+    width: 58px;
+    font-size: 12px;
+    color: #6b7280;
+    text-align: left;
+    direction: ltr;
 }

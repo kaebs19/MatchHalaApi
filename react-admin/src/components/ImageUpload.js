@@ -95,7 +95,7 @@ function ImageUpload({ currentImage, onUpload, title = "رفع صورة", type =
                             alt="Preview"
                             onError={(e) => {
                                 e.target.onerror = null;
-                                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Crect fill='%23667eea' width='150' height='150'/%3E%3Ctext fill='white' font-family='Arial' font-size='40' x='50%25' y='50%25' text-anchor='middle' dominant-baseline='middle'%3E📷%3C/text%3E%3C/svg%3E";
+                                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Crect fill='%232F9E85' width='150' height='150'/%3E%3Ctext fill='white' font-family='Arial' font-size='40' x='50%25' y='50%25' text-anchor='middle' dominant-baseline='middle'%3E📷%3C/text%3E%3C/svg%3E";
                             }}
                         />
                         {uploading && (

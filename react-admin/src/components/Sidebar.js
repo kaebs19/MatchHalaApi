@@ -30,7 +30,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
         },
         {
             id: 'appeals',
-            name: 'الاستئنافات',
+            name: 'المراجعات',
             icon: '📋',
             adminOnly: true
         },

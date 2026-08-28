@@ -96,7 +96,7 @@
 
 .simple-pagination .page-btn {
     padding: 8px 20px;
-    background: #7c3aed;
+    background: var(--color-primary);
     color: white;
     border: none;
     border-radius: 8px;

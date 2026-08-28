@@ -13,7 +13,7 @@
 
 /* Header Section */
 .profile-header-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     padding: 40px;
     display: flex;
     align-items: center;
@@ -190,7 +190,7 @@
 .profile-form .form-group select:focus,
 .profile-form .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
@@ -213,7 +213,7 @@
 
 .save-btn {
     padding: 12px 30px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 10px;

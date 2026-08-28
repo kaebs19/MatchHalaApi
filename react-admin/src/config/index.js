@@ -44,7 +44,7 @@ export const getMessagePhotoUrl = (message) => {
 // صورة افتراضية للمستخدم
 export const getDefaultAvatar = (name) => {
     const initial = name?.charAt(0)?.toUpperCase() || 'U';
-    return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%23667eea' width='100' height='100'/%3E%3Ctext fill='white' font-family='Arial' font-size='40' x='50%25' y='50%25' text-anchor='middle' dominant-baseline='central'%3E${initial}%3C/text%3E%3C/svg%3E`;
+    return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect fill='%232F9E85' width='100' height='100'/%3E%3Ctext fill='white' font-family='Arial' font-size='40' x='50%25' y='50%25' text-anchor='middle' dominant-baseline='central'%3E${initial}%3C/text%3E%3C/svg%3E`;
 };
 
 export default config;

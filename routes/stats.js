@@ -48,7 +48,9 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
             bannedDevicesCount, bannedDevicesToday,
             appealsPending, appealsApproved, appealsRejected, appealsLast7Days,
             growthAgg,
-            topReported
+            topReported,
+            platformAgg,
+            appVersionAgg
         ] = await Promise.all([
             User.countDocuments(),
             User.countDocuments({ isActive: true }),
@@ -120,8 +122,37 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
                 { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
                 { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
                 { $project: { _id: 1, count: 1, name: '$user.name', email: '$user.email' } }
+            ]),
+
+            // 📱 توزيع المنصّات — deviceInfo.platform يُملأ عند تسجيل الجهاز.
+            //    الحسابات التي سبقت إضافة الحقل تبقى null وتُعرض «غير معروف»
+            //    صراحةً: إخفاؤها يجعل مجموع الشرائح أقلّ من إجمالي المستخدمين.
+            User.aggregate([
+                { $group: { _id: '$deviceInfo.platform', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]),
+
+            // 📦 توزيع نسخ التطبيق — للمعروفة فقط
+            User.aggregate([
+                { $match: { 'deviceInfo.appVersion': { $nin: [null, ''] } } },
+                { $group: { _id: '$deviceInfo.appVersion', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 8 }
             ])
         ]);
+
+        // تطبيع المنصّات إلى مفاتيح ثابتة يعتمد عليها العرض
+        const platforms = { ios: 0, android: 0, web: 0, unknown: 0 };
+        for (const row of platformAgg) {
+            const key = (row._id || '').toString().toLowerCase();
+            if (key === 'ios' || key === 'iphone' || key === 'ipad') platforms.ios += row.count;
+            else if (key === 'android') platforms.android += row.count;
+            else if (key === 'web') platforms.web += row.count;
+            else platforms.unknown += row.count;
+        }
+        platforms.known = platforms.ios + platforms.android + platforms.web;
+
+        const appVersions = appVersionAgg.map(r => ({ version: r._id, count: r.count }));
 
         // إيراد تقديري شهري
         const prices = { weekly: 9.99, monthly: 29.99, quarterly: 69.99 };
@@ -195,7 +226,9 @@ router.get('/dashboard', protect, adminOnly, async (req, res) => {
                     today: bannedDevicesToday
                 },
                 appeals,
-                growth: growthAgg
+                growth: growthAgg,
+                platforms,
+                appVersions
             }
         };
 

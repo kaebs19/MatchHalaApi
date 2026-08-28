@@ -34,7 +34,7 @@
     display: flex;
     gap: 0;
     padding: 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     flex-shrink: 0;
 }
 
@@ -86,7 +86,7 @@
 }
 
 .conv-search:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
 }
 
@@ -119,14 +119,14 @@
 }
 
 .conv-filter-btn:hover {
-    border-color: #667eea;
-    color: #667eea;
+    border-color: #2F9E85;
+    color: #2F9E85;
 }
 
 .conv-filter-btn.active {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .conv-filter-btn.danger.active {
@@ -179,7 +179,7 @@
 
 .conv-item.selected {
     background: #eef2ff;
-    border-right: 3px solid #667eea;
+    border-right: 3px solid #2F9E85;
 }
 
 .conv-item.disabled {
@@ -441,7 +441,7 @@
 }
 
 .conv-chat-search:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .conv-chat-quick-actions {
@@ -518,7 +518,7 @@
     font-size: 12px;
     cursor: pointer;
     font-weight: 600;
-    color: #667eea;
+    color: #2F9E85;
 }
 
 .conv-msg-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -572,7 +572,7 @@
 }
 
 .conv-msg.right .conv-msg-bubble {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
     border-bottom-left-radius: 16px;
     border-bottom-right-radius: 6px;
@@ -594,7 +594,7 @@
 }
 
 .conv-msg.right.flagged .conv-msg-bubble {
-    background: #7c3aed;
+    background: var(--color-primary);
     border-color: #fca5a5;
 }
 
@@ -612,7 +612,7 @@
     cursor: pointer;
 }
 
-.conv-msg.left .conv-msg-sender { color: #667eea; }
+.conv-msg.left .conv-msg-sender { color: #2F9E85; }
 .conv-msg.right .conv-msg-sender { color: rgba(255,255,255,0.85); }
 
 .conv-msg-time {
@@ -625,7 +625,7 @@
 /* Reply */
 .conv-msg-reply {
     background: rgba(0,0,0,0.06);
-    border-right: 3px solid #667eea;
+    border-right: 3px solid #2F9E85;
     padding: 5px 10px;
     border-radius: 6px;
     margin-bottom: 6px;
@@ -792,14 +792,14 @@
 }
 
 .conv-chat-input input:focus {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .conv-chat-input button {
     width: 44px;
     height: 44px;
     border: none;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #2F9E85, #1F6AA8);
     color: white;
     border-radius: 50%;
     font-size: 18px;
@@ -919,7 +919,7 @@
 
 .conv-modal-actions button:hover {
     background: #f8f9fa;
-    border-color: #667eea;
+    border-color: #2F9E85;
     transform: translateX(-3px);
 }
 

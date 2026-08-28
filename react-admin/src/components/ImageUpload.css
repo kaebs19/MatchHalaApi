@@ -20,12 +20,12 @@
 }
 
 .image-upload-area:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
     background: #f0f0ff;
 }
 
 .image-upload-area.drag-over {
-    border-color: #667eea;
+    border-color: #2F9E85;
     background: #e8e8ff;
     transform: scale(1.02);
 }
@@ -92,7 +92,7 @@
 .upload-btn {
     margin-top: 15px;
     padding: 10px 25px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 8px;

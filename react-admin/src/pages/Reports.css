@@ -48,7 +48,7 @@
 }
 
 .stat-box.total {
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #2F9E85;
 }
 
 .stat-box.pending {
@@ -86,12 +86,12 @@
 }
 
 .reports-filters select:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .reports-filters select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 /* Reports List */
@@ -231,14 +231,14 @@
 }
 
 .report-user .user-link {
-    color: #667eea;
+    color: #2F9E85;
     cursor: pointer;
     text-decoration: underline;
     transition: color 0.2s;
 }
 
 .report-user .user-link:hover {
-    color: #764ba2;
+    color: #1F6AA8;
 }
 
 /* Reported Content Section */
@@ -247,7 +247,7 @@
     border-radius: 10px;
     padding: 15px;
     margin-top: 12px;
-    border-right: 4px solid #667eea;
+    border-right: 4px solid #2F9E85;
 }
 
 .reported-content-title {
@@ -315,7 +315,7 @@
 
 .view-conv-btn {
     padding: 6px 14px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 6px;
@@ -390,7 +390,7 @@
 
 .reports-page .action-btn {
     padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 6px;
@@ -472,7 +472,7 @@
 }
 
 .action-option:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
     background: #f8f9fa;
     transform: translateX(-5px);
 }
@@ -588,7 +588,7 @@
     border-radius: 8px;
     padding: 12px;
     margin-top: 10px;
-    border-right: 3px solid #667eea;
+    border-right: 3px solid #2F9E85;
 }
 
 .modal-message-preview .preview-label {
@@ -685,11 +685,11 @@
     width: 18px;
     height: 18px;
     cursor: pointer;
-    accent-color: #667eea;
+    accent-color: #2F9E85;
 }
 
 .selected-count {
-    background: #667eea;
+    background: #2F9E85;
     color: white;
     padding: 3px 10px;
     border-radius: 12px;
@@ -734,7 +734,7 @@
 }
 
 .bulk-btn.resolve-all {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
 }
 
@@ -765,7 +765,7 @@
     width: 18px;
     height: 18px;
     cursor: pointer;
-    accent-color: #667eea;
+    accent-color: #2F9E85;
 }
 
 .report-card {
@@ -774,7 +774,7 @@
 
 .report-card.selected {
     background: #f0f4ff;
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
@@ -838,7 +838,7 @@
 
 .top-rank {
     font-weight: 700;
-    color: #667eea;
+    color: #2F9E85;
     min-width: 30px;
     font-size: 14px;
 }
@@ -850,13 +850,13 @@
 }
 
 .top-name.user-link {
-    color: #667eea;
+    color: #2F9E85;
     cursor: pointer;
     text-decoration: underline;
 }
 
 .top-name.user-link:hover {
-    color: #764ba2;
+    color: #1F6AA8;
 }
 
 .top-email {
@@ -1104,9 +1104,9 @@
 }
 
 .qf-chip.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
-    border-color: #667eea;
+    border-color: #2F9E85;
     box-shadow: 0 3px 8px rgba(102, 126, 234, 0.3);
 }
 

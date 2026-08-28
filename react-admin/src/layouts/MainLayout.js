@@ -303,7 +303,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                 setAppealsStats(response.data);
             }
         } catch (error) {
-            console.error('خطأ في جلب عدد الاستئنافات:', error);
+            console.error('خطأ في جلب عدد المراجعات:', error);
         }
     };
 
@@ -499,7 +499,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {currentPage === 'super-likes' && '⚡ Super Likes'}
                         {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
                         {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
-                        {currentPage === 'appeals' && '📋 الاستئنافات'}
+                        {currentPage === 'appeals' && '📋 المراجعات'}
                         {currentPage === 'newcomers' && '🆕 الحسابات الجديدة'}
                         {currentPage === 'banned-devices' && '📵 الأجهزة المحظورة'}
                         {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
@@ -588,7 +588,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                             </button>
                         )}
 
-                        {/* زر الاستئنافات (جديدة + ردود مستخدمين بلا قراءة) */}
+                        {/* زر المراجعات (جديدة + ردود مستخدمين بلا قراءة) */}
                         {user?.role === 'admin' && (appealsStats.total > 0 || appealsStats.awaitingReply > 0) && (
                             <button
                                 className="header-icon-btn appeals-notification-btn"
