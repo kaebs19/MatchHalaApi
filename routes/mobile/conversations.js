@@ -923,6 +923,84 @@ router.get('/conversations/pending', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/conversations/bulk-reject-old
+// @desc    رفض جماعي للطلبات المعلقة الأقدم من N أيام — التطبيق ينادي هذا المسار
+//          من زرّ «مسح الطلبات القديمة» في تبويب الطلبات
+// @access  Private
+router.post('/conversations/bulk-reject-old', protect, async (req, res) => {
+    try {
+        const raw = parseInt(req.body?.olderThanDays, 10);
+        const olderThanDays = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 365) : 3;
+        const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+        // طلبات واردة (لست أنت المُرسِل) معلّقة وأقدم من الحدّ
+        const stale = await Conversation.find({
+            participants: req.user._id,
+            creator: { $ne: req.user._id },
+            status: 'pending',
+            createdAt: { $lt: cutoff }
+        }).select('_id reinviteCount').lean();
+
+        if (stale.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'لا توجد طلبات قديمة',
+                data: { rejectedCount: 0, olderThanDays }
+            });
+        }
+
+        // تهدئة قبل السماح بدعوة استئناف جديدة — نفس منطق الرفض الفردي
+        const now = Date.now();
+        const firstTime = stale.filter(c => !(c.reinviteCount > 0)).map(c => c._id);
+        const repeated = stale.filter(c => c.reinviteCount > 0);
+
+        if (firstTime.length > 0) {
+            await Conversation.updateMany(
+                { _id: { $in: firstTime } },
+                {
+                    $set: {
+                        status: 'rejected',
+                        isActive: false,
+                        requestedAt: null,
+                        reinviteAllowedAt: new Date(now + REINVITE_COOLDOWN_MS)
+                    }
+                }
+            );
+        }
+
+        // المتكرّرون: التهدئة تتصاعد بحسب عدد محاولات الاستئناف، فلكلٍّ قيمته
+        for (const c of repeated) {
+            await Conversation.updateOne(
+                { _id: c._id },
+                {
+                    $set: {
+                        status: 'rejected',
+                        isActive: false,
+                        requestedAt: null,
+                        reinviteAllowedAt: new Date(now + escalatedCooldownMs(c.reinviteCount - 1))
+                    }
+                }
+            );
+        }
+
+        // بلا رسائل نظام ولا إشعارات: الرفض الجماعي صامت عمداً — إشعار لكل
+        // مُرسِل يحوّل تنظيفاً واحداً إلى موجة تنبيهات
+        res.status(200).json({
+            success: true,
+            message: `تم رفض ${stale.length} طلب قديم`,
+            data: { rejectedCount: stale.length, olderThanDays }
+        });
+
+    } catch (error) {
+        console.error('خطأ في الرفض الجماعي للطلبات القديمة:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر',
+            error: error.message
+        });
+    }
+});
+
 // @route   GET /api/mobile/conversations/pending-count
 // @desc    عدد طلبات المحادثة المعلقة (للـ badge في bottom tab) — خفيف وسريع
 // @access  Private
