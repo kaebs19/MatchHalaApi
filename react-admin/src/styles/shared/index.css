@@ -9,3 +9,5 @@
 @import './badges.css';
 @import './filters.css';
 @import './avatars.css';
+/* آخر ملف عمداً — طبقة الجوال تغلب على ما قبلها بلا !important */
+@import './mobile.css';

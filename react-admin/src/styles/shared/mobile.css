@@ -1,0 +1,111 @@
+/* ===== دعم الجوال | Mobile Support =====
+ *
+ * طبقة أخيرة تُحمّل بعد بقية الأنماط المشتركة، فتغلب عليها بلا !important.
+ *
+ * ⚠️ أهمّ قاعدة هنا: 16px لحقول الإدخال على الجوال. سفاري iOS يُكبّر
+ *    الصفحة تلقائياً عند التركيز على أي حقل خطّه أصغر من 16px — فتقفز
+ *    الشاشة وتنكسر المحاذاة عند أول لمسة في شاشة الدخول. كل حقول اللوحة
+ *    كانت 14–15px.
+ */
+
+@media (max-width: 768px) {
+
+    /* ── منع تكبير iOS التلقائي ── */
+    input,
+    select,
+    textarea,
+    .login-box .form-group input {
+        font-size: 16px;
+    }
+
+    /* ── الجداول: تمرير أفقي بسلاسة، ولا تجرّ الصفحة معها ── */
+    .data-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
+
+    /* حاوية الجدول تمتدّ لحافّتَي الشاشة — العرض ثمين على ٣٧٥px */
+    .data-table-container {
+        border-radius: 12px;
+    }
+
+    /* ── أشرطة الفلاتر: تتكدّس بدل أن تُضغط ── */
+    .appeals-filters,
+    .filters-bar,
+    .page-filters {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .appeals-filters select,
+    .appeals-filters input,
+    .filters-bar select,
+    .filters-bar input {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    /* ── مساحات لمس مريحة (٤٤px هو حدّ أبل) ── */
+    button,
+    .btn,
+    .refresh-btn {
+        min-height: 44px;
+    }
+
+    /* ── النوافذ المنبثقة: ورقة من الأسفل بدل مربّع مقصوص ── */
+    .modal-content,
+    .modal-box {
+        width: 100%;
+        max-width: 100%;
+        max-height: 92vh;
+        border-radius: 18px 18px 0 0;
+        margin: 0;
+        align-self: flex-end;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    /* ── لوحة التحكم ── */
+    .platform-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .platform-value {
+        font-size: 22px;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .growth-chart {
+        height: 150px;
+        gap: 6px;
+    }
+
+    .growth-day {
+        font-size: 10px;
+    }
+
+    /* ── لا تمرير أفقي للصفحة نفسها مهما اتّسع محتواها ── */
+    body {
+        overflow-x: hidden;
+    }
+}
+
+@media (max-width: 480px) {
+    .platform-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .growth-count {
+        font-size: 10px;
+    }
+}
