@@ -22,17 +22,17 @@
 }
 
 .appeals-filters select:hover {
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .appeals-filters select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .appeals-filters .refresh-btn {
     padding: 10px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -66,14 +66,14 @@
 }
 
 .appeals-page .user-link {
-    color: #667eea;
+    color: #2F9E85;
     cursor: pointer;
     font-weight: 600;
     transition: color 0.2s;
 }
 
 .appeals-page .user-link:hover {
-    color: #764ba2;
+    color: #1F6AA8;
     text-decoration: underline;
 }
 
@@ -175,7 +175,7 @@
 }
 
 .appeals-page .action-btn.btn-view {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
 }
 
 .appeals-page .action-btn.btn-review {
@@ -245,7 +245,7 @@
     height: 55px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #667eea;
+    border: 3px solid #2F9E85;
 }
 
 .appeal-user-details {
@@ -444,7 +444,7 @@
 
 .appeal-action-form .status-select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .appeal-action-form .status-select.status-pending {
@@ -484,12 +484,12 @@
 
 .appeal-action-form textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #2F9E85;
 }
 
 .appeal-action-form .save-btn {
     padding: 12px 24px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     color: white;
     border: none;
     border-radius: 8px;
@@ -652,4 +652,22 @@
     .appeal-user-details-grid {
         grid-template-columns: 1fr 1fr;
     }
+}
+
+/* ===== مراجعة مغلقة تلقائياً ===== */
+/* انتهت مدّة العقوبة قبل البتّ فيها — كانت مخفية تماماً عن اللوحة */
+.badge-auto-closed {
+    background: #eef0f2;
+    color: #6b7280;
+    border: 1px solid #dfe3e7;
+}
+
+.appeals-note {
+    margin: 0 2px 16px;
+    padding: 10px 14px;
+    background: #f7f8f9;
+    border-right: 3px solid #b0b6bd;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #6b7280;
 }

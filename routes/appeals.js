@@ -673,12 +673,21 @@ router.get('/', protect, adminOnly, async (req, res) => {
         // ✅ إخفاء الاستئنافات التي انتهت مدة عقوبتها قبل الجلب
         await sweepExpiredAppeals();
 
-        // autoClosed = انتهت العقوبة → لا تظهر في اللوحة إطلاقاً
-        const filter = { autoClosed: { $ne: true } };
-        if (status) filter.status = status;
+        // ⚠️ كان الفلتر يستثني autoClosed نهائياً، فتختفي من اللوحة استئنافات
+        //    لم يرها أحد: عند القياس على الإنتاج كانت **٣٠٤ مراجعة pending**
+        //    مخفية مقابل ٩٢ ظاهرة — أي أن ثلاثة أرباع ما ينتظر الردّ كان
+        //    غير مرئي، لأن مدّة العقوبة انقضت قبل أن يفتحها أحد.
+        //    الآن تظهر، مرتّبةً في الأسفل وبحالة خاصة، ويمكن عزلها بفلتر.
+        const filter = {};
+        if (status === 'auto_closed') {
+            filter.autoClosed = true;
+        } else if (status) {
+            filter.status = status;
+            filter.autoClosed = { $ne: true };
+        }
 
         // ✅ ترتيب أولوي: قيد الانتظار → قيد المراجعة → forwarded → مقبولة → مرفوضة
-        // داخل كل مجموعة: الأحدث أولاً
+        // المغلقة تلقائياً في الذيل دائماً — لا تُزاحم ما ينتظر قراراً
         const STATUS_ORDER = { pending: 1, under_review: 2, forwarded: 3, approved: 4, rejected: 5 };
 
         const appeals = await Appeal.find(filter)
@@ -686,13 +695,15 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('resolvedBy', 'name');
 
         // فلترة + ترتيب يدوي (الـ count صغير، لا حاجة لـ aggregation)
+        // المستخدم المحذوف لا استئناف له — لكن نعدّها ونُبلّغ اللوحة بالعدد
+        //    بدل أن تختفي بلا أثر
+        const deletedUserAppeals = appeals.filter(a => !a.user).length;
+
         const visibleAppeals = appeals
-            .filter(appeal => {
-                // فقط نستثني الأبيلز اللي مستخدمها محذوف
-                // (المحظورين والمعلّقين يجب أن تظهر استئنافاتهم — نحن نراجعها!)
-                return !!appeal.user;
-            })
+            .filter(appeal => !!appeal.user)
             .sort((a, b) => {
+                // المغلقة تلقائياً في الذيل مهما كانت حالتها
+                if (!!a.autoClosed !== !!b.autoClosed) return a.autoClosed ? 1 : -1;
                 const orderA = STATUS_ORDER[a.status] || 99;
                 const orderB = STATUS_ORDER[b.status] || 99;
                 if (orderA !== orderB) return orderA - orderB;
@@ -741,12 +752,13 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         // ✅ stats من DB مباشرة (مش من الـ list — لأن visible فلتر بعض)
         const notClosed = { autoClosed: { $ne: true } };
-        const [pending, underReview, forwarded, approved, rejected] = await Promise.all([
+        const [pending, underReview, forwarded, approved, rejected, autoClosed] = await Promise.all([
             Appeal.countDocuments({ status: 'pending', ...notClosed }),
             Appeal.countDocuments({ status: 'under_review', ...notClosed }),
             Appeal.countDocuments({ status: 'forwarded', ...notClosed }),
             Appeal.countDocuments({ status: 'approved', ...notClosed }),
-            Appeal.countDocuments({ status: 'rejected', ...notClosed })
+            Appeal.countDocuments({ status: 'rejected', ...notClosed }),
+            Appeal.countDocuments({ autoClosed: true })
         ]);
 
         res.status(200).json({
@@ -756,13 +768,15 @@ router.get('/', protect, adminOnly, async (req, res) => {
                 totalPages: Math.ceil(totalFiltered / limit),
                 currentPage: Number(page),
                 total: totalFiltered,
+                deletedUserAppeals,
                 stats: {
                     total: pending + underReview + forwarded + approved + rejected,
                     pending,
                     forwarded,
                     under_review: underReview,
                     approved,
-                    rejected
+                    rejected,
+                    auto_closed: autoClosed
                 }
             }
         });

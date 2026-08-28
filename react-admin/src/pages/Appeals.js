@@ -12,7 +12,8 @@ import "./Appeals.css";
 
 function Appeals({ onViewUserDetail }) {
     const [appeals, setAppeals] = useState([]);
-    const [stats, setStats] = useState({ total: 0, pending: 0, forwarded: 0, under_review: 0, approved: 0, rejected: 0 });
+    const [stats, setStats] = useState({ total: 0, pending: 0, forwarded: 0, under_review: 0, approved: 0, rejected: 0, auto_closed: 0 });
+    const [deletedUserAppeals, setDeletedUserAppeals] = useState(0);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
@@ -84,9 +85,10 @@ function Appeals({ onViewUserDetail }) {
                 setTotalPages(data.data.totalPages || 1);
                 setTotalItems(data.data.total || 0);
                 if (data.data.stats) setStats(data.data.stats);
+                setDeletedUserAppeals(data.data.deletedUserAppeals || 0);
             }
         } catch (error) {
-            showToast("فشل في تحميل الاستئنافات", "error");
+            showToast("فشل في تحميل المراجعات", "error");
             console.error("Error fetching appeals:", error);
         } finally {
             setLoading(false);
@@ -303,7 +305,16 @@ function Appeals({ onViewUserDetail }) {
         }
     };
 
-    const getStatusBadge = (status) => {
+    // ⚠️ المغلقة تلقائياً لها شارتها الخاصة لا شارة حالتها: عرض «قيد
+    //    الانتظار» على مراجعة انتهت مدّتها وعد كاذب بأنها تنتظر قراراً.
+    const getStatusBadge = (status, row) => {
+        if (row && row.autoClosed) {
+            return (
+                <span className="badge badge-auto-closed" title="انتهت مدّة العقوبة قبل البتّ فيها">
+                    مغلقة تلقائياً
+                </span>
+            );
+        }
         const map = {
             pending: { label: "قيد الانتظار", cls: "badge-pending" },
             forwarded: { label: "مُحال", cls: "badge-forwarded" },
@@ -359,7 +370,7 @@ function Appeals({ onViewUserDetail }) {
             );
         }
 
-        // ─── أسباب أخرى: عدد الاستئنافات السابقة (معلوماتي) ───
+        // ─── أسباب أخرى: عدد المراجعات السابقة (معلوماتي) ───
         if (totalPast === 0) {
             return (
                 <span style={badgeStyle('#3b82f6')} title="لا يوجد استئنافات سابقة لهذا المستخدم">
@@ -420,7 +431,7 @@ function Appeals({ onViewUserDetail }) {
     };
 
     if (loading && currentPage === 1) {
-        return <LoadingSpinner text="جاري تحميل الاستئنافات..." />;
+        return <LoadingSpinner text="جاري تحميل المراجعات..." />;
     }
 
     const columns = [
@@ -433,7 +444,7 @@ function Appeals({ onViewUserDetail }) {
                 {row.isPublicAppeal && (
                     <span style={{
                         marginInlineStart: 6,
-                        background: "linear-gradient(135deg,#667eea,#764ba2)",
+                        background: "linear-gradient(135deg,#2F9E85,#1F6AA8)",
                         color: "white",
                         padding: "2px 6px",
                         borderRadius: 8,
@@ -445,11 +456,12 @@ function Appeals({ onViewUserDetail }) {
                 )}
             </span>
         )},
-        { key: "status", label: "الحالة", render: (row) => getStatusBadge(row.status) },
+        { key: "status", label: "الحالة", render: (row) => getStatusBadge(row.status, row) },
         { key: "date", label: "التاريخ", render: (row) => formatDateTime(row.createdAt) },
         {
             key: "actions", label: "الإجراءات", render: (row) => {
-                const isOpen = ['pending', 'forwarded', 'under_review'].includes(row.status);
+                const isOpen = !row.autoClosed
+                    && ['pending', 'forwarded', 'under_review'].includes(row.status);
                 return (
                     <div className="quick-actions">
                         <button
@@ -488,12 +500,25 @@ function Appeals({ onViewUserDetail }) {
         <div className="appeals-page">
             {/* Statistics */}
             <div className="stats-grid">
-                <StatCard icon="📋" value={stats.total} label="إجمالي الاستئنافات" color="purple" />
+                <StatCard icon="📋" value={stats.total} label="إجمالي المراجعات" color="purple" />
                 <StatCard icon="⏳" value={stats.pending} label="قيد الانتظار" color="orange" />
                 <StatCard icon="🔄" value={stats.under_review} label="قيد المراجعة" color="blue" />
                 <StatCard icon="✅" value={stats.approved} label="مقبولة" color="green" />
                 <StatCard icon="❌" value={stats.rejected} label="مرفوضة" color="red" />
+                <StatCard
+                    icon="🗄️"
+                    value={stats.auto_closed || 0}
+                    label="مغلقة تلقائياً"
+                    color="gray"
+                    onClick={() => { setFilterStatus("auto_closed"); setCurrentPage(1); }}
+                />
             </div>
+
+            {deletedUserAppeals > 0 && (
+                <p className="appeals-note">
+                    {deletedUserAppeals} مراجعة لا تظهر لأن أصحابها حذفوا حساباتهم.
+                </p>
+            )}
 
             {/* Filters */}
             <div className="appeals-filters">
@@ -507,6 +532,7 @@ function Appeals({ onViewUserDetail }) {
                     <option value="under_review">قيد المراجعة</option>
                     <option value="approved">مقبول</option>
                     <option value="rejected">مرفوض</option>
+                    <option value="auto_closed">مغلقة تلقائياً</option>
                 </select>
                 <button onClick={fetchAppeals} className="refresh-btn">تحديث 🔄</button>
             </div>
@@ -518,7 +544,7 @@ function Appeals({ onViewUserDetail }) {
                 loading={loading && currentPage > 1}
                 gradientHeader
                 emptyIcon="📭"
-                emptyMessage="لا توجد استئنافات"
+                emptyMessage="لا توجد مراجعات"
                 onRowClick={handleOpenDetail}
             >
                 {totalPages > 1 && (
@@ -732,7 +758,7 @@ function Appeals({ onViewUserDetail }) {
                         {/* ✅ Badge للاستئناف العام (جهاز محظور - بدون login) */}
                         {selectedAppeal.isPublicAppeal && (
                             <div style={{
-                                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                background: "linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%)",
                                 color: "white",
                                 padding: "12px 16px",
                                 borderRadius: 10,
@@ -763,7 +789,7 @@ function Appeals({ onViewUserDetail }) {
                             {selectedAppeal.publicEmail && (
                                 <div className="appeal-info-row">
                                     <span className="info-label">📧 بريد الاستئناف:</span>
-                                    <span className="info-value" style={{ direction: "ltr", color: "#667eea", fontWeight: 600 }}>
+                                    <span className="info-value" style={{ direction: "ltr", color: "#2F9E85", fontWeight: 600 }}>
                                         {selectedAppeal.publicEmail}
                                     </span>
                                 </div>
@@ -815,7 +841,7 @@ function Appeals({ onViewUserDetail }) {
                                                         maxWidth: "72%",
                                                         padding: "10px 14px",
                                                         borderRadius: 14,
-                                                        background: isAdmin ? "#667eea" : "#ffffff",
+                                                        background: isAdmin ? "#2F9E85" : "#ffffff",
                                                         color: isAdmin ? "#ffffff" : "#222",
                                                         border: isAdmin ? "none" : "1px solid #e0e0e6",
                                                         boxShadow: isAdmin ? "0 2px 6px rgba(102,126,234,0.25)" : "0 1px 3px rgba(0,0,0,0.04)"
@@ -869,9 +895,9 @@ function Appeals({ onViewUserDetail }) {
                                             }}
                                             title={q.text}
                                             onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = "#667eea";
+                                                e.currentTarget.style.background = "#2F9E85";
                                                 e.currentTarget.style.color = "#fff";
-                                                e.currentTarget.style.borderColor = "#667eea";
+                                                e.currentTarget.style.borderColor = "#2F9E85";
                                             }}
                                             onMouseLeave={(e) => {
                                                 e.currentTarget.style.background = "#fff";
@@ -956,7 +982,7 @@ function Appeals({ onViewUserDetail }) {
                                         padding: "10px 18px",
                                         borderRadius: 10,
                                         border: "none",
-                                        background: (replyText.trim() || replyImage) ? "#667eea" : "#c5cde0",
+                                        background: (replyText.trim() || replyImage) ? "#2F9E85" : "#c5cde0",
                                         color: "#fff",
                                         fontWeight: 700,
                                         cursor: (replyText.trim() || replyImage) ? "pointer" : "not-allowed",
