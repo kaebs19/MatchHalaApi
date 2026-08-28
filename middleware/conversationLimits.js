@@ -21,18 +21,32 @@ async function conversationLimitMiddleware(req, res, next) {
 
         // ⚠️ السقف المتزامن يسبق كل تجاوز — لا الإعلان ولا Premium يرفعه،
         //    لأنه ليس حدّ استهلاك بل حماية لصناديق الطرف الآخر.
+        //
+        // ⚠️⚠️ نافذة ٤٨ ساعة لا الرصيد الكلّي — والسبب خطأ تسلسل يجب ألّا
+        //    يتكرّر: نُشر السقف على الخادم فوراً لكل المستخدمين، بينما زرّ
+        //    «إلغاء الطلب» الذي تطلبه رسالة الحجب لم يُرفع بعد في تطبيق
+        //    v10.2. فوجد ١٠٥٧ مُرسِلاً أنفسهم محجوبين بلا وسيلة للامتثال.
+        //    النافذة تُبقي الكبح على الإرسال المتدفّق (٣٠ طلباً في يومين
+        //    تعني ١٥/يوم) وتُسقط عقوبة الرصيد المتراكم — وهو ينتهي وحده
+        //    خلال سبعة أيام عبر managePendingConversations.
+        //    بعد وصول v10.2 لأغلب المستخدمين يُعاد النظر في العودة للرصيد
+        //    الكلّي، لأن الإلغاء سيصير متاحاً فعلاً.
+        const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
         const outstandingLimit = isPremium ? MAX_OUTSTANDING_PREMIUM : MAX_OUTSTANDING_FREE;
         const outstanding = await Conversation.countDocuments({
             creator: user._id,
-            status: 'pending'
+            status: 'pending',
+            createdAt: { $gte: new Date(Date.now() - OUTSTANDING_WINDOW_MS) }
         });
 
         if (outstanding >= outstandingLimit) {
             return res.status(429).json({
                 success: false,
-                message: `لديك ${outstanding} طلباً بانتظار الردّ — انتظر الردود أو ألغِ بعضها قبل إرسال طلب جديد`,
+                // ⚠️ لا تطلب من المستخدم فعلاً لا تملك واجهته تنفيذه.
+                //    الصياغة تصف ما سيحدث تلقائياً بدل توجيهه إلى زرّ غير موجود.
+                message: `أرسلت ${outstanding} طلباً خلال يومين ولم تُجَب بعد. امنحها وقتاً — تُفتح المساحة تلقائياً مع كل ردّ يصلك.`,
                 code: 'OUTSTANDING_REQUESTS_LIMIT',
-                data: { limit: outstandingLimit, outstanding }
+                data: { limit: outstandingLimit, outstanding, windowHours: 48 }
             });
         }
 
