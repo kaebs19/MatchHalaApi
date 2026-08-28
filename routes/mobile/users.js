@@ -374,20 +374,41 @@ router.get('/users/search', protect, async (req, res) => {
         };
 
         // ✅ عيّنة عشوائية (لاقتراحات صفحة البحث) — مستخدمون مختلفون كل مرة
+        //
+        // ⚠️ كان { $match } ثم { $sample }: عند وجود $match قبله لا يستطيع
+        //    $sample استخدام مسار العيّنة العشوائية المحسَّن، فيُحضِر كل
+        //    المطابقين ثم يعيّن منهم. القياس على الإنتاج: **٥٤٦٣٧ مستنداً
+        //    مفحوصاً و٤٧٥ms لإرجاع عشرين** — وهذا وحده كان أكبر مصدر مسح
+        //    على قاعدة البيانات.
+        //
+        //    البديل: نافذة مرشّحين مفهرسة (الأحدث نشاطاً) ثم خلط في الذاكرة.
+        //    أرخص بمرتين من حيث الترتيب، وأفضل منتَجاً: العشوائية المنتظمة
+        //    على ٥٤ ألفاً تُخرج غالباً حسابات خاملة، والنافذة تُبقي
+        //    الاقتراحات بين من دخل مؤخراً.
         if (random === 'true' || random === '1') {
-            const sampled = await User.aggregate([
-                { $match: filter },
-                { $sample: { size: limitNum } },
-                {
-                    $project: {
-                        name: 1, email: 1, profileImage: 1, birthDate: 1, gender: 1,
-                        country: 1, bio: 1, isOnline: 1, lastLogin: 1, isPremium: 1,
-                        stealthMode: 1, showAge: 1, showCountry: 1,
-                        isVerified: '$verification.isVerified'
-                    }
-                }
-            ]);
-            users = sampled.map(mapBasicUser);
+            const RANDOM_POOL = 300;
+
+            const pool = await User.find(filter)
+                .select('name email profileImage birthDate gender country bio isOnline lastLogin isPremium stealthMode showAge showCountry verification.isVerified')
+                .sort({ lastLogin: -1 })
+                .limit(RANDOM_POOL)
+                .lean();
+
+            // خلط Fisher–Yates ثم أخذ المطلوب
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+
+            users = pool.slice(0, limitNum).map(u => mapBasicUser({
+                ...u,
+                isVerified: u.verification?.isVerified
+            }));
+
+            // ⚠️ العدّ يبقى كما كان: التطبيق يبني منه «N نتيجة» وcanLoadMore،
+            //    وإرجاع طول العيّنة بدله يقلب العدّاد من ٥٤ ألفاً إلى ٢٠.
+            //    وهو عدٌّ بالفهرس (~٣٠٠ms) لا جلب مستندات — أرخص بكثير من
+            //    الـ $sample الذي حلّ محلّه.
             totalUsers = await User.countDocuments(filter);
 
             return res.status(200).json({
