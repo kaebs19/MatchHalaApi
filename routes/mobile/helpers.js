@@ -174,7 +174,7 @@ const maskBannedUser = (user) => {
     const userObj = user.toObject ? user.toObject() : { ...user };
     if (!isUserFullyBanned(userObj)) return userObj;
 
-    userObj.name = 'مستخدم موقوف';
+    userObj.name = 'مستخدم محظور';
     userObj.profileImage = null;
     userObj.photos = [];
     userObj.bio = '';

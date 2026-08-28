@@ -319,7 +319,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         if (anyRecipientBanned) {
             return res.status(403).json({
                 success: false,
-                message: 'لا يمكن إرسال رسالة — المستخدم موقوف',
+                message: 'لا يمكن إرسال رسالة — الحساب محظور لمخالفة سياسة التطبيق',
                 code: 'RECIPIENT_SUSPENDED'
             });
         }

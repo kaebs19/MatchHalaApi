@@ -454,7 +454,7 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
             await conversation.save();
             return res.status(403).json({
                 success: false,
-                message: 'لا يمكن قبول هذا الطلب — المستخدم موقوف',
+                message: 'لا يمكن قبول هذا الطلب — الحساب محظور لمخالفة سياسة التطبيق',
                 code: 'USER_SUSPENDED'
             });
         }
@@ -1044,7 +1044,7 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
             await conv.save();
             return res.status(403).json({
                 success: false,
-                message: 'لا يمكن قبول هذا الطلب — المستخدم موقوف',
+                message: 'لا يمكن قبول هذا الطلب — الحساب محظور لمخالفة سياسة التطبيق',
                 code: 'USER_SUSPENDED'
             });
         }

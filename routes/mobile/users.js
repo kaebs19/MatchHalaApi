@@ -597,7 +597,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                 data: {
                     user: {
                         _id: user._id,
-                        name: 'مستخدم موقوف',
+                        name: 'مستخدم محظور',
                         profileImage: null,
                         photos: [],
                         bio: '',
