@@ -91,7 +91,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
         <div className={`sidebar ${isOpen ? 'open' : ''}`}>
             <button className="sidebar-close-btn" onClick={onClose} aria-label="إغلاق القائمة">✕</button>
             <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
-                <img src="/app-logo.png" alt="ماتش هلا" className="sidebar-logo" />
+                <img src="/app-logo-v2.png" alt="ماتش هلا" className="sidebar-logo" />
                 <h2>ماتش هلا</h2>
                 <p>لوحة التحكم</p>
             </div>
