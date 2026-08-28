@@ -40,7 +40,7 @@ const formatList = (list) => ({
 // ==========================================
 // GET /friends/lists — قوائمي (مرتبة) + المثبتون
 // ==========================================
-router.get('/friends/lists', protect, async (req, res) => {
+const listFriendLists = async (req, res) => {
     try {
         const [lists, me] = await Promise.all([
             FriendList.find({ owner: req.user._id }).sort({ order: 1, createdAt: 1 }).lean(),
@@ -62,7 +62,8 @@ router.get('/friends/lists', protect, async (req, res) => {
         console.error('friends/lists error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.get('/friends/lists', protect, listFriendLists);
 
 // ==========================================
 // POST /friends/lists — إنشاء قائمة
@@ -267,3 +268,5 @@ router.put('/friends/pin/:userId', protect, async (req, res) => {
 });
 
 module.exports = router;
+// يستعمله GET /friends/bootstrap في friends.js — مصدر واحد للمنطق
+module.exports.listFriendLists = listFriendLists;

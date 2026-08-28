@@ -435,7 +435,7 @@ router.delete('/friends/:userId', protect, async (req, res) => {
 // ==========================================
 // GET /friends — قائمة أصدقائي (المقبولون)
 // ==========================================
-router.get('/friends', protect, async (req, res) => {
+const listFriends = async (req, res) => {
     try {
         const myId = req.user._id;
 
@@ -507,12 +507,13 @@ router.get('/friends', protect, async (req, res) => {
         console.error('friends list error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.get('/friends', protect, listFriends);
 
 // ==========================================
 // GET /friends/requests — طلبات الصداقة الواردة
 // ==========================================
-router.get('/friends/requests', protect, async (req, res) => {
+const listFriendRequests = async (req, res) => {
     try {
         const requests = await Friendship.find({
             recipient: req.user._id,
@@ -541,13 +542,14 @@ router.get('/friends/requests', protect, async (req, res) => {
         console.error('friends/requests error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.get('/friends/requests', protect, listFriendRequests);
 
 // ==========================================
 // GET /friends/suggestions — اقتراحات أصدقاء ذكية ("قد تعرفهم")
 // مبنية على كثافة التفاعل في المحادثات (آخر 30 يوم) — يستبعد الأصدقاء والطلبات القائمة
 // ==========================================
-router.get('/friends/suggestions', protect, async (req, res) => {
+const listFriendSuggestions = async (req, res) => {
     try {
         const userId = req.user._id;
         const limit = Math.min(parseInt(req.query.limit) || 10, 20);
@@ -668,7 +670,8 @@ router.get('/friends/suggestions', protect, async (req, res) => {
         console.error('friends/suggestions error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.get('/friends/suggestions', protect, listFriendSuggestions);
 
 // ==========================================
 // GET /friends/status/:userId — حالة الصداقة مع مستخدم (لزر البروفايل)
@@ -703,6 +706,64 @@ router.get('/friends/status/:userId', protect, async (req, res) => {
         });
     } catch (error) {
         console.error('friends/status error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// ==========================================
+// GET /friends/bootstrap — كل ما تحتاجه شاشة الأصدقاء في نداء واحد
+//
+// كان التطبيق ينادي أربعة مسارات عند كل فتح (/friends و/requests
+// و/suggestions و/lists). هي متوازية في التطبيق، لكنها تبقى أربع رحلات
+// شبكية وأربع دورات مصادقة — وعلى شبكة الجوال زمن الرحلة هو الكلفة
+// الغالبة لا المعالجة.
+//
+// ⚠️ لا يُكرَّر أي منطق هنا: تُستدعى معالجات المسارات الأربعة نفسها
+//    ويُلتقط ما تكتبه في الاستجابة. أي تعديل عليها ينعكس هنا تلقائياً.
+// ==========================================
+
+/// يشغّل معالج مسار ويلتقط ما كتبه بدل إرساله للعميل
+function captureHandler(handler, req) {
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = (payload) => {
+            if (settled) return;
+            settled = true;
+            resolve(payload);
+        };
+        const fakeRes = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            json(payload) { done(this.statusCode === 200 ? payload : null); return this; },
+            send(payload) { done(this.statusCode === 200 ? payload : null); return this; }
+        };
+        Promise.resolve(handler(req, fakeRes)).catch(() => done(null));
+    });
+}
+
+router.get('/friends/bootstrap', protect, async (req, res) => {
+    try {
+        const { listFriendLists } = require('./friendLists');
+
+        // ⚠️ فشل جزء لا يُسقط الباقي — الشاشة تعرض ما توفّر
+        const [friendsRes, requestsRes, suggestionsRes, listsRes] = await Promise.all([
+            captureHandler(listFriends, req),
+            captureHandler(listFriendRequests, req),
+            captureHandler(listFriendSuggestions, req),
+            captureHandler(listFriendLists, req)
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                friends: friendsRes?.data || null,
+                requests: requestsRes?.data || null,
+                suggestions: suggestionsRes?.data || null,
+                lists: listsRes?.data || null
+            }
+        });
+    } catch (error) {
+        console.error('friends/bootstrap error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
 });
