@@ -562,8 +562,13 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
             : new Date(Date.now() + REINVITE_COOLDOWN_MS);
         await conversation.save();
 
-        // ✅ رسالة نظام في المسار: تم رفض المحادثة
-        await createSystemMessage(conversation._id, req.user._id, 'conversation_rejected', 'تم رفض المحادثة', 'Conversation declined');
+        // ✅ رسالة نظام — لمحادثة لها تاريخ فقط (رفض استئناف بعد إنهاء سابق).
+        // ⚠️ لا تُنشأ لطلب لم يُقبل قطّ: لا مسار محادثة تُسجَّل فيه، ولا فائدة
+        //    لأحد منها. وهي تُبثّ للطرفين، فتصل الرافض صدىً لفعله — والتطبيق
+        //    كان يفسّره «محادثة جديدة» فيُنزّل القائمة كاملة عند كل رفض.
+        if ((conversation.reinviteCount || 0) > 0) {
+            await createSystemMessage(conversation._id, req.user._id, 'conversation_rejected', 'تم رفض المحادثة', 'Conversation declined');
+        }
 
         // إرسال إشعار لمنشئ المحادثة عبر FCM
         const creator = conversation.participants.find(
