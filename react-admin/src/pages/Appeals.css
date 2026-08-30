@@ -13,9 +13,9 @@
 
 .appeals-filters select {
     padding: 10px 15px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     font-size: 14px;
     transition: border-color 0.3s;
@@ -61,7 +61,7 @@
 }
 
 .appeals-page .user-cell-info .email-cell {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 12px;
 }
 
@@ -80,7 +80,7 @@
 /* Action type cell */
 .action-type-cell {
     padding: 4px 10px;
-    background: #f0f0f0;
+    background: var(--bg-hover);
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
@@ -96,8 +96,8 @@
 }
 
 .appeals-page .badge-pending {
-    background-color: #fff3e0;
-    color: #f57c00;
+    background-color: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .appeals-page .badge-forwarded {
@@ -106,18 +106,18 @@
 }
 
 .appeals-page .badge-review {
-    background-color: #e3f2fd;
-    color: #1976d2;
+    background-color: var(--tint-info);
+    color: var(--text-info);
 }
 
 .appeals-page .badge-approved {
-    background-color: #e8f5e9;
-    color: #388e3c;
+    background-color: var(--tint-success);
+    color: var(--text-success);
 }
 
 .appeals-page .badge-rejected {
-    background-color: #ffebee;
-    color: #c62828;
+    background-color: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 /* Unread reply badge — يظهر بجانب اسم المستخدم لو عنده رد بدون قراءة */
@@ -211,7 +211,7 @@
 .appeal-detail-modal .modal-header h3 {
     margin: 0;
     font-size: 20px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .appeal-detail-modal .close-btn {
@@ -219,7 +219,7 @@
     border: none;
     font-size: 22px;
     cursor: pointer;
-    color: #95a5a6;
+    color: var(--text-muted);
     padding: 5px;
     line-height: 1;
     transition: color 0.2s;
@@ -235,7 +235,7 @@
     align-items: center;
     gap: 15px;
     padding: 15px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 10px;
     margin-bottom: 20px;
 }
@@ -259,13 +259,13 @@
 
 .appeal-user-details p {
     margin: 0;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 13px;
 }
 
 /* Appeal info section */
 .appeal-info-section {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 10px;
     padding: 15px;
     margin-bottom: 20px;
@@ -285,12 +285,12 @@
 
 .info-label {
     font-weight: 600;
-    color: #555;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
 .info-value {
-    color: #2c3e50;
+    color: var(--text-heading);
     font-size: 14px;
 }
 
@@ -302,16 +302,16 @@
 .appeal-reason-section h4 {
     margin: 0 0 10px 0;
     font-size: 15px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .appeal-reason-text {
-    background: #fff8e1;
+    background: var(--tint-warning);
     border-radius: 10px;
     padding: 15px;
     font-size: 14px;
     line-height: 1.7;
-    color: #333;
+    color: var(--text-primary);
     border-right: 4px solid #f39c12;
     word-break: break-word;
 }
@@ -324,7 +324,7 @@
 .appeal-timeline-section h4 {
     margin: 0 0 15px 0;
     font-size: 15px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .timeline {
@@ -386,7 +386,7 @@
 }
 
 .timeline-content {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 8px;
     padding: 10px 15px;
 }
@@ -400,18 +400,18 @@
 
 .timeline-date {
     font-size: 12px;
-    color: #95a5a6;
+    color: var(--text-muted);
 }
 
 .timeline-note {
     margin: 8px 0 4px;
     font-size: 13px;
-    color: #555;
+    color: var(--text-secondary);
     line-height: 1.5;
 }
 
 .timeline-admin {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 12px;
 }
 
@@ -424,7 +424,7 @@
 .appeal-action-section h4 {
     margin: 0 0 15px 0;
     font-size: 15px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .appeal-action-form {
@@ -435,7 +435,7 @@
 
 .appeal-action-form .status-select {
     padding: 10px 15px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
     cursor: pointer;
@@ -448,8 +448,8 @@
 }
 
 .appeal-action-form .status-select.status-pending {
-    background-color: #fff3e0;
-    color: #f57c00;
+    background-color: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .appeal-action-form .status-select.status-forwarded {
@@ -458,23 +458,23 @@
 }
 
 .appeal-action-form .status-select.status-under_review {
-    background-color: #e3f2fd;
-    color: #1976d2;
+    background-color: var(--tint-info);
+    color: var(--text-info);
 }
 
 .appeal-action-form .status-select.status-approved {
-    background-color: #e8f5e9;
-    color: #388e3c;
+    background-color: var(--tint-success);
+    color: var(--text-success);
 }
 
 .appeal-action-form .status-select.status-rejected {
-    background-color: #ffebee;
-    color: #c62828;
+    background-color: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .appeal-action-form textarea {
     padding: 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
     resize: vertical;
@@ -581,19 +581,19 @@
 }
 
 .user-email-lg {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 13px;
     margin: 2px 0;
 }
 
 .user-hala-id {
     font-size: 12px;
-    color: #888;
+    color: var(--text-muted);
     margin: 4px 0 0;
 }
 
 .user-hala-id code {
-    background: #fff;
+    background: var(--bg-card);
     padding: 2px 8px;
     border-radius: 6px;
     color: #7c3aed;
@@ -618,14 +618,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #fff;
+    background: var(--bg-card);
     padding: 10px 12px;
     border-radius: 10px;
-    border: 1px solid #f0f0f0;
+    border: 1px solid var(--border-light);
 }
 
 .detail-item.warning {
-    background: #fef3c7;
+    background: var(--tint-warning);
     border-color: #fde68a;
 }
 
@@ -637,7 +637,7 @@
 .detail-item small {
     display: block;
     font-size: 11px;
-    color: #888;
+    color: var(--text-muted);
     margin-bottom: 2px;
 }
 
@@ -658,7 +658,7 @@
 /* انتهت مدّة العقوبة قبل البتّ فيها — كانت مخفية تماماً عن اللوحة */
 .badge-auto-closed {
     background: #eef0f2;
-    color: #6b7280;
+    color: var(--text-secondary);
     border: 1px solid #dfe3e7;
 }
 
@@ -669,5 +669,5 @@
     border-right: 3px solid #b0b6bd;
     border-radius: 8px;
     font-size: 13px;
-    color: #6b7280;
+    color: var(--text-secondary);
 }

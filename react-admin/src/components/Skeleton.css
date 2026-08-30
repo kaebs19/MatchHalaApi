@@ -49,7 +49,7 @@
 /* Card Skeleton Wrapper */
 .skeleton-card-wrapper {
     padding: 20px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -60,7 +60,7 @@
     align-items: center;
     gap: 15px;
     padding: 15px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
     margin-bottom: 10px;
 }

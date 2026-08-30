@@ -19,7 +19,7 @@
 .nc-filter {
     padding: 8px 16px;
     border: 1px solid #e2e8f0;
-    background: #fff;
+    background: var(--bg-card);
     border-radius: 999px;
     cursor: pointer;
     font-size: 14px;
@@ -65,7 +65,7 @@
 }
 .nc-badge--orange { background: #ffedd5; color: #c2410c; }
 .nc-badge--red { background: #fee2e2; color: #b91c1c; }
-.nc-badge--green { background: #dcfce7; color: #15803d; }
+.nc-badge--green { background: var(--tint-success); color: var(--text-success); }
 
 .nc-actions { display: flex; gap: 6px; }
 
@@ -79,7 +79,7 @@
     transition: opacity 0.15s;
 }
 .nc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.nc-btn--approve { background: #dcfce7; color: #15803d; }
+.nc-btn--approve { background: var(--tint-success); color: var(--text-success); }
 .nc-btn--approve:hover:not(:disabled) { background: #bbf7d0; }
 .nc-btn--reject { background: #fee2e2; color: #b91c1c; }
 .nc-btn--reject:hover:not(:disabled) { background: #fecaca; }

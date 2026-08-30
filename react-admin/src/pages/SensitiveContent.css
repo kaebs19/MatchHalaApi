@@ -10,11 +10,11 @@
 .sensitive-content-page .page-header h1 {
     margin: 0 0 8px 0;
     font-size: 26px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .sensitive-content-page .page-desc {
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 14px;
     line-height: 1.6;
     max-width: 800px;
@@ -33,7 +33,7 @@
     padding: 12px 24px;
     background: transparent;
     border: none;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
@@ -60,7 +60,7 @@
 }
 
 .sensitive-content-page .setting-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -77,11 +77,11 @@
 .sensitive-content-page .setting-header h3 {
     margin: 0 0 4px 0;
     font-size: 16px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .sensitive-content-page .setting-header small {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.5;
     display: block;
@@ -121,7 +121,7 @@
     width: 20px;
     left: 4px;
     bottom: 4px;
-    background-color: white;
+    background-color: var(--bg-card);
     border-radius: 50%;
     transition: 0.3s;
 }
@@ -138,7 +138,7 @@
 .sensitive-content-page .number-input,
 .sensitive-content-page .text-input {
     padding: 8px 14px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
     width: 100px;
@@ -162,7 +162,7 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: #f5f5f5;
+    background: var(--bg-subtle);
     border: 2px solid transparent;
     border-radius: 20px;
     cursor: pointer;
@@ -195,15 +195,15 @@
 }
 
 .sensitive-content-page .warning-box {
-    background: #fff8e1;
+    background: var(--tint-warning);
     border-right: 4px solid #f39c12;
     color: #5d4037;
 }
 
 .sensitive-content-page .info-box {
-    background: #e3f2fd;
+    background: var(--tint-info);
     border-right: 4px solid #2196f3;
-    color: #1565c0;
+    color: var(--text-info);
 }
 
 /* Save Button */
@@ -241,7 +241,7 @@
 
 .sensitive-content-page .period-selector select {
     padding: 8px 14px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
 }
@@ -254,7 +254,7 @@
 }
 
 .sensitive-content-page .chart-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 16px;
@@ -264,7 +264,7 @@
 .sensitive-content-page .chart-card h3 {
     margin: 0 0 16px 0;
     font-size: 16px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .sensitive-content-page .bars {
@@ -282,7 +282,7 @@
 
 .sensitive-content-page .bar-label {
     font-size: 14px;
-    color: #555;
+    color: var(--text-secondary);
 }
 
 .sensitive-content-page .bar-track {
@@ -301,7 +301,7 @@
 .sensitive-content-page .bar-value {
     text-align: end;
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .sensitive-content-page .trend-list {
@@ -317,7 +317,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 6px;
     font-size: 13px;
 }
@@ -341,20 +341,20 @@
 
 .sensitive-content-page .filters-bar select {
     padding: 8px 14px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
 }
 
 .sensitive-content-page .total-info {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 13px;
     margin-inline-start: auto;
 }
 
 .sensitive-content-page .reveals-table {
     width: 100%;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -376,7 +376,7 @@
 }
 
 .sensitive-content-page .reveals-table tr:hover {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
 }
 
 .sensitive-content-page .reveals-table .user-link {
@@ -390,16 +390,16 @@
 }
 
 .sensitive-content-page .reveals-table small {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 11px;
 }
 
 .sensitive-content-page .empty-state {
     text-align: center;
     padding: 60px 20px;
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 16px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
 }
 
@@ -427,7 +427,7 @@
 }
 
 .sensitive-content-page .text-muted {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-style: italic;
 }
 

@@ -1,7 +1,7 @@
 /* ===== Shared Filter Styles ===== */
 
 .filters-bar {
-    background: white;
+    background: var(--bg-card);
     padding: 20px;
     border-radius: 15px;
     margin-bottom: 25px;
@@ -21,7 +21,7 @@
 .search-box input {
     width: 100%;
     padding: 12px 45px 12px 15px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-color);
     border-radius: 10px;
     font-size: 14px;
     transition: all 0.3s;
@@ -49,8 +49,8 @@
 
 .filter-btn {
     padding: 10px 20px;
-    border: 2px solid #e0e0e0;
-    background: white;
+    border: 2px solid var(--border-color);
+    background: var(--bg-card);
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
@@ -78,18 +78,18 @@
 
 .filter-group label {
     font-weight: 600;
-    color: #555;
+    color: var(--text-secondary);
     font-size: 14px;
     white-space: nowrap;
 }
 
 .filter-group select {
     padding: 8px 14px;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--border-color);
     border-radius: 8px;
     font-size: 14px;
     font-family: inherit;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     transition: border-color 0.3s;
 }

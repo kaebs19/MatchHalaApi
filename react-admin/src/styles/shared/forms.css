@@ -7,7 +7,7 @@
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    color: #333;
+    color: var(--text-primary);
     font-weight: 600;
     font-size: 14px;
 }
@@ -17,7 +17,7 @@
 .form-group select {
     width: 100%;
     padding: 12px 15px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-color);
     border-radius: 10px;
     font-size: 14px;
     font-family: inherit;
@@ -40,8 +40,8 @@
 
 .form-group input:disabled,
 .form-group select:disabled {
-    background: #f3f4f6;
-    color: #9ca3af;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
     cursor: not-allowed;
 }
 

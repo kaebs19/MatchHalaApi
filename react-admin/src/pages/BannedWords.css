@@ -12,14 +12,14 @@
 }
 
 .bw-stat-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 20px;
     display: flex;
     align-items: center;
     gap: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
     transition: transform 0.2s;
 }
 
@@ -47,12 +47,12 @@
 .bw-stat-number {
     font-size: 24px;
     font-weight: 700;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 
 .bw-stat-label {
     font-size: 13px;
-    color: #6b7280;
+    color: var(--text-secondary);
     margin-top: 2px;
 }
 
@@ -61,7 +61,7 @@
     display: flex;
     gap: 8px;
     margin-bottom: 20px;
-    border-bottom: 2px solid #e5e7eb;
+    border-bottom: 2px solid var(--border-color);
     padding-bottom: 0;
 }
 
@@ -71,7 +71,7 @@
     background: none;
     font-size: 14px;
     font-weight: 500;
-    color: #6b7280;
+    color: var(--text-secondary);
     cursor: pointer;
     border-bottom: 2px solid transparent;
     margin-bottom: -2px;
@@ -136,7 +136,7 @@
     border-radius: 8px;
     font-size: 14px;
     outline: none;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
 }
 
@@ -171,7 +171,7 @@
 
 .bw-btn.secondary {
     background: #e5e7eb;
-    color: #374151;
+    color: var(--text-primary);
 }
 
 .bw-btn.secondary:hover {
@@ -179,8 +179,8 @@
 }
 
 .bw-btn.warning {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .bw-btn.warning:hover {
@@ -188,8 +188,8 @@
 }
 
 .bw-btn.cancel {
-    background: #f3f4f6;
-    color: #4b5563;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
 }
 
 .bw-btn.cancel:hover {
@@ -208,11 +208,11 @@
 
 /* Table */
 .bw-table-container {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
 }
 
 .bw-table {
@@ -221,7 +221,7 @@
 }
 
 .bw-table thead {
-    background: #f9fafb;
+    background: var(--bg-subtle);
 }
 
 .bw-table th {
@@ -229,15 +229,15 @@
     text-align: right;
     font-size: 13px;
     font-weight: 600;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .bw-table td {
     padding: 12px 16px;
     font-size: 14px;
-    color: #4b5563;
-    border-bottom: 1px solid #f3f4f6;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .bw-table tr:last-child td {
@@ -245,7 +245,7 @@
 }
 
 .bw-table tr:hover {
-    background: #f9fafb;
+    background: var(--bg-subtle);
 }
 
 .inactive-row {
@@ -257,8 +257,8 @@
 }
 
 .word-text {
-    background: #fef2f2;
-    color: #991b1b;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     padding: 2px 8px;
     border-radius: 4px;
     font-family: monospace;
@@ -266,7 +266,7 @@
 
 .date-cell {
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--text-muted);
 }
 
 .content-cell {
@@ -295,43 +295,43 @@
 }
 
 .bw-badge.category-violence {
-    background: #fef2f2;
-    color: #991b1b;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .bw-badge.category-hate {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .bw-badge.category-spam {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .bw-badge.category-promotion {
-    background: #ede9fe;
-    color: #6d28d9;
+    background: var(--tint-purple);
+    color: var(--text-purple);
 }
 
 .bw-badge.category-contact {
-    background: #fee2e2;
+    background: var(--tint-danger);
     color: #b91c1c;
 }
 
 .bw-badge.category-other {
-    background: #f3f4f6;
-    color: #4b5563;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
 }
 
 .bw-badge.language {
-    background: #ede9fe;
-    color: #5b21b6;
+    background: var(--tint-purple);
+    color: var(--text-purple);
 }
 
 .bw-badge.danger {
-    background: #fef2f2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 /* Status */
@@ -344,33 +344,33 @@
 }
 
 .status-pending {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .status-reviewed {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--tint-success);
+    color: var(--text-success);
 }
 
 .status-dismissed {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
 }
 
 .status-action {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 /* Toggle Button */
 .bw-toggle {
     padding: 4px 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
     border-radius: 20px;
     font-size: 12px;
     cursor: pointer;
-    background: white;
+    background: var(--bg-card);
     transition: all 0.2s;
 }
 
@@ -381,7 +381,7 @@
 
 .bw-toggle.inactive {
     border-color: #ef4444;
-    background: #fef2f2;
+    background: var(--tint-danger);
 }
 
 /* Action Buttons */
@@ -404,7 +404,7 @@
 }
 
 .bw-icon-btn.edit {
-    background: #dbeafe;
+    background: var(--tint-info);
 }
 
 .bw-icon-btn.edit:hover {
@@ -412,7 +412,7 @@
 }
 
 .bw-icon-btn.delete {
-    background: #fef2f2;
+    background: var(--tint-danger);
 }
 
 .bw-icon-btn.delete:hover {
@@ -423,9 +423,9 @@
 .bw-empty {
     text-align: center;
     padding: 60px 20px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
 }
 
 .bw-empty-icon {
@@ -435,13 +435,13 @@
 }
 
 .bw-empty p {
-    color: #6b7280;
+    color: var(--text-secondary);
     margin-bottom: 16px;
 }
 
 /* Modal */
 .bw-modal {
-    background: white;
+    background: var(--bg-card);
     border-radius: 16px;
     width: 100%;
     max-width: 500px;
@@ -455,20 +455,20 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .bw-modal-header h3 {
     margin: 0;
     font-size: 18px;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 
 .bw-close-btn {
     width: 32px;
     height: 32px;
     border: none;
-    background: #f3f4f6;
+    background: var(--bg-subtle);
     border-radius: 8px;
     cursor: pointer;
     font-size: 16px;
@@ -493,7 +493,7 @@
     display: block;
     font-size: 13px;
     font-weight: 500;
-    color: #374151;
+    color: var(--text-primary);
     margin-bottom: 6px;
 }
 
@@ -561,21 +561,21 @@
 .review-label {
     font-size: 13px;
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     min-width: 100px;
     flex-shrink: 0;
 }
 
 .review-value {
     font-size: 14px;
-    color: #4b5563;
+    color: var(--text-secondary);
 }
 
 .flagged-text {
-    background: #fef2f2;
+    background: var(--tint-danger);
     padding: 4px 8px;
     border-radius: 4px;
-    color: #991b1b;
+    color: var(--text-danger);
 }
 
 .matched-words {
@@ -607,7 +607,7 @@
 
 .bw-reviewed-label {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--text-secondary);
 }
 
 /* =============================================
@@ -635,8 +635,8 @@
     border-radius: 8px;
     font-size: 13px;
     outline: none;
-    background: white;
-    color: #374151;
+    background: var(--bg-card);
+    color: var(--text-primary);
     transition: border-color 0.2s;
 }
 
@@ -647,7 +647,7 @@
 
 .bw-date-filter .date-separator {
     font-size: 13px;
-    color: #9ca3af;
+    color: var(--text-muted);
 }
 
 .bw-search-sender {
@@ -671,8 +671,8 @@
     border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
-    background: white;
-    color: #374151;
+    background: var(--bg-card);
+    color: var(--text-primary);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -681,14 +681,14 @@
 }
 
 .bw-sort-btn:hover {
-    background: #f9fafb;
+    background: var(--bg-subtle);
     border-color: #4f46e5;
 }
 
 .bw-sort-btn.active {
-    background: #ede9fe;
+    background: var(--tint-purple);
     border-color: #7c4dff;
-    color: #5b21b6;
+    color: var(--text-purple);
 }
 
 /* 2. Quick Action Buttons in Rows */
@@ -849,7 +849,7 @@
 
 /* 4. Row States */
 .bw-row-pending {
-    background: #fff8e1;
+    background: var(--tint-warning);
 }
 
 .bw-row-pending:hover {
@@ -857,7 +857,7 @@
 }
 
 .bw-row-action {
-    background: #e8f5e9;
+    background: var(--tint-success);
 }
 
 .bw-row-action:hover {
@@ -865,7 +865,7 @@
 }
 
 .bw-row-selected {
-    background: #e3f2fd;
+    background: var(--tint-info);
 }
 
 .bw-row-selected:hover {
@@ -898,7 +898,7 @@
 
 .bw-violation-badge.low {
     background: #ffc107;
-    color: #333;
+    color: var(--text-primary);
 }
 
 /* 6. Enhanced Review Modal */
@@ -912,10 +912,10 @@
     align-items: center;
     gap: 14px;
     padding: 16px;
-    background: #f9fafb;
+    background: var(--bg-subtle);
     border-radius: 10px;
     margin-bottom: 16px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
 }
 
 .review-sender-card .sender-avatar {
@@ -923,7 +923,7 @@
     height: 48px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--border-color);
 }
 
 .review-sender-card .sender-info {
@@ -936,25 +936,25 @@
 .review-sender-card .sender-info .sender-display-name {
     font-size: 15px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 
 .review-sender-card .sender-info .sender-violations {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
 .review-message-box {
-    background: #fef2f2;
+    background: var(--tint-danger);
     border: 1px solid #fecaca;
     border-radius: 10px;
     padding: 14px 16px;
     margin-bottom: 16px;
     font-size: 14px;
-    color: #991b1b;
+    color: var(--text-danger);
     line-height: 1.6;
     word-break: break-word;
 }
@@ -978,11 +978,11 @@
 
 .review-action-card {
     padding: 14px;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--border-color);
     border-radius: 10px;
     cursor: pointer;
     transition: all 0.2s;
-    background: white;
+    background: var(--bg-card);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -1006,12 +1006,12 @@
 .review-action-card .action-title {
     font-size: 13px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 
 .review-action-card .action-desc {
     font-size: 11px;
-    color: #6b7280;
+    color: var(--text-secondary);
     line-height: 1.4;
 }
 
@@ -1032,22 +1032,22 @@
 }
 
 .review-action-card.danger.selected {
-    background: #fef2f2;
+    background: var(--tint-danger);
     border-color: #f44336;
 }
 
 .review-action-card.warning.selected {
-    background: #fff8e1;
+    background: var(--tint-warning);
     border-color: #ff9800;
 }
 
 .review-action-card.info.selected {
-    background: #e3f2fd;
+    background: var(--tint-info);
     border-color: #2196f3;
 }
 
 .review-action-card.success.selected {
-    background: #e8f5e9;
+    background: var(--tint-success);
     border-color: #4caf50;
 }
 
@@ -1065,8 +1065,8 @@
     align-items: center;
     gap: 10px;
     padding: 10px 16px;
-    background: white;
-    border: 1px solid #e5e7eb;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
     min-width: 180px;
     flex-shrink: 0;
@@ -1086,7 +1086,7 @@
     height: 36px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid #e5e7eb;
+    border: 2px solid var(--border-color);
 }
 
 .bw-violator-card .violator-info {
@@ -1098,7 +1098,7 @@
 .bw-violator-card .violator-name {
     font-size: 13px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--text-heading);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1114,7 +1114,7 @@
 /* 8. Time Ago Styling */
 .bw-time-ago {
     font-size: 12px;
-    color: #888;
+    color: var(--text-muted);
     white-space: nowrap;
 }
 
@@ -1399,15 +1399,15 @@
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 8px;
-    background: #fef2f2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     margin-inline-start: 6px;
     font-weight: 500;
 }
 
 /* --- أزرار الإجراءات السريعة المحسنة --- */
 .bw-quick-view {
-    background: #dbeafe;
+    background: var(--tint-info);
 }
 
 .bw-quick-view:hover {
@@ -1423,7 +1423,7 @@
 }
 
 .bw-quick-ban {
-    background: #fef2f2;
+    background: var(--tint-danger);
 }
 
 .bw-quick-ban:hover {
@@ -1458,17 +1458,17 @@
 .bw-trend-card {
     flex: 1;
     min-width: 250px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 16px 20px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
 }
 
 .bw-extra-stats-title {
     font-size: 14px;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--text-heading);
     margin: 0 0 12px 0;
 }
 
@@ -1483,7 +1483,7 @@
     align-items: center;
     gap: 10px;
     padding: 6px 0;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid var(--border-light);
 }
 
 .bw-violator-item:last-child {
@@ -1493,7 +1493,7 @@
 .bw-violator-rank {
     font-size: 13px;
     font-weight: 700;
-    color: #9ca3af;
+    color: var(--text-muted);
     min-width: 24px;
 }
 
@@ -1520,7 +1520,7 @@
 
 .bw-trend-text {
     font-size: 14px;
-    color: #4b5563;
+    color: var(--text-secondary);
     margin: 0;
     line-height: 1.6;
 }
@@ -1543,10 +1543,10 @@
 
 .bw-content-box {
     display: block;
-    background: #fef2f2;
+    background: var(--tint-danger);
     padding: 10px 14px;
     border-radius: 8px;
-    color: #991b1b;
+    color: var(--text-danger);
     line-height: 1.6;
     word-break: break-word;
     border: 1px solid #fecaca;
@@ -1555,7 +1555,7 @@
 
 .bw-time-ago {
     font-size: 12px;
-    color: #9ca3af;
+    color: var(--text-muted);
     margin-inline-start: 6px;
 }
 
@@ -1569,12 +1569,12 @@
 }
 
 .bw-review-warning {
-    background: #fef3c7;
+    background: var(--tint-warning);
     border: 1px solid #f59e0b;
     border-radius: 8px;
     padding: 10px 14px;
     font-size: 13px;
-    color: #92400e;
+    color: var(--text-warning);
     margin-bottom: 12px;
     font-weight: 500;
 }

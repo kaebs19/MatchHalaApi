@@ -28,9 +28,9 @@
 .no-devices {
     text-align: center;
     padding: 60px 20px;
-    background: #fff;
+    background: var(--bg-card);
     border-radius: 16px;
-    color: #888;
+    color: var(--text-muted);
     font-size: 16px;
 }
 
@@ -41,7 +41,7 @@
 }
 
 .device-card {
-    background: #fff;
+    background: var(--bg-card);
     border: 1px solid #e8e8e8;
     border-radius: 16px;
     padding: 18px;
@@ -58,7 +58,7 @@
     justify-content: space-between;
     align-items: center;
     padding-bottom: 14px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--border-light);
     margin-bottom: 14px;
 }
 
@@ -77,7 +77,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #999;
+    color: var(--text-muted);
     font-weight: 600;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .device-user-info small {
-    color: #888;
+    color: var(--text-muted);
     font-size: 11px;
 }
 
@@ -111,12 +111,12 @@
 }
 
 .ban-source.admin {
-    background: #eff6ff;
-    color: #2563eb;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .ban-source.auto {
-    background: #fef3c7;
+    background: var(--tint-warning);
     color: #a16207;
 }
 
@@ -135,7 +135,7 @@
 }
 
 .detail-label {
-    color: #888;
+    color: var(--text-muted);
     min-width: 110px;
     font-weight: 500;
 }
@@ -151,18 +151,18 @@
 }
 
 .fingerprint {
-    background: #f3f4f6;
+    background: var(--bg-subtle);
     padding: 2px 8px;
     border-radius: 6px;
     font-size: 10px;
-    color: #6b7280;
+    color: var(--text-secondary);
     direction: ltr;
 }
 
 .device-actions {
     margin-top: 14px;
     padding-top: 14px;
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--border-light);
     display: flex;
     justify-content: flex-end;
 }
@@ -189,8 +189,8 @@
 }
 
 .refresh-btn {
-    background: #f3f4f6;
-    border: 1px solid #e5e7eb;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     padding: 8px 16px;
     border-radius: 10px;
     cursor: pointer;
@@ -211,14 +211,14 @@
 }
 
 .banned-stat-card {
-    background: #fff;
+    background: var(--bg-card);
     border-radius: 16px;
     padding: 20px;
     display: flex;
     align-items: center;
     gap: 14px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    border: 1px solid #f0f0f0;
+    border: 1px solid var(--border-light);
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -270,7 +270,7 @@
 .source-tabs {
     display: flex;
     gap: 6px;
-    background: #f3f4f6;
+    background: var(--bg-subtle);
     padding: 4px;
     border-radius: 12px;
 }
@@ -283,14 +283,14 @@
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
-    color: #6b7280;
+    color: var(--text-secondary);
     transition: all 0.15s;
 }
 
 .source-tab:hover { color: #374151; }
 
 .source-tab.active {
-    background: #fff;
+    background: var(--bg-card);
     color: #ef4444;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
@@ -326,27 +326,27 @@
     gap: 6px;
     margin-bottom: 12px;
     padding-bottom: 12px;
-    border-bottom: 1px dashed #f0f0f0;
+    border-bottom: 1px dashed var(--border-light);
 }
 
 .user-meta-chip {
-    background: #f9fafb;
-    color: #4b5563;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
     padding: 4px 10px;
     border-radius: 8px;
     font-size: 11px;
     font-weight: 500;
-    border: 1px solid #f0f0f0;
+    border: 1px solid var(--border-light);
 }
 
 .user-meta-chip.suspended {
-    background: #fef2f2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     border-color: #fecaca;
 }
 
 .user-meta-chip.banned {
-    background: #fef3c7;
+    background: var(--tint-warning);
     color: #a16207;
     border-color: #fde68a;
 }
@@ -370,9 +370,9 @@
 }
 
 .view-user-btn {
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #e5e7eb;
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     padding: 8px 14px;
     border-radius: 10px;
     cursor: pointer;
@@ -383,7 +383,7 @@
 
 .view-user-btn:hover {
     background: #e5e7eb;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 
 /* ====== Search Bar ====== */
@@ -396,10 +396,10 @@
 .banned-search-input {
     width: 100%;
     padding: 12px 18px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     font-size: 14px;
-    background: #fff;
+    background: var(--bg-card);
     transition: all 0.2s;
     direction: rtl;
 }
@@ -415,20 +415,20 @@
     left: 12px;
     top: 50%;
     transform: translateY(-50%);
-    background: #f3f4f6;
+    background: var(--bg-subtle);
     border: none;
     width: 24px;
     height: 24px;
     border-radius: 50%;
     cursor: pointer;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 12px;
 }
 
 .clear-search-btn:hover { background: #e5e7eb; color: #1f2937; }
 
 .results-count {
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 13px;
     margin-bottom: 12px;
     padding: 0 4px;
@@ -446,12 +446,12 @@
 
 .page-btn {
     padding: 10px 20px;
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
     cursor: pointer;
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     transition: all 0.2s;
 }
 
@@ -468,6 +468,6 @@
 
 .page-info {
     font-size: 14px;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-weight: 500;
 }

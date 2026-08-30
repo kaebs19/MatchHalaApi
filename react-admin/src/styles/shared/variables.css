@@ -1,11 +1,13 @@
-/* ===== Design Tokens ===== */
+/* ===== Design Tokens =====
+   طبقتان: ألوان الهوية (ثابتة) + رموز دلالية (تتبدّل مع المظهر).
+   لا تكتب لوناً صريحاً في ملفات الصفحات — استعمل الرمز الدلالي، وإلا
+   انكسر الوضع الداكن في تلك الصفحة وحدها. */
 :root {
-    /* Primary Gradient */
+    /* --- الهوية: ثابتة في المظهرين --- */
     --gradient-primary: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
     --color-primary: #2F9E85;
     --color-primary-dark: #1F6AA8;
 
-    /* Status Colors */
     --color-success: #28a745;
     --color-danger: #dc2626;
     --color-warning: #f39c12;
@@ -32,31 +34,170 @@
     --gradient-warm: linear-gradient(135deg, #e91e63 0%, #9333ea 100%);
     --gradient-love: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
 
-    /* Shadows */
-    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.3);
+    /* --- سلّم المسافات: ٤ بكسل وحدةً أساسية --- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
 
-    /* Border Radius */
+    /* --- الحواف --- */
     --radius-sm: 8px;
     --radius-md: 10px;
     --radius-lg: 15px;
     --radius-xl: 20px;
     --radius-full: 50%;
 
-    /* Typography */
-    --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    /* --- الخطوط: خط عربي أولاً، ثم خط النظام --- */
+    --font-family: 'IBM Plex Sans Arabic', 'Noto Kufi Arabic', -apple-system,
+        BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+    --font-size-xs: 12px;
+    --font-size-sm: 13px;
+    --font-size-md: 14px;
+    --font-size-lg: 16px;
+    --font-size-xl: 20px;
 
-    /* Text Colors */
+    /* --- الرموز الدلالية: المظهر الفاتح --- */
     --text-primary: #333;
+    --text-heading: #2c3e50;
     --text-secondary: #666;
     --text-muted: #999;
+    --text-on-brand: #fff;
 
-    /* Background Colors */
     --bg-page: #f5f5f5;
-    --bg-card: white;
+    --bg-card: #fff;
+    --bg-subtle: #f8f9fa;
+    --bg-hover: #f0f2f5;
+    --bg-input: #fff;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+    --bg-skeleton: #eceff3;
+    --bg-skeleton-highlight: #f7f9fb;
 
-    /* Border Colors */
     --border-color: #e0e0e0;
     --border-light: #f0f0f0;
+    --border-strong: #cbd2d9;
+
+    /* خلفيات الحالات الخفيفة */
+    --tint-danger: #fef2f2;
+    --tint-danger-strong: #fecaca;
+    --tint-success: #e8f5e9;
+    --tint-info: #e3f2fd;
+    --tint-warning: #fff8e1;
+    --tint-purple: #ede9fe;
+
+    /* نص الحالات — يُقرأ فوق الـ tint المقابل في المظهرين */
+    --text-danger: #b3261e;
+    --text-success: #1b5e20;
+    --text-info: #1565c0;
+    --text-warning: #92400e;
+    --text-purple: #6d28d9;
+
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.3);
+
+    color-scheme: light;
+}
+
+/* --- المظهر الداكن: تلقائي مع النظام --- */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+        --text-primary: #e6edf3;
+        --text-heading: #f2f6fa;
+        --text-secondary: #a3b1bf;
+        --text-muted: #7c8b99;
+        --text-on-brand: #fff;
+
+        --bg-page: #0f1419;
+        --bg-card: #171d24;
+        --bg-subtle: #1c232b;
+        --bg-hover: #222b34;
+        --bg-input: #1c232b;
+        --bg-overlay: rgba(0, 0, 0, 0.65);
+        --bg-skeleton: #1c232b;
+        --bg-skeleton-highlight: #262f39;
+
+        --border-color: #2a333d;
+        --border-light: #222a33;
+        --border-strong: #3a4652;
+
+        --tint-danger: #2c1618;
+        --tint-danger-strong: #4a1f22;
+        --tint-success: #10291b;
+        --tint-info: #10222f;
+        --tint-warning: #2b2312;
+        --tint-purple: #1e1730;
+
+        --text-danger: #ff8a80;
+        --text-success: #7ee2a8;
+        --text-info: #7cc3ff;
+        --text-warning: #f5c26b;
+        --text-purple: #c4b5fd;
+
+        --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+        --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+        --shadow-lg: 0 12px 44px rgba(0, 0, 0, 0.6);
+
+        color-scheme: dark;
+    }
+}
+
+/* --- المظهر الداكن: اختيار صريح من الزر --- */
+:root[data-theme='dark'] {
+    --text-primary: #e6edf3;
+    --text-heading: #f2f6fa;
+    --text-secondary: #a3b1bf;
+    --text-muted: #7c8b99;
+    --text-on-brand: #fff;
+
+    --bg-page: #0f1419;
+    --bg-card: #171d24;
+    --bg-subtle: #1c232b;
+    --bg-hover: #222b34;
+    --bg-input: #1c232b;
+    --bg-overlay: rgba(0, 0, 0, 0.65);
+    --bg-skeleton: #1c232b;
+    --bg-skeleton-highlight: #262f39;
+
+    --border-color: #2a333d;
+    --border-light: #222a33;
+    --border-strong: #3a4652;
+
+    --tint-danger: #2c1618;
+    --tint-danger-strong: #4a1f22;
+    --tint-success: #10291b;
+    --tint-info: #10222f;
+    --tint-warning: #2b2312;
+    --tint-purple: #1e1730;
+
+    --text-danger: #ff8a80;
+    --text-success: #7ee2a8;
+    --text-info: #7cc3ff;
+    --text-warning: #f5c26b;
+    --text-purple: #c4b5fd;
+
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 44px rgba(0, 0, 0, 0.6);
+
+    color-scheme: dark;
+}
+
+/* الجذر يأخذ لون الصفحة كي لا يظهر بياض خلف المحتوى في الوضع الداكن */
+html,
+body {
+    background: var(--bg-page);
+    color: var(--text-primary);
+}
+
+/* عناصر النماذج ترث ألوان المظهر — بلا هذا تُلوّنها المتصفح بحسب
+   إعداد النظام، فيصير نص أبيض على خلفية بيضاء عند تثبيت المظهر الفاتح
+   والنظام داكن. */
+input,
+select,
+textarea {
+    font-family: inherit;
+    color: var(--text-primary);
 }

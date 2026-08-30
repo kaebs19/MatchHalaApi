@@ -11,30 +11,30 @@
 /* Status Badges */
 .badge-success,
 .badge-approved {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: var(--tint-success);
+    color: var(--text-success);
 }
 
 .badge-warning,
 .badge-pending {
-    background: #fff3e0;
-    color: #f57c00;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .badge-danger,
 .badge-rejected {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .badge-info {
-    background: #e3f2fd;
-    color: #1976d2;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .badge-none {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
 }
 
 .badge-accepted {
@@ -81,8 +81,8 @@
 }
 
 .word-badge.high {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     border: 1px solid #fecaca;
 }
 
@@ -93,8 +93,8 @@
 }
 
 .word-badge.low {
-    background: #dbeafe;
-    color: #2563eb;
+    background: var(--tint-info);
+    color: var(--text-info);
     border: 1px solid #bfdbfe;
 }
 
@@ -108,8 +108,8 @@
 }
 
 .type-badge.conversation {
-    background: #ede9fe;
-    color: #7c3aed;
+    background: var(--tint-purple);
+    color: var(--text-purple);
 }
 
 .type-badge.room {
@@ -119,8 +119,8 @@
 
 /* Plan Badges */
 .badge-weekly {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--tint-info);
+    color: var(--text-info);
     display: inline-block;
     padding: 6px 12px;
     border-radius: 20px;
@@ -194,8 +194,8 @@
 
 .banned-word-badge.high,
 .banned-word-badge.critical {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     border: 1px solid #fecaca;
 }
 
@@ -206,8 +206,8 @@
 }
 
 .banned-word-badge.low {
-    background: #dbeafe;
-    color: #2563eb;
+    background: var(--tint-info);
+    color: var(--text-info);
     border: 1px solid #bfdbfe;
 }
 
@@ -220,16 +220,16 @@
 }
 
 .plan-tag.weekly {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .plan-tag.monthly {
-    background: #ede9fe;
-    color: #6d28d9;
+    background: var(--tint-purple);
+    color: var(--text-purple);
 }
 
 .plan-tag.quarterly {
-    background: #fef3c7;
-    color: #b45309;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }

@@ -1,0 +1,12 @@
+.theme-toggle-btn .theme-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.theme-toggle-btn {
+    transition: transform 0.15s ease;
+}
+
+.theme-toggle-btn:active {
+    transform: scale(0.92);
+}

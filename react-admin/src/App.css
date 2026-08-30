@@ -6,9 +6,9 @@
 
 .App {
   min-height: 100vh;
+  background: var(--bg-page);
 }
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-family);
 }
-

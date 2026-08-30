@@ -13,9 +13,9 @@
 
 .verification-filters select {
     padding: 10px 15px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     font-size: 14px;
     transition: border-color 0.3s;
@@ -30,7 +30,7 @@
 
 /* Text Muted */
 .verification-page .text-muted {
-    color: #999;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
@@ -56,8 +56,8 @@
 }
 
 .verification-page .btn-view {
-    background: #e3f2fd;
-    color: #1976d2;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .verification-page .btn-view:hover {
@@ -65,8 +65,8 @@
 }
 
 .verification-page .btn-approve {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: var(--tint-success);
+    color: var(--text-success);
 }
 
 .verification-page .btn-approve:hover {
@@ -74,8 +74,8 @@
 }
 
 .verification-page .btn-reject {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .verification-page .btn-reject:hover {
@@ -92,7 +92,7 @@
     align-items: center;
     gap: 15px;
     padding: 15px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 12px;
     margin: 0 30px 20px;
 }
@@ -107,20 +107,20 @@
 
 .selfie-user-details h4 {
     margin: 0 0 4px 0;
-    color: #2c3e50;
+    color: var(--text-heading);
     font-size: 16px;
 }
 
 .selfie-user-details p {
     margin: 0 0 6px 0;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 13px;
 }
 
 .selfie-image-container {
     text-align: center;
     margin: 0 30px 20px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 12px;
     padding: 15px;
 }
@@ -138,7 +138,7 @@
     gap: 8px;
     margin: 0 30px 20px;
     padding: 12px 15px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 10px;
 }
 
@@ -149,12 +149,12 @@
 }
 
 .selfie-meta-item .meta-label {
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
 .selfie-meta-item .meta-value {
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .selfie-modal-actions {

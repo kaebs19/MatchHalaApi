@@ -40,7 +40,7 @@
 
 .loading-text {
     margin-top: 15px;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 14px;
     font-weight: 500;
 }

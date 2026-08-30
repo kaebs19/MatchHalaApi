@@ -20,7 +20,7 @@
 }
 
 img.avatar {
-    background: #f0f0f0;
+    background: var(--bg-hover);
 }
 
 /* Size Variants */

@@ -16,7 +16,7 @@
     align-items: center;
     gap: 15px;
     padding: 20px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s;
@@ -38,13 +38,13 @@
 .stat-box .stat-info h3 {
     margin: 0 0 5px 0;
     font-size: 28px;
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .stat-box .stat-info p {
     margin: 0;
     font-size: 14px;
-    color: #7f8c8d;
+    color: var(--text-secondary);
 }
 
 .stat-box.total {
@@ -77,9 +77,9 @@
 
 .reports-filters select {
     padding: 10px 15px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     font-size: 14px;
     transition: border-color 0.3s;
@@ -102,11 +102,11 @@
 }
 
 .report-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border-right: 4px solid #ddd;
+    border-right: 4px solid var(--border-color);
     transition: all 0.3s;
 }
 
@@ -154,8 +154,8 @@
 }
 
 .report-type.user {
-    background-color: #e3f2fd;
-    color: #1976d2;
+    background-color: var(--tint-info);
+    color: var(--text-info);
 }
 
 .report-type.message {
@@ -164,37 +164,37 @@
 }
 
 .report-type.conversation {
-    background-color: #e8f5e9;
-    color: #388e3c;
+    background-color: var(--tint-success);
+    color: var(--text-success);
 }
 
 .report-category {
-    background-color: #fff3e0;
-    color: #f57c00;
+    background-color: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .report-priority.urgent {
-    background-color: #ffebee;
-    color: #c62828;
+    background-color: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .report-priority.high {
-    background-color: #fff3e0;
-    color: #e65100;
+    background-color: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .report-priority.medium {
-    background-color: #e3f2fd;
-    color: #1565c0;
+    background-color: var(--tint-info);
+    color: var(--text-info);
 }
 
 .report-priority.low {
-    background-color: #e8f5e9;
-    color: #2e7d32;
+    background-color: var(--tint-success);
+    color: var(--text-success);
 }
 
 .report-date {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
@@ -204,7 +204,7 @@
 
 .report-description {
     margin: 0 0 15px 0;
-    color: #2c3e50;
+    color: var(--text-heading);
     font-size: 15px;
     line-height: 1.6;
 }
@@ -222,12 +222,12 @@
 }
 
 .report-user .label {
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
 .report-user .value {
-    color: #2c3e50;
+    color: var(--text-heading);
 }
 
 .report-user .user-link {
@@ -243,7 +243,7 @@
 
 /* Reported Content Section */
 .reported-content-section {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 10px;
     padding: 15px;
     margin-top: 12px;
@@ -253,14 +253,14 @@
 .reported-content-title {
     margin: 0 0 10px 0;
     font-size: 14px;
-    color: #555;
+    color: var(--text-secondary);
 }
 
 .reported-message-box {
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
     padding: 12px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-color);
 }
 
 .reported-message-header {
@@ -273,7 +273,7 @@
 
 .reported-sender {
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .reported-message-content {
@@ -291,7 +291,7 @@
     max-width: 200px;
     border-radius: 8px;
     margin-top: 10px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-color);
 }
 
 .reported-conversation-box {
@@ -300,9 +300,9 @@
     align-items: center;
     gap: 10px;
     padding: 10px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-color);
     font-size: 14px;
     margin-top: 8px;
 }
@@ -333,8 +333,8 @@
 
 .conv-type-badge {
     padding: 2px 8px;
-    background: #e3f2fd;
-    color: #1565c0;
+    background: var(--tint-info);
+    color: var(--text-info);
     border-radius: 6px;
     font-size: 12px;
 }
@@ -357,30 +357,30 @@
 .status-select,
 .priority-select {
     padding: 6px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     font-size: 13px;
     cursor: pointer;
 }
 
 .status-select.pending {
-    background-color: #fff3e0;
-    color: #f57c00;
+    background-color: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .status-select.reviewing {
-    background-color: #e3f2fd;
-    color: #1976d2;
+    background-color: var(--tint-info);
+    color: var(--text-info);
 }
 
 .status-select.resolved {
-    background-color: #e8f5e9;
-    color: #388e3c;
+    background-color: var(--tint-success);
+    color: var(--text-success);
 }
 
 .status-select.rejected {
-    background-color: #ffebee;
-    color: #c62828;
+    background-color: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .report-actions {
@@ -407,8 +407,8 @@
 
 .delete-btn {
     padding: 8px 12px;
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -424,14 +424,14 @@
 .no-reports {
     text-align: center;
     padding: 60px 20px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .no-reports p {
     font-size: 18px;
-    color: #95a5a6;
+    color: var(--text-muted);
     margin: 0;
 }
 
@@ -443,13 +443,13 @@
 
 .action-modal h3 {
     margin: 0 0 10px 0;
-    color: #2c3e50;
+    color: var(--text-heading);
     font-size: 22px;
 }
 
 .modal-description {
     margin: 0 0 25px 0;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
@@ -463,7 +463,7 @@
     padding: 14px 20px;
     border: 2px solid #ecf0f1;
     border-radius: 8px;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     font-size: 15px;
     font-weight: 500;
@@ -473,7 +473,7 @@
 
 .action-option:hover {
     border-color: #2F9E85;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     transform: translateX(-5px);
 }
 
@@ -498,7 +498,7 @@
 }
 
 .action-option.none {
-    color: #95a5a6;
+    color: var(--text-muted);
 }
 
 /* Banned Words Badges */
@@ -509,7 +509,7 @@
     align-items: center;
     margin-top: 10px;
     padding: 8px;
-    background: #fff8e1;
+    background: var(--tint-warning);
     border-radius: 6px;
     border: 1px dashed #ffb74d;
 }
@@ -528,18 +528,18 @@
 }
 
 .banned-word-badge.severity-high {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .banned-word-badge.severity-medium {
-    background: #fff3e0;
-    color: #e65100;
+    background: var(--tint-warning);
+    color: var(--text-warning);
 }
 
 .banned-word-badge.severity-low {
-    background: #e3f2fd;
-    color: #1565c0;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 .banned-word-badge.severity-critical {
@@ -556,8 +556,8 @@
 
 .highlighted-banned-word.high,
 .highlighted-banned-word.critical {
-    background: #fee2e2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .highlighted-banned-word.medium {
@@ -566,8 +566,8 @@
 }
 
 .highlighted-banned-word.low {
-    background: #dbeafe;
-    color: #2563eb;
+    background: var(--tint-info);
+    color: var(--text-info);
 }
 
 /* Action Modal Context */
@@ -579,12 +579,12 @@
 
 .modal-reported-user {
     margin: 8px 0;
-    color: #555;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
 .modal-message-preview {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 8px;
     padding: 12px;
     margin-top: 10px;
@@ -593,7 +593,7 @@
 
 .modal-message-preview .preview-label {
     display: block;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     font-size: 12px;
     margin-bottom: 6px;
     font-weight: 600;
@@ -601,7 +601,7 @@
 
 .modal-message-preview .preview-content {
     margin: 0;
-    color: #2c3e50;
+    color: var(--text-heading);
     font-size: 14px;
     line-height: 1.5;
     word-break: break-word;
@@ -611,14 +611,14 @@
     max-width: 150px;
     border-radius: 8px;
     margin-top: 10px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-color);
 }
 
 .reports-page .modal-close-btn {
     width: 100%;
     padding: 12px;
     background: #ecf0f1;
-    color: #2c3e50;
+    color: var(--text-heading);
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -663,7 +663,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     margin-bottom: 20px;
@@ -676,7 +676,7 @@
     gap: 6px;
     font-size: 14px;
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text-heading);
     cursor: pointer;
     user-select: none;
 }
@@ -714,8 +714,8 @@
 }
 
 .bulk-btn.resolve {
-    background: #e8f5e9;
-    color: #2e7d32;
+    background: var(--tint-success);
+    color: var(--text-success);
 }
 
 .bulk-btn.resolve:hover:not(:disabled) {
@@ -724,8 +724,8 @@
 }
 
 .bulk-btn.delete {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
 }
 
 .bulk-btn.delete:hover:not(:disabled) {
@@ -789,7 +789,7 @@
 .top-reported-modal h3 {
     margin: 0 0 20px 0;
     font-size: 20px;
-    color: #2c3e50;
+    color: var(--text-heading);
     text-align: center;
 }
 
@@ -801,7 +801,7 @@
 }
 
 .top-section {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 10px;
     padding: 15px;
 }
@@ -809,9 +809,9 @@
 .top-section h4 {
     margin: 0 0 12px 0;
     font-size: 15px;
-    color: #555;
+    color: var(--text-secondary);
     padding-bottom: 8px;
-    border-bottom: 2px solid #e0e0e0;
+    border-bottom: 2px solid var(--border-color);
 }
 
 .top-list {
@@ -825,7 +825,7 @@
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
     font-size: 13px;
     transition: all 0.2s;
@@ -845,7 +845,7 @@
 
 .top-name {
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text-heading);
     flex: 1;
 }
 
@@ -860,7 +860,7 @@
 }
 
 .top-email {
-    color: #95a5a6;
+    color: var(--text-muted);
     font-size: 11px;
     max-width: 120px;
     overflow: hidden;
@@ -869,8 +869,8 @@
 }
 
 .top-count {
-    background: #ffebee;
-    color: #c62828;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 11px;
@@ -918,8 +918,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    border-bottom: 1px solid #f0f0f0;
-    background: #fafafa;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-subtle);
 }
 
 .action-modal-header h3 {
@@ -933,25 +933,25 @@
     height: 32px;
     border-radius: 50%;
     border: none;
-    background: #f0f0f0;
+    background: var(--bg-hover);
     font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #666;
+    color: var(--text-secondary);
     transition: all 0.15s;
 }
 
 .modal-x-btn:hover {
     background: #e0e0e0;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .action-context-card {
     padding: 16px 24px;
-    background: #fff;
-    border-bottom: 1px solid #f0f0f0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .context-row {
@@ -965,7 +965,7 @@
 }
 
 .context-label {
-    color: #888;
+    color: var(--text-muted);
     min-width: 80px;
     font-weight: 500;
 }
@@ -977,10 +977,10 @@
     font-weight: 600;
 }
 
-.context-badge.cat-harassment { background: #fef2f2; color: #dc2626; }
+.context-badge.cat-harassment { background: var(--tint-danger); color: var(--text-danger); }
 .context-badge.cat-inappropriate_content { background: #fef9c3; color: #a16207; }
 .context-badge.cat-spam { background: #f0fdf4; color: #16a34a; }
-.context-badge.cat-fake_profile { background: #eff6ff; color: #2563eb; }
+.context-badge.cat-fake_profile { background: var(--tint-info); color: var(--text-info); }
 .context-badge.cat-hate_speech { background: #fdf2f8; color: #be185d; }
 
 .context-user-link {
@@ -998,13 +998,13 @@
 }
 
 .context-email {
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 12px;
     direction: ltr;
 }
 
 .context-desc {
-    color: #555;
+    color: var(--text-secondary);
     line-height: 1.5;
 }
 
@@ -1019,14 +1019,14 @@
 
 .context-msg-label {
     font-size: 11px;
-    color: #888;
+    color: var(--text-muted);
     font-weight: 500;
 }
 
 .context-msg-text {
     margin: 6px 0 0;
     font-size: 14px;
-    color: #333;
+    color: var(--text-primary);
     line-height: 1.6;
 }
 
@@ -1064,7 +1064,7 @@
     border-radius: 10px;
     cursor: zoom-in;
     object-fit: contain;
-    background: #fff;
+    background: var(--bg-card);
     border: 2px solid #f39c12;
     box-shadow: 0 2px 8px rgba(243, 156, 18, 0.2);
     transition: all 0.2s;
@@ -1092,7 +1092,7 @@
     border-radius: 20px;
     font-size: 13px;
     font-weight: 600;
-    color: #555;
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.2s;
     white-space: nowrap;
@@ -1145,7 +1145,7 @@
 .comment-text {
     margin: 0;
     font-size: 14px;
-    color: #2c3e50;
+    color: var(--text-heading);
     line-height: 1.6;
     word-break: break-word;
 }
@@ -1185,7 +1185,7 @@
     max-height: 500px;
     border-radius: 8px;
     object-fit: contain;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border: 1px solid #ecf0f1;
     cursor: zoom-in;
     transition: transform 0.2s;
@@ -1262,9 +1262,9 @@
 .action-card.yellow:hover { border-color: #f59e0b; }
 
 .action-card.blue {
-    background: #eff6ff;
+    background: var(--tint-info);
     border-color: #bfdbfe;
-    color: #1e40af;
+    color: var(--text-info);
 }
 
 .action-card.blue:hover { border-color: #3b82f6; }
@@ -1278,9 +1278,9 @@
 .action-card.orange:hover { border-color: #f97316; }
 
 .action-card.red {
-    background: #fef2f2;
+    background: var(--tint-danger);
     border-color: #fecaca;
-    color: #991b1b;
+    color: var(--text-danger);
 }
 
 .action-card.red:hover { border-color: #ef4444; }
@@ -1310,8 +1310,8 @@
     width: 34px;
     height: 34px;
     border-radius: 8px;
-    border: 1px solid #e0e0e0;
-    background: #fff;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
     font-size: 16px;
     cursor: pointer;
     transition: all 0.15s;
@@ -1331,8 +1331,8 @@
 /* ============ User Reports Count Badge ============ */
 .user-reports-count {
     display: inline-block;
-    background: #fef2f2;
-    color: #dc2626;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 10px;

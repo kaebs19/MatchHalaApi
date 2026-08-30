@@ -1,12 +1,12 @@
 .premium-users-page {
     min-height: 100vh;
-    background: #f5f5f5;
+    background: var(--bg-subtle);
     padding: 30px;
 }
 
 /* Filters Section */
 .premium-filters {
-    background: white;
+    background: var(--bg-card);
     padding: 25px;
     border-radius: 15px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
@@ -23,10 +23,10 @@
 .premium-filters .filter-group select,
 .premium-filters .filter-group .premium-search-input {
     padding: 12px 15px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-color);
     border-radius: 10px;
     font-size: 14px;
-    background: white;
+    background: var(--bg-card);
     cursor: pointer;
     transition: border-color 0.3s;
     min-width: 150px;
@@ -46,10 +46,10 @@
 
 .premium-filters .filter-reset-btn {
     padding: 12px 18px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-color);
     border-radius: 10px;
-    background: #fff;
-    color: #666;
+    background: var(--bg-card);
+    color: var(--text-secondary);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
@@ -67,7 +67,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: white;
+    background: var(--bg-card);
     padding: 15px 25px;
     border-radius: 10px;
     margin-bottom: 20px;
@@ -75,14 +75,14 @@
 }
 
 .premium-users-page .results-info {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
 /* Verification Badges (page-specific) */
 .badge-verified {
-    background: #d4edda;
-    color: #155724;
+    background: var(--tint-success);
+    color: var(--text-success);
     display: inline-block;
     padding: 6px 12px;
     border-radius: 20px;
@@ -91,8 +91,8 @@
 }
 
 .badge-unverified {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--tint-danger);
+    color: var(--text-danger);
     display: inline-block;
     padding: 6px 12px;
     border-radius: 20px;
@@ -148,7 +148,7 @@
 }
 
 .premium-users-page .btn-info {
-    background: #d1ecf1;
+    background: var(--tint-info);
 }
 
 .premium-users-page .btn-info:hover {
@@ -209,7 +209,7 @@
     align-items: center;
     gap: 15px;
     padding: 15px;
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     border-radius: 12px;
     margin-bottom: 24px;
 }
@@ -224,13 +224,13 @@
 
 .edit-user-info strong {
     display: block;
-    color: #333;
+    color: var(--text-primary);
     font-size: 16px;
     margin-bottom: 3px;
 }
 
 .edit-user-info span {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 13px;
 }
 
@@ -275,7 +275,7 @@
     width: 20px;
     right: 3px;
     bottom: 3px;
-    background-color: white;
+    background-color: var(--bg-card);
     transition: 0.3s;
     border-radius: 50%;
 }
@@ -304,15 +304,15 @@
 /* Modal Footer */
 .premium-modal-footer {
     padding: 20px 24px;
-    border-top: 1px solid #e5e7eb;
-    background: #f9fafb;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-subtle);
     border-radius: 0 0 20px 20px;
     justify-content: flex-end;
 }
 
 /* User to Delete (in confirm modal) */
 .user-to-delete {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     padding: 15px;
     border-radius: 10px;
     text-align: center;
@@ -321,12 +321,12 @@
 .user-to-delete strong {
     display: block;
     margin-bottom: 5px;
-    color: #333;
+    color: var(--text-primary);
     font-size: 16px;
 }
 
 .user-to-delete span {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 

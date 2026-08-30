@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { applyTheme, readTheme } from './components/ThemeToggle';
+
+// قبل أول رسم — وإلا ومض المظهر الفاتح لحظةً عند كل فتح
+applyTheme(readTheme());
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

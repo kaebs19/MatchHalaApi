@@ -34,7 +34,7 @@
 }
 
 .login-box {
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
     padding: 50px 40px;
     border-radius: 24px;
@@ -71,7 +71,7 @@
 }
 
 .logo p {
-    color: #888;
+    color: var(--text-muted);
     margin: 0 0 35px 0;
     font-size: 15px;
     font-weight: 500;
@@ -86,7 +86,7 @@
 .login-box .form-group label {
     display: block;
     margin-bottom: 10px;
-    color: #444;
+    color: var(--text-primary);
     font-weight: 600;
     font-size: 14px;
 }
@@ -99,18 +99,18 @@
     font-size: 15px;
     transition: all 0.3s ease;
     box-sizing: border-box;
-    background: #fafafa;
+    background: var(--bg-subtle);
 }
 
 .login-box .form-group input:focus {
     outline: none;
-    border-color: #e91e63;
+    border-color: var(--color-primary);
     box-shadow: 0 0 0 4px rgba(233, 30, 99, 0.15);
-    background: white;
+    background: var(--bg-card);
 }
 
 .login-box .form-group input::placeholder {
-    color: #aaa;
+    color: var(--text-muted);
 }
 
 .password-input-wrapper {

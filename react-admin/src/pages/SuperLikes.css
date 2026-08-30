@@ -19,13 +19,13 @@
 .sl-name {
     display: block;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
     font-size: 14px;
 }
 
 .sl-email {
     display: block;
-    color: #999;
+    color: var(--text-muted);
     font-size: 12px;
     direction: ltr;
     text-align: right;
@@ -39,7 +39,7 @@
 }
 
 .sl-date {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 13px;
     white-space: nowrap;
 }

@@ -34,8 +34,8 @@
 /* Cancel / Secondary */
 .btn-cancel,
 .cancel-btn {
-    background: #f5f5f5;
-    color: #666;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
 }
 
 .btn-cancel:hover:not(:disabled),
