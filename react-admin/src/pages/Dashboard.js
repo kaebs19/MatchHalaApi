@@ -350,7 +350,7 @@ function Dashboard({ user, onPageChange }) {
                             </div>
                             {moderationStats.topReported && moderationStats.topReported.length > 0 && (
                                 <div style={{ marginTop: 12 }}>
-                                    <h4 style={{ fontSize: 14, color: '#7f8c8d', marginBottom: 8 }}>🚨 الأكثر بلاغاً</h4>
+                                    <h4 style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 8 }}>🚨 الأكثر بلاغاً</h4>
                                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                         {moderationStats.topReported.map((u, i) => (
                                             <span key={i} style={{

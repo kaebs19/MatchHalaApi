@@ -1575,13 +1575,13 @@ function ExternalPromoTab({ onViewUserDetail }) {
                     <span style={{background: '#fbbf24', padding: '4px 10px', borderRadius: '6px', color: '#78350f'}}>
                         ⚠️ 5 مخالفات → تقييد 24 ساعة (أول مرة)
                     </span>
-                    <span style={{background: '#f59e0b', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                    <span style={{background: '#f59e0b', padding: '4px 10px', borderRadius: '6px', color: 'var(--text-on-brand)'}}>
                         ⛔ ثاني تقييد → 48 ساعة
                     </span>
-                    <span style={{background: '#d97706', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                    <span style={{background: '#d97706', padding: '4px 10px', borderRadius: '6px', color: 'var(--text-on-brand)'}}>
                         🚫 ثالث تقييد → 72 ساعة
                     </span>
-                    <span style={{background: '#b91c1c', padding: '4px 10px', borderRadius: '6px', color: 'white'}}>
+                    <span style={{background: '#b91c1c', padding: '4px 10px', borderRadius: '6px', color: 'var(--text-on-brand)'}}>
                         🛑 رابع تقييد → تعليق أسبوع
                     </span>
                 </div>
@@ -1623,7 +1623,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                     </button>
                 ))}
                 <button onClick={loadData}
-                    style={{marginRight:'auto',padding:'6px 14px',borderRadius:'8px',border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:'13px'}}>
+                    style={{marginRight:'auto',padding:'6px 14px',borderRadius:'8px',border: '1px solid var(--border-color)',background: 'var(--bg-card)',cursor:'pointer',fontSize:'13px'}}>
                     🔄 تحديث
                 </button>
             </div>
@@ -1643,7 +1643,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
             {/* Charts row */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'20px'}}>
                 {/* By Category bars */}
-                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                <div style={{background: 'var(--bg-card)',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
                     <h4 style={{margin:'0 0 12px'}}>📊 المنصات الأكثر استهدافاً</h4>
                     {stats.byCategory.slice(0, 8).map(c => {
                         const pct = totalCategoryCount > 0 ? (c.count / totalCategoryCount * 100) : 0;
@@ -1653,7 +1653,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                                     <span style={{fontWeight:'600'}}>{c._id}</span>
                                     <span>{c.count} ({pct.toFixed(0)}%)</span>
                                 </div>
-                                <div style={{height:'8px',background:'#f0f0f0',borderRadius:'4px',overflow:'hidden'}}>
+                                <div style={{height:'8px',background: 'var(--bg-hover)',borderRadius:'4px',overflow:'hidden'}}>
                                     <div style={{
                                         width: pct + '%',
                                         height:'100%',
@@ -1668,7 +1668,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                 </div>
 
                 {/* By Source bars */}
-                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                <div style={{background: 'var(--bg-card)',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
                     <h4 style={{margin:'0 0 12px'}}>📍 المصدر</h4>
                     {stats.bySource.map(s => {
                         const pct = totalSourceCount > 0 ? (s.count / totalSourceCount * 100) : 0;
@@ -1678,7 +1678,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                                     <span style={{fontWeight:'600'}}>{sourceLabels[s._id] || s._id}</span>
                                     <span>{s.count} ({pct.toFixed(0)}%)</span>
                                 </div>
-                                <div style={{height:'10px',background:'#f0f0f0',borderRadius:'5px',overflow:'hidden'}}>
+                                <div style={{height:'10px',background: 'var(--bg-hover)',borderRadius:'5px',overflow:'hidden'}}>
                                     <div style={{
                                         width: pct + '%',
                                         height:'100%',
@@ -1695,7 +1695,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
 
             {/* Daily trend */}
             {stats.dailyTrend?.length > 0 && (
-                <div style={{background:'#fff',borderRadius:'12px',padding:'16px',marginBottom:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+                <div style={{background: 'var(--bg-card)',borderRadius:'12px',padding:'16px',marginBottom:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
                     <h4 style={{margin:'0 0 12px'}}>📈 الاتجاه اليومي (آخر 7 أيام)</h4>
                     <div style={{display:'flex',alignItems:'flex-end',gap:'8px',height:'120px',padding:'8px 0'}}>
                         {stats.dailyTrend.map(d => {
@@ -1703,7 +1703,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                             const h = (d.count / max * 100);
                             return (
                                 <div key={d._id} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'4px'}}>
-                                    <div style={{fontSize:'11px',color:'#666'}}>{d.count}</div>
+                                    <div style={{fontSize:'11px',color: 'var(--text-secondary)'}}>{d.count}</div>
                                     <div style={{
                                         width:'100%',
                                         height: h + '%',
@@ -1711,7 +1711,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                                         background:'linear-gradient(180deg, #E91E63, #9C27B0)',
                                         borderRadius:'4px 4px 0 0'
                                     }} />
-                                    <div style={{fontSize:'10px',color:'#999',direction:'ltr'}}>{d._id.slice(5)}</div>
+                                    <div style={{fontSize:'10px',color: 'var(--text-muted)',direction:'ltr'}}>{d._id.slice(5)}</div>
                                 </div>
                             );
                         })}
@@ -1720,14 +1720,14 @@ function ExternalPromoTab({ onViewUserDetail }) {
             )}
 
             {/* Top offenders */}
-            <div style={{background:'#fff',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
+            <div style={{background: 'var(--bg-card)',borderRadius:'12px',padding:'16px',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
                 <h4 style={{margin:'0 0 12px'}}>🏆 أكثر المخالفين</h4>
                 {offenders.length === 0 ? (
-                    <p style={{textAlign:'center',color:'#999',padding:'20px'}}>لا يوجد بيانات في هذه الفترة</p>
+                    <p style={{textAlign:'center',color: 'var(--text-muted)',padding:'20px'}}>لا يوجد بيانات في هذه الفترة</p>
                 ) : (
                     <div style={{maxHeight:'400px',overflowY:'auto'}}>
                         <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
-                            <thead><tr style={{background:'#f5f5f5',textAlign:'right',position:'sticky',top:0}}>
+                            <thead><tr style={{background: 'var(--bg-subtle)',textAlign:'right',position:'sticky',top:0}}>
                                 <th style={{padding:'8px'}}>#</th>
                                 <th style={{padding:'8px'}}>الاسم</th>
                                 <th style={{padding:'8px'}}>المحاولات</th>
@@ -1738,7 +1738,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                             </tr></thead>
                             <tbody>
                                 {offenders.map((o, i) => (
-                                    <tr key={o._id} style={{borderBottom:'1px solid #eee'}}>
+                                    <tr key={o._id} style={{borderBottom: '1px solid var(--border-light)'}}>
                                         <td style={{padding:'8px'}}>{i + 1}</td>
                                         <td style={{padding:'8px',fontWeight:'600'}}>
                                             {o.name}
@@ -1747,7 +1747,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                                         <td style={{padding:'8px'}}>
                                             <span style={{
                                                 background: o.attempts >= 10 ? '#f44336' : o.attempts >= 5 ? '#FF9800' : '#FFC107',
-                                                color:'#fff',padding:'2px 8px',borderRadius:'12px',fontSize:'11px'
+                                                color: 'var(--text-on-brand)',padding:'2px 8px',borderRadius:'12px',fontSize:'11px'
                                             }}>{o.attempts}</span>
                                         </td>
                                         <td style={{padding:'8px',fontSize:'11px'}}>{(o.categories || []).join(', ')}</td>
@@ -1758,7 +1758,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                                         <td style={{padding:'8px'}}>
                                             {onViewUserDetail && (
                                                 <button onClick={() => onViewUserDetail(o._id)}
-                                                    style={{padding:'4px 10px',borderRadius:'6px',border:'1px solid #E91E63',background:'#fff',color:'#E91E63',cursor:'pointer',fontSize:'12px'}}>
+                                                    style={{padding:'4px 10px',borderRadius:'6px',border:'1px solid #E91E63',background: 'var(--bg-card)',color:'#E91E63',cursor:'pointer',fontSize:'12px'}}>
                                                     عرض
                                                 </button>
                                             )}
@@ -1777,18 +1777,18 @@ function ExternalPromoTab({ onViewUserDetail }) {
 function StatCard({ label, value, subValue, icon, color }) {
     return (
         <div style={{
-            background:'#fff',
+            background: 'var(--bg-card)',
             borderRadius:'12px',
             padding:'16px',
             boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
             borderRight: `4px solid ${color}`
         }}>
-            <div style={{fontSize:'12px',color:'#666',marginBottom:'4px'}}>{label}</div>
+            <div style={{fontSize:'12px',color: 'var(--text-secondary)',marginBottom:'4px'}}>{label}</div>
             <div style={{fontSize:'22px',fontWeight:'700',display:'flex',alignItems:'center',gap:'8px'}}>
                 <span>{icon}</span>
                 <span>{value}</span>
             </div>
-            {subValue && <div style={{fontSize:'11px',color:'#999',marginTop:'4px'}}>{subValue}</div>}
+            {subValue && <div style={{fontSize:'11px',color: 'var(--text-muted)',marginTop:'4px'}}>{subValue}</div>}
         </div>
     );
 }

@@ -755,7 +755,7 @@ function Settings() {
                 {activeTab === 'version' && (
                     <div className="settings-section">
                         <h2>📱 التحكم بإصدارات التطبيق</h2>
-                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                        <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                             تحكم في إجبار المستخدمين على تحديث التطبيق عندما تنشر نسخة جديدة
                         </p>
 
@@ -774,7 +774,7 @@ function Settings() {
                                         cursor: 'pointer',
                                         fontWeight: 'bold',
                                         background: versionControl.enforceUpdate ? '#22c55e' : '#ef4444',
-                                        color: '#fff'
+                                        color: 'var(--text-on-brand)'
                                     }}
                                 >
                                     {versionControl.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
@@ -822,7 +822,7 @@ function Settings() {
                                         type="button"
                                         className={`btn-toggle ${versionControl.android?.enforceUpdate ? 'active' : ''}`}
                                         onClick={() => setVersionControl({ ...versionControl, android: { ...versionControl.android, enforceUpdate: !versionControl.android?.enforceUpdate } })}
-                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.android?.enforceUpdate ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.android?.enforceUpdate ? '#22c55e' : '#ef4444', color: 'var(--text-on-brand)' }}
                                     >
                                         {versionControl.android?.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
                                     </button>
@@ -860,7 +860,7 @@ function Settings() {
                                         type="button"
                                         className={`btn-toggle ${versionControl.ios?.enforceUpdate ? 'active' : ''}`}
                                         onClick={() => setVersionControl({ ...versionControl, ios: { ...versionControl.ios, enforceUpdate: !versionControl.ios?.enforceUpdate } })}
-                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.ios?.enforceUpdate ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                        style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: versionControl.ios?.enforceUpdate ? '#22c55e' : '#ef4444', color: 'var(--text-on-brand)' }}
                                     >
                                         {versionControl.ios?.enforceUpdate ? '✅ مفعّل' : '❌ معطّل'}
                                     </button>
@@ -929,9 +929,9 @@ function Settings() {
                                     max="20"
                                     value={maxViolations}
                                     onChange={(e) => setMaxViolations(parseInt(e.target.value) || 3)}
-                                    style={{ width: '80px', textAlign: 'center', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                    style={{ width: '80px', textAlign: 'center', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
                                 />
-                                <span style={{ color: '#666' }}>مخالفات</span>
+                                <span style={{ color: 'var(--text-secondary)' }}>مخالفات</span>
                                 <button
                                     onClick={handleUpdateMaxViolations}
                                     className="btn-save"
@@ -946,7 +946,7 @@ function Settings() {
                         {/* إضافة اسم جديد */}
                         <div style={{ marginBottom: '24px' }}>
                             <h3>➕ إضافة أسماء محظورة</h3>
-                            <p style={{ color: '#888', fontSize: '13px', marginBottom: '12px' }}>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '12px' }}>
                                 يمكنك إضافة عدة أسماء بفاصلة (مثل: اسم1, اسم2, اسم3)
                             </p>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -955,14 +955,14 @@ function Settings() {
                                     value={newBannedName}
                                     onChange={(e) => setNewBannedName(e.target.value)}
                                     placeholder="الأسماء المحظورة"
-                                    style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                    style={{ flex: 1, minWidth: '200px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
                                 />
                                 <input
                                     type="text"
                                     value={bannedNameReason}
                                     onChange={(e) => setBannedNameReason(e.target.value)}
                                     placeholder="السبب (اختياري)"
-                                    style={{ width: '200px', padding: '10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                                    style={{ width: '200px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }}
                                 />
                                 <button
                                     onClick={handleAddBannedName}
@@ -1001,7 +1001,7 @@ function Settings() {
                         <div>
                             <h3>📋 قائمة الأسماء المحظورة ({bannedNames.length})</h3>
                             {bannedNames.length === 0 ? (
-                                <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>لا توجد أسماء محظورة</p>
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>لا توجد أسماء محظورة</p>
                             ) : (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                                     {bannedNames.map((bn, idx) => (
@@ -1011,7 +1011,7 @@ function Settings() {
                                             border: '1px solid #fca5a5', fontSize: '14px'
                                         }}>
                                             <span style={{ color: '#dc2626', fontWeight: 'bold' }}>{bn.name}</span>
-                                            {bn.reason && <span style={{ color: '#888', fontSize: '12px' }}>({bn.reason})</span>}
+                                            {bn.reason && <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>({bn.reason})</span>}
                                             <button
                                                 onClick={() => handleDeleteBannedName(bn.name)}
                                                 style={{
@@ -1034,7 +1034,7 @@ function Settings() {
                 {activeTab === 'ads' && (
                     <div className="settings-section">
                         <h2>📺 إعدادات الإعلانات المكافئة</h2>
-                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                        <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                             التحكم في الإعلانات المكافئة (عجلة الحظ) — يقرأها التطبيق تلقائياً عبر الـ API.
                         </p>
 
@@ -1046,7 +1046,7 @@ function Settings() {
                                     type="button"
                                     className={`btn-toggle ${ads.enabled ? 'active' : ''}`}
                                     onClick={() => setAds({ ...ads, enabled: !ads.enabled })}
-                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.enabled ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.enabled ? '#22c55e' : '#ef4444', color: 'var(--text-on-brand)' }}
                                 >
                                     {ads.enabled ? '✅ مفعّلة' : '❌ معطّلة'}
                                 </button>
@@ -1059,7 +1059,7 @@ function Settings() {
                                     type="button"
                                     className={`btn-toggle ${ads.useTestAds ? 'active' : ''}`}
                                     onClick={() => setAds({ ...ads, useTestAds: !ads.useTestAds })}
-                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.useTestAds ? '#f59e0b' : '#94a3b8', color: '#fff' }}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: ads.useTestAds ? '#f59e0b' : '#94a3b8', color: 'var(--text-on-brand)' }}
                                 >
                                     {ads.useTestAds ? '🧪 اختبار' : 'إنتاج'}
                                 </button>
@@ -1118,7 +1118,7 @@ function Settings() {
                 {activeTab === 'wheel' && (
                     <div className="settings-section">
                         <h2>🎡 إعدادات عجلة الحظ</h2>
-                        <p style={{ color: '#888', marginBottom: '20px' }}>
+                        <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                             السيرفر يقرر الجائزة ويمنحها (منع الغش). التطبيق يعرض الأنيميشن فقط.
                         </p>
 
@@ -1129,7 +1129,7 @@ function Settings() {
                                 <button
                                     type="button"
                                     onClick={() => setLuckyWheel({ ...luckyWheel, enabled: !luckyWheel.enabled })}
-                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: luckyWheel.enabled ? '#22c55e' : '#ef4444', color: '#fff' }}
+                                    style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', background: luckyWheel.enabled ? '#22c55e' : '#ef4444', color: 'var(--text-on-brand)' }}
                                 >
                                     {luckyWheel.enabled ? '✅ مفعّلة' : '❌ معطّلة'}
                                 </button>
@@ -1167,9 +1167,9 @@ function Settings() {
                                     <div key={idx} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
                                         <input type="text" value={p.label} placeholder="الاسم"
                                             onChange={(e) => updatePrize(idx, 'label', e.target.value)}
-                                            style={{ flex: 2, minWidth: '120px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                            style={{ flex: 2, minWidth: '120px', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                                         <select value={p.type} onChange={(e) => updatePrize(idx, 'type', e.target.value)}
-                                            style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }}>
+                                            style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                                             <option value="gems">جواهر</option>
                                             <option value="points">نقاط</option>
                                             <option value="extra_spin">دورة إضافية</option>
@@ -1177,10 +1177,10 @@ function Settings() {
                                         </select>
                                         <input type="number" value={p.amount} placeholder="القيمة" title="القيمة"
                                             onChange={(e) => updatePrize(idx, 'amount', e.target.value)}
-                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                                         <input type="number" value={p.weight} placeholder="الوزن" title="الوزن (الاحتمال)"
                                             onChange={(e) => updatePrize(idx, 'weight', e.target.value)}
-                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }} />
+                                            style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                                         <button type="button" onClick={() => removePrize(idx)}
                                             style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '18px' }} title="حذف">✕</button>
                                     </div>

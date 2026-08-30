@@ -390,7 +390,7 @@ function Appeals({ onViewUserDetail }) {
 
     const badgeStyle = (bg) => ({
         background: bg,
-        color: 'white',
+        color: 'var(--text-on-brand)',
         padding: '2px 7px',
         borderRadius: 8,
         fontSize: 10,

@@ -313,7 +313,7 @@ function BannedDevices({ onViewUserDetail }) {
                                         ) : (
                                             <div className='device-user'>
                                                 <div className='device-user-avatar' style={{background:'#e0e0e0'}}>?</div>
-                                                <span style={{color:'#999'}}>مستخدم محذوف</span>
+                                                <span style={{color: 'var(--text-muted)'}}>مستخدم محذوف</span>
                                             </div>
                                         )}
                                         <span className={'ban-source ' + src.cls}>

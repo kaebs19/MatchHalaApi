@@ -729,7 +729,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                                     placeholder="https://instagram.com/yourpage"
                                     style={{ marginTop: 8 }}
                                 />
-                                <small style={{ color: '#888' }}>
+                                <small style={{ color: 'var(--text-muted)' }}>
                                     يُفتح في المتصفح عند الضغط على الإشعار. اتركه فارغاً لإشعار عادي.
                                 </small>
                             </div>
@@ -745,7 +745,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                                     })}
                                     placeholder="https://matchhala.chathala.com/uploads/promo.jpg"
                                 />
-                                <small style={{ color: '#888' }}>
+                                <small style={{ color: 'var(--text-muted)' }}>
                                     رابط صورة تظهر كبيرة داخل الإشعار (iOS + أندرويد). يُفضّل رابط HTTPS مباشر للصورة.
                                 </small>
                                 {notificationData.image ? (

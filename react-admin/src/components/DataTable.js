@@ -53,7 +53,7 @@ function DataTable({
                                 <td colSpan={columns.length}>
                                     <div style={{ padding: '60px 20px', textAlign: 'center' }}>
                                         <span style={{ fontSize: '48px', display: 'block', marginBottom: '15px' }}>{emptyIcon}</span>
-                                        <p style={{ color: '#999', fontSize: '16px' }}>{emptyMessage}</p>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '16px' }}>{emptyMessage}</p>
                                     </div>
                                 </td>
                             </tr>

@@ -36,10 +36,10 @@ function ConfirmModal({
                 onClick={e => e.stopPropagation()}
                 style={{ padding: '30px' }}
             >
-                <h3 style={{ margin: '0 0 10px 0', fontSize: '22px', color: '#333', textAlign: 'center' }}>
+                <h3 style={{ margin: '0 0 10px 0', fontSize: '22px', color: 'var(--text-primary)', textAlign: 'center' }}>
                     {title}
                 </h3>
-                <p style={{ color: '#666', fontSize: '14px', margin: '0 0 25px 0', textAlign: 'center' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '14px', margin: '0 0 25px 0', textAlign: 'center' }}>
                     {message}
                 </p>
                 {children}
@@ -60,7 +60,7 @@ function ConfirmModal({
                             borderRadius: '10px', fontSize: '16px', fontWeight: 600,
                             cursor: 'pointer', transition: 'all 0.3s',
                             background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                            color: 'white'
+                            color: 'var(--text-on-brand)'
                         } : undefined}
                     >
                         {loading ? '...' : confirmText}

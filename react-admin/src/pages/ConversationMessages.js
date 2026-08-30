@@ -355,7 +355,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                     gap: 12,
                     padding: '12px 16px',
                     background: 'linear-gradient(135deg, #f9fafb, #f3f4f6)',
-                    borderBottom: '1px solid #e5e7eb',
+                    borderBottom: '1px solid var(--border-color)',
                     alignItems: 'center',
                     flexWrap: 'wrap'
                 }}>
@@ -372,7 +372,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                     display: 'flex',
                                     gap: 10,
                                     padding: '8px 12px',
-                                    background: '#fff',
+                                    background: 'var(--bg-card)',
                                     border: `2px solid ${accentColor}`,
                                     borderRadius: 12,
                                     cursor: 'pointer',
@@ -389,7 +389,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                     onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=?&background=ccc`; }}
                                 />
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {p.name || 'مستخدم محذوف'}
                                         {p.isPremium && <span style={{ marginInlineStart: 4 }}>⭐</span>}
                                     </div>
@@ -405,12 +405,12 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                 ⚠️ {violations} مخالفة
                                             </span>
                                         ) : (
-                                            <span style={{ background: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
+                                            <span style={{ background: 'var(--tint-success)', color: 'var(--text-success)', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
                                                 ✓ نظيف
                                             </span>
                                         )}
                                         {p.suspension?.isSuspended && (
-                                            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
+                                            <span style={{ background: 'var(--tint-danger)', color: 'var(--text-danger)', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
                                                 🔒 موقوف
                                             </span>
                                         )}
@@ -423,9 +423,9 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         display: 'flex',
                         gap: 14,
                         padding: '8px 14px',
-                        background: '#fff',
+                        background: 'var(--bg-card)',
                         borderRadius: 12,
-                        border: '1px solid #e5e7eb',
+                        border: '1px solid var(--border-color)',
                         fontSize: 12,
                         flexWrap: 'wrap'
                     }}>
@@ -442,8 +442,8 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 display: 'flex',
                 gap: 6,
                 padding: '8px 16px',
-                background: '#fff',
-                borderBottom: '1px solid #e5e7eb',
+                background: 'var(--bg-card)',
+                borderBottom: '1px solid var(--border-color)',
                 flexWrap: 'wrap',
                 alignItems: 'center'
             }}>
@@ -463,7 +463,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                 padding: '4px 12px',
                                 borderRadius: 16,
                                 border: `1.5px solid ${active ? chip.color : '#e5e7eb'}`,
-                                background: active ? chip.color : '#fff',
+                                background: active ? chip.color: 'var(--text-on-brand)',
                                 color: active ? '#fff' : '#374151',
                                 fontSize: 12,
                                 fontWeight: 700,
@@ -484,8 +484,8 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             padding: '5px 12px',
                             borderRadius: 16,
                             border: '1.5px dashed #dc2626',
-                            background: '#fee2e2',
-                            color: '#991b1b',
+                            background: 'var(--tint-danger)',
+                            color: 'var(--text-danger)',
                             fontSize: 12,
                             fontWeight: 700,
                             cursor: 'pointer'
@@ -509,7 +509,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             position: 'fixed',
                             top: Math.min(msgMenu.y + 5, window.innerHeight - 160),
                             left: Math.min(msgMenu.x, window.innerWidth - 240),
-                            background: '#fff',
+                            background: 'var(--bg-card)',
                             borderRadius: 10,
                             boxShadow: '0 10px 30px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
                             minWidth: 220,
@@ -519,10 +519,10 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                     >
                         <div style={{
                             padding: '10px 12px',
-                            background: '#f9fafb',
-                            borderBottom: '1px solid #e5e7eb',
+                            background: 'var(--bg-subtle)',
+                            borderBottom: '1px solid var(--border-color)',
                             fontSize: 11,
-                            color: '#6b7280',
+                            color: 'var(--text-secondary)',
                             fontWeight: 600,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -542,7 +542,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             style={{
                                 width: '100%', textAlign: 'right',
                                 padding: '11px 14px', border: 'none',
-                                background: '#fff', cursor: 'pointer',
+                                background: 'var(--bg-card)', cursor: 'pointer',
                                 fontSize: 13, fontWeight: 600,
                                 color: '#dc2626',
                                 display: 'flex', gap: 8, alignItems: 'center',
@@ -562,9 +562,9 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             style={{
                                 width: '100%', textAlign: 'right',
                                 padding: '11px 14px', border: 'none',
-                                background: '#fff', cursor: 'pointer',
+                                background: 'var(--bg-card)', cursor: 'pointer',
                                 fontSize: 13, fontWeight: 600,
-                                color: '#374151',
+                                color: 'var(--text-primary)',
                                 display: 'flex', gap: 8, alignItems: 'center'
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
@@ -584,14 +584,14 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
-                        style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 460, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
+                        style={{ background: 'var(--bg-card)', borderRadius: 14, padding: 22, maxWidth: 460, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                             <h3 style={{ margin: 0, color: '#dc2626' }}>➕ إضافة كلمة محظورة</h3>
                             <button onClick={() => setQuickAddOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
                         </div>
 
-                        <div style={{ marginBottom: 14, padding: 10, background: '#fef3c7', borderRadius: 8, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+                        <div style={{ marginBottom: 14, padding: 10, background: 'var(--tint-warning)', borderRadius: 8, fontSize: 12, color: 'var(--text-warning)', lineHeight: 1.6 }}>
                             <strong>نصيحة:</strong> انسخ النمط الذي تريد حظره من الرسالة (مثلاً "ت ل ج" أو "س ن ا ب") والصقه هنا. الكلمة ستُطبَّق على جميع المستخدمين فوراً.
                         </div>
 
@@ -642,7 +642,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             <button
                                 onClick={() => setQuickAddOpen(false)}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: 'var(--bg-card)', cursor: 'pointer', fontWeight: 600 }}
                             >
                                 إلغاء
                             </button>
@@ -656,7 +656,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                 style={{
                                     padding: '8px 22px', borderRadius: 8, border: 'none',
                                     background: quickAddText.trim() ? '#dc2626' : '#fca5a5',
-                                    color: '#fff', cursor: quickAddText.trim() ? 'pointer' : 'not-allowed',
+                                    color: 'var(--text-on-brand)', cursor: quickAddText.trim() ? 'pointer' : 'not-allowed',
                                     fontWeight: 700
                                 }}
                             >
@@ -719,7 +719,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                     }}
                                                     style={{
                                                         width: 32, height: 32, borderRadius: '50%',
-                                                        background: colors.accent, color: '#fff',
+                                                        background: colors.accent, color: 'var(--text-on-brand)',
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontWeight: 700, cursor: 'pointer', fontSize: 13,
                                                         overflow: 'hidden'
@@ -784,7 +784,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                             alignItems: 'center',
                                                             gap: 4,
                                                             background: '#dc2626',
-                                                            color: '#fff',
+                                                            color: 'var(--text-on-brand)',
                                                             padding: '2px 8px',
                                                             borderRadius: 6,
                                                             fontSize: 11,
@@ -800,7 +800,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
 
                                                 {/* Message content */}
                                                 {message.isDeleted ? (
-                                                    <em style={{ color: '#6b7280', fontSize: 13 }}>تم حذف هذه الرسالة</em>
+                                                    <em style={{ color: 'var(--text-secondary)', fontSize: 13 }}>تم حذف هذه الرسالة</em>
                                                 ) : (
                                                     <>
                                                         {message.content && <div style={{ fontSize: 14, lineHeight: 1.5 }}>{message.content}</div>}
@@ -819,7 +819,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                                         <div style={{
                                                                             display: 'inline-block',
                                                                             background: '#7c3aed',
-                                                                            color: '#fff',
+                                                                            color: 'var(--text-on-brand)',
                                                                             padding: '2px 8px',
                                                                             borderRadius: 6,
                                                                             fontSize: 11,
@@ -853,7 +853,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             </div>
                                             {/* Time + actions */}
                                             <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2, padding: '0 4px' }}>
-                                                <span style={{ fontSize: 10, color: '#9ca3af' }}>
+                                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                                                     {formatTime(message.createdAt)}
                                                 </span>
                                                 {!message.isDeleted && (
@@ -948,14 +948,14 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             if (onViewUser) onViewUser(userActionMenu.userId);
                             setUserActionMenu(null);
                         }}>👤 عرض الملف الشخصي</button>
-                        <button className="user-action-btn" style={{background: '#fff3e0', color: '#e65100'}} onClick={async () => {
+                        <button className="user-action-btn" style={{background: 'var(--tint-warning)', color: 'var(--text-warning)'}} onClick={async () => {
                             try {
                                 await suspendUser(userActionMenu.userId, '24h', 'تعليق من الرسائل');
                                 showToast(`تم تعليق ${userActionMenu.userName} لمدة 24 ساعة`, 'success');
                             } catch { showToast('فشل التعليق', 'error'); }
                             setUserActionMenu(null);
                         }}>🔒 تعليق 24 ساعة</button>
-                        <button className="user-action-btn" style={{background: '#fff3e0', color: '#e65100'}} onClick={async () => {
+                        <button className="user-action-btn" style={{background: 'var(--tint-warning)', color: 'var(--text-warning)'}} onClick={async () => {
                             try {
                                 await suspendUser(userActionMenu.userId, '7d', 'تعليق من الرسائل');
                                 showToast(`تم تعليق ${userActionMenu.userName} لمدة أسبوع`, 'success');
@@ -1009,7 +1009,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                     <button
                         onClick={(e) => { e.stopPropagation(); setZoomImage(null); }}
                         style={{
-                            position: 'absolute', top: 20, left: 20, background: '#fff', border: 'none',
+                            position: 'absolute', top: 20, left: 20, background: 'var(--bg-card)', border: 'none',
                             width: 40, height: 40, borderRadius: '50%', fontSize: 20, cursor: 'pointer'
                         }}
                         title="إغلاق"
@@ -1019,7 +1019,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             <button
                                 onClick={(e) => { e.stopPropagation(); onViewUser(zoomImage.sender._id); setZoomImage(null); }}
                                 style={{
-                                    background: '#6366f1', color: '#fff', border: 'none',
+                                    background: '#6366f1', color: 'var(--text-on-brand)', border: 'none',
                                     padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer'
                                 }}
                                 title="عرض ملف المرسل"
@@ -1030,7 +1030,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                             download
                             onClick={(e) => e.stopPropagation()}
                             style={{
-                                background: '#fff', padding: '8px 14px', borderRadius: 8,
+                                background: 'var(--bg-card)', padding: '8px 14px', borderRadius: 8,
                                 textDecoration: 'none', color: '#111', fontSize: 13, fontWeight: 700
                             }}
                             title="تنزيل الصورة"
@@ -1053,7 +1053,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
-                        style={{ background: '#fff', borderRadius: 14, padding: 20, maxWidth: 480, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
+                        style={{ background: 'var(--bg-card)', borderRadius: 14, padding: 20, maxWidth: 480, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <h3 style={{ margin: 0, color: '#dc2626' }}>⚠️ تفاصيل المخالفة</h3>
@@ -1072,7 +1072,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         {flaggedDetails.bannedWordsFound?.length > 0 && (
                             <div style={{ marginBottom: 12 }}>
                                 <strong style={{ display: 'block', marginBottom: 6 }}>الكلمات المكتشفة:</strong>
-                                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+                                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
                                     اضغط على ➕ لإضافة الكلمة لقائمة المحظورات الموحّدة (تطبَّق على كل المستخدمين)
                                 </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -1083,7 +1083,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             <div key={i} style={{
                                                 display: 'inline-flex', alignItems: 'center', gap: 4,
                                                 background: w.severity === 'high' ? '#dc2626' : (w.severity === 'medium' ? '#f59e0b' : '#9ca3af'),
-                                                color: '#fff', padding: '3px 4px 3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
+                                                color: 'var(--text-on-brand)', padding: '3px 4px 3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
                                             }}>
                                                 <span>{w.word} {w.severity && `(${w.severity})`}</span>
                                                 <button
@@ -1119,7 +1119,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                             <button
                                 onClick={() => setFlaggedDetails(null)}
-                                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                                style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: 'var(--bg-card)', cursor: 'pointer', fontWeight: 600 }}
                             >
                                 إغلاق
                             </button>
@@ -1129,7 +1129,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                         if (onViewUser) onViewUser(flaggedDetails.sender._id);
                                         setFlaggedDetails(null);
                                     }}
-                                    style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontWeight: 700 }}
+                                    style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#6366f1', color: 'var(--text-on-brand)', cursor: 'pointer', fontWeight: 700 }}
                                 >
                                     👤 ملف المرسل
                                 </button>

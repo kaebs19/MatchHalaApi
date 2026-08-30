@@ -244,7 +244,7 @@ function ConversationDetail({ conversationId, onBack, onViewUser }) {
                                         </h4>
                                         <p>{participant.email}</p>
                                         {participant._id && (
-                                            <p style={{fontSize: '11px', color: '#95a5a6', direction: 'ltr', textAlign: 'right'}}>
+                                            <p style={{fontSize: '11px', color: 'var(--text-muted)', direction: 'ltr', textAlign: 'right'}}>
                                                 ID: {participant._id}
                                             </p>
                                         )}

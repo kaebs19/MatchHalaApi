@@ -25,7 +25,10 @@ import { userBioAction,
     getUserNameHistory,
     hideUser,
     unhideUser,
-    clearUserReports
+    clearUserReports,
+    getUserReports,
+    getUserPhotoHistory,
+    fetchPhotoHistoryBlob
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
@@ -36,6 +39,42 @@ import {
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import './UserDetail.css';
+
+const PHOTO_HISTORY_REASONS = {
+    user_replaced: '🔄 استبدلها بنفسه',
+    user_deleted: '🗑️ حذفها بنفسه',
+    admin_removed: '🛡️ أزالتها الإدارة',
+    system: '⚙️ النظام'
+};
+
+const REPORT_CATEGORIES = {
+    spam: '📢 سبام',
+    harassment: '😡 مضايقة',
+    inappropriate_content: '🔞 محتوى غير لائق',
+    inappropriate: '🔞 غير لائق',
+    fake_profile: '🎭 حساب مزيّف',
+    hate_speech: '🗣️ خطاب كراهية',
+    violence: '⚔️ عنف',
+    fraud: '💰 احتيال',
+    impersonation: '🎭 انتحال شخصية',
+    other: '📌 أخرى'
+};
+
+const REPORT_STATUSES = {
+    pending: '⏳ معلّق',
+    reviewing: '🔍 قيد المراجعة',
+    resolved: '✅ مقبول',
+    rejected: '❌ مرفوض',
+    cancelled: '🚫 ملغى'
+};
+
+const REPORT_ACTIONS = {
+    warning: '⚠️ تحذير',
+    message_deleted: '🗑️ حذف رسالة',
+    user_suspended: '⛔ إيقاف',
+    user_banned: '🚫 حظر',
+    conversation_locked: '🔒 قفل محادثة'
+};
 
 function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [loading, setLoading] = useState(true);
@@ -199,6 +238,14 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [warningForm, setWarningForm] = useState({ customTitle: '', customBody: '', isBlocking: true, recordViolation: true });
     const [evidenceBlobs, setEvidenceBlobs] = useState({}); // map: violationId -> blob url
 
+    // ========== البلاغات + سجل الصور ==========
+    const [reportsData, setReportsData] = useState(null);
+    const [reportsLoading, setReportsLoading] = useState(false);
+    const [reportsDirection, setReportsDirection] = useState('against'); // against | by
+    const [photoHistory, setPhotoHistory] = useState(null);
+    const [photoHistoryLoading, setPhotoHistoryLoading] = useState(false);
+    const [photoBlobs, setPhotoBlobs] = useState({}); // map: entry index -> blob url
+
     useEffect(() => {
         fetchUserActivity();
         fetchReportsCount();
@@ -229,6 +276,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
         }
         if (activeTab === 'mod-tools' && warningsList.length === 0) {
             fetchWarnings();
+        }
+        if (activeTab === 'reports' && !reportsData) {
+            fetchUserReports();
+        }
+        if (activeTab === 'photos' && !photoHistory) {
+            fetchPhotoHistory();
         }
     // eslint-disable-next-line
     }, [activeTab]);
@@ -507,6 +560,40 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             showToast('فشل في تحميل سجل المخالفات', 'error');
         } finally {
             setViolationsLoading(false);
+        }
+    };
+
+    const fetchUserReports = async () => {
+        try {
+            setReportsLoading(true);
+            const res = await getUserReports(userId, { limit: 100 });
+            if (res.success) setReportsData(res.data);
+        } catch (e) {
+            showToast('فشل في تحميل بلاغات المستخدم', 'error');
+        } finally {
+            setReportsLoading(false);
+        }
+    };
+
+    const fetchPhotoHistory = async () => {
+        try {
+            setPhotoHistoryLoading(true);
+            const res = await getUserPhotoHistory(userId);
+            if (res.success) {
+                setPhotoHistory(res.data);
+                // الأرشيف محمي — تُجلب كـ blob مع التوكن
+                (res.data.history || []).forEach((entry, idx) => {
+                    if (!entry.fileName) return;
+                    fetchPhotoHistoryBlob(userId, entry.fileName)
+                        .then(url => setPhotoBlobs(prev => ({ ...prev, [idx]: url })))
+                        // false = فشل الجلب — بلا هذا تبقى البطاقة «جاري التحميل» أبداً
+                        .catch(() => setPhotoBlobs(prev => ({ ...prev, [idx]: false })));
+                });
+            }
+        } catch (e) {
+            showToast('فشل في تحميل سجل الصور', 'error');
+        } finally {
+            setPhotoHistoryLoading(false);
         }
     };
 
@@ -923,7 +1010,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 <div className="user-info-details">
                     <h3>{user.name}</h3>
                     <p className="user-email">{user.email}</p>
-                    <p className="user-id" style={{fontSize: '12px', color: '#95a5a6', direction: 'ltr', textAlign: 'right', margin: '2px 0 8px', fontFamily: 'monospace', cursor: 'pointer'}}
+                    <p className="user-id" style={{fontSize: '12px', color: 'var(--text-muted)', direction: 'ltr', textAlign: 'right', margin: '2px 0 8px', fontFamily: 'monospace', cursor: 'pointer'}}
                        onClick={() => { navigator.clipboard.writeText(user._id); showToast('تم نسخ المعرف', 'success'); }}
                        title="انقر للنسخ">
                         {user.halaId ? `معرف هلا: ${user.halaId}` : `ID: ${user._id}`}
@@ -976,7 +1063,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         fontSize: 12,
                                         fontWeight: 600,
                                         background: 'linear-gradient(135deg,#10b981,#059669)',
-                                        color: '#fff',
+                                        color: 'var(--text-on-brand)',
                                         border: 'none',
                                         borderRadius: 999,
                                         cursor: 'pointer',
@@ -1060,7 +1147,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         className="quick-action-btn"
                         onClick={handleUnhideUser}
                         disabled={actionLoading}
-                        style={{ background: '#10b981', color: '#fff' }}
+                        style={{ background: '#10b981', color: 'var(--text-on-brand)' }}
                     >
                         👁️ إظهار الحساب
                     </button>
@@ -1069,7 +1156,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         className="quick-action-btn"
                         onClick={() => setShowHideModal(true)}
                         disabled={actionLoading}
-                        style={{ background: '#f59e0b', color: '#fff' }}
+                        style={{ background: '#f59e0b', color: 'var(--text-on-brand)' }}
                         title="إخفاء الحساب من الاكتشاف والبحث (المستخدم يستطيع الدخول لكن لا يظهر للآخرين)"
                     >
                         🙈 إخفاء الحساب
@@ -1126,6 +1213,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                     onClick={() => setActiveTab('violations')}
                 >
                     ⚠️ سجل المخالفات
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('reports')}
+                >
+                    🚩 البلاغات{reportsCount?.totalReports ? ` (${reportsCount.totalReports})` : ''}
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'related' ? 'active' : ''}`}
@@ -1496,12 +1589,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                 <strong style={{color:statusColor}}>الإشعارات: {statusLabel}</strong>
                                             </div>
                                             {statusDetail && (
-                                                <div style={{fontSize:12, color:'#4b5563', marginRight:26}}>
+                                                <div style={{fontSize:12, color: 'var(--text-secondary)', marginRight:26}}>
                                                     {statusDetail}
                                                 </div>
                                             )}
                                             {(totalSuccess > 0 || totalFailures > 0) && (
-                                                <div style={{marginTop:8, display:'flex', gap:12, fontSize:11, color:'#6b7280', marginRight:26}}>
+                                                <div style={{marginTop:8, display:'flex', gap:12, fontSize:11, color: 'var(--text-secondary)', marginRight:26}}>
                                                     <span>✅ نجاح: {totalSuccess}</span>
                                                     <span>❌ فشل: {totalFailures}</span>
                                                     {successRate !== null && (
@@ -1514,15 +1607,15 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                             {/* ✅ تفاصيل آخر فشل — تُعرض دائماً متى وُجد فشل،
                                                 حتى لو كانت الحالة العامة سليمة (كان يُخفى إلا عند 3 فشل متتالي فأكثر) */}
                                             {totalFailures > 0 && (ph.lastError || ph.lastFailureAt) && !ph.notificationsDisabled && consec < 3 && (
-                                                <div style={{marginTop:8, paddingTop:8, borderTop:'1px dashed #d1d5db', fontSize:11, color:'#6b7280', marginRight:26}}>
-                                                    <div style={{fontWeight:600, marginBottom:2, color:'#4b5563'}}>تفاصيل آخر فشل:</div>
+                                                <div style={{marginTop:8, paddingTop:8, borderTop:'1px dashed #d1d5db', fontSize:11, color: 'var(--text-secondary)', marginRight:26}}>
+                                                    <div style={{fontWeight:600, marginBottom:2, color: 'var(--text-secondary)'}}>تفاصيل آخر فشل:</div>
                                                     {ph.lastFailureAt && <div>متى: {formatDate(ph.lastFailureAt)}</div>}
                                                     {ph.lastError && (
                                                         <div style={{direction:'ltr', textAlign:'right', wordBreak:'break-word', fontFamily:'monospace', marginTop:2}}>
                                                             {ph.lastError}
                                                         </div>
                                                     )}
-                                                    <div style={{marginTop:4, color:'#9ca3af'}}>
+                                                    <div style={{marginTop:4, color: 'var(--text-muted)'}}>
                                                         {String(ph.lastError || '').includes('registration-token-not-registered')
                                                             ? 'الرمز لم يعد صالحاً (حذف التطبيق أو تجدّد الرمز) — طبيعي، يُحل عند فتح التطبيق.'
                                                             : 'فشل متفرّق — لا يؤثر ما دام معدل النجاح مرتفعاً والعداد المتتالي = 0.'}
@@ -1537,7 +1630,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
                         {/* تحذير غياب البصمة */}
                         {!user.lastFingerprintUpdate && (
-                            <div style={{marginTop:16,padding:14,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:12,color:'#78350f',display:'flex',alignItems:'flex-start',gap:10}}>
+                            <div style={{marginTop:16,padding:14,background:'var(--tint-warning)',border:'1px solid #f59e0b',borderRadius:12,color: 'var(--text-warning)',display:'flex',alignItems:'flex-start',gap:10}}>
                                 <span style={{fontSize:22}}>⚠️</span>
                                 <div>
                                     <div style={{fontWeight:700,marginBottom:4}}>لا توجد بصمة جهاز لهذا المستخدم</div>
@@ -1710,7 +1803,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                     {conv.type === 'private' ? 'خاصة' : 'جماعية'}
                                                 </span>
                                                 {conv.violationsCount > 0 && (
-                                                    <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11,fontWeight:700}} title="عدد المخالفات في هذه المحادثة">
+                                                    <span style={{background:'var(--tint-danger)',color: 'var(--text-danger)',padding:'2px 8px',borderRadius:10,fontSize:11,fontWeight:700}} title="عدد المخالفات في هذه المحادثة">
                                                         ⚠️ {conv.violationsCount} مخالفة
                                                     </span>
                                                 )}
@@ -1797,9 +1890,9 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     disabled={actionLoading || !conversations?.length}
                                     style={{
                                         padding:'8px 14px',
-                                        background:'#fef3c7',
+                                        background:'var(--tint-warning)',
                                         border:'1px solid #f59e0b',
-                                        color:'#78350f',
+                                        color: 'var(--text-warning)',
                                         borderRadius:10,
                                         fontSize:13,
                                         fontWeight:600,
@@ -1837,9 +1930,9 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     disabled={actionLoading || !conversations?.length}
                                     style={{
                                         padding:'8px 14px',
-                                        background:'#fee2e2',
+                                        background:'var(--tint-danger)',
                                         border:'1px solid #ef4444',
-                                        color:'#7f1d1d',
+                                        color: 'var(--text-danger)',
                                         borderRadius:10,
                                         fontSize:13,
                                         fontWeight:600,
@@ -1929,7 +2022,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                 </div>
                                             );
                                         })()}
-                                        <p className="message-date" style={{marginTop:6,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11,color:'#6b7280'}}>
+                                        <p className="message-date" style={{marginTop:6,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11,color: 'var(--text-secondary)'}}>
                                             <span>{formatDate(msg.createdAt)}</span>
                                             {msg.conversation && <span style={{color:'#6366f1'}}>اضغط لفتح المحادثة →</span>}
                                         </p>
@@ -1947,7 +2040,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <h3 style={{ margin: 0 }}>🖼️ صور المستخدم</h3>
                             <button
                                 onClick={() => { setPhotoUploadForm({ file: null, preview: null, reason: '', notify: true }); setShowPhotoUploadModal(true); }}
-                                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#4f46e5)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#4f46e5)', color: 'var(--text-on-brand)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                                 title="رفع/استبدال الصورة الشخصية وإشعار المستخدم"
                             >
                                 {user.profileImage ? '🔄 استبدال الصورة الشخصية' : '⬆️ رفع صورة شخصية'}
@@ -2004,8 +2097,70 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         )}
 
                         {!user.profileImage && (!user.photos || user.photos.length === 0) && (
-                            <p style={{ textAlign: 'center', color: '#95a5a6', padding: '40px' }}>لا توجد صور لهذا المستخدم</p>
+                            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>لا توجد صور لهذا المستخدم</p>
                         )}
+
+                        {/* 🕓 سجل الصور السابقة — الدليل حين ينكر المستخدم صورته */}
+                        <div className="photos-group photo-history-group">
+                            <div className="photo-history-head">
+                                <h4>🕓 سجل الصور السابقة {photoHistory ? `(${photoHistory.total})` : ''}</h4>
+                                <button className="btn-secondary" onClick={fetchPhotoHistory}>🔄 تحديث</button>
+                            </div>
+
+                            {photoHistory?.current?.since && (
+                                <p className="photo-history-current">
+                                    الصورة الحالية منذ: {formatDate(photoHistory.current.since)}
+                                </p>
+                            )}
+
+                            {photoHistoryLoading && <p className="photo-history-loading">جاري التحميل...</p>}
+
+                            {!photoHistoryLoading && photoHistory && photoHistory.total === 0 && (
+                                <p className="photo-history-empty">
+                                    لم يغيّر هذا المستخدم صورته منذ تفعيل السجل
+                                </p>
+                            )}
+
+                            {!photoHistoryLoading && photoHistory && photoHistory.total > 0 && (
+                                <div className="photos-grid">
+                                    {photoHistory.history.map((entry, idx) => (
+                                        <div key={idx} className="photo-card photo-history-card">
+                                            {entry.purged || !entry.fileName ? (
+                                                <div className="photo-history-purged">
+                                                    🗑️<br />الملف لم يُحفظ
+                                                </div>
+                                            ) : photoBlobs[idx] === false ? (
+                                                <div className="photo-history-purged">
+                                                    ⚠️<br />تعذّر تحميل الصورة
+                                                </div>
+                                            ) : photoBlobs[idx] ? (
+                                                <img
+                                                    src={photoBlobs[idx]}
+                                                    alt={`صورة سابقة ${idx + 1}`}
+                                                    className="photo-thumb"
+                                                    onClick={() => setLightboxImage(photoBlobs[idx])}
+                                                />
+                                            ) : (
+                                                <div className="photo-history-loading-box">جاري التحميل...</div>
+                                            )}
+
+                                            <div className="photo-history-meta">
+                                                <span className={`photo-history-reason reason-${entry.reason}`}>
+                                                    {PHOTO_HISTORY_REASONS[entry.reason] || entry.reason}
+                                                </span>
+                                                <span className="photo-history-date">{formatDate(entry.replacedAt)}</span>
+                                                {entry.by?.name && (
+                                                    <span className="photo-history-by">بواسطة: {entry.by.name}</span>
+                                                )}
+                                                {entry.inViolations && (
+                                                    <span className="photo-history-flag">⚠️ دليل مخالفة</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -2042,13 +2197,116 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                     </div>
                 )}
 
+                {/* 🚩 Reports Tab */}
+                {activeTab === 'reports' && (
+                    <div className="reports-tab-section">
+                        <div className="reports-tab-header">
+                            <h3>🚩 بلاغات المستخدم</h3>
+                            <button className="btn-secondary" onClick={fetchUserReports}>🔄 تحديث</button>
+                        </div>
+
+                        <div className="reports-direction-switch">
+                            <button
+                                className={`rd-btn ${reportsDirection === 'against' ? 'active' : ''}`}
+                                onClick={() => setReportsDirection('against')}
+                            >
+                                ⚠️ بلاغات ضدّه ({reportsData?.totals?.against ?? 0})
+                            </button>
+                            <button
+                                className={`rd-btn ${reportsDirection === 'by' ? 'active' : ''}`}
+                                onClick={() => setReportsDirection('by')}
+                            >
+                                📤 بلاغات قدّمها ({reportsData?.totals?.by ?? 0})
+                            </button>
+                        </div>
+
+                        {reportsLoading && <div className="reports-tab-loading">جاري التحميل...</div>}
+
+                        {!reportsLoading && reportsData && (() => {
+                            const list = reportsDirection === 'against' ? (reportsData.against || []) : (reportsData.by || []);
+                            if (list.length === 0) {
+                                return (
+                                    <div className="reports-tab-empty">
+                                        {reportsDirection === 'against'
+                                            ? '✨ لا توجد بلاغات ضدّ هذا المستخدم'
+                                            : 'لم يُقدّم هذا المستخدم أي بلاغ'}
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div className="reports-tab-list">
+                                    {list.map(r => {
+                                        const other = reportsDirection === 'against' ? r.reportedBy : r.reportedUser;
+                                        return (
+                                            <div key={r._id} className={`report-tab-card status-${r.status}`}>
+                                                <div className="report-tab-top">
+                                                    <div className="report-tab-badges">
+                                                        <span className="report-cat-badge">{REPORT_CATEGORIES[r.category] || r.category}</span>
+                                                        <span className={`report-status-badge st-${r.status}`}>
+                                                            {REPORT_STATUSES[r.status] || r.status}
+                                                        </span>
+                                                        {r.action && r.action !== 'none' && (
+                                                            <span className="report-action-badge">
+                                                                {REPORT_ACTIONS[r.action] || r.action}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="report-tab-date">{formatDate(r.createdAt)}</span>
+                                                </div>
+
+                                                {other && (
+                                                    <div
+                                                        className="report-tab-party"
+                                                        onClick={() => onNavigateToUser && onNavigateToUser(other._id)}
+                                                        title="فتح ملف المستخدم"
+                                                    >
+                                                        <img
+                                                            src={other.profileImage ? getImageUrl(other.profileImage) : getDefaultAvatar(other.name)}
+                                                            alt=""
+                                                            onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(other.name); }}
+                                                        />
+                                                        <span className="report-party-label">
+                                                            {reportsDirection === 'against' ? 'المُبلِّغ:' : 'المُبلَّغ عنه:'}
+                                                        </span>
+                                                        <span className="report-party-name">{other.name}</span>
+                                                        {other.halaId && <span className="report-party-id">#{other.halaId}</span>}
+                                                    </div>
+                                                )}
+
+                                                {r.description && (
+                                                    <p className="report-tab-desc">{r.description}</p>
+                                                )}
+
+                                                {r.screenshot && (
+                                                    <div className="report-tab-shot">
+                                                        <span className="report-shot-label">📸 لقطة الدليل:</span>
+                                                        <img
+                                                            src={getImageUrl(r.screenshot)}
+                                                            alt="لقطة البلاغ"
+                                                            onClick={() => setLightboxImage(getImageUrl(r.screenshot))}
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {r.reviewNotes && (
+                                                    <div className="report-tab-notes">📝 {r.reviewNotes}</div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
+
                 {/* ⚠️ Violations Tab */}
                 {activeTab === 'violations' && (
                     <div className="violations-section">
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
                             <h3 style={{margin:0}}>⚠️ سجل المخالفات ({violationsList.length})</h3>
                             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                                <select value={violationsFilter} onChange={e=>setViolationsFilter(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                <select value={violationsFilter} onChange={e=>setViolationsFilter(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border: '1px solid var(--border-color)'}}>
                                     <option value="">كل الأنواع</option>
                                     <option value="banned_word">كلمات محظورة</option>
                                     <option value="photo">صور مخالفة</option>
@@ -2067,7 +2325,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         {violationsLoading && <div style={{padding:20,textAlign:'center'}}>جاري التحميل...</div>}
 
                         {!violationsLoading && violationsList.length === 0 && (
-                            <div style={{padding:40,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12,marginTop:16}}>
+                            <div style={{padding:40,textAlign:'center',color: 'var(--text-secondary)',background: 'var(--bg-subtle)',borderRadius:12,marginTop:16}}>
                                 ✨ لا توجد مخالفات مسجّلة لهذا المستخدم
                             </div>
                         )}
@@ -2086,18 +2344,18 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                             inappropriate: { label: 'محتوى غير لائق', color: '#dc2626', icon: '🚫' },
                                             spam: { label: 'سبام', color: '#a855f7', icon: '📢' },
                                             report: { label: 'بلاغ', color: '#3b82f6', icon: '🚩' },
-                                            other: { label: 'أخرى', color: '#6b7280', icon: '📌' }
+                                            other: { label: 'أخرى', color: 'var(--text-secondary)', icon: '📌' }
                                         };
                                         const tl = typeLabels[v.type] || typeLabels.other;
                                         return (
                                             <div key={v._id} style={{border:`1px solid ${tl.color}30`,borderRadius:12,padding:14,background:`${tl.color}08`}}>
                                                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:10,flexWrap:'wrap'}}>
                                                     <div>
-                                                        <span style={{background:tl.color,color:'#fff',padding:'3px 10px',borderRadius:20,fontSize:12,fontWeight:600}}>
+                                                        <span style={{background:tl.color,color: 'var(--text-on-brand)',padding:'3px 10px',borderRadius:20,fontSize:12,fontWeight:600}}>
                                                             {tl.icon} {tl.label}
                                                         </span>
                                                         {v.action && v.action !== 'none' && (
-                                                            <span style={{marginRight:8,background:'#f3f4f6',padding:'3px 10px',borderRadius:20,fontSize:12,color:'#374151'}}>
+                                                            <span style={{marginRight:8,background: 'var(--bg-subtle)',padding:'3px 10px',borderRadius:20,fontSize:12,color: 'var(--text-primary)'}}>
                                                                 {v.action === 'warning' && '⚠️ تحذير'}
                                                                 {v.action === 'restricted' && '🔒 تقييد'}
                                                                 {v.action === 'suspended' && '⛔ إيقاف'}
@@ -2108,21 +2366,21 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <span style={{fontSize:12,color:'#6b7280'}}>{formatDate(v.createdAt)}</span>
+                                                    <span style={{fontSize:12,color: 'var(--text-secondary)'}}>{formatDate(v.createdAt)}</span>
                                                 </div>
 
-                                                {v.reason && <div style={{marginTop:10,color:'#374151'}}><strong>السبب:</strong> {v.reason}</div>}
+                                                {v.reason && <div style={{marginTop:10,color: 'var(--text-primary)'}}><strong>السبب:</strong> {v.reason}</div>}
 
                                                 {/* الدليل */}
                                                 {v.evidence?.kind === 'message' && v.evidence.text && (
-                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
+                                                    <div style={{marginTop:10,padding:10,background: 'var(--bg-card)',borderRadius:8,border: '1px solid var(--border-color)'}}>
                                                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:6}}>
-                                                            <div style={{fontSize:11,color:'#6b7280'}}>📎 الدليل (رسالة):</div>
+                                                            <div style={{fontSize:11,color: 'var(--text-secondary)'}}>📎 الدليل (رسالة):</div>
                                                             {v.evidence.conversationId && onViewConversation && (
                                                                 <button
                                                                     onClick={() => onViewConversation(v.evidence.conversationId)}
                                                                     style={{
-                                                                        background:'#6366f1',color:'#fff',border:'none',
+                                                                        background:'#6366f1',color: 'var(--text-on-brand)',border:'none',
                                                                         padding:'4px 10px',borderRadius:6,fontSize:11,
                                                                         fontWeight:700,cursor:'pointer'
                                                                     }}
@@ -2134,27 +2392,27 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                         </div>
                                                         <div style={{color:'#b91c1c',fontWeight:500,direction:'rtl'}}>{v.evidence.text}</div>
                                                         {v.evidence.metadata?.matchedWords && (
-                                                            <div style={{marginTop:6,fontSize:11,color:'#6b7280'}}>
+                                                            <div style={{marginTop:6,fontSize:11,color: 'var(--text-secondary)'}}>
                                                                 الكلمات المرصودة: {v.evidence.metadata.matchedWords.join('، ')}
                                                             </div>
                                                         )}
                                                     </div>
                                                 )}
                                                 {v.evidence?.kind === 'name' && v.evidence.text && (
-                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
-                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 الاسم الأصلي (دليل):</div>
+                                                    <div style={{marginTop:10,padding:10,background: 'var(--bg-card)',borderRadius:8,border: '1px solid var(--border-color)'}}>
+                                                        <div style={{fontSize:11,color: 'var(--text-secondary)',marginBottom:4}}>📎 الاسم الأصلي (دليل):</div>
                                                         <div style={{color:'#7c3aed',fontWeight:600}}>{v.evidence.text}</div>
                                                     </div>
                                                 )}
                                                 {v.evidence?.kind === 'bio' && v.evidence.text && (
-                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
-                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:4}}>📎 النبذة الأصلية (دليل):</div>
+                                                    <div style={{marginTop:10,padding:10,background: 'var(--bg-card)',borderRadius:8,border: '1px solid var(--border-color)'}}>
+                                                        <div style={{fontSize:11,color: 'var(--text-secondary)',marginBottom:4}}>📎 النبذة الأصلية (دليل):</div>
                                                         <div style={{color:'#0e7490',direction:'rtl'}}>{v.evidence.text}</div>
                                                     </div>
                                                 )}
                                                 {v.evidence?.kind === 'photo' && v.evidence.photoPath && (
-                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb'}}>
-                                                        <div style={{fontSize:11,color:'#6b7280',marginBottom:6}}>📎 الصورة الأصلية (دليل محمي):</div>
+                                                    <div style={{marginTop:10,padding:10,background: 'var(--bg-card)',borderRadius:8,border: '1px solid var(--border-color)'}}>
+                                                        <div style={{fontSize:11,color: 'var(--text-secondary)',marginBottom:6}}>📎 الصورة الأصلية (دليل محمي):</div>
                                                         {evidenceBlobs[v._id] ? (
                                                             <img
                                                                 src={evidenceBlobs[v._id]}
@@ -2163,19 +2421,50 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                                 onClick={() => setLightboxImage(evidenceBlobs[v._id])}
                                                             />
                                                         ) : (
-                                                            <div style={{padding:20,background:'#f9fafb',borderRadius:8,textAlign:'center',color:'#9ca3af',fontSize:12}}>
+                                                            <div style={{padding:20,background: 'var(--bg-subtle)',borderRadius:8,textAlign:'center',color: 'var(--text-muted)',fontSize:12}}>
                                                                 جاري تحميل الصورة...
                                                             </div>
                                                         )}
                                                     </div>
                                                 )}
+                                                {/* البلاغ المرتبط + لقطته — كانت مخالفات «بلاغ» بلا دليل بصري */}
+                                                {v.evidence?.reportId && typeof v.evidence.reportId === 'object' && (
+                                                    <div className="violation-report-box">
+                                                        <div className="violation-report-head">
+                                                            <span>🚩 البلاغ المرتبط</span>
+                                                            <span className="violation-report-cat">
+                                                                {REPORT_CATEGORIES[v.evidence.reportId.category] || v.evidence.reportId.category}
+                                                            </span>
+                                                        </div>
+                                                        {v.evidence.reportId.reportedBy?.name && (
+                                                            <div className="violation-report-by">
+                                                                المُبلِّغ: {v.evidence.reportId.reportedBy.name}
+                                                                {v.evidence.reportId.reportedBy.halaId ? ` #${v.evidence.reportId.reportedBy.halaId}` : ''}
+                                                            </div>
+                                                        )}
+                                                        {v.evidence.reportId.description && (
+                                                            <div className="violation-report-desc">{v.evidence.reportId.description}</div>
+                                                        )}
+                                                        {v.evidence.reportId.screenshot ? (
+                                                            <img
+                                                                src={getImageUrl(v.evidence.reportId.screenshot)}
+                                                                alt="لقطة البلاغ"
+                                                                className="violation-report-shot"
+                                                                onClick={() => setLightboxImage(getImageUrl(v.evidence.reportId.screenshot))}
+                                                                title="اضغط للتكبير"
+                                                            />
+                                                        ) : (
+                                                            <div className="violation-report-noshot">لم يرفق المُبلِّغ لقطة</div>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {v.evidence?.kind === 'text' && v.evidence.text && v.type === 'other' && (
-                                                    <div style={{marginTop:10,padding:10,background:'#fff',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,color:'#374151'}}>
+                                                    <div style={{marginTop:10,padding:10,background: 'var(--bg-card)',borderRadius:8,border: '1px solid var(--border-color)',fontSize:13,color: 'var(--text-primary)'}}>
                                                         {v.evidence.text}
                                                     </div>
                                                 )}
 
-                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color:'#6b7280',flexWrap:'wrap'}}>
+                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color: 'var(--text-secondary)',flexWrap:'wrap'}}>
                                                     <span>المصدر: {({auto:'تلقائي',admin:'أدمن',user_report:'بلاغ',banned_words_filter:'فلتر كلمات',spam_filter:'فلتر سبام'})[v.source] || v.source}</span>
                                                     {v.admin?.name && <span>بواسطة: {v.admin.name}</span>}
                                                     {v.escalationLevel > 0 && <span>المستوى: {v.escalationLevel}</span>}
@@ -2202,7 +2491,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <>
                                 {/* تحذير البصمة */}
                                 {!relatedAccounts.hasFingerprint && !relatedAccounts.hasKeychain && (
-                                    <div style={{marginTop:16,padding:14,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:12,color:'#78350f'}}>
+                                    <div style={{marginTop:16,padding:14,background:'var(--tint-warning)',border:'1px solid #f59e0b',borderRadius:12,color: 'var(--text-warning)'}}>
                                         ⚠️ <strong>لا توجد بصمة جهاز لهذا المستخدم</strong> — لم يسجل دخول من التطبيق المحدّث.
                                         <div style={{fontSize:12,marginTop:4,color:'#92400e'}}>سيتم تحديث البصمة تلقائياً عند فتح المستخدم للتطبيق المحدّث.</div>
                                     </div>
@@ -2210,7 +2499,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
                                 {/* ⚠️ تحذير بصمة ضوضائية */}
                                 {relatedAccounts.noise?.fingerprintNoisy && (
-                                    <div style={{marginTop:12,padding:14,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:12,color:'#7f1d1d'}}>
+                                    <div style={{marginTop:12,padding:14,background:'var(--tint-danger)',border:'1px solid #ef4444',borderRadius:12,color: 'var(--text-danger)'}}>
                                         🚫 <strong>بصمة الجهاز ضوضائية (collision)</strong> — تطابق {relatedAccounts.noise.fingerprintMatchCount} حساب في النظام (الحد: {relatedAccounts.noise.threshold}).
                                         <div style={{fontSize:12,marginTop:4,color:'#991b1b'}}>
                                             لم نُدرج المطابقات بناءً على هذه البصمة لتجنب false positives (iOS Simulator / fallback hash).
@@ -2218,7 +2507,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     </div>
                                 )}
                                 {relatedAccounts.noise?.keychainNoisy && (
-                                    <div style={{marginTop:12,padding:14,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:12,color:'#7f1d1d'}}>
+                                    <div style={{marginTop:12,padding:14,background:'var(--tint-danger)',border:'1px solid #ef4444',borderRadius:12,color: 'var(--text-danger)'}}>
                                         🚫 <strong>Keychain Token ضوضائي (collision)</strong> — يطابق {relatedAccounts.noise.keychainMatchCount} حساب (الحد: {relatedAccounts.noise.threshold}).
                                         <div style={{fontSize:12,marginTop:4,color:'#991b1b'}}>
                                             لم نُدرج المطابقات بناءً على هذا التوكن لتجنب false positives (iCloud Keychain مشترك).
@@ -2296,20 +2585,20 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                             <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                                                                 <span style={{textDecoration: isBanned ? 'line-through' : 'none', color: isBanned ? '#991b1b' : 'inherit'}}>{u.name}</span>
                                                                 {isBanned && (
-                                                                    <span title={u.bannedWords?.banReason || ''} style={{background:'#dc2626',color:'#fff',padding:'3px 10px',borderRadius:10,fontSize:11,fontWeight:700}}>🚫 محظور</span>
+                                                                    <span title={u.bannedWords?.banReason || ''} style={{background:'#dc2626',color: 'var(--text-on-brand)',padding:'3px 10px',borderRadius:10,fontSize:11,fontWeight:700}}>🚫 محظور</span>
                                                                 )}
                                                                 {isSuspended && !isBanned && (
-                                                                    <span style={{background:'#fee2e2',color:'#991b1b',padding:'2px 8px',borderRadius:10,fontSize:11}}>⛔ معلّق</span>
+                                                                    <span style={{background:'var(--tint-danger)',color: 'var(--text-danger)',padding:'2px 8px',borderRadius:10,fontSize:11}}>⛔ معلّق</span>
                                                                 )}
                                                                 {isDeviceBanned && !isBanned && (
                                                                     <span title="هذا المستخدم هو صاحب الجهاز المحظور الأصلي" style={{background:'#f3e8ff',color:'#6b21a8',padding:'2px 8px',borderRadius:10,fontSize:11}}>📵 صاحب جهاز محظور</span>
                                                                 )}
                                                                 {isInactive && !isBanned && (
-                                                                    <span style={{background:'#f3f4f6',color:'#6b7280',padding:'2px 8px',borderRadius:10,fontSize:11}}>غير مفعّل</span>
+                                                                    <span style={{background: 'var(--bg-subtle)',color: 'var(--text-secondary)',padding:'2px 8px',borderRadius:10,fontSize:11}}>غير مفعّل</span>
                                                                 )}
                                                             </div>
-                                                            <div style={{fontSize:12,color:'#6b7280'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
-                                                            <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
+                                                            <div style={{fontSize:12,color: 'var(--text-secondary)'}}>{u.email} {u.halaId && `• ${u.halaId}`}</div>
+                                                            <div style={{fontSize:11,color: 'var(--text-muted)',marginTop:2}}>تسجيل: {formatDate(u.createdAt)}</div>
                                                         </div>
                                                         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                                                             {/* أزرار إجراءات سريعة inline */}
@@ -2318,12 +2607,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); handleQuickSuspendRelated(u._id, u.name); }}
                                                                         title="تعليق سريع 3 أيام"
-                                                                        style={{padding:'6px 10px',fontSize:12,background:'#fef3c7',border:'1px solid #f59e0b',borderRadius:8,color:'#78350f',cursor:'pointer'}}
+                                                                        style={{padding:'6px 10px',fontSize:12,background:'var(--tint-warning)',border:'1px solid #f59e0b',borderRadius:8,color: 'var(--text-warning)',cursor:'pointer'}}
                                                                     >⛔ تعليق</button>
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); handleQuickBanRelated(u._id, u.name); }}
                                                                         title="حظر نهائي + حظر الجهاز"
-                                                                        style={{padding:'6px 10px',fontSize:12,background:'#fee2e2',border:'1px solid #ef4444',borderRadius:8,color:'#7f1d1d',cursor:'pointer'}}
+                                                                        style={{padding:'6px 10px',fontSize:12,background:'var(--tint-danger)',border:'1px solid #ef4444',borderRadius:8,color: 'var(--text-danger)',cursor:'pointer'}}
                                                                     >🚫 حظر</button>
                                                                 </>
                                                             )}
@@ -2348,13 +2637,13 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                 <div
                                                     key={u._id}
                                                     onClick={() => onNavigateToUser && onNavigateToUser(u._id)}
-                                                    style={{display:'flex',alignItems:'center',gap:10,padding:10,background:'#f9fafb',borderRadius:10,fontSize:13,cursor:'pointer'}}
+                                                    style={{display:'flex',alignItems:'center',gap:10,padding:10,background: 'var(--bg-subtle)',borderRadius:10,fontSize:13,cursor:'pointer'}}
                                                     onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
                                                     onMouseLeave={e=>e.currentTarget.style.background='#f9fafb'}
                                                 >
                                                     <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt="" style={{width:32,height:32,borderRadius:'50%'}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
                                                     <span style={{flex:1}}>{u.name} • {u.email}</span>
-                                                    <span style={{fontSize:11,color:'#6b7280'}}>{formatDate(u.lastLogin)}</span>
+                                                    <span style={{fontSize:11,color: 'var(--text-secondary)'}}>{formatDate(u.lastLogin)}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -2374,7 +2663,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                 )}
 
                                 {relatedAccounts.uniqueRelated?.length === 0 && relatedAccounts.byIP?.length === 0 && relatedAccounts.byBannedDevice?.length === 0 && (relatedAccounts.hasFingerprint || relatedAccounts.hasKeychain) && (
-                                    <div style={{padding:40,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12,marginTop:16}}>
+                                    <div style={{padding:40,textAlign:'center',color: 'var(--text-secondary)',background: 'var(--bg-subtle)',borderRadius:12,marginTop:16}}>
                                         ✅ لم يتم العثور على حسابات مرتبطة لهذا المستخدم
                                     </div>
                                 )}
@@ -2387,7 +2676,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 {activeTab === 'mod-tools' && (
                     <div className="mod-tools-section">
                         <h3 style={{marginTop:0}}>🛡️ أدوات الإشراف — إرسال تنبيه رسمي</h3>
-                        <p style={{color:'#6b7280',fontSize:13,marginBottom:20}}>
+                        <p style={{color: 'var(--text-secondary)',fontSize:13,marginBottom:20}}>
                             التنبيه يظهر للمستخدم كـ <strong>Modal إجباري</strong> داخل التطبيق — لا يُغلق إلا بضغطه "فهمت"، وتُحفظ لحظة التأكيد في السجل.
                         </p>
 
@@ -2437,7 +2726,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <h4>📋 التنبيهات السابقة ({warningsList.length})</h4>
                             {warningsLoading && <div>جاري التحميل...</div>}
                             {!warningsLoading && warningsList.length === 0 && (
-                                <div style={{padding:24,textAlign:'center',color:'#6b7280',background:'#f9fafb',borderRadius:12}}>
+                                <div style={{padding:24,textAlign:'center',color: 'var(--text-secondary)',background: 'var(--bg-subtle)',borderRadius:12}}>
                                     لم يتم إرسال أي تنبيه رسمي لهذا المستخدم
                                 </div>
                             )}
@@ -2452,17 +2741,17 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         };
                                         const s = statusColors[w.status] || statusColors.active;
                                         return (
-                                            <div key={w._id} style={{padding:12,background:'#fff',border:'1px solid #e5e7eb',borderRadius:12}}>
+                                            <div key={w._id} style={{padding:12,background: 'var(--bg-card)',border: '1px solid var(--border-color)',borderRadius:12}}>
                                                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:10,flexWrap:'wrap'}}>
                                                     <div style={{flex:1}}>
                                                         <div style={{fontWeight:700,fontSize:14}}>{w.icon} {w.title}</div>
-                                                        <div style={{fontSize:13,color:'#4b5563',marginTop:4,lineHeight:1.5}}>{w.body}</div>
+                                                        <div style={{fontSize:13,color: 'var(--text-secondary)',marginTop:4,lineHeight:1.5}}>{w.body}</div>
                                                     </div>
                                                     <span style={{background:s.bg,color:s.text,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>
                                                         {s.label}
                                                     </span>
                                                 </div>
-                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color:'#6b7280',flexWrap:'wrap',justifyContent:'space-between'}}>
+                                                <div style={{marginTop:10,display:'flex',gap:10,fontSize:11,color: 'var(--text-secondary)',flexWrap:'wrap',justifyContent:'space-between'}}>
                                                     <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
                                                         <span>📤 {formatDate(w.sentAt)}</span>
                                                         {w.readAt && <span>👁️ قُرِئ: {formatDate(w.readAt)}</span>}
@@ -2643,7 +2932,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             {/* Reset monthly change limits (grant exception) */}
                             <button
                                 className="admin-action-btn"
-                                style={{ background: '#10b981', color: '#fff', border: 'none' }}
+                                style={{ background: '#10b981', color: 'var(--text-on-brand)', border: 'none' }}
                                 onClick={handleResetChangeLimits}
                                 disabled={actionLoading}
                                 title="تصفير الحد الشهري لتغيير الاسم + قيد الصورة وإشعار المستخدم"
@@ -2988,12 +3277,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         <div className="modal-body">
                             <div style={{
                                 padding: 12,
-                                background: '#fef3c7',
+                                background: 'var(--tint-warning)',
                                 border: '1px solid #f59e0b',
                                 borderRadius: 8,
                                 marginBottom: 14,
                                 fontSize: 13,
-                                color: '#78350f'
+                                color: 'var(--text-warning)'
                             }}>
                                 ℹ️ <strong>عقوبة أخف من التعليق:</strong> المستخدم يستطيع تسجيل الدخول والمحادثة،
                                 لكن حسابه لن يظهر في الاكتشاف والبحث، وستظهر صورته مبهمة واسمه مخفي لمن يراه.
@@ -3026,11 +3315,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                             style={{
                                                 padding: '6px 10px',
                                                 fontSize: 12,
-                                                border: '1px solid #e5e7eb',
+                                                border: '1px solid var(--border-color)',
                                                 background: hideReason.includes(r) ? '#fef3c7' : '#f9fafb',
                                                 borderRadius: 999,
                                                 cursor: 'pointer',
-                                                color: '#374151',
+                                                color: 'var(--text-primary)',
                                                 fontWeight: hideReason.includes(r) ? 600 : 400
                                             }}
                                         >
@@ -3045,10 +3334,10 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                 padding: '6px 10px',
                                                 fontSize: 12,
                                                 border: '1px dashed #ef4444',
-                                                background: '#fee2e2',
+                                                background: 'var(--tint-danger)',
                                                 borderRadius: 999,
                                                 cursor: 'pointer',
-                                                color: '#991b1b'
+                                                color: 'var(--text-danger)'
                                             }}
                                         >
                                             ✕ مسح
@@ -3090,7 +3379,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <button className="close-modal-btn" onClick={() => setShowViolationsModal(false)}>✕</button>
                         </div>
                         <div className="modal-body">
-                            <p style={{marginBottom: '12px', color: '#7f8c8d'}}>
+                            <p style={{marginBottom: '12px', color: 'var(--text-secondary)'}}>
                                 المخالفات الحالية: <strong>{user.bannedWords?.violations || 0}</strong>
                             </p>
                             <div className="form-group">
@@ -3194,14 +3483,14 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             {loadingNameHistory ? (
                                 <div style={{textAlign:'center',padding:'40px'}}>⏳ جاري التحميل...</div>
                             ) : !nameHistoryData ? (
-                                <div style={{textAlign:'center',padding:'40px',color:'#6b7280'}}>لا توجد بيانات</div>
+                                <div style={{textAlign:'center',padding:'40px',color: 'var(--text-secondary)'}}>لا توجد بيانات</div>
                             ) : (
                                 <div>
                                     {/* الإحصائيات */}
                                     <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:'10px',marginBottom:'18px'}}>
-                                        <div style={{padding:'10px',background:'#f3f4f6',borderRadius:'8px',textAlign:'center'}}>
-                                            <div style={{fontSize:'20px',fontWeight:'bold',color:'#1f2937'}}>{nameHistoryData.totalChanges}</div>
-                                            <div style={{fontSize:'11px',color:'#6b7280'}}>إجمالي التغييرات</div>
+                                        <div style={{padding:'10px',background: 'var(--bg-subtle)',borderRadius:'8px',textAlign:'center'}}>
+                                            <div style={{fontSize:'20px',fontWeight:'bold',color: 'var(--text-primary)'}}>{nameHistoryData.totalChanges}</div>
+                                            <div style={{fontSize:'11px',color: 'var(--text-secondary)'}}>إجمالي التغييرات</div>
                                         </div>
                                         <div style={{padding:'10px',background:'#dbeafe',borderRadius:'8px',textAlign:'center'}}>
                                             <div style={{fontSize:'20px',fontWeight:'bold',color:'#1e40af'}}>{nameHistoryData.stats.userInitiated}</div>
@@ -3225,7 +3514,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
                                     {/* السجل */}
                                     {nameHistoryData.history.length === 0 ? (
-                                        <div style={{textAlign:'center',padding:'24px',color:'#6b7280',background:'#f9fafb',borderRadius:'8px'}}>
+                                        <div style={{textAlign:'center',padding:'24px',color: 'var(--text-secondary)',background: 'var(--bg-subtle)',borderRadius:'8px'}}>
                                             لم يتم تسجيل أي تغييرات لهذا المستخدم
                                             <div style={{fontSize:'11px',marginTop:'6px'}}>
                                                 (السجل التفصيلي يبدأ من تاريخ تفعيل الميزة)
@@ -3255,7 +3544,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                                     fontSize:'10px',
                                                                     fontWeight:'bold',
                                                                     background: isAdmin ? '#f59e0b' : '#3b82f6',
-                                                                    color:'white'
+                                                                    color: 'var(--text-on-brand)'
                                                                 }}>
                                                                     {isAdmin ? '🛡️ أدمن' : '👤 المستخدم'}
                                                                 </span>
@@ -3265,17 +3554,17 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <span style={{fontSize:'11px',color:'#6b7280'}}>{dateStr}</span>
+                                                            <span style={{fontSize:'11px',color: 'var(--text-secondary)'}}>{dateStr}</span>
                                                         </div>
                                                         <div style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'14px'}}>
                                                             <span style={{color:'#dc2626',textDecoration:'line-through'}}>
                                                                 {entry.from || '(فارغ)'}
                                                             </span>
-                                                            <span style={{color:'#6b7280'}}>←</span>
+                                                            <span style={{color: 'var(--text-secondary)'}}>←</span>
                                                             <strong style={{color:'#16a34a'}}>{entry.to}</strong>
                                                         </div>
                                                         {entry.reason && (
-                                                            <div style={{marginTop:'6px',fontSize:'12px',color:'#6b7280',fontStyle:'italic'}}>
+                                                            <div style={{marginTop:'6px',fontSize:'12px',color: 'var(--text-secondary)',fontStyle:'italic'}}>
                                                                 السبب: {entry.reason}
                                                             </div>
                                                         )}
@@ -3609,12 +3898,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             {showWarningModal && selectedTemplate && (
                 <div className="modal-overlay" onClick={() => !actionLoading && setShowWarningModal(false)}>
                     <div className="modal-content" style={{maxWidth:540}} onClick={(e)=>e.stopPropagation()}>
-                        <div className="modal-header" style={{borderBottom:'1px solid #e5e7eb',paddingBottom:12}}>
+                        <div className="modal-header" style={{borderBottom: '1px solid var(--border-color)',paddingBottom:12}}>
                             <h3 style={{margin:0}}>{selectedTemplate.icon} {selectedTemplate.label}</h3>
                             <button className="close-btn" onClick={() => !actionLoading && setShowWarningModal(false)}>✕</button>
                         </div>
                         <div className="modal-body" style={{padding:'16px 0'}}>
-                            <div style={{padding:12,background:'#eff6ff',borderRadius:10,marginBottom:16,fontSize:13,color:'#1e40af'}}>
+                            <div style={{padding:12,background:'var(--tint-info)',borderRadius:10,marginBottom:16,fontSize:13,color: 'var(--text-info)'}}>
                                 💡 سيظهر التنبيه للمستخدم كـ <strong>Modal إجباري</strong> داخل التطبيق + Push notification + إشعار داخلي
                             </div>
 
@@ -3638,7 +3927,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     placeholder={selectedTemplate.key === 'custom' ? 'اكتب نص التنبيه...' : ''}
                                     style={{width:'100%',direction:'rtl'}}
                                 />
-                                <div style={{fontSize:11,color:'#6b7280',marginTop:4}}>
+                                <div style={{fontSize:11,color: 'var(--text-secondary)',marginTop:4}}>
                                     {selectedTemplate.key !== 'custom' ? 'يمكنك تعديل النص أو تركه كما هو' : 'مطلوب'}
                                 </div>
                             </div>

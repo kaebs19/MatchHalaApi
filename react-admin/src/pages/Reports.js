@@ -661,7 +661,7 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                             <button
                                                 onClick={() => handleCancelReport(report._id)}
                                                 className="action-btn"
-                                                style={{ background: '#f59e0b', color: '#fff' }}
+                                                style={{ background: '#f59e0b', color: 'var(--text-on-brand)' }}
                                                 title="إلغاء البلاغ + تنبيه المُبلِّغ بأنه لم يُثبَت مخالفة"
                                             >
                                                 ❌ إلغاء + تنبيه

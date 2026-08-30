@@ -780,6 +780,26 @@ export const dismissWarning = async (warningId) => {
     return response.data;
 };
 
+// ============ سجل الصور الشخصية + بلاغات المستخدم ============
+
+export const getUserPhotoHistory = async (userId) => {
+    const response = await api.get(`/users/${userId}/photo-history`);
+    return response.data;
+};
+
+// صور الأرشيف محمية (admin-only) — <img> لا يرسل التوكن، فنجلبها blob
+export const fetchPhotoHistoryBlob = async (userId, filename) => {
+    const response = await api.get(`/users/${userId}/photo-history-file/${filename}`, {
+        responseType: 'blob'
+    });
+    return URL.createObjectURL(response.data);
+};
+
+export const getUserReports = async (userId, params = {}) => {
+    const response = await api.get(`/users/${userId}/reports`, { params });
+    return response.data;
+};
+
 // Helper: رابط كامل لصورة دليل مخالفة (يحتاج auth — يُستخدم داخل <img src>)
 // ملاحظة: <img> العادي لا يرسل token، لذا نستخدم blob fetch + object URL
 export const fetchViolationEvidenceBlob = async (userId, filename) => {

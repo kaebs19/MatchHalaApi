@@ -527,7 +527,7 @@ function Conversations({ onViewUserDetail }) {
                                         className="conv-chat-action-btn"
                                         onClick={() => setQuickAddOpen(true)}
                                         title="إضافة كلمة محظورة يدوياً"
-                                        style={{ background: '#fee2e2', color: '#991b1b', border: '1.5px dashed #dc2626' }}
+                                        style={{ background: 'var(--tint-danger)', color: 'var(--text-danger)', border: '1.5px dashed #dc2626' }}
                                     >
                                         ➕ كلمة محظورة
                                     </button>
@@ -666,7 +666,7 @@ function Conversations({ onViewUserDetail }) {
                                                                             key={i}
                                                                             style={{
                                                                                 display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                                                background: bg, color: '#fff',
+                                                                                background: bg, color: 'var(--text-on-brand)',
                                                                                 padding: '2px 4px 2px 8px', borderRadius: 5,
                                                                                 fontSize: 11, fontWeight: 700
                                                                             }}
@@ -754,7 +754,7 @@ function Conversations({ onViewUserDetail }) {
                             position: 'fixed',
                             top: Math.min(msgMenu.y + 5, window.innerHeight - 160),
                             left: Math.min(msgMenu.x, window.innerWidth - 240),
-                            background: '#fff',
+                            background: 'var(--bg-card)',
                             borderRadius: 10,
                             boxShadow: '0 10px 30px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
                             minWidth: 220,
@@ -764,10 +764,10 @@ function Conversations({ onViewUserDetail }) {
                     >
                         <div style={{
                             padding: '10px 12px',
-                            background: '#f9fafb',
-                            borderBottom: '1px solid #e5e7eb',
+                            background: 'var(--bg-subtle)',
+                            borderBottom: '1px solid var(--border-color)',
                             fontSize: 11,
-                            color: '#6b7280',
+                            color: 'var(--text-secondary)',
                             fontWeight: 600,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -788,7 +788,7 @@ function Conversations({ onViewUserDetail }) {
                             style={{
                                 width: '100%', textAlign: 'right',
                                 padding: '11px 14px', border: 'none',
-                                background: '#fff', cursor: 'pointer',
+                                background: 'var(--bg-card)', cursor: 'pointer',
                                 fontSize: 13, fontWeight: 600,
                                 color: '#dc2626',
                                 display: 'flex', gap: 8, alignItems: 'center',
@@ -809,9 +809,9 @@ function Conversations({ onViewUserDetail }) {
                             style={{
                                 width: '100%', textAlign: 'right',
                                 padding: '11px 14px', border: 'none',
-                                background: '#fff', cursor: 'pointer',
+                                background: 'var(--bg-card)', cursor: 'pointer',
                                 fontSize: 13, fontWeight: 600,
-                                color: '#374151',
+                                color: 'var(--text-primary)',
                                 display: 'flex', gap: 8, alignItems: 'center'
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
@@ -831,13 +831,13 @@ function Conversations({ onViewUserDetail }) {
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
-                        style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 460, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
+                        style={{ background: 'var(--bg-card)', borderRadius: 14, padding: 22, maxWidth: 460, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                             <h3 style={{ margin: 0, color: '#dc2626' }}>➕ إضافة كلمة محظورة</h3>
                             <button onClick={() => setQuickAddOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: 22, cursor: 'pointer' }}>✕</button>
                         </div>
-                        <div style={{ marginBottom: 14, padding: 10, background: '#fef3c7', borderRadius: 8, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+                        <div style={{ marginBottom: 14, padding: 10, background: 'var(--tint-warning)', borderRadius: 8, fontSize: 12, color: 'var(--text-warning)', lineHeight: 1.6 }}>
                             <strong>نصيحة:</strong> انسخ النمط الذي تريد حظره من الرسالة (مثلاً "ت ل ج" أو "س ن ا ب") والصقه هنا. الكلمة ستُطبَّق على جميع المستخدمين فوراً.
                         </div>
                         <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 700 }}>الكلمة / النمط:</label>
@@ -874,7 +874,7 @@ function Conversations({ onViewUserDetail }) {
                             <option value="spam">سبام / ترويج / رقم تواصل</option>
                         </select>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button onClick={() => setQuickAddOpen(false)} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>إلغاء</button>
+                            <button onClick={() => setQuickAddOpen(false)} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: 'var(--bg-card)', cursor: 'pointer', fontWeight: 600 }}>إلغاء</button>
                             <button
                                 disabled={!quickAddText.trim()}
                                 onClick={() => {
@@ -885,7 +885,7 @@ function Conversations({ onViewUserDetail }) {
                                 style={{
                                     padding: '8px 22px', borderRadius: 8, border: 'none',
                                     background: quickAddText.trim() ? '#dc2626' : '#fca5a5',
-                                    color: '#fff', cursor: quickAddText.trim() ? 'pointer' : 'not-allowed',
+                                    color: 'var(--text-on-brand)', cursor: quickAddText.trim() ? 'pointer' : 'not-allowed',
                                     fontWeight: 700
                                 }}
                             >➕ إضافة</button>
@@ -907,7 +907,7 @@ function Conversations({ onViewUserDetail }) {
                     <button
                         onClick={(e) => { e.stopPropagation(); setImageViewer(null); }}
                         style={{
-                            position: 'absolute', top: 20, left: 20, background: '#fff', border: 'none',
+                            position: 'absolute', top: 20, left: 20, background: 'var(--bg-card)', border: 'none',
                             width: 40, height: 40, borderRadius: '50%', fontSize: 20, cursor: 'pointer'
                         }}
                         title="إغلاق"
@@ -917,7 +917,7 @@ function Conversations({ onViewUserDetail }) {
                             <button
                                 onClick={(e) => { e.stopPropagation(); onViewUserDetail(imageViewer.sender._id); setImageViewer(null); }}
                                 style={{
-                                    background: '#6366f1', color: '#fff', border: 'none',
+                                    background: '#6366f1', color: 'var(--text-on-brand)', border: 'none',
                                     padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer'
                                 }}
                                 title="عرض ملف المرسل"
@@ -928,7 +928,7 @@ function Conversations({ onViewUserDetail }) {
                             download
                             onClick={(e) => e.stopPropagation()}
                             style={{
-                                background: '#fff', padding: '8px 14px', borderRadius: 8,
+                                background: 'var(--bg-card)', padding: '8px 14px', borderRadius: 8,
                                 textDecoration: 'none', color: '#111', fontSize: 13, fontWeight: 700
                             }}
                             title="تنزيل الصورة"
@@ -975,7 +975,7 @@ function Conversations({ onViewUserDetail }) {
                         {/* User Actions */}
                         {actionConv.participants?.length > 0 && (
                             <div className="conv-modal-users-section">
-                                <h4 style={{margin: '16px 0 8px', fontSize: '14px', color: '#7f8c8d'}}>إجراءات المستخدمين</h4>
+                                <h4 style={{margin: '16px 0 8px', fontSize: '14px', color: 'var(--text-secondary)'}}>إجراءات المستخدمين</h4>
                                 {actionConv.participants.map((p, i) => (
                                     <div key={i} className="conv-modal-user-row">
                                         <span className="conv-modal-user-name">{p.name}</span>
