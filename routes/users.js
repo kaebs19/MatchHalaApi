@@ -2592,6 +2592,13 @@ router.delete('/:id/photo', protect, adminOnly, async (req, res) => {
             removedUrl = user.profileImage || '';
             if (removedUrl) {
                 evidenceResult = await movePhotoToViolations(user._id, removedUrl);
+                // ✅ يظهر في سجل الصور أيضاً — الملف عند مجلد المخالفات
+                const { archivePhoto } = require('../utils/photoHistory');
+                archivePhoto(user, removedUrl, {
+                    reason: 'admin_removed',
+                    by: req.user._id,
+                    alreadyArchivedPath: evidenceResult.publicUrl
+                });
             }
 
             user.profileImage = null;
@@ -2729,12 +2736,10 @@ router.put('/:id/profile-image', protect, adminOnly, upload.single('profileImage
         // معالجة الصورة بأحجام متعددة (thumbnail / medium / original)
         const processed = await processImage(req.file.path, { prefix: 'profile' });
 
-        // حذف الصورة الرئيسية القديمة (إن لم تكن افتراضية)
-        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
-            const oldImagePath = path.join(__dirname, '..', user.profileImage);
-            if (fs.existsSync(oldImagePath)) {
-                try { fs.unlinkSync(oldImagePath); } catch (e) { /* ignore */ }
-            }
+        // ✅ القديمة تُؤرشف لا تُحذف (سجل الصور الشخصية)
+        if (user.profileImage) {
+            const { archivePhoto } = require('../utils/photoHistory');
+            archivePhoto(user, user.profileImage, { reason: 'admin_removed', by: req.user._id });
         }
 
         // إزالة الصورة الرئيسية من photos[] (order:0) لمنع التكرار — تطابق نمط auth
@@ -3115,6 +3120,13 @@ router.get('/:id/violations', protect, adminOnly, async (req, res) => {
                 .limit(Math.min(parseInt(limit), 200))
                 .populate('admin', 'name email')
                 .populate('officialWarning', 'title body severity status acknowledgedAt')
+                // ✅ لقطة البلاغ تظهر داخل سجل المخالفات — كانت المخالفة
+                // من نوع «بلاغ» بلا دليل بصري رغم أن المُبلِّغ أرفق صورة
+                .populate({
+                    path: 'evidence.reportId',
+                    select: 'category description status screenshot createdAt reportedBy',
+                    populate: { path: 'reportedBy', select: 'name halaId' }
+                })
                 .lean(),
             Violation.countDocuments(filter)
         ]);
@@ -3645,6 +3657,139 @@ router.get('/:id/violation-evidence/:filename', protect, adminOnly, async (req, 
         res.sendFile(filePath);
     } catch (error) {
         console.error('violation evidence error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/photo-history
+// @desc    سجل الصور الشخصية السابقة (admin فقط)
+// @access  Private/Admin
+router.get('/:id/photo-history', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('name profileImage lastPhotoChange createdAt photoHistory')
+            .populate('photoHistory.by', 'name email')
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // الأحدث أولاً — الأرشيف يُدفع بالترتيب الزمني
+        const history = (user.photoHistory || [])
+            .slice()
+            .sort((a, b) => new Date(b.replacedAt || 0) - new Date(a.replacedAt || 0))
+            .map(e => ({
+                ...e,
+                // اسم الملف فقط — الصورة تُجلب عبر المسار المحمي أدناه
+                fileName: e.archivedPath ? e.archivedPath.split('/').pop() : null,
+                inViolations: !!(e.archivedPath && e.archivedPath.includes('/uploads/violations/'))
+            }));
+
+        res.json({
+            success: true,
+            data: {
+                current: {
+                    photo: user.profileImage || null,
+                    since: user.lastPhotoChange || user.createdAt || null
+                },
+                history,
+                total: history.length
+            }
+        });
+    } catch (error) {
+        console.error('photo history error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/photo-history-file/:filename
+// @desc    تقديم صورة من أرشيف الصور الشخصية (admin فقط)
+// @access  Private/Admin
+router.get('/:id/photo-history-file/:filename', protect, adminOnly, async (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const { id, filename } = req.params;
+
+        // حماية من path traversal
+        if (filename.includes('..') || filename.includes('/')) {
+            return res.status(400).json({ success: false, message: 'اسم ملف غير صالح' });
+        }
+
+        // الملف إمّا في أرشيف الصور أو في مجلد المخالفات (حذف إداري)
+        const candidates = [
+            path.join(__dirname, '..', 'uploads', 'photo-history', id, filename),
+            path.join(__dirname, '..', 'uploads', 'violations', id, filename)
+        ];
+        const filePath = candidates.find(p => fs.existsSync(p));
+        if (!filePath) {
+            return res.status(404).json({ success: false, message: 'الصورة غير موجودة' });
+        }
+
+        res.sendFile(filePath);
+    } catch (error) {
+        console.error('photo history file error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/users/:id/reports
+// @desc    بلاغات المستخدم — الواردة ضدّه والصادرة منه (admin فقط)
+// @access  Private/Admin
+router.get('/:id/reports', protect, adminOnly, async (req, res) => {
+    try {
+        const { limit = 50, skip = 0, direction = 'all', status } = req.query;
+        const userId = req.params.id;
+        const cap = Math.min(parseInt(limit) || 50, 200);
+        const offset = parseInt(skip) || 0;
+
+        const baseSelect = 'type category description status priority action screenshot createdAt resolvedAt reviewNotes cancelled';
+        const populate = [
+            { path: 'reportedBy', select: 'name halaId profileImage' },
+            { path: 'reportedUser', select: 'name halaId profileImage' }
+        ];
+
+        const buildQuery = (filter) => {
+            if (status) filter.status = status;
+            return Report.find(filter)
+                .sort({ createdAt: -1 })
+                .skip(offset)
+                .limit(cap)
+                .select(baseSelect)
+                .populate(populate)
+                .lean();
+        };
+
+        const wantAgainst = direction === 'all' || direction === 'against';
+        const wantBy = direction === 'all' || direction === 'by';
+
+        const [against, by, againstTotal, byTotal, byStatus] = await Promise.all([
+            wantAgainst ? buildQuery({ reportedUser: userId }) : [],
+            wantBy ? buildQuery({ reportedBy: userId }) : [],
+            Report.countDocuments({ reportedUser: userId }),
+            Report.countDocuments({ reportedBy: userId }),
+            Report.aggregate([
+                { $match: { reportedUser: require('mongoose').Types.ObjectId.createFromHexString(userId) } },
+                { $group: { _id: '$status', count: { $sum: 1 } } }
+            ])
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                against,
+                by,
+                totals: {
+                    against: againstTotal,
+                    by: byTotal,
+                    // نسبة البلاغات المقبولة ضدّه — مؤشر مصداقية سريع
+                    byStatus: byStatus.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {})
+                }
+            }
+        });
+    } catch (error) {
+        console.error('user reports error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

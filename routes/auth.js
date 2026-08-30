@@ -1259,10 +1259,11 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
                 }
             }
         }
-        // حذف profileImage القديمة
-        if (user.profileImage && !user.profileImage.includes('/defaults/')) {
-            const oldImagePath = path.join(__dirname, '..', user.profileImage);
-            if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+        // ✅ الصورة القديمة تُؤرشف لا تُحذف — كانت تُمحى فينكر المستخدم
+        // صورته السابقة ولا يبقى دليل عند البلاغ عليها
+        if (user.profileImage) {
+            const { archivePhoto } = require('../utils/photoHistory');
+            archivePhoto(user, user.profileImage, { reason: 'user_replaced' });
         }
 
         // ✅ تحديث profileImage فقط (بدون تكرار في photos[])
@@ -1337,13 +1338,10 @@ router.delete('/profile-image', protect, async (req, res) => {
 
         const oldImage = user.profileImage;
 
-        // حذف الملف الفعلي (مش مخالفة، ارسي من المستخدم نفسه)
-        if (!oldImage.includes('/defaults/')) {
-            const filePath = path.join(__dirname, '..', oldImage);
-            if (fs.existsSync(filePath)) {
-                try { fs.unlinkSync(filePath); } catch(e) { /* ignore */ }
-            }
-        }
+        // ✅ تُؤرشف بدل الحذف — الحذف من المستخدم نفسه ليس مخالفة، لكنه
+        // أشيع طريقة للتنصّل من صورة بُلِّغ عنها
+        const { archivePhoto } = require('../utils/photoHistory');
+        archivePhoto(user, oldImage, { reason: 'user_deleted' });
 
         user.profileImage = null;
         user.lastPhotoChange = new Date();

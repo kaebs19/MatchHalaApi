@@ -387,6 +387,23 @@ const userSchema = new mongoose.Schema({
     // ✅ سجل تواريخ تغيير الاسم في آخر 30 يوم (3 مرات كحد أقصى) — للـ rate limit
     nameChangeHistory: { type: [Date], default: [] },
     // ✅ سجل تفصيلي لتغييرات الاسم — للـ audit في لوحة التحكم
+    // ✅ سجل الصور الشخصية — كل صورة استُبدلت أو حُذفت مع نسخة محفوظة.
+    // بدونه كان الملف يُمحى عند التغيير، فينكر المستخدم صورته السابقة
+    // ولا يبقى للأدمن دليل.
+    photoHistory: [{
+        photo: { type: String, default: null },          // المسار العام وقت الاستخدام
+        archivedPath: { type: String, default: null },   // النسخة المحمية (null = حُذفت لضغط القرص)
+        addedAt: { type: Date, default: null },          // متى صارت صورة الحساب (تقريبي)
+        replacedAt: { type: Date, default: Date.now },   // متى استُبدلت/حُذفت
+        reason: {
+            type: String,
+            enum: ['user_replaced', 'user_deleted', 'admin_removed', 'system'],
+            default: 'user_replaced'
+        },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        purged: { type: Boolean, default: false }        // حُذف الملف بعد تجاوز حدّ الاحتفاظ
+    }],
+
     nameHistory: [{
         from: { type: String, default: '' },          // الاسم القديم
         to: { type: String, required: true },          // الاسم الجديد
@@ -560,12 +577,24 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
     }
 };
 
+// سجل الصور سجلّ إداري بحت — يُقدَّم عبر /users/:id/photo-history (lean)
+// فقط. حجبه هنا يشمل toObject() في مسارات التطبيق (auth/me, swipes, …)
+// دون أن يمسّ استعلامات الأدمن lean.
+userSchema.set('toObject', {
+    transform: (doc, ret) => {
+        delete ret.photoHistory;
+        return ret;
+    }
+});
+
 // دالة لإرجاع بيانات المستخدم بدون كلمة المرور
 userSchema.methods.toJSON = function() {
     const user = this.toObject();
     delete user.password;
     delete user.resetPasswordToken;
     delete user.resetPasswordExpire;
+    // سجل الصور سجلّ إداري — يُقدَّم عبر /users/:id/photo-history (lean) فقط
+    delete user.photoHistory;
     return user;
 };
 

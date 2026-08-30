@@ -283,6 +283,14 @@ app.use('/uploads/violations', (req, res) => {
         message: 'هذا المحتوى محمي — الوصول مسموح للإدارة فقط عبر لوحة التحكم'
     });
 });
+// ⚠️ أرشيف الصور الشخصية السابقة محمي — الوصول عبر
+//    /api/users/:id/photo-history-file/* (admin-only)
+app.use('/uploads/photo-history', (req, res) => {
+    return res.status(403).json({
+        success: false,
+        message: 'هذا المحتوى محمي — الوصول مسموح للإدارة فقط عبر لوحة التحكم'
+    });
+});
 // ⚠️ أرشيف الصور المؤقتة المنتهية — يُنقل إليه الملف فور انتهاء المشاهدة.
 //    الرابط يُبطَل للمستخدمين نهائياً، والأدمن يصل عبر
 //    /api/mobile/admin/expired-photo/:messageId أو /api/messages/:id/expired-photo
