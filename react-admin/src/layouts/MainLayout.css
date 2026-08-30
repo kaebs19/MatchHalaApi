@@ -12,7 +12,7 @@
 }
 
 .top-header {
-    background: white;
+    background: var(--bg-card);
     padding: 20px 30px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     display: flex;
@@ -27,8 +27,8 @@
 /* زر فتح القائمة (hamburger) — يظهر على الجوال فقط */
 .sidebar-toggle-btn {
     display: none;
-    background: #f5f5f5;
-    color: #333;
+    background: var(--bg-subtle);
+    color: var(--text-primary);
     border: none;
     width: 42px;
     height: 42px;
@@ -57,10 +57,41 @@
     opacity: 1;
 }
 
+.header-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
 .top-header h1 {
     margin: 0;
-    color: #333;
+    color: var(--text-heading);
     font-size: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* فتات الطريق — الصفحة الأب لصفحات التفاصيل */
+.breadcrumb-parent {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    text-align: start;
+    transition: color 0.15s ease;
+}
+
+.breadcrumb-parent:hover {
+    color: var(--color-primary);
+}
+
+.breadcrumb-parent::after {
+    content: ' ›';
 }
 
 .header-actions {
@@ -71,8 +102,8 @@
 
 .header-icon-btn {
     position: relative;
-    background: #f5f5f5;
-    color: #333;
+    background: var(--bg-subtle);
+    color: var(--text-primary);
     border: none;
     padding: 10px 15px;
     border-radius: 10px;
@@ -194,7 +225,7 @@
 }
 
 .notification-modal {
-    background: white;
+    background: var(--bg-card);
     border-radius: 20px;
     padding: 30px;
     width: 90%;
@@ -218,11 +249,11 @@
 .notification-modal .modal-header {
     margin-bottom: 25px;
     padding-bottom: 15px;
-    border-bottom: 2px solid #f0f0f0;
+    border-bottom: 2px solid var(--border-light);
 }
 
 .close-modal-btn {
-    background: #f5f5f5;
+    background: var(--bg-subtle);
     border: none;
     width: 36px;
     height: 36px;
@@ -249,7 +280,7 @@
 .notification-modal .modal-actions {
     justify-content: flex-end;
     padding-top: 20px;
-    border-top: 2px solid #f0f0f0;
+    border-top: 2px solid var(--border-light);
 }
 
 /* Responsive */
@@ -348,15 +379,15 @@
     transition: all 0.3s;
     outline: none;
     direction: rtl;
-    color: #1f2937;
+    color: var(--text-heading);
 }
 .search-input::placeholder {
-    color: #9ca3af;
+    color: var(--text-muted);
 }
 
 .search-input:focus {
     border-color: #2F9E85;
-    background: white;
+    background: var(--bg-card);
     box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.12);
     width: 320px;
 }
@@ -375,7 +406,7 @@
     align-items: center;
     justify-content: center;
     transition: background 0.2s;
-    color: #666;
+    color: var(--text-secondary);
 }
 
 .search-clear-btn:hover {
@@ -387,7 +418,7 @@
     left: 36px;
     width: 16px;
     height: 16px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border-color);
     border-top: 2px solid #2F9E85;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
@@ -402,13 +433,13 @@
     top: calc(100% + 6px);
     right: 0;
     left: 0;
-    background: white;
+    background: var(--bg-card);
     border-radius: 14px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
     max-height: 360px;
     overflow-y: auto;
     z-index: 200;
-    border: 1px solid #eee;
+    border: 1px solid var(--border-light);
     animation: dropdownIn 0.2s ease;
 }
 
@@ -442,7 +473,7 @@
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
-    border: 2px solid #eee;
+    border: 2px solid var(--border-light);
 }
 
 .search-result-info {
@@ -455,7 +486,7 @@
 .search-result-name {
     font-weight: 600;
     font-size: 14px;
-    color: #333;
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -463,7 +494,7 @@
 
 .search-result-email {
     font-size: 12px;
-    color: #999;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -485,7 +516,7 @@
 .search-no-results {
     padding: 20px;
     text-align: center;
-    color: #999;
+    color: var(--text-muted);
     font-size: 14px;
 }
 
@@ -493,7 +524,7 @@
 .notify-target-toggle {
     display: flex;
     gap: 8px;
-    background: #f5f5f5;
+    background: var(--bg-subtle);
     border-radius: 10px;
     padding: 4px;
 }
@@ -507,29 +538,29 @@
     font-size: 13px;
     font-weight: 600;
     background: transparent;
-    color: #666;
+    color: var(--text-secondary);
     transition: all 0.2s;
 }
 
 .notify-target-btn.active {
-    background: white;
-    color: #333;
+    background: var(--bg-card);
+    color: var(--text-primary);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .notify-target-btn:hover:not(.active) {
-    color: #333;
+    color: var(--text-primary);
 }
 
 .notify-selected-user {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #e8f5e9;
+    background: var(--tint-success);
     padding: 10px 14px;
     border-radius: 10px;
     font-size: 14px;
-    color: #2e7d32;
+    color: var(--text-success);
     font-weight: 500;
 }
 
@@ -560,13 +591,13 @@
     top: calc(100% + 4px);
     right: 0;
     left: 0;
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
     max-height: 220px;
     overflow-y: auto;
     z-index: 10;
-    border: 1px solid #eee;
+    border: 1px solid var(--border-light);
 }
 
 /* ============ Responsive adjustments ============ */

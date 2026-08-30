@@ -1,37 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Sidebar from '../components/Sidebar';
-import Dashboard from '../pages/Dashboard';
-import UsersManagement from '../pages/UsersManagement';
-import Conversations from '../pages/Conversations';
-import Swipes from '../pages/Swipes';
-import Matches from '../pages/Matches';
-import UserDetail from '../pages/UserDetail';
-import ReportsManagement from '../pages/ReportsManagement';
-import ConversationMessages from '../pages/ConversationMessages';
-import Stats from '../pages/Stats';
-import Settings from '../pages/Settings';
-import Profile from '../pages/Profile';
-import Notifications from '../pages/Notifications';
-import VerificationRequests from '../pages/VerificationRequests';
-import SuperLikes from '../pages/SuperLikes';
-import Analytics from '../pages/Analytics';
-import BannedWords from '../pages/BannedWords';
-import Appeals from '../pages/Appeals';
-import Newcomers from '../pages/Newcomers';
-import BannedDevices from '../pages/BannedDevices';
-import MaintenancePage from '../pages/MaintenancePage';
-import SensitiveContent from '../pages/SensitiveContent';
+
+// تحميل كسول — كل صفحة chunk مستقل، فلا يحمّل الأدمن ٢٤ صفحة ليرى واحدة.
+const Dashboard = lazy(() => import('../pages/Dashboard'));
+const UsersManagement = lazy(() => import('../pages/UsersManagement'));
+const Conversations = lazy(() => import('../pages/Conversations'));
+const Swipes = lazy(() => import('../pages/Swipes'));
+const Matches = lazy(() => import('../pages/Matches'));
+const UserDetail = lazy(() => import('../pages/UserDetail'));
+const ReportsManagement = lazy(() => import('../pages/ReportsManagement'));
+const ConversationMessages = lazy(() => import('../pages/ConversationMessages'));
+const Stats = lazy(() => import('../pages/Stats'));
+const Settings = lazy(() => import('../pages/Settings'));
+const Profile = lazy(() => import('../pages/Profile'));
+const Notifications = lazy(() => import('../pages/Notifications'));
+const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
+const SuperLikes = lazy(() => import('../pages/SuperLikes'));
+const Analytics = lazy(() => import('../pages/Analytics'));
+const BannedWords = lazy(() => import('../pages/BannedWords'));
+const Appeals = lazy(() => import('../pages/Appeals'));
+const Newcomers = lazy(() => import('../pages/Newcomers'));
+const BannedDevices = lazy(() => import('../pages/BannedDevices'));
+const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
+const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
+
 import { getReportsStats, getAppealsStats, getNotifications, searchUsers, getNewcomersStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
+import { pageTitle, getPage } from '../config/pages';
+import { useRoute, navigate, goBack } from '../router';
+import ThemeToggle from '../components/ThemeToggle';
+import PageLoader from '../components/PageLoader';
 import './MainLayout.css';
 
 function MainLayout({ onLogout, user: initialUser }) {
-    const [currentPage, setCurrentPage] = useState('dashboard');
-    const [selectedUserId, setSelectedUserId] = useState(null);
-    const [previousPage, setPreviousPage] = useState('users');
-    const [viewingConversationFromReport, setViewingConversationFromReport] = useState(null);
+    // الرابط هو مصدر الحقيقة للصفحة الحالية — تحديث الصفحة وزر الرجوع
+    // والروابط المباشرة كلها تعمل، وكانت كلها معطّلة مع useState وحده.
+    const { page: currentPage, param: routeParam } = useRoute();
+    const setCurrentPage = (p) => navigate(p);
+    const selectedUserId = currentPage === 'user-detail' ? routeParam : null;
+    const viewingConversationFromReport = currentPage === 'report-conversation' ? routeParam : null;
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
     const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
     const [newcomersCount, setNewcomersCount] = useState(0);
@@ -74,13 +83,27 @@ function MainLayout({ onLogout, user: initialUser }) {
             fetchAppealsCount();
             fetchNotificationsCount();
             fetchNewcomersCount();
-            const interval = setInterval(() => {
+            // لا فائدة من استطلاع أربعة مسارات كل دقيقة والتبويب مخفي —
+            // نوقفه عند الإخفاء ونحدّث مرة واحدة عند العودة.
+            const refreshAll = () => {
                 fetchReportsCount();
                 fetchAppealsCount();
                 fetchNotificationsCount();
                 fetchNewcomersCount();
-            }, 60000); // Update every minute
-            return () => clearInterval(interval);
+            };
+            let interval = setInterval(refreshAll, 60000);
+            const onVisibility = () => {
+                clearInterval(interval);
+                if (!document.hidden) {
+                    refreshAll();
+                    interval = setInterval(refreshAll, 60000);
+                }
+            };
+            document.addEventListener('visibilitychange', onVisibility);
+            return () => {
+                clearInterval(interval);
+                document.removeEventListener('visibilitychange', onVisibility);
+            };
         }
     }, [user]);
 
@@ -114,7 +137,7 @@ function MainLayout({ onLogout, user: initialUser }) {
         const sendBrowserNotif = (title, body) => {
             if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
                 try {
-                    const n = new Notification(title, { body, icon: '/favicon.svg', tag: 'appeal' });
+                    const n = new Notification(title, { body, icon: `${process.env.PUBLIC_URL}/favicon.svg`, tag: 'appeal' });
                     n.onclick = () => { window.focus(); n.close(); };
                 } catch (e) {}
             }
@@ -329,76 +352,18 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
-    const handleSendNotification = async (e) => {
-        e.preventDefault();
-
-        if (!notificationData.title || !notificationData.body) {
-            showToast('العنوان والمحتوى مطلوبان', 'error');
-            return;
-        }
-
-        try {
-            setSending(true);
-            const token = localStorage.getItem('token');
-
-            const response = await fetch(`${config.API_URL}/notifications/send`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(notificationData)
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                showToast('تم إرسال الإشعار بنجاح', 'success');
-                setShowNotificationModal(false);
-                setNotificationData({
-                    title: '',
-                    body: '',
-                    type: 'general',
-                    recipients: 'all',
-                    link: '',
-                    image: ''
-                });
-            } else {
-                showToast(data.message || 'فشل إرسال الإشعار', 'error');
-            }
-        } catch (error) {
-            console.error('خطأ في إرسال الإشعار:', error);
-            showToast('فشل إرسال الإشعار', 'error');
-        } finally {
-            setSending(false);
-        }
-    };
-
     const handleUserUpdate = (updatedUser) => {
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
     };
 
-    const handleViewUserDetail = (userId) => {
-        setSelectedUserId(userId);
-        setPreviousPage(currentPage);
-        setCurrentPage('user-detail');
-    };
+    const handleViewUserDetail = (userId) => navigate('user-detail', userId);
 
-    const handleBackFromUserDetail = () => {
-        setSelectedUserId(null);
-        setCurrentPage(previousPage);
-    };
+    const handleBackFromUserDetail = () => goBack('users');
 
-    const handleViewConversation = (conversationId) => {
-        setViewingConversationFromReport(conversationId);
-        setCurrentPage('report-conversation');
-    };
+    const handleViewConversation = (conversationId) => navigate('report-conversation', conversationId);
 
-    const handleBackFromReportConversation = () => {
-        setViewingConversationFromReport(null);
-        setCurrentPage('reports');
-    };
+    const handleBackFromReportConversation = () => goBack('reports');
 
     const renderPage = () => {
         switch (currentPage) {
@@ -483,28 +448,17 @@ function MainLayout({ onLogout, user: initialUser }) {
                     >
                         ☰
                     </button>
-                    <h1>
-                        {currentPage === 'dashboard' && '📊 لوحة التحكم'}
-                        {(currentPage === 'users' || currentPage === 'premium-users') && '👥 إدارة المستخدمين'}
-                        {currentPage === 'conversations' && '💬 المحادثات'}
-                        {currentPage === 'swipes' && '👆 Swipes'}
-                        {currentPage === 'matches' && '💕 التطابقات'}
-                        {currentPage === 'reports' && '⚠️ البلاغات'}
-                        {currentPage === 'stats' && '📈 الإحصائيات'}
-                        {currentPage === 'settings' && '⚙️ الإعدادات'}
-                        {currentPage === 'profile' && '👤 الملف الشخصي'}
-                        {currentPage === 'notifications' && '🔔 الإشعارات'}
-                        {currentPage === 'verification-requests' && '✅ طلبات التوثيق'}
-                        {currentPage === 'analytics' && '🔍 التحليلات'}
-                        {currentPage === 'super-likes' && '⚡ Super Likes'}
-                        {currentPage === 'user-detail' && '👤 تفاصيل المستخدم'}
-                        {currentPage === 'report-conversation' && '💬 رسائل المحادثة'}
-                        {currentPage === 'appeals' && '📋 المراجعات'}
-                        {currentPage === 'newcomers' && '🆕 الحسابات الجديدة'}
-                        {currentPage === 'banned-devices' && '📵 الأجهزة المحظورة'}
-                        {currentPage === 'banned-words' && '🚫 الكلمات المحظورة'}
-                        {currentPage === 'maintenance' && '🔧 وضع الصيانة'}
-                    </h1>
+                    <div className="header-title">
+                        {getPage(currentPage).parent && (
+                            <button
+                                className="breadcrumb-parent"
+                                onClick={() => setCurrentPage(getPage(currentPage).parent)}
+                            >
+                                {pageTitle(getPage(currentPage).parent)}
+                            </button>
+                        )}
+                        <h1>{pageTitle(currentPage)}</h1>
+                    </div>
                     <div className="header-actions">
                         {/* Global Search Bar */}
                         <div className="global-search-container" ref={searchRef}>
@@ -602,6 +556,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                             </button>
                         )}
 
+                        <ThemeToggle />
+
                         <button onClick={onLogout} className="logout-btn">
                             تسجيل الخروج 🚪
                         </button>
@@ -609,7 +565,9 @@ function MainLayout({ onLogout, user: initialUser }) {
                 </header>
 
                 <div className="page-content">
-                    {renderPage()}
+                    <Suspense fallback={<PageLoader />}>
+                        {renderPage()}
+                    </Suspense>
                 </div>
             </div>
 

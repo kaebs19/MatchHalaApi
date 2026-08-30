@@ -49,7 +49,7 @@ function Login({ onLogin }) {
         <div className="login-container">
             <div className="login-box">
                 <div className="logo">
-                    <img src="/app-logo-v2.png" alt="ماتش هلا" className="logo-image" />
+                    <img src={`${process.env.PUBLIC_URL}/app-logo-v2.png`} alt="ماتش هلا" className="logo-image" />
                     <h1>ماتش هلا</h1>
                     <p>لوحة التحكم</p>
                 </div>

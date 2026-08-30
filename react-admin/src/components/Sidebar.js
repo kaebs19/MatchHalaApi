@@ -1,84 +1,11 @@
 import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
+import { navItems } from '../config/pages';
 import './Sidebar.css';
 
 function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {}, isOpen = false, onClose }) {
-    const menuItems = [
-        {
-            id: 'dashboard',
-            name: 'لوحة التحكم',
-            icon: '📊',
-            adminOnly: false
-        },
-        {
-            id: 'users',
-            name: 'إدارة المستخدمين',
-            icon: '👥',
-            adminOnly: true
-        },
-        {
-            id: 'conversations',
-            name: 'المحادثات',
-            icon: '💬',
-            adminOnly: true
-        },
-        {
-            id: 'reports',
-            name: 'البلاغات',
-            icon: '⚠️',
-            adminOnly: true
-        },
-        {
-            id: 'appeals',
-            name: 'المراجعات',
-            icon: '📋',
-            adminOnly: true
-        },
-        {
-            id: 'newcomers',
-            name: 'الحسابات الجديدة',
-            icon: '🆕',
-            adminOnly: true
-        },
-        {
-            id: 'banned-devices',
-            name: 'الأجهزة المحظورة',
-            icon: '📵',
-            adminOnly: true
-        },
-        {
-            id: 'analytics',
-            name: 'التحليلات',
-            icon: '🔍',
-            adminOnly: true
-        },
-        {
-            id: 'stats',
-            name: 'الإحصائيات',
-            icon: '📈',
-            adminOnly: true
-        },
-        {
-            id: 'banned-words',
-            name: 'الكلمات المحظورة',
-            icon: '🚫',
-            adminOnly: true
-        },
-        {
-            id: 'sensitive-content',
-            name: 'المحتوى الحساس',
-            icon: '🔞',
-            adminOnly: true
-        },
-        {
-            id: 'settings',
-            name: 'الإعدادات',
-            icon: '⚙️',
-            adminOnly: true
-        }
-    ];
-
     const isAdmin = user?.role === 'admin';
+    const menuItems = navItems(isAdmin);
 
     // تمييز العنصر الصحيح حتى عند التنقل من Dashboard بمعرّف قديم
     const isActive = (itemId) => {
@@ -91,19 +18,14 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
         <div className={`sidebar ${isOpen ? 'open' : ''}`}>
             <button className="sidebar-close-btn" onClick={onClose} aria-label="إغلاق القائمة">✕</button>
             <div className="sidebar-header" onClick={() => onPageChange('dashboard')} style={{ cursor: 'pointer' }}>
-                <img src="/app-logo-v2.png" alt="ماتش هلا" className="sidebar-logo" />
+                <img src={`${process.env.PUBLIC_URL}/app-logo-v2.png`} alt="ماتش هلا" className="sidebar-logo" />
                 <h2>ماتش هلا</h2>
                 <p>لوحة التحكم</p>
             </div>
 
             <nav className="sidebar-nav">
                 {menuItems.map((item) => {
-                    // إخفاء العناصر المخصصة للأدمن من المستخدمين العاديين
-                    if (item.adminOnly && !isAdmin) {
-                        return null;
-                    }
-
-                    const badgeCount = badges[item.id] || 0;
+                    const badgeCount = badges[item.badge || item.id] || 0;
                     return (
                         <button
                             key={item.id}
@@ -112,7 +34,7 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
                             disabled={item.disabled}
                         >
                             <span className="nav-icon">{item.icon}</span>
-                            <span className="nav-name">{item.name}</span>
+                            <span className="nav-name">{item.title}</span>
                             {badgeCount > 0 && (
                                 <span className="nav-badge">{badgeCount > 99 ? '99+' : badgeCount}</span>
                             )}
