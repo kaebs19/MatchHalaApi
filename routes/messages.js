@@ -63,10 +63,46 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
         // عدد الرسائل الكلي
         const total = await Message.countDocuments(filter);
 
+        // ✅ وسم الرسائل المخالفة — المخالفات تُخزَّن في FlaggedMessage و
+        // Violation لا داخل Message، فكانت شارة «مخالف» وفلتر المخالفات
+        // في اللوحة لا يعملان إطلاقاً (الرد لا يحمل الحقل أصلاً)
+        const messageIds = messages.map(m => m._id);
+        const FlaggedMessage = require('../models/FlaggedMessage');
+        const Violation = require('../models/Violation');
+        const [flags, violations] = await Promise.all([
+            FlaggedMessage.find({ message: { $in: messageIds } })
+                .select('message matchedWords status action originalContent')
+                .lean(),
+            Violation.find({ 'evidence.messageId': { $in: messageIds } })
+                .select('evidence.messageId type reason action')
+                .lean()
+        ]);
+
+        const flagsByMessage = new Map(flags.map(f => [String(f.message), f]));
+        const violationsByMessage = new Map(violations.map(v => [String(v.evidence?.messageId), v]));
+
+        const decorated = messages.map(m => {
+            const obj = withExpiredPhotoForAdmin(m);
+            const flag = flagsByMessage.get(String(obj._id));
+            const violation = violationsByMessage.get(String(obj._id));
+            if (flag || violation) {
+                obj.hasBannedWords = true;
+                obj.bannedWordsFound = flag?.matchedWords || [];
+                obj.flagInfo = {
+                    status: flag?.status || null,
+                    action: flag?.action || violation?.action || null,
+                    originalContent: flag?.originalContent || null,
+                    violationType: violation?.type || null,
+                    violationReason: violation?.reason || null
+                };
+            }
+            return obj;
+        });
+
         res.json({
             success: true,
             data: {
-                messages: messages.map(withExpiredPhotoForAdmin),
+                messages: decorated,
                 currentPage: page,
                 totalPages: Math.ceil(total / limit),
                 totalMessages: total
