@@ -53,6 +53,17 @@
         min-height: 44px;
     }
 
+    /* أزرار الرأس والشرائح مستثناة — ٤٤px تجعل الرأس شريطاً ضخماً */
+    .header-actions button,
+    .conv-filter-chip,
+    .conv-msg-filter,
+    .ms-tab,
+    .ms-jump,
+    .ms-toggle,
+    .tab-btn {
+        min-height: 0;
+    }
+
     /* ── النوافذ المنبثقة: ورقة من الأسفل بدل مربّع مقصوص ── */
     .modal-content,
     .modal-box {
@@ -93,6 +104,110 @@
     .growth-day {
         font-size: 10px;
     }
+
+
+    /* ── الجداول: الاسم يبقى ظاهراً أثناء التمرير الأفقي ── */
+    .data-table th,
+    .data-table td,
+    .users-table th,
+    .users-table td {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .data-table tbody td:first-child,
+    .users-table tbody td:first-child {
+        position: sticky;
+        inset-inline-start: 0;
+        background: var(--bg-card);
+        z-index: 2;
+    }
+
+    .data-table thead th:first-child {
+        position: sticky;
+        inset-inline-start: 0;
+        background: var(--bg-subtle);
+        z-index: 3;
+    }
+
+    /* رأس جدول المستخدمين متدرّج اللون — الخلية الثابتة تأخذ لوناً صلباً
+       من التدرّج نفسه، وإلا بدت شفافة يمرّ المحتوى تحتها */
+    .users-table thead th:first-child {
+        position: sticky;
+        inset-inline-start: 0;
+        background: var(--color-primary);
+        z-index: 3;
+    }
+
+    .table-container,
+    .data-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
+
+    /* ── تبويبات صفحة المستخدم: شريط أفقي بدل تكدّس عمودي ── */
+    .tabs,
+    .page-tabs,
+    .user-detail-tabs {
+        display: flex;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        gap: 6px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar,
+    .page-tabs::-webkit-scrollbar,
+    .user-detail-tabs::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    /* ── شبكات البطاقات: عمود واحد بدل أعمدة مضغوطة ── */
+    .stats-grid,
+    .info-grid,
+    .photos-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+    }
+
+    /* ── المحادثات: الدردشة تملأ الشاشة، والقائمة تختفي ── */
+    .conv-page {
+        /* dvh يستبعد شريط المتصفح المتحرك على الجوال */
+        height: calc(100dvh - 190px);
+        min-height: 380px;
+    }
+
+    .conv-chat-header {
+        padding: 10px 12px;
+    }
+
+    .conv-chat-quick-actions .conv-chat-user-btn,
+    .conv-chat-quick-actions .conv-chat-action-btn {
+        min-height: 38px;
+    }
+
+    /* شريط الأدلة: عناصر أصغر ولمس أسهل */
+    .media-strip-track { gap: 8px; }
+
+    /* الفقاعة تتّسع على الشاشات الضيقة */
+    .cm-column { max-width: 86%; }
+    .conv-msg-bubble { max-width: 88vw; }
+
+    /* ── تفاصيل المستخدم: الرأس يتكدّس بترتيب ── */
+    .user-detail-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    /* ── لا يفيض شيء خارج الشاشة ── */
+    .page-content { padding: 0; }
+    .page-header { flex-wrap: wrap; gap: 10px; }
 
     /* ── لا تمرير أفقي للصفحة نفسها مهما اتّسع محتواها ── */
     body {

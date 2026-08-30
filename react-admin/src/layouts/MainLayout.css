@@ -297,9 +297,11 @@
     }
 
     .top-header {
-        padding: 12px 16px;
+        /* الرأس كان يبلغ ١٨٠px على الجوال (عنوان + بحث + أزرار) فيبتلع
+           ربع الشاشة ويخفي رؤوس الصفحات الملتصقة تحته */
+        padding: 8px 12px;
         flex-wrap: wrap;
-        row-gap: 10px;
+        row-gap: 6px;
     }
 
     .top-header h1 {
@@ -311,10 +313,14 @@
     /* شريط الإجراءات ينزل لصف كامل ويلتفّ */
     .header-actions {
         width: 100%;
-        flex-wrap: wrap;
-        gap: 10px;
+        flex-wrap: nowrap;
+        gap: 6px;
         justify-content: flex-start;
+        overflow-x: auto;
+        scrollbar-width: none;
     }
+
+    .header-actions::-webkit-scrollbar { display: none; }
 
     .global-search-container {
         flex: 1 1 100%;
@@ -327,8 +333,21 @@
     }
 
     .header-icon-btn {
-        padding: 8px 12px;
-        font-size: 18px;
+        padding: 6px 10px;
+        font-size: 16px;
+        min-height: 38px;
+        flex-shrink: 0;
+    }
+
+    .logout-btn {
+        min-height: 38px;
+        padding: 6px 12px;
+        font-size: 13px;
+        flex-shrink: 0;
+    }
+
+    .search-input {
+        padding: 8px 34px 8px 12px;
     }
 
     .logout-btn {

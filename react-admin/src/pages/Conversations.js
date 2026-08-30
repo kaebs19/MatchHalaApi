@@ -16,6 +16,7 @@ import {
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
+import ConversationMediaStrip from '../components/ConversationMediaStrip';
 import socketService from '../services/socket';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
 import config from '../config';
@@ -51,6 +52,35 @@ function Conversations({ onViewUserDetail }) {
     const [quickAddText, setQuickAddText] = useState('');
     const [quickAddCategory, setQuickAddCategory] = useState('other');
     const [msgMenu, setMsgMenu] = useState(null);            // ✅ {message, x, y}
+
+    // ── تصفّح الوسائط والأدلة داخل لوحة المحادثة ──
+    const [msgFilter, setMsgFilter] = useState('all');        // all | flagged | images | audio
+    const [highlightedMsg, setHighlightedMsg] = useState(null);
+    const highlightTimer = React.useRef(null);
+
+    const imageMessages = React.useMemo(() => messages.filter(m => m.type === 'image' && !m.isDeleted), [messages]);
+    const audioMessages = React.useMemo(() => messages.filter(m => m.type === 'audio' && !m.isDeleted), [messages]);
+    const flaggedMessages = React.useMemo(() => messages.filter(m => m.hasBannedWords), [messages]);
+
+    const visibleMessages = React.useMemo(() => {
+        if (msgFilter === 'flagged') return messages.filter(m => m.hasBannedWords);
+        if (msgFilter === 'images') return messages.filter(m => m.type === 'image');
+        if (msgFilter === 'audio') return messages.filter(m => m.type === 'audio');
+        return messages;
+    }, [messages, msgFilter]);
+
+    const jumpToMessage = (messageId) => {
+        setMsgFilter('all');
+        setHighlightedMsg(messageId);
+        if (highlightTimer.current) clearTimeout(highlightTimer.current);
+        highlightTimer.current = setTimeout(() => setHighlightedMsg(null), 2600);
+        setTimeout(() => {
+            const el = document.getElementById(`conv-msg-${messageId}`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 80);
+    };
+
+    useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
 
     // State - الإجراءات
     const [showActionsModal, setShowActionsModal] = useState(false);
@@ -538,6 +568,36 @@ function Conversations({ onViewUserDetail }) {
                             </div>
                         </div>
 
+                        {/* شريط الوسائط والأدلة + فلاتر */}
+                        <ConversationMediaStrip
+                            images={imageMessages}
+                            audios={audioMessages}
+                            flagged={flaggedMessages}
+                            onJump={jumpToMessage}
+                            onZoom={setImageViewer}
+                        />
+
+                        {(flaggedMessages.length > 0 || imageMessages.length > 0 || audioMessages.length > 0) && (
+                            <div className="conv-msg-filters">
+                                {[
+                                    { id: 'all', label: '📋 الكل', count: messages.length },
+                                    { id: 'flagged', label: '⚠️ مخالف', count: flaggedMessages.length },
+                                    { id: 'images', label: '📷 صور', count: imageMessages.length },
+                                    { id: 'audio', label: '🎙️ صوتية', count: audioMessages.length }
+                                ].map(chip => (
+                                    chip.count === 0 && chip.id !== 'all' ? null : (
+                                        <button
+                                            key={chip.id}
+                                            className={`conv-msg-filter cf-${chip.id} ${msgFilter === chip.id ? 'active' : ''}`}
+                                            onClick={() => setMsgFilter(chip.id)}
+                                        >
+                                            {chip.label} <span>({chip.count})</span>
+                                        </button>
+                                    )
+                                ))}
+                            </div>
+                        )}
+
                         {/* الرسائل */}
                         <div className="conv-chat-messages">
                             {messagesLoading ? (
@@ -555,9 +615,12 @@ function Conversations({ onViewUserDetail }) {
                                             <button disabled={msgPage <= 1} onClick={() => loadMessages(msgPage - 1, msgSearch)}>رسائل أحدث</button>
                                         </div>
                                     )}
-                                    {messages.map((msg, idx) => {
+                                    {visibleMessages.length === 0 && (
+                                        <div className="conv-chat-no-msg"><p>لا رسائل تطابق هذا الفلتر</p></div>
+                                    )}
+                                    {visibleMessages.map((msg, idx) => {
                                         const showDate = idx === 0 ||
-                                            formatDate(msg.createdAt) !== formatDate(messages[idx - 1]?.createdAt);
+                                            formatDate(msg.createdAt) !== formatDate(visibleMessages[idx - 1]?.createdAt);
                                         const senderName = msg.sender?.name || 'مستخدم محذوف';
                                         const isP1 = msg.sender?._id === selectedConv.participants?.[0]?._id;
 
@@ -568,7 +631,10 @@ function Conversations({ onViewUserDetail }) {
                                                         <span>{formatDate(msg.createdAt)}</span>
                                                     </div>
                                                 )}
-                                                <div className={`conv-msg ${isP1 ? 'right' : 'left'} ${msg.isDeleted ? 'deleted' : ''} ${msg.hasBannedWords ? 'flagged' : ''}`}>
+                                                <div
+                                                    id={`conv-msg-${msg._id}`}
+                                                    className={`conv-msg ${isP1 ? 'right' : 'left'} ${msg.isDeleted ? 'deleted' : ''} ${msg.hasBannedWords ? 'flagged' : ''} ${highlightedMsg === msg._id ? 'highlighted' : ''}`}
+                                                >
                                                     <img
                                                         className="conv-msg-avatar"
                                                         src={msg.sender?.profileImage ? getImageUrl(msg.sender.profileImage) : getDefaultAvatar(senderName)}
