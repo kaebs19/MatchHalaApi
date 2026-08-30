@@ -2,7 +2,10 @@
 .conversation-messages-page {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 120px);
+    /* الشريط العلوي والفلاتر يقتطعان من الطول، فتصير منطقة الرسائل
+       شريحة رفيعة — الحل: الرسائل تأخذ ما تبقّى (flex:1 + min-height:0)
+       وبقية المناطق لا تنكمش */
+    height: calc(100vh - 100px);
     background: var(--bg-subtle);
     border-radius: 12px;
     overflow: hidden;
@@ -10,9 +13,10 @@
 
 /* Messages Header */
 .messages-header {
-    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
-    color: white;
-    padding: 20px;
+    background: var(--gradient-primary);
+    color: #fff;
+    padding: 14px 20px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 20px;
@@ -56,7 +60,7 @@
     min-width: 300px;
 }
 
-.search-input {
+.conversation-messages-page .search-input {
     width: 100%;
     padding: 10px 15px;
     border: 2px solid rgba(255, 255, 255, 0.3);
@@ -67,11 +71,11 @@
     transition: all 0.3s;
 }
 
-.search-input::placeholder {
+.conversation-messages-page .search-input::placeholder {
     color: rgba(255, 255, 255, 0.7);
 }
 
-.search-input:focus {
+.conversation-messages-page .search-input:focus {
     outline: none;
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
@@ -79,9 +83,12 @@
 
 /* Messages Container */
 .messages-container {
-    flex: 1;
+    flex: 1 1 auto;
+    /* لا تنزل عن هذا مهما كبر الشريط العلوي — تصير الصفحة قابلة للتمرير
+       بدل أن تنضغط الدردشة إلى شريحة */
+    min-height: 300px;
     overflow-y: auto;
-    padding: 20px;
+    padding: var(--space-4);
     background: var(--bg-subtle);
 }
 
@@ -679,4 +686,285 @@
 
 .audio-message-bubble .audio-speed-btn:hover {
     background: rgba(102, 126, 234, 0.25);
+}
+
+/* ============================================
+   رأس المحادثة — المشاركان والإحصاءات
+   ============================================ */
+.conv-parties {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.conv-party {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    padding: 6px var(--space-3);
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    min-width: 200px;
+    flex: 1 1 200px;
+    transition: transform 0.15s ease;
+}
+
+.conv-party:hover { transform: translateY(-1px); }
+
+.conv-party-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.conv-party-info { flex: 1; min-width: 0; }
+
+.conv-party-name {
+    font-weight: 700;
+    font-size: var(--font-size-md);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.conv-party-badges {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.conv-party-badge {
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.conv-party-badge.ok { background: var(--tint-success); color: var(--text-success); }
+.conv-party-badge.warn { background: var(--tint-warning); color: var(--text-warning); }
+.conv-party-badge.danger { background: var(--tint-danger); color: var(--text-danger); }
+
+.conv-stats {
+    display: flex;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.conv-stats .stat-danger { color: var(--text-danger); }
+
+/* ============================================
+   شرائط الفلتر
+   ============================================ */
+.conv-filters {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.conv-filter-chip {
+    padding: 4px 12px;
+    border-radius: var(--radius-xl);
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.conv-filter-chip:hover { border-color: var(--color-primary); }
+.conv-filter-chip .cf-count { opacity: 0.7; }
+
+.conv-filter-chip.active { color: #fff; border-color: transparent; }
+.conv-filter-chip.cf-all.active { background: var(--color-primary); }
+.conv-filter-chip.cf-flagged.active { background: var(--color-danger); }
+.conv-filter-chip.cf-images.active { background: var(--color-info); }
+.conv-filter-chip.cf-audio.active { background: #8b5cf6; }
+
+.conv-addword-btn {
+    margin-inline-start: auto;
+    padding: 5px 12px;
+    border-radius: var(--radius-xl);
+    border: 1.5px dashed var(--color-danger);
+    background: var(--tint-danger);
+    color: var(--text-danger);
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* ============================================
+   فقاعات الرسائل
+   ============================================ */
+.cm-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-end;
+    margin-bottom: var(--space-3);
+    border-radius: var(--radius-md);
+    transition: background 0.4s ease;
+}
+
+.cm-row.grouped { margin-bottom: var(--space-1); }
+.cm-row.side-right { flex-direction: row-reverse; }
+
+/* تظليل مؤقّت عند القفز من الشريط العلوي */
+.cm-row.highlighted {
+    background: var(--tint-warning);
+    box-shadow: 0 0 0 3px var(--color-warning);
+}
+
+.cm-avatar-slot { width: 32px; flex-shrink: 0; }
+
+.cm-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-full);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.cm-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.cm-column {
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+}
+
+.cm-row.side-right .cm-column { align-items: flex-end; }
+.cm-row.side-left .cm-column { align-items: flex-start; }
+
+.cm-sender {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 2px;
+    padding: 0 var(--space-1);
+    cursor: pointer;
+}
+
+.cm-bubble {
+    padding: var(--space-2) var(--space-3);
+    border-radius: 12px;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+    word-break: break-word;
+    cursor: pointer;
+}
+
+.cm-row.side-right .cm-bubble { border-end-end-radius: 4px; }
+.cm-row.side-left .cm-bubble { border-end-start-radius: 4px; }
+
+.cm-bubble.deleted {
+    background: var(--bg-subtle);
+    cursor: default;
+}
+
+.cm-bubble.flagged {
+    background: var(--tint-danger);
+    color: var(--text-danger);
+    border: 2px solid var(--color-danger);
+}
+
+.cm-flag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    background: var(--color-danger);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: var(--space-1);
+    cursor: pointer;
+}
+
+.cm-text { font-size: var(--font-size-md); line-height: 1.5; }
+
+.cm-deleted-text { color: var(--text-secondary); font-size: var(--font-size-sm); }
+
+.cm-note { font-size: var(--font-size-xs); opacity: 0.7; }
+
+.cm-expired-badge {
+    display: inline-block;
+    background: #7c3aed;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: var(--space-1);
+}
+
+.cm-image {
+    max-width: 240px;
+    max-height: 240px;
+    border-radius: var(--radius-sm);
+    cursor: zoom-in;
+    margin-top: var(--space-1);
+    display: block;
+}
+
+.cm-meta {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: 2px;
+    padding: 0 var(--space-1);
+}
+
+.cm-time { font-size: 10px; color: var(--text-muted); }
+
+.cm-delete-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    opacity: 0.5;
+    padding: 0;
+}
+
+.cm-delete-btn:hover { opacity: 1; }
+
+@media (max-width: 768px) {
+    .cm-column { max-width: 84%; }
+}
+
+
+/* المناطق العلوية ثابتة الارتفاع — لا تقتطع من منطقة الرسائل */
+.conv-parties,
+.conv-filters,
+.message-input-container,
+.messages-pagination {
+    flex-shrink: 0;
 }

@@ -1,0 +1,243 @@
+/* شريط الوسائط والأدلة أعلى الدردشة */
+.media-strip {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.media-strip-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px var(--space-4);
+}
+
+.media-strip-tabs {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.ms-tab {
+    padding: 5px 12px;
+    border-radius: var(--radius-xl);
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ms-tab:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ms-tab:not(:disabled):hover {
+    border-color: var(--color-primary);
+}
+
+.ms-count {
+    opacity: 0.7;
+    font-weight: 600;
+}
+
+.ms-tab.active.ms-images { background: var(--tint-info); color: var(--text-info); border-color: currentColor; }
+.ms-tab.active.ms-audio { background: var(--tint-purple); color: var(--text-purple); border-color: currentColor; }
+.ms-tab.active.ms-flagged { background: var(--tint-danger); color: var(--text-danger); border-color: currentColor; }
+
+.ms-toggle {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    width: 28px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+/* المسار الأفقي — التمرير داخله لا يجرّ الصفحة */
+.media-strip-track {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-4) var(--space-2);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+}
+
+.ms-empty {
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    padding: var(--space-3);
+}
+
+.ms-item {
+    flex: 0 0 auto;
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+/* ── الصور ── */
+.ms-item-image {
+    position: relative;
+    width: 72px;
+}
+
+.ms-item-image img,
+.ms-thumb-missing {
+    width: 72px;
+    height: 72px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    border: 1px solid var(--border-color);
+    cursor: zoom-in;
+    display: block;
+}
+
+.ms-thumb-missing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    font-size: 10px;
+    text-align: center;
+    cursor: default;
+}
+
+.ms-badge {
+    position: absolute;
+    top: 4px;
+    inset-inline-start: 4px;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.ms-badge-expired {
+    background: var(--gradient-deep-purple);
+    color: #fff;
+}
+
+.ms-badge-flag {
+    inset-inline-start: auto;
+    inset-inline-end: 4px;
+    background: var(--color-danger);
+    color: #fff;
+}
+
+.ms-jump {
+    width: 100%;
+    margin-top: 3px;
+    padding: 2px 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ms-jump:hover {
+    background: var(--bg-hover);
+    color: var(--color-primary);
+}
+
+/* ── الصوتيات ── */
+.ms-item-audio {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px var(--space-3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+    min-width: 170px;
+}
+
+.ms-item-audio:hover {
+    border-color: var(--text-purple);
+}
+
+.ms-audio-icon { font-size: 18px; }
+
+.ms-audio-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ms-audio-sender {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ms-audio-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* ── المخالفات ── */
+.ms-item-flagged {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px var(--space-3);
+    border: 1px solid var(--tint-danger-strong);
+    border-radius: var(--radius-md);
+    background: var(--tint-danger);
+    max-width: 230px;
+    min-width: 170px;
+}
+
+.ms-flag-words {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.ms-flag-word {
+    background: var(--color-danger);
+    color: #fff;
+    padding: 1px 7px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.ms-flag-text {
+    font-size: var(--font-size-xs);
+    color: var(--text-danger);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.ms-flag-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+    .ms-item-image,
+    .ms-item-image img,
+    .ms-thumb-missing { width: 76px; }
+    .ms-item-image img,
+    .ms-thumb-missing { height: 76px; }
+}

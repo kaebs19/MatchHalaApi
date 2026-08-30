@@ -3,6 +3,7 @@ import { getConversationMessages, deleteMessage, getConversationById, sendMessag
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AudioMessageBubble from '../components/AudioMessageBubble';
+import ConversationMediaStrip from '../components/ConversationMediaStrip';
 import socketService from '../services/socket';
 import notificationService from '../services/notifications';
 import { getImageUrl, getMessagePhotoUrl } from '../config';
@@ -54,9 +55,39 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         return sorted;
     }, [messages, filter]);
 
-    const flaggedCount = messages.filter(m => m.hasBannedWords).length;
-    const imagesCount = messages.filter(m => m.type === 'image').length;
-    const audioCount = messages.filter(m => m.type === 'audio').length;
+    // قوائم الشريط العلوي — بترتيب زمني صاعد مثل الدردشة
+    const byTime = React.useMemo(
+        () => [...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)),
+        [messages]
+    );
+    const imageMessages = React.useMemo(() => byTime.filter(m => m.type === 'image' && !m.isDeleted), [byTime]);
+    const audioMessages = React.useMemo(() => byTime.filter(m => m.type === 'audio' && !m.isDeleted), [byTime]);
+    const flaggedMessages = React.useMemo(() => byTime.filter(m => m.hasBannedWords), [byTime]);
+
+    const flaggedCount = flaggedMessages.length;
+    const imagesCount = imageMessages.length;
+    const audioCount = audioMessages.length;
+
+    // القفز من الشريط إلى الرسالة في الدردشة + تظليل مؤقّت
+    const [highlightedId, setHighlightedId] = useState(null);
+    const highlightTimerRef = useRef(null);
+
+    const jumpToMessage = (messageId) => {
+        // الفلتر النشط قد يكون مُخفياً للرسالة — نعيده للكل أولاً
+        setFilter('all');
+        setHighlightedId(messageId);
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = setTimeout(() => setHighlightedId(null), 2600);
+        // بعد إعادة الرسم
+        setTimeout(() => {
+            const el = document.getElementById(`msg-${messageId}`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 80);
+    };
+
+    useEffect(() => () => {
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    }, []);
 
     // ─── ✅ ميزة: إضافة كلمة لقائمة الكلمات المحظورة من شارة الكلمة ───
     const [addedWords, setAddedWords] = useState({});  // { word: 'pending' | 'added' | 'duplicate' }
@@ -185,7 +216,10 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         try {
             const response = await getConversationById(conversationId);
             if (response.success) {
-                setConversation(response.data);
+                // الرد يغلّف المحادثة داخل data.conversation — كان يُخزَّن الغلاف
+                // نفسه، فلا participants ولا عنوان: بطاقتا المشاركَين لا تظهران
+                // وكل الرسائل تُرسم في جهة واحدة (sideForSender يعيد 'right' دوماً)
+                setConversation(response.data?.conversation || response.data);
             }
         } catch (err) {
             console.error('خطأ في جلب معلومات المحادثة:', err);
@@ -348,153 +382,94 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 </div>
             </div>
 
-            {/* ✅ B: رأس المحادثة — المشاركَان + إحصائيات */}
+            {/* رأس المحادثة — المشاركَان + إحصائيات */}
             {(participantA || participantB) && (
-                <div style={{
-                    display: 'flex',
-                    gap: 12,
-                    padding: '12px 16px',
-                    background: 'linear-gradient(135deg, #f9fafb, #f3f4f6)',
-                    borderBottom: '1px solid var(--border-color)',
-                    alignItems: 'center',
-                    flexWrap: 'wrap'
-                }}>
+                <div className="conv-parties">
                     {[participantA, participantB].filter(Boolean).map((p, idx) => {
                         const violations = (p.warnings?.totalCount || 0) + (p.bannedWords?.violationCount || 0) + (p.externalPromo?.violations || 0);
-                        const isHigh = violations >= 5;
                         const side = idx === 0 ? 'right' : 'left';
                         const accentColor = sideColors[side].accent;
                         return (
                             <div
                                 key={p._id}
+                                className="conv-party"
+                                style={{ borderColor: accentColor }}
                                 onClick={() => onViewUser && onViewUser(p._id)}
-                                style={{
-                                    display: 'flex',
-                                    gap: 10,
-                                    padding: '8px 12px',
-                                    background: 'var(--bg-card)',
-                                    border: `2px solid ${accentColor}`,
-                                    borderRadius: 12,
-                                    cursor: 'pointer',
-                                    minWidth: 200,
-                                    flex: '1 1 200px',
-                                    alignItems: 'center'
-                                }}
                                 title="عرض الملف الشخصي"
                             >
                                 <img
+                                    className="conv-party-avatar"
                                     src={p.profileImage ? getImageUrl(p.profileImage) : `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name || '?')}&background=${accentColor.slice(1)}&color=fff`}
                                     alt={p.name}
-                                    style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
                                     onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=?&background=ccc`; }}
                                 />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <div className="conv-party-info">
+                                    <div className="conv-party-name">
                                         {p.name || 'مستخدم محذوف'}
-                                        {p.isPremium && <span style={{ marginInlineStart: 4 }}>⭐</span>}
+                                        {p.isPremium && <span> ⭐</span>}
                                     </div>
-                                    <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    <div className="conv-party-badges">
                                         {violations > 0 ? (
-                                            <span style={{
-                                                background: isHigh ? '#fee2e2' : '#fef3c7',
-                                                color: isHigh ? '#991b1b' : '#92400e',
-                                                padding: '1px 6px',
-                                                borderRadius: 6,
-                                                fontWeight: 700
-                                            }}>
+                                            <span className={`conv-party-badge ${violations >= 5 ? 'danger' : 'warn'}`}>
                                                 ⚠️ {violations} مخالفة
                                             </span>
                                         ) : (
-                                            <span style={{ background: 'var(--tint-success)', color: 'var(--text-success)', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
-                                                ✓ نظيف
-                                            </span>
+                                            <span className="conv-party-badge ok">✓ نظيف</span>
                                         )}
                                         {p.suspension?.isSuspended && (
-                                            <span style={{ background: 'var(--tint-danger)', color: 'var(--text-danger)', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
-                                                🔒 موقوف
-                                            </span>
+                                            <span className="conv-party-badge danger">🔒 موقوف</span>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         );
                     })}
-                    <div style={{
-                        display: 'flex',
-                        gap: 14,
-                        padding: '8px 14px',
-                        background: 'var(--bg-card)',
-                        borderRadius: 12,
-                        border: '1px solid var(--border-color)',
-                        fontSize: 12,
-                        flexWrap: 'wrap'
-                    }}>
+                    <div className="conv-stats">
                         <div><strong>{messages.length}</strong> رسالة</div>
-                        {flaggedCount > 0 && <div style={{ color: '#dc2626' }}><strong>{flaggedCount}</strong> ⚠️ مخالفة</div>}
+                        {flaggedCount > 0 && <div className="stat-danger"><strong>{flaggedCount}</strong> ⚠️ مخالفة</div>}
                         {imagesCount > 0 && <div><strong>{imagesCount}</strong> 📷 صورة</div>}
                         {audioCount > 0 && <div><strong>{audioCount}</strong> 🎙️ صوتية</div>}
                     </div>
                 </div>
             )}
 
-            {/* ✅ E: شرائط الفلتر + زر إضافة كلمة محظورة */}
-            <div style={{
-                display: 'flex',
-                gap: 6,
-                padding: '8px 16px',
-                background: 'var(--bg-card)',
-                borderBottom: '1px solid var(--border-color)',
-                flexWrap: 'wrap',
-                alignItems: 'center'
-            }}>
+            {/* شريط الوسائط والأدلة — صور/صوتيات/مخالفات في مكان واحد */}
+            <ConversationMediaStrip
+                images={imageMessages}
+                audios={audioMessages}
+                flagged={flaggedMessages}
+                onJump={jumpToMessage}
+                onZoom={setZoomImage}
+            />
+
+            {/* شرائط الفلتر + زر إضافة كلمة محظورة */}
+            <div className="conv-filters">
                 {[
-                    { id: 'all', label: '📋 الكل', count: messages.length, color: '#6366f1' },
-                    { id: 'flagged', label: '⚠️ مخالف', count: flaggedCount, color: '#dc2626' },
-                    { id: 'images', label: '📷 صور', count: imagesCount, color: '#3b82f6' },
-                    { id: 'audio', label: '🎙️ صوتية', count: audioCount, color: '#8b5cf6' }
+                    { id: 'all', label: '📋 الكل', count: messages.length },
+                    { id: 'flagged', label: '⚠️ مخالف', count: flaggedCount },
+                    { id: 'images', label: '📷 صور', count: imagesCount },
+                    { id: 'audio', label: '🎙️ صوتية', count: audioCount }
                 ].map(chip => {
-                    const active = filter === chip.id;
                     if (chip.count === 0 && chip.id !== 'all') return null;
                     return (
                         <button
                             key={chip.id}
+                            className={`conv-filter-chip cf-${chip.id} ${filter === chip.id ? 'active' : ''}`}
                             onClick={() => setFilter(chip.id)}
-                            style={{
-                                padding: '4px 12px',
-                                borderRadius: 16,
-                                border: `1.5px solid ${active ? chip.color : '#e5e7eb'}`,
-                                background: active ? chip.color: 'var(--text-on-brand)',
-                                color: active ? '#fff' : '#374151',
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s'
-                            }}
                         >
-                            {chip.label} <span style={{ opacity: 0.7 }}>({chip.count})</span>
+                            {chip.label} <span className="cf-count">({chip.count})</span>
                         </button>
                     );
                 })}
 
-                {/* ✅ زر دائم لإضافة كلمة يدوياً (حتى لو الرسالة غير مكشوفة) */}
-                <div style={{ marginInlineStart: 'auto' }}>
-                    <button
-                        onClick={() => setQuickAddOpen(true)}
-                        style={{
-                            padding: '5px 12px',
-                            borderRadius: 16,
-                            border: '1.5px dashed #dc2626',
-                            background: 'var(--tint-danger)',
-                            color: 'var(--text-danger)',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                        }}
-                        title="إضافة كلمة/نمط محظور يدوياً (للرسائل التي لم يلتقطها الفلتر تلقائياً)"
-                    >
-                        ➕ إضافة كلمة محظورة
-                    </button>
-                </div>
+                {/* زر دائم لإضافة كلمة يدوياً (حتى لو الرسالة غير مكشوفة) */}
+                <button
+                    className="conv-addword-btn"
+                    onClick={() => setQuickAddOpen(true)}
+                    title="إضافة كلمة/نمط محظور يدوياً (للرسائل التي لم يلتقطها الفلتر تلقائياً)"
+                >
+                    ➕ إضافة كلمة محظورة
+                </button>
             </div>
 
             {/* ✅ Message Context Menu — ضغط على رسالة → خيارات */}
@@ -691,43 +666,33 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             <span>{formatDate(message.createdAt)}</span>
                                         </div>
                                     )}
-                                    {/* ─── Bubble Row (left/right) ─── */}
-                                    <div style={{
-                                        display: 'flex',
-                                        flexDirection: side === 'right' ? 'row-reverse' : 'row',
-                                        gap: 8,
-                                        marginBottom: sameSenderAsPrev ? 4 : 12,
-                                        alignItems: 'flex-end'
-                                    }}>
-                                        {/* Avatar (only on first message of group) */}
-                                        <div style={{ width: 32, flexShrink: 0 }}>
+                                    {/* ─── صف الفقاعة ─── */}
+                                    <div
+                                        id={`msg-${message._id}`}
+                                        className={`cm-row side-${side}${sameSenderAsPrev ? ' grouped' : ''}${highlightedId === message._id ? ' highlighted' : ''}`}
+                                    >
+                                        {/* الأفاتار — على أول رسالة في المجموعة فقط */}
+                                        <div className="cm-avatar-slot">
                                             {!sameSenderAsPrev && (
                                                 <div
+                                                    className="cm-avatar"
+                                                    style={{ background: colors.accent }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        // ✅ ضغط مباشر → ملف المستخدم (بدلاً من قائمة الإجراءات)
                                                         if (message.sender?._id && onViewUser) {
                                                             onViewUser(message.sender._id);
                                                         }
                                                     }}
                                                     onContextMenu={(e) => {
-                                                        // right-click → قائمة الإجراءات للأدمن (تعليق/حظر)
                                                         e.preventDefault();
                                                         if (message.sender?._id) {
                                                             setUserActionMenu({ userId: message.sender._id, userName: message.sender.name, x: e.clientX, y: e.clientY });
                                                         }
                                                     }}
-                                                    style={{
-                                                        width: 32, height: 32, borderRadius: '50%',
-                                                        background: colors.accent, color: 'var(--text-on-brand)',
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        fontWeight: 700, cursor: 'pointer', fontSize: 13,
-                                                        overflow: 'hidden'
-                                                    }}
                                                     title={`${message.sender?.name || 'مستخدم'} — اضغط لعرض الملف، right-click لإجراءات`}
                                                 >
                                                     {message.sender?.profileImage ? (
-                                                        <img src={getImageUrl(message.sender.profileImage)} alt={message.sender.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
+                                                        <img src={getImageUrl(message.sender.profileImage)} alt={message.sender.name} onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
                                                     ) : (
                                                         message.sender?.name?.charAt(0) || '؟'
                                                     )}
@@ -735,63 +700,32 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                             )}
                                         </div>
 
-                                        {/* Bubble */}
-                                        <div style={{
-                                            maxWidth: '70%',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: side === 'right' ? 'flex-end' : 'flex-start'
-                                        }}>
-                                            {/* Sender name (clickable → user profile) */}
+                                        <div className="cm-column">
                                             {!sameSenderAsPrev && (
                                                 <div
+                                                    className="cm-sender"
+                                                    style={{ color: colors.accent }}
                                                     onClick={() => message.sender?._id && onViewUser && onViewUser(message.sender._id)}
-                                                    style={{
-                                                        fontSize: 11, color: colors.accent, fontWeight: 700,
-                                                        marginBottom: 2, padding: '0 4px',
-                                                        cursor: message.sender?._id ? 'pointer' : 'default'
-                                                    }}
                                                     title="عرض الملف الشخصي"
                                                 >
                                                     {message.sender?.name || 'مستخدم محذوف'}
                                                 </div>
                                             )}
                                             <div
+                                                className={`cm-bubble${message.isDeleted ? ' deleted' : ''}${isFlagged && !message.isDeleted ? ' flagged' : ''}`}
+                                                style={!message.isDeleted && !isFlagged ? { background: colors.bg, color: colors.text } : undefined}
                                                 onClick={(e) => {
-                                                    // ✅ ضغط على الرسالة → popover خيارات
                                                     const tag = (e.target.tagName || '').toLowerCase();
                                                     if (tag === 'img' || tag === 'button' || tag === 'a') return;
                                                     if (message.isDeleted) return;
                                                     setMsgMenu({ message, x: e.clientX, y: e.clientY });
                                                 }}
-                                                style={{
-                                                padding: '8px 12px',
-                                                borderRadius: side === 'right' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                                                background: message.isDeleted ? '#f3f4f6' : (isFlagged ? '#fee2e2' : colors.bg),
-                                                color: colors.text,
-                                                border: isFlagged ? '2px solid #dc2626' : 'none',
-                                                position: 'relative',
-                                                boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                                                wordBreak: 'break-word',
-                                                cursor: message.isDeleted ? 'default' : 'pointer'
-                                            }}>
+                                            >
                                                 {/* ✅ C: شارة المخالفة الكبيرة */}
                                                 {isFlagged && !message.isDeleted && (
                                                     <div
+                                                        className="cm-flag-badge"
                                                         onClick={() => setFlaggedDetails(message)}
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: 4,
-                                                            background: '#dc2626',
-                                                            color: 'var(--text-on-brand)',
-                                                            padding: '2px 8px',
-                                                            borderRadius: 6,
-                                                            fontSize: 11,
-                                                            fontWeight: 700,
-                                                            marginBottom: 4,
-                                                            cursor: 'pointer'
-                                                        }}
                                                         title="عرض تفاصيل المخالفة"
                                                     >
                                                         ⚠️ مخالف ({message.bannedWordsFound?.length || 1})
@@ -800,32 +734,23 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
 
                                                 {/* Message content */}
                                                 {message.isDeleted ? (
-                                                    <em style={{ color: 'var(--text-secondary)', fontSize: 13 }}>تم حذف هذه الرسالة</em>
+                                                    <em className="cm-deleted-text">تم حذف هذه الرسالة</em>
                                                 ) : (
                                                     <>
-                                                        {message.content && <div style={{ fontSize: 14, lineHeight: 1.5 }}>{message.content}</div>}
+                                                        {message.content && <div className="cm-text">{message.content}</div>}
                                                         {/* ✅ D: صورة قابلة للتكبير */}
                                                         {message.type === 'image' && (() => {
                                                             const src = getMessagePhotoUrl(message);
                                                             if (!src) {
                                                                 // صورة مؤقتة بلا أرشيف (رسائل قديمة قبل الأرشفة)
                                                                 return message.isDisappearingPhoto ? (
-                                                                    <span style={{ fontSize: 12, opacity: 0.7 }}>⏱️ صورة مؤقتة — غير متوفرة في الأرشيف</span>
+                                                                    <span className="cm-note">⏱️ صورة مؤقتة — غير متوفرة في الأرشيف</span>
                                                                 ) : null;
                                                             }
                                                             return (
                                                                 <>
                                                                     {message.isExpiredPhoto && (
-                                                                        <div style={{
-                                                                            display: 'inline-block',
-                                                                            background: '#7c3aed',
-                                                                            color: 'var(--text-on-brand)',
-                                                                            padding: '2px 8px',
-                                                                            borderRadius: 6,
-                                                                            fontSize: 11,
-                                                                            fontWeight: 700,
-                                                                            marginTop: message.content ? 6 : 0
-                                                                        }}>
+                                                                        <div className="cm-expired-badge">
                                                                             ⏱️ صورة مؤقتة منتهية — أرشيف الإشراف
                                                                         </div>
                                                                     )}
@@ -833,7 +758,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                                         src={src}
                                                                         alt="صورة"
                                                                         onClick={() => setZoomImage({ url: src, sender: message.sender })}
-                                                                        style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, cursor: 'zoom-in', marginTop: message.content || message.isExpiredPhoto ? 6 : 0 }}
+                                                                        className="cm-image"
                                                                         onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
                                                                     />
                                                                 </>
@@ -843,7 +768,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                             <AudioMessageBubble message={message} />
                                                         )}
                                                         {message.type !== 'text' && message.type !== 'image' && message.type !== 'audio' && (
-                                                            <span style={{ fontSize: 12, opacity: 0.7 }}>
+                                                            <span className="cm-note">
                                                                 {message.type === 'file' && '📎 ملف'}
                                                                 {message.type === 'video' && '🎥 فيديو'}
                                                             </span>
@@ -852,8 +777,8 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                 )}
                                             </div>
                                             {/* Time + actions */}
-                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2, padding: '0 4px' }}>
-                                                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                                            <div className="cm-meta">
+                                                <span className="cm-time">
                                                     {formatTime(message.createdAt)}
                                                 </span>
                                                 {!message.isDeleted && (
@@ -862,7 +787,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                                                             setSelectedMessage(message);
                                                             setShowDeleteModal(true);
                                                         }}
-                                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, opacity: 0.5, padding: 0 }}
+                                                        className="cm-delete-btn"
                                                         title="حذف الرسالة"
                                                     >
                                                         🗑️
