@@ -87,7 +87,11 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
             const violation = violationsByMessage.get(String(obj._id));
             if (flag || violation) {
                 obj.hasBannedWords = true;
-                obj.bannedWordsFound = flag?.matchedWords || [];
+                // اللوحة تتوقّع كائنات {word, category, severity} لا نصوصاً —
+                // زر «إضافة للمحظورات» يقرأ w.word
+                obj.bannedWordsFound = (flag?.matchedWords || []).map(w => (
+                    typeof w === 'string' ? { word: w, category: null, severity: null } : w
+                ));
                 obj.flagInfo = {
                     status: flag?.status || null,
                     action: flag?.action || violation?.action || null,
