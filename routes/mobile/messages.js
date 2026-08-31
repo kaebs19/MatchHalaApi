@@ -519,7 +519,14 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             isExternalPromoBlocked: false,   // يُحدَّث لاحقاً لو اكتُشف
             externalPromoCategories: []
         };
-        if (replyTo) messageData.replyTo = replyTo;
+        // التطبيق قد يرسل معرّفاً مؤقتاً (temp-…) حين يردّ على رسالة لم
+        // تُثبَّت بعد على الخادم — كان ذلك يُسقط الرسالة كلها بـ CastError
+        // فتضيع على المستخدم. نتجاهل الرد ونرسل النص.
+        if (replyTo && require('mongoose').Types.ObjectId.isValid(replyTo)) {
+            messageData.replyTo = replyTo;
+        } else if (replyTo) {
+            console.warn('replyTo غير صالح — أُرسلت الرسالة بلا رد:', String(replyTo).slice(0, 40));
+        }
 
         let message = await Message.create(messageData);
 
