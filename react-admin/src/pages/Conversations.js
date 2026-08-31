@@ -176,6 +176,9 @@ function Conversations({ onViewUserDetail }) {
 
     // فتح محادثة في الـ split view
     const openConversation = async (conv) => {
+        // الفلتر لا يُورَّث من محادثة لأخرى — كان يبقى «صور» مثلاً فتُفتح
+        // محادثة بلا صور فلا تظهر رسالة واحدة
+        setMsgFilter('all');
         setSelectedConv(conv);
         setMsgPage(1);
         setMsgSearch('');
@@ -577,7 +580,7 @@ function Conversations({ onViewUserDetail }) {
                             onZoom={setImageViewer}
                         />
 
-                        {(flaggedMessages.length > 0 || imageMessages.length > 0 || audioMessages.length > 0) && (
+                        {messages.length > 0 && (
                             <div className="conv-msg-filters">
                                 {[
                                     { id: 'all', label: '📋 الكل', count: messages.length },
@@ -585,7 +588,7 @@ function Conversations({ onViewUserDetail }) {
                                     { id: 'images', label: '📷 صور', count: imageMessages.length },
                                     { id: 'audio', label: '🎙️ صوتية', count: audioMessages.length }
                                 ].map(chip => (
-                                    chip.count === 0 && chip.id !== 'all' ? null : (
+                                    chip.count === 0 && chip.id !== 'all' && msgFilter !== chip.id ? null : (
                                         <button
                                             key={chip.id}
                                             className={`conv-msg-filter cf-${chip.id} ${msgFilter === chip.id ? 'active' : ''}`}
@@ -616,7 +619,12 @@ function Conversations({ onViewUserDetail }) {
                                         </div>
                                     )}
                                     {visibleMessages.length === 0 && (
-                                        <div className="conv-chat-no-msg"><p>لا رسائل تطابق هذا الفلتر</p></div>
+                                        <div className="conv-chat-no-msg">
+                                            <p>لا رسائل تطابق هذا الفلتر</p>
+                                            <button className="conv-msg-filter cf-all" onClick={() => setMsgFilter('all')}>
+                                                📋 عرض كل الرسائل
+                                            </button>
+                                        </div>
                                     )}
                                     {visibleMessages.map((msg, idx) => {
                                         const showDate = idx === 0 ||
