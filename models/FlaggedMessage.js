@@ -55,6 +55,8 @@ const flaggedMessageSchema = new mongoose.Schema({
 });
 
 flaggedMessageSchema.index({ status: 1, createdAt: -1 });
+// لوحة الأدمن تبحث بمعرّفات الرسائل المعروضة — بلا هذا مسح كامل للمجموعة
+flaggedMessageSchema.index({ message: 1 });
 flaggedMessageSchema.index({ sender: 1 });
 
 const FlaggedMessage = mongoose.model('FlaggedMessage', flaggedMessageSchema);

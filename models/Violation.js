@@ -114,6 +114,8 @@ const violationSchema = new mongoose.Schema({
 violationSchema.index({ user: 1, createdAt: -1 });
 violationSchema.index({ type: 1, createdAt: -1 });
 violationSchema.index({ 'evidence.conversationId': 1 });
+// وسم رسائل المحادثة في اللوحة يبحث بمعرّف الرسالة
+violationSchema.index({ 'evidence.messageId': 1 });
 violationSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Violation', violationSchema);

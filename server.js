@@ -696,9 +696,18 @@ io.on('connection', async (socket) => {
         // صامت — لا نعطّل الـ flow
     }
 
+    // شكل الحمولة يختلف بين العملاء: التطبيق يرسل نصاً والموقع يرسل
+    // { conversationId }. كان الثاني يسقط في Cast error — فلا ينضمّ
+    // مستخدمو الويب للغرفة أصلاً (٢٠ ألف خطأ يومياً بلا وصول أحداث لحظية).
+    const readConversationId = (payload) => (
+        typeof payload === 'string' ? payload : payload?.conversationId || null
+    );
+
     // عند الانضمام لمحادثة معينة
-    socket.on('join-conversation', async (conversationId) => {
+    socket.on('join-conversation', async (rawPayload) => {
+        const conversationId = readConversationId(rawPayload);
         try {
+            if (!conversationId) return;
             const conversation = await Conversation.findById(conversationId, 'participants').lean();
             if (!conversation) {
                 // ✅ event مخصّص بدل error مزعج —
@@ -733,7 +742,9 @@ io.on('connection', async (socket) => {
     });
 
     // عند مغادرة محادثة
-    socket.on('leave-conversation', (conversationId) => {
+    socket.on('leave-conversation', (rawPayload) => {
+        const conversationId = readConversationId(rawPayload);
+        if (!conversationId) return;
         socket.leave(`conversation-${conversationId}`);
 
         setTimeout(() => {
