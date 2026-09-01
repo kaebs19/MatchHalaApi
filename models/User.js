@@ -56,6 +56,19 @@ const userSchema = new mongoose.Schema({
         type: Date,
         select: false
     },
+    // حقول تغيير البريد الإلكتروني (رمز تحقق يُرسَل للبريد الجديد)
+    pendingEmail: {
+        type: String,
+        select: false
+    },
+    emailChangeToken: {
+        type: String,
+        select: false
+    },
+    emailChangeExpire: {
+        type: Date,
+        select: false
+    },
     // حقول الملف الشخصي
     profileImage: {
         type: String,

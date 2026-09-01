@@ -820,16 +820,9 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             }
         }
 
-        // التحقق من عدم تكرار البريد الإلكتروني
-        if (email && email !== user.email) {
-            const emailExists = await User.findOne({ email });
-            if (emailExists) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'البريد الإلكتروني مستخدم بالفعل'
-                });
-            }
-        }
+        // ⚠️ البريد الإلكتروني لا يُغيَّر من هنا — تغييره حصراً عبر
+        // /change-email/request + /change-email/confirm (رمز تحقق للبريد الجديد).
+        // الإصدارات القديمة من التطبيق ترسل email مع كل حفظ — نتجاهله بصمت.
 
         // تحديث الحقول الأساسية
         if (name && name !== user.name) {
@@ -856,7 +849,6 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                 user.nameHistory = user.nameHistory.slice(-50);
             }
         }
-        if (email) user.email = email;
 
         // تحديث حقول الملف الشخصي الجديدة
         if (profileImage !== undefined) user.profileImage = profileImage;
@@ -1180,6 +1172,186 @@ router.post('/reset-password', async (req, res) => {
             success: false,
             message: 'خطأ في السيرفر',
             error: error.message
+        });
+    }
+});
+
+// @route   POST /api/auth/change-email/request
+// @desc    طلب تغيير البريد الإلكتروني (إرسال رمز تحقق للبريد الجديد)
+// @access  Private
+router.post('/change-email/request', protect, async (req, res) => {
+    try {
+        const { newEmail, password } = req.body;
+
+        if (!newEmail || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني الجديد وكلمة المرور مطلوبان'
+            });
+        }
+
+        const email = String(newEmail).trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني غير صالح'
+            });
+        }
+
+        const user = await User.findById(req.user.id)
+            .select('+password +emailChangeExpire');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        }
+
+        // حسابات Google/Apple/Facebook بريدها مربوط بمزوّد الدخول — لا يُغيَّر من هنا
+        if (user.authProvider && user.authProvider !== 'app') {
+            return res.status(403).json({
+                success: false,
+                message: 'حسابك مسجّل عبر مزوّد خارجي (Google/Apple)، لا يمكن تغيير بريده من التطبيق',
+                code: 'SOCIAL_ACCOUNT_EMAIL'
+            });
+        }
+
+        // التحقق من كلمة المرور (تأكيد هوية صاحب الحساب)
+        if (!user.password || !(await user.comparePassword(password))) {
+            return res.status(401).json({
+                success: false,
+                message: 'كلمة المرور غير صحيحة',
+                code: 'WRONG_PASSWORD'
+            });
+        }
+
+        if (email === user.email) {
+            return res.status(400).json({
+                success: false,
+                message: 'هذا هو بريدك الحالي بالفعل'
+            });
+        }
+
+        // تهدئة: طلب واحد كل 60 ثانية (الرمز صالح 10 دقائق)
+        if (user.emailChangeExpire) {
+            const requestedAt = new Date(user.emailChangeExpire).getTime() - 10 * 60 * 1000;
+            if (Date.now() - requestedAt < 60 * 1000) {
+                return res.status(429).json({
+                    success: false,
+                    message: 'انتظر دقيقة قبل طلب رمز جديد',
+                    code: 'EMAIL_CHANGE_COOLDOWN'
+                });
+            }
+        }
+
+        // التأكد من عدم استخدام البريد الجديد
+        const emailExists = await User.findOne({ email });
+        if (emailExists) {
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني مستخدم بالفعل'
+            });
+        }
+
+        // توليد رمز 6 أرقام (نفس نمط إعادة تعيين كلمة المرور)
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        user.pendingEmail = email;
+        user.emailChangeToken = crypto.createHash('sha256').update(code).digest('hex');
+        user.emailChangeExpire = Date.now() + 10 * 60 * 1000;
+        await user.save();
+
+        const html = `
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <h2 style="color: #333; text-align: center;">تأكيد البريد الإلكتروني الجديد</h2>
+                    <p style="color: #666; font-size: 16px;">مرحباً ${user.name},</p>
+                    <p style="color: #666; font-size: 16px;">تلقينا طلباً لتغيير البريد الإلكتروني لحسابك إلى هذا العنوان.</p>
+                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
+                        <p style="color: #666; margin-bottom: 10px;">رمز التحقق الخاص بك:</p>
+                        <h1 style="color: #007bff; font-size: 36px; letter-spacing: 5px; margin: 10px 0;">${code}</h1>
+                    </div>
+                    <p style="color: #666; font-size: 14px;">هذا الرمز صالح لمدة 10 دقائق فقط.</p>
+                    <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">إذا لم تطلب تغيير البريد الإلكتروني، يرجى تجاهل هذه الرسالة.</p>
+                </div>
+            </div>
+        `;
+
+        await sendEmail({
+            email,
+            subject: 'تأكيد البريد الإلكتروني الجديد - HalaChat',
+            message: `رمز تأكيد بريدك الإلكتروني الجديد هو: ${code}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
+            html
+        });
+
+        res.json({
+            success: true,
+            message: 'تم إرسال رمز التحقق إلى البريد الإلكتروني الجديد'
+        });
+    } catch (error) {
+        console.error('خطأ في طلب تغيير البريد الإلكتروني:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في إرسال البريد الإلكتروني'
+        });
+    }
+});
+
+// @route   POST /api/auth/change-email/confirm
+// @desc    تأكيد تغيير البريد الإلكتروني بالرمز المرسَل
+// @access  Private
+router.post('/change-email/confirm', protect, async (req, res) => {
+    try {
+        const { code } = req.body;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'رمز التحقق مطلوب'
+            });
+        }
+
+        const hashedToken = crypto.createHash('sha256').update(String(code).trim()).digest('hex');
+
+        const user = await User.findOne({
+            _id: req.user.id,
+            emailChangeToken: hashedToken,
+            emailChangeExpire: { $gt: Date.now() }
+        }).select('+pendingEmail +emailChangeToken +emailChangeExpire');
+
+        if (!user || !user.pendingEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'رمز التحقق غير صحيح أو منتهي الصلاحية'
+            });
+        }
+
+        // إعادة فحص التكرار (قد يكون أحد سجّل بالبريد نفسه خلال الدقائق العشر)
+        const emailExists = await User.findOne({ email: user.pendingEmail });
+        if (emailExists) {
+            user.pendingEmail = undefined;
+            user.emailChangeToken = undefined;
+            user.emailChangeExpire = undefined;
+            await user.save();
+            return res.status(400).json({
+                success: false,
+                message: 'البريد الإلكتروني مستخدم بالفعل'
+            });
+        }
+
+        user.email = user.pendingEmail;
+        user.pendingEmail = undefined;
+        user.emailChangeToken = undefined;
+        user.emailChangeExpire = undefined;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'تم تغيير البريد الإلكتروني بنجاح',
+            data: { email: user.email }
+        });
+    } catch (error) {
+        console.error('خطأ في تأكيد تغيير البريد الإلكتروني:', error);
+        res.status(500).json({
+            success: false,
+            message: 'خطأ في السيرفر'
         });
     }
 });
