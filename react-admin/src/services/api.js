@@ -566,6 +566,12 @@ export const unsuspendUser = async (userId) => {
     return response.data;
 };
 
+// تصفير مخالفات الترويج الخارجي (عداد + درجة التصعيد) وفك أقفالها
+export const resetPromoViolations = async (userId, { resetCounter = true, resetLockCount = true, notify = false } = {}) => {
+    const response = await api.post(`/banned-words/external-promo/unlock/${userId}`, { resetCounter, resetLockCount, notify });
+    return response.data;
+};
+
 // عدد البلاغات ضد مستخدم
 export const getUserReportsCount = async (userId) => {
     const response = await api.get(`/users/${userId}/reports-count`);

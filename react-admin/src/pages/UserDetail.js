@@ -3090,6 +3090,31 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <div style={{marginTop:"20px",background:"#fff",borderRadius:"12px",padding:"16px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
                                 <h4 style={{margin:"0 0 12px",display:"flex",alignItems:"center",gap:"8px"}}>
                                     🚫 محاولات الترويج الخارجي ({promoLogs.summary.total})
+                                    {((promoLogs.user?.violations || 0) > 0 || (promoLogs.user?.lockCount || 0) > 0) && (
+                                        <button
+                                            style={{marginRight:"auto",background:"#4CAF50",color:"#fff",border:"none",borderRadius:"8px",padding:"6px 12px",fontSize:"12px",cursor:"pointer"}}
+                                            disabled={actionLoading}
+                                            onClick={async () => {
+                                                if (!window.confirm("تصفير مخالفات الترويج الخارجي لـ " + user.name + "؟\n(العداد + درجة التصعيد + فك أقفال النبذة/المراسلة المرتبطة بها)")) return;
+                                                try {
+                                                    setActionLoading(true);
+                                                    const { resetPromoViolations } = await import("../services/api");
+                                                    const res = await resetPromoViolations(user._id, { resetCounter: true, resetLockCount: true, notify: true });
+                                                    if (res.success) {
+                                                        showToast("تم تصفير مخالفات الترويج الخارجي", "success");
+                                                        fetchPromoLogs();
+                                                        fetchUserActivity();
+                                                    }
+                                                } catch (e) {
+                                                    showToast(e.response?.data?.message || "فشل التصفير", "error");
+                                                } finally {
+                                                    setActionLoading(false);
+                                                }
+                                            }}
+                                        >
+                                            ♻️ تصفير المخالفات
+                                        </button>
+                                    )}
                                 </h4>
 
                                 {/* Summary chips */}
@@ -3097,6 +3122,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     <span style={{background:"#fef3c7",padding:"4px 10px",borderRadius:"12px"}}>
                                         العداد الحالي: <b>{promoLogs.user?.violations || 0}</b> / 10
                                     </span>
+                                    {(promoLogs.user?.lockCount || 0) > 0 && (
+                                        <span style={{background:"#fde68a",padding:"4px 10px",borderRadius:"12px"}}>
+                                            درجة التصعيد: <b>{promoLogs.user.lockCount}</b>
+                                        </span>
+                                    )}
                                     {promoLogs.user?.bioLockedUntil && new Date(promoLogs.user.bioLockedUntil) > new Date() && (
                                         <span style={{background:"#fee2e2",padding:"4px 10px",borderRadius:"12px",color:"#b91c1c"}}>
                                             🔒 النبذة مقفولة حتى {new Date(promoLogs.user.bioLockedUntil).toLocaleString("ar-SA")}

@@ -710,7 +710,7 @@ router.get('/external-promo/top-offenders', protect, adminOnly, async (req, res)
 router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, res) => {
     try {
         const { userId } = req.params;
-        const { resetCounter = false } = req.body;
+        const { resetCounter = false, resetLockCount = false, notify = false } = req.body;
 
         const user = await User.findById(userId);
         if (!user) {
@@ -718,6 +718,7 @@ router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, re
         }
 
         const updates = {};
+        let messagingUnlocked = false;
         // إلغاء قفل bio
         if (user.externalPromo?.bioLockedUntil) {
             updates['externalPromo.bioLockedUntil'] = null;
@@ -729,11 +730,18 @@ router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, re
             updates['restrictions.messagingRestrictedUntil'] = null;
             updates['restrictions.messagingRestrictedLevel'] = null;
             updates['restrictions.restrictionReason'] = null;
+            messagingUnlocked = true;
         }
-        // اختياري: تصفير العداد كلياً
+        // اختياري: تصفير عداد الدورة الحالية
         if (resetCounter) {
             updates['externalPromo.violations'] = 0;
             updates['externalPromo.lastViolationAt'] = null;
+        }
+        // اختياري: تصفير درجة التصعيد (سُلّم الأقفال) — القفل التالي يبدأ من أول درجة
+        if (resetLockCount) {
+            updates['externalPromo.lockCount'] = 0;
+            updates['externalPromo.lastLockAt'] = null;
+            updates['externalPromo.suspendedAt'] = null;
         }
 
         if (Object.keys(updates).length === 0) {
@@ -742,10 +750,24 @@ router.post('/external-promo/unlock/:userId', protect, adminOnly, async (req, re
 
         await User.findByIdAndUpdate(userId, updates);
 
+        // التطبيق يمسح شاشة/قيود التقييد فوراً
+        if (messagingUnlocked && global.io) {
+            global.io.to(`user:${user._id}`).emit('account-unrestricted');
+        }
+        if (notify && messagingUnlocked) {
+            try {
+                const pushNotificationService = require('../services/pushNotificationService');
+                await pushNotificationService.sendNotificationToUser(user._id, {
+                    title: '✅ تم فك التقييد',
+                    body: 'تم فك تقييد المراسلة عن حسابك. شكراً لالتزامك.'
+                }, { type: 'account_unsuspended' });
+            } catch (e) { console.error('Push error:', e.message); }
+        }
+
         res.json({
             success: true,
             message: 'تم إلغاء التقييد',
-            data: { unlocked: true, resetCounter }
+            data: { unlocked: true, resetCounter, resetLockCount }
         });
     } catch (error) {
         console.error('external-promo unlock error:', error);
@@ -803,6 +825,7 @@ router.get('/external-promo/user/:userId', protect, adminOnly, async (req, res) 
                 user: user ? {
                     name: user.name,
                     violations: user.externalPromo?.violations || 0,
+                    lockCount: user.externalPromo?.lockCount || 0,
                     bioLockedUntil: user.externalPromo?.bioLockedUntil,
                     lastViolationAt: user.externalPromo?.lastViolationAt,
                     isMessagingRestricted: !!user.restrictions?.messagingRestricted,
