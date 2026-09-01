@@ -1623,7 +1623,7 @@ router.post('/conversations/:conversationId/messages', protect, async (req, res)
 // @access  Private
 router.get('/messages/:conversationId', protect, async (req, res) => {
     try {
-        const { page = 1, limit = 50 } = req.query;
+        const { page = 1, limit = 50, before = null } = req.query;
         const { conversationId } = req.params;
 
         // التحقق من المحادثة
@@ -1673,6 +1673,26 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             ];
         }
 
+        // 3) ✅ Cursor pagination: before=<messageId> — نقطة ثابتة لا تنزاح
+        //    عند وصول رسائل جديدة (بخلاف page/limit الذي يكرّر/يفوّت رسائل).
+        //    tiebreak بـ _id لرسائل تحمل نفس createdAt.
+        let cursorActive = false;
+        if (before && mongoose.Types.ObjectId.isValid(before)) {
+            const beforeMsg = await Message.findOne({ _id: before, conversation: conversationId })
+                .select('createdAt')
+                .lean();
+            if (beforeMsg) {
+                cursorActive = true;
+                // $and منفصل — لا يصادم createdAt الخاص بـ clearedAt ولا $or الخاص بوضع 24h
+                messageQuery.$and = (messageQuery.$and || []).concat([{
+                    $or: [
+                        { createdAt: { $lt: beforeMsg.createdAt } },
+                        { createdAt: beforeMsg.createdAt, _id: { $lt: beforeMsg._id } }
+                    ]
+                }]);
+            }
+        }
+
         const messages = await Message.find(messageQuery)
             .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
             .populate({
@@ -1683,12 +1703,18 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
             // مشاركة الموقع المباشر — الفقاعة تحتاج آخر إحداثي ووقت الانتهاء
             .populate('liveLocation')
             .select('+originalContent')   // ✅ Phase 2: نحتاجه لإرجاع النص الأصلي للمرسل
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: -1, _id: -1 })
             .limit(limit * 1)
-            .skip((page - 1) * limit)
+            .skip(cursorActive ? 0 : (page - 1) * limit)
             .lean();
 
         const total = await Message.countDocuments(messageQuery);
+
+        // ✅ مؤشر الصفحة التالية: أقدم رسالة في هذه الدفعة (قبل reverse)
+        const nextBefore = messages.length ? String(messages[messages.length - 1]._id) : null;
+        const hasMore = cursorActive
+            ? total > messages.length                          // total هنا محسوب داخل نافذة الـ cursor
+            : parseInt(page) * parseInt(limit) < total;
 
         // ✅ افرض انقضاء الصور المؤقتة قبل بناء الرد — تدمير كسول لا يحتاج cron.
         //    بدونه تبقى الصورة ظاهرة للطرفين إلى الأبد لو أُغلق العارض مبكراً.
@@ -1821,6 +1847,9 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                 total,
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit),
+                // ✅ cursor pagination — العملاء الجدد يعتمدون عليهما بدل page/totalPages
+                hasMore,
+                nextBefore,
                 messagingRestriction
             }
         });
