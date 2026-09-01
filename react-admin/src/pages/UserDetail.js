@@ -1009,7 +1009,45 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 </div>
                 <div className="user-info-details">
                     <h3>{user.name}</h3>
-                    <p className="user-email">{user.email}</p>
+                    <p className="user-email" style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                        {user.email}
+                        <button
+                            title="تغيير البريد الإلكتروني"
+                            style={{background:"none",border:"none",cursor:"pointer",fontSize:"13px",padding:"0"}}
+                            disabled={actionLoading}
+                            onClick={async () => {
+                                const newEmail = window.prompt("البريد الإلكتروني الجديد لـ " + user.name + ":", user.email || "");
+                                if (newEmail === null) return;
+                                const email = newEmail.trim().toLowerCase();
+                                if (!/^\S+@\S+\.\S+$/.test(email)) {
+                                    showToast("البريد الإلكتروني غير صالح", "error");
+                                    return;
+                                }
+                                if (email === (user.email || "").toLowerCase()) return;
+                                const socialWarning = (user.authProvider && user.authProvider !== "app")
+                                    ? "\n\n⚠️ هذا الحساب مسجّل عبر " + user.authProvider + " — تغيير البريد لا يفكّ ربطه بالمزوّد."
+                                    : "";
+                                if (!window.confirm("تغيير بريد الدخول إلى:\n" + email + "؟" + socialWarning)) return;
+                                try {
+                                    setActionLoading(true);
+                                    const { updateUser } = await import("../services/api");
+                                    const res = await updateUser(user._id, { email });
+                                    if (res.success) {
+                                        showToast("تم تغيير البريد الإلكتروني", "success");
+                                        fetchUserActivity();
+                                    } else {
+                                        showToast(res.message || "فشل تغيير البريد", "error");
+                                    }
+                                } catch (e) {
+                                    showToast(e.response?.data?.message || "فشل تغيير البريد", "error");
+                                } finally {
+                                    setActionLoading(false);
+                                }
+                            }}
+                        >
+                            ✏️
+                        </button>
+                    </p>
                     <p className="user-id" style={{fontSize: '12px', color: 'var(--text-muted)', direction: 'ltr', textAlign: 'right', margin: '2px 0 8px', fontFamily: 'monospace', cursor: 'pointer'}}
                        onClick={() => { navigator.clipboard.writeText(user._id); showToast('تم نسخ المعرف', 'success'); }}
                        title="انقر للنسخ">
