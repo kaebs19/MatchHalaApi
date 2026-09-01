@@ -182,6 +182,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         cancelledAt: null,
                         reinviteAllowedAt: null,      // امسح التهدئة عند إرسال الدعوة
                         requestedAt: now,             // بداية نافذة "رسالة واحدة فقط"
+                        withdrawn: false,             // دعوة جديدة تمسح أثر سحب سابق
                         // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
                         hiddenFor: []
                     },
@@ -645,6 +646,9 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
             conversation.cancelledBy = req.user._id;
             conversation.cancelledAt = new Date();
             conversation.requestedAt = null;
+            // ⚠️ وسم السحب: بدونه كانت القائمة تعيدها للمستلم «محادثة مغلقة»
+            //    لم يقبلها قط (fallback آخر رسالة يحقن رسالة الطلب فيها)
+            conversation.withdrawn = true;
             await conversation.save();
 
             if (global.invalidatePartnersCache) {
@@ -1215,7 +1219,10 @@ router.get('/conversations', protect, async (req, res) => {
             participants: userId,
             status: { $in: statusValues },
             // ✅ استبعاد المحادثات المخفية عن هذا المستخدم
-            'hiddenFor.user': { $ne: userId }
+            'hiddenFor.user': { $ne: userId },
+            // ✅ استبعاد الطلبات المسحوبة قبل القبول — كانت تظهر للمستلم
+            //    «محادثة مغلقة» لم يوافق عليها قط
+            withdrawn: { $ne: true }
         };
 
         // ✅ Delta sync — رجّع فقط المحادثات اللي تغيّرت بعد آخر sync

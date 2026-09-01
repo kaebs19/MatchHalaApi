@@ -57,6 +57,9 @@ const conversationSchema = new mongoose.Schema({
     // ✅ تتبّع إنهاء/إلغاء المحادثة (لا يحذف الرسائل)
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     cancelledAt: { type: Date, default: null },
+    // ✅ طلب معلّق سحبه مرسله قبل أي قبول — لا يظهر في قائمة أحد
+    //    (بخلاف cancelled العادية = محادثة حقيقية أُغلقت وتبقى ظاهرة «مغلقة»)
+    withdrawn: { type: Boolean, default: false },
     // ✅ تهدئة: لا يُسمح بدعوة استئناف جديدة قبل هذا الوقت (يُضبط بعد الرفض/الإنهاء)
     reinviteAllowedAt: { type: Date, default: null },
     // ✅ وقت آخر طلب/دعوة (بداية حالة pending) — يُستخدم لحصر المنشئ برسالة واحدة
