@@ -851,8 +851,8 @@ io.on('connection', async (socket) => {
             try {
                 // ✅ فحص عبر كل عمليات الـ cluster (Redis adapter): هل للمستخدم أي سوكِت متصل؟
                 // أدقّ من connectedUsers المحلي الذي لا يرى الاتصالات على عمليات أخرى.
-                const sockets = await io.in(`user:${socket.userId}`).fetchSockets();
-                if (sockets.length > 0) return; // ما زال متصلاً على عملية ما — لا تضعه غير متصل
+                const { isUserSocketConnected } = require('./utils/socketPresence');
+                if (await isUserSocketConnected(socket.userId)) return; // ما زال متصلاً على عملية ما
 
                 await User.findByIdAndUpdate(socket.userId, {
                     isOnline: false,

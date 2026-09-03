@@ -51,25 +51,9 @@ const isUserFullyBanned = (user) => {
 // ==========================================
 // 🔌 هل للمستخدم سوكِت متصل؟ (عبر كل عمليات الـ cluster)
 // ==========================================
-// ⚠️ لا تستخدم global.connectedUsers لاتخاذ قرار إرسال Push:
-// إنها Map محلية داخل كل عملية PM2. مع 4 عمليات، الطلب قد يُعالَج على عملية
-// بينما سوكِت المستلم على عملية أخرى → «يبدو offline» → يُرسل Push،
-// وفي نفس الوقت يصله حدث السوكِت عبر Redis adapter → إشعار محلي.
-// النتيجة: إشعار مكرّر عندما يكون التطبيق في الخلفية.
-// fetchSockets عبر Redis adapter يرى كل العمليات.
-const isUserSocketConnected = async (userId) => {
-    const id = String(userId);
-    if (global.io) {
-        try {
-            const sockets = await global.io.in(`user:${id}`).fetchSockets();
-            return sockets.length > 0;
-        } catch (e) {
-            console.error('⚠️ fetchSockets failed, falling back to local map:', e.message);
-        }
-    }
-    // fallback: الخريطة المحلية (دقيقة فقط في وضع العملية الواحدة)
-    return Boolean(global.connectedUsers && global.connectedUsers.has(id));
-};
+// المنطق كله في utils/socketPresence.js — يفحص محلياً أولاً (بلا شبكة)
+// ثم عبر العمليات بمهلة محدودة، لأن هذا الفحص على مسار إرسال الرسالة.
+const { isUserSocketConnected } = require('../../utils/socketPresence');
 
 // ✅ تعليم رسالة «مُسلَّمة» وإبلاغ المرسل (✓ → ✓✓)
 // يُستدعى متى ثبت وصول الرسالة لجهاز المستلم: سوكِت متصل، أو قبول FCM للإشعار،
