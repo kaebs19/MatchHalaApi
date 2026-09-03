@@ -1080,6 +1080,7 @@ router.post('/forgot-password', async (req, res) => {
             name: user.name,
             intro: 'لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.',
             code: resetToken,
+            recipient: user.email,
             warning: 'إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.'
         });
 
@@ -1256,6 +1257,7 @@ router.post('/change-email/request', protect, async (req, res) => {
             name: user.name,
             intro: 'تلقينا طلباً لتغيير البريد الإلكتروني لحسابك إلى هذا العنوان.',
             code,
+            recipient: email,
             warning: 'إذا لم تطلب تغيير البريد الإلكتروني، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.'
         });
 
