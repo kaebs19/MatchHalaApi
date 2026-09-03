@@ -277,9 +277,10 @@ const recordDeviceBanForUser = async (user, req, reason = 'manual', details = ''
             originalUserId: user?._id || null,
             reason,
             reasonDetails: details || `auto-recorded on suspended login (${reason})`,
-            bannedBy: 'auto',
-            isActive: true,
-            pendingFingerprint: false
+            bannedBy: 'auto'
+            // ⚠️ isActive وpendingFingerprint في $set وحده — تكرارهما هنا
+            // يجعل مونغو يرفض العملية كاملة بـ ConflictingUpdateOperators.
+            // و$set يُطبَّق على الإدراج أيضاً، فلا شيء يضيع.
         };
         if (req.body?.deviceInfo) setOnInsert.deviceInfo = req.body.deviceInfo;
 
