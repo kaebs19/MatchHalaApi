@@ -46,6 +46,11 @@ const NOTIFICATION_TYPES = {
     'chat_mode_changed':    { category: 'personal', groupable: false, adminOnly: false },
     'conversations_censored': { category: 'personal', groupable: false, adminOnly: false },
     'conversations_wiped':  { category: 'personal', groupable: false, adminOnly: false },
+    'promo_warning':        { category: 'personal', groupable: false, adminOnly: false },
+    'restriction_lifted':   { category: 'personal', groupable: false, adminOnly: false },
+    'message_deleted':      { category: 'personal', groupable: false, adminOnly: false },
+    'maintenance_start':    { category: 'personal', groupable: false, adminOnly: false },
+    'maintenance_end':      { category: 'personal', groupable: false, adminOnly: false },
 
     // ===== Social — Engagement (groupable) =====
     'new_match':            { category: 'social', groupable: true, adminOnly: false },

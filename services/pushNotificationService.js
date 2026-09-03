@@ -10,7 +10,7 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { isChannelType, isAdminOnlyType, getPreferenceKey } = require('../config/notificationCategories');
+const { getTypeMeta, isChannelType, isAdminOnlyType, getPreferenceKey } = require('../config/notificationCategories');
 
 /**
  * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
@@ -259,14 +259,28 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
         }
 
         // حفظ الإشعارات في قاعدة البيانات
-        const notifications = users.map(user => ({
-            user: user._id,
-            title: notification.title,
-            message: notification.body,
-            type: data.type || 'broadcast',
-            data: data
-        }));
-        await Notification.insertMany(notifications);
+        // ⚠️ الحقول يجب أن تطابق مخطّط Notification. كانت user/message — لا يعرفهما
+        // المخطّط (strict) وbody المطلوب مفقود، فيرمي insertMany ويُجهض البثّ كله
+        // قبل حلقة الإرسال: لا حفظ ولا push. لذلك الحفظ الآن معزول في try خاص.
+        // وinsertMany لا يشغّل pre('save')، لذا category/adminOnly يُضبطان يدوياً.
+        try {
+            const meta = getTypeMeta(data.type || 'broadcast');
+            await Notification.insertMany(users.map(user => ({
+                title: notification.title,
+                body: notification.body,
+                type: data.type || 'broadcast',
+                recipients: 'specific',
+                targetUsers: [user._id],
+                category: meta.category,
+                adminOnly: meta.adminOnly,
+                status: 'sent',
+                sentAt: new Date(),
+                sentCount: 1,
+                data
+            })), { ordered: false });
+        } catch (saveErr) {
+            console.error('⚠️ Broadcast DB save failed:', saveErr.message);
+        }
 
         // إرسال على دفعات (500 توكن في كل مرة)
         const batchSize = 500;

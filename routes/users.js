@@ -2779,7 +2779,7 @@ router.put('/:id/profile-image', protect, adminOnly, upload.single('profileImage
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: notifTitle,
                     body: notifBody
-                }, { type: 'photo_changed', reason: reason || '' });
+                }, { type: 'photo_changed', reason: reason || '' }, false);  // محفوظ أدناه بنوع system
 
                 await Notification.create({
                     title: notifTitle,
@@ -2870,7 +2870,7 @@ router.post('/:id/reset-change-limits', protect, adminOnly, async (req, res) => 
                 await pushNotificationService.sendNotificationToUser(user._id, {
                     title: notifTitle,
                     body: notifBody
-                }, { type: 'limits_reset', targets: done.join(',') });
+                }, { type: 'limits_reset', targets: done.join(',') }, false);  // محفوظ أدناه بنوع system
 
                 await Notification.create({
                     title: notifTitle,

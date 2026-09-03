@@ -245,7 +245,8 @@ router.post('/', protect, async (req, res) => {
                 await sendNotificationToUser(
                     userId,
                     { title: 'سوبر لايك جديد ⭐', status: 'sent', sentAt: new Date(), body: `${req.user.name} أعجب بك بشدة!` },
-                    { type: 'superlike', fromUserId: swiperId.toString() }
+                    { type: 'superlike', fromUserId: swiperId.toString() },
+                    false  // الإشعار محفوظ أعلاه بنوع super_like — لا تحفظه مرتين
                 );
             } catch (pushErr) {
                 console.error('خطأ في إرسال إشعار السوبر لايك:', pushErr);
