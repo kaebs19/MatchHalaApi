@@ -13,6 +13,7 @@ const FlaggedMessage = require('../models/FlaggedMessage');
 const { generateToken, generateRefreshToken } = require('../utils/generateToken');
 const { buildIpLocation } = require('../utils/geo');
 const sendEmail = require('../utils/sendEmail');
+const { renderCodeEmail } = require('../services/emailService');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const upload = require('../config/multer');
@@ -1074,27 +1075,19 @@ router.post('/forgot-password', async (req, res) => {
         await user.save();
 
         // إرسال البريد الإلكتروني
-        const message = `
-            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4;">
-                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                    <h2 style="color: #333; text-align: center;">إعادة تعيين كلمة المرور</h2>
-                    <p style="color: #666; font-size: 16px;">مرحباً ${user.name},</p>
-                    <p style="color: #666; font-size: 16px;">لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.</p>
-                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
-                        <p style="color: #666; margin-bottom: 10px;">رمز التحقق الخاص بك:</p>
-                        <h1 style="color: #007bff; font-size: 36px; letter-spacing: 5px; margin: 10px 0;">${resetToken}</h1>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">هذا الرمز صالح لمدة 10 دقائق فقط.</p>
-                    <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">إذا لم تطلب إعادة تعيين كلمة المرور، يرجى تجاهل هذه الرسالة.</p>
-                </div>
-            </div>
-        `;
+        const { html, text } = renderCodeEmail({
+            title: 'إعادة تعيين كلمة المرور',
+            name: user.name,
+            intro: 'لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.',
+            code: resetToken,
+            warning: 'إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.'
+        });
 
         await sendEmail({
             email: user.email,
-            subject: 'إعادة تعيين كلمة المرور - HalaChat',
-            message: `رمز إعادة تعيين كلمة المرور الخاص بك هو: ${resetToken}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
-            html: message
+            subject: 'إعادة تعيين كلمة المرور',
+            message: text,
+            html
         });
 
         res.status(200).json({
@@ -1258,26 +1251,18 @@ router.post('/change-email/request', protect, async (req, res) => {
         user.emailChangeExpire = Date.now() + 10 * 60 * 1000;
         await user.save();
 
-        const html = `
-            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4;">
-                <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                    <h2 style="color: #333; text-align: center;">تأكيد البريد الإلكتروني الجديد</h2>
-                    <p style="color: #666; font-size: 16px;">مرحباً ${user.name},</p>
-                    <p style="color: #666; font-size: 16px;">تلقينا طلباً لتغيير البريد الإلكتروني لحسابك إلى هذا العنوان.</p>
-                    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
-                        <p style="color: #666; margin-bottom: 10px;">رمز التحقق الخاص بك:</p>
-                        <h1 style="color: #007bff; font-size: 36px; letter-spacing: 5px; margin: 10px 0;">${code}</h1>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">هذا الرمز صالح لمدة 10 دقائق فقط.</p>
-                    <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">إذا لم تطلب تغيير البريد الإلكتروني، يرجى تجاهل هذه الرسالة.</p>
-                </div>
-            </div>
-        `;
+        const { html, text } = renderCodeEmail({
+            title: 'تأكيد البريد الإلكتروني الجديد',
+            name: user.name,
+            intro: 'تلقينا طلباً لتغيير البريد الإلكتروني لحسابك إلى هذا العنوان.',
+            code,
+            warning: 'إذا لم تطلب تغيير البريد الإلكتروني، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.'
+        });
 
         await sendEmail({
             email,
-            subject: 'تأكيد البريد الإلكتروني الجديد - HalaChat',
-            message: `رمز تأكيد بريدك الإلكتروني الجديد هو: ${code}\n\nهذا الرمز صالح لمدة 10 دقائق.`,
+            subject: 'تأكيد البريد الإلكتروني الجديد',
+            message: text,
             html
         });
 
