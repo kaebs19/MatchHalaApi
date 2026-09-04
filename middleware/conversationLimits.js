@@ -19,6 +19,31 @@ async function conversationLimitMiddleware(req, res, next) {
         const user = req.user;
         const isPremium = !!(user.isPremium && user.premiumExpiresAt > new Date());
 
+        // ⚠️ المسار نفسه يخدم ثلاث نوايا: طلب جديد، واستئناف محادثة مُغلقة،
+        //    و«افتح المحادثة القائمة» (زرّ المراسلة في البروفايل وشاشة الدردشة
+        //    ينادونه جميعاً). الحدود تخصّ الأولى وحدها — لكنها كانت تُفحص قبل
+        //    أن يعرف المعالِج أن محادثة قائمة أصلاً، فوجد المحجوب نفسه ممنوعاً
+        //    من فتح محادثات مع أشخاص قبلوه من قبل، بلا أي طلب معلّق جديد
+        //    يُنشأ. لا حدّ حيث لا إنشاء.
+        const targetUserId = req.body?.targetUserId;
+        if (targetUserId) {
+            const existing = await Conversation.findOne({
+                type: 'private',
+                participants: { $all: [user._id, targetUserId] }
+            }).select('status isActive').lean();
+
+            const isEnded = existing && (
+                existing.status === 'cancelled'
+                || existing.status === 'rejected'
+                || existing.isActive === false
+            );
+
+            // محادثة قائمة وغير منتهية → المعالِج سيعيدها كما هي بلا إنشاء
+            if (existing && !isEnded) {
+                return next();
+            }
+        }
+
         // ⚠️ السقف المتزامن يسبق كل تجاوز — لا الإعلان ولا Premium يرفعه،
         //    لأنه ليس حدّ استهلاك بل حماية لصناديق الطرف الآخر.
         //
