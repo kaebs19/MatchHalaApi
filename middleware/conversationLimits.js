@@ -58,10 +58,18 @@ async function conversationLimitMiddleware(req, res, next) {
         //    الكلّي، لأن الإلغاء سيصير متاحاً فعلاً.
         const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
         const outstandingLimit = isPremium ? MAX_OUTSTANDING_PREMIUM : MAX_OUTSTANDING_FREE;
+        // ⚠️ عمر الطلب هو `requestedAt` لا `createdAt`: استئناف محادثة مُغلقة
+        //    يُعيد الوثيقة إلى pending ويحدّث `requestedAt` وحده، فطلبٌ أُرسل
+        //    قبل دقيقة على وثيقة عمرها شهر كان يسقط من النافذة بلا حساب.
+        //    الاحتياط لوثائق ما قبل الحقل: `requestedAt: null` → `createdAt`.
+        const since = new Date(Date.now() - OUTSTANDING_WINDOW_MS);
         const outstanding = await Conversation.countDocuments({
             creator: user._id,
             status: 'pending',
-            createdAt: { $gte: new Date(Date.now() - OUTSTANDING_WINDOW_MS) }
+            $or: [
+                { requestedAt: { $ne: null, $gte: since } },
+                { requestedAt: null, createdAt: { $gte: since } }
+            ]
         });
 
         if (outstanding >= outstandingLimit) {

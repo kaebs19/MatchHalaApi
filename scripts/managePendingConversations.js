@@ -24,10 +24,21 @@ async function managePendingConversations() {
 
     let reminded = 0, expired = 0, deleted = 0;
 
+    // ⚠️ عمر الطلب هو `requestedAt` لا `createdAt`: استئناف محادثة مُغلقة
+    //    يُعيدها إلى pending ويحدّث `requestedAt` وحده، فدعوة أُرسلت اليوم
+    //    على وثيقة عمرها شهر كانت تُصنَّف «منتهية» في أول تشغيل وتختفي من
+    //    عند المستلم بلا أثر. الاحتياط لوثائق ما قبل الحقل: `createdAt`.
+    const requestAge = (range) => ({
+        $or: [
+            { requestedAt: Object.assign({ $ne: null }, range) },
+            { requestedAt: null, createdAt: range }
+        ]
+    });
+
     // === 1. تذكير أول بعد 24 ساعة (إذا < 7 أيام) ===
     const needReminder = await Conversation.find({
         status: "pending",
-        createdAt: { $lte: h24ago, $gt: d7ago },
+        ...requestAge({ $lte: h24ago, $gt: d7ago }),
         reminderSent: { $ne: true }
     }).populate("participants", "name deviceToken").populate("creator", "name");
 
@@ -59,7 +70,7 @@ async function managePendingConversations() {
     // === 2. انتهاء صلاحية بعد 7 أيام ===
     const toExpire = await Conversation.find({
         status: "pending",
-        createdAt: { $lte: d7ago, $gt: d14ago }
+        ...requestAge({ $lte: d7ago, $gt: d14ago })
     }).populate("participants", "name deviceToken").populate("creator", "name");
 
     for (const conv of toExpire) {

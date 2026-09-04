@@ -182,6 +182,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         cancelledAt: null,
                         reinviteAllowedAt: null,      // امسح التهدئة عند إرسال الدعوة
                         requestedAt: now,             // بداية نافذة "رسالة واحدة فقط"
+                        reminderSent: false,          // تذكير الـ 24 ساعة يخصّ هذه الدعوة لا سابقتها
                         withdrawn: false,             // دعوة جديدة تمسح أثر سحب سابق
                         // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
                         hiddenFor: []
