@@ -6,6 +6,28 @@ const Conversation = require('../models/Conversation');
 // يحملون ٧٤٪ من كل الطلبات المعلّقة). نظير `MAX_PENDING_SENT` في الأصدقاء.
 const MAX_OUTSTANDING_FREE = 30;
 const MAX_OUTSTANDING_PREMIUM = 60;
+const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * فلتر «الطلبات المعلّقة داخل النافذة» — مصدر واحد يستعمله الوسيط وشاشة
+ * «طلباتي المُرسَلة»، حتى لا يقول له السقفُ رقماً وتعرض له الشاشةُ غيره.
+ * عمر الطلب `requestedAt`، مع احتياط `createdAt` للوثائق السابقة للحقل.
+ */
+function outstandingFilter(userId, since = new Date(Date.now() - OUTSTANDING_WINDOW_MS)) {
+    return {
+        creator: userId,
+        status: 'pending',
+        $or: [
+            { requestedAt: { $ne: null, $gte: since } },
+            { requestedAt: null, createdAt: { $gte: since } }
+        ]
+    };
+}
+
+function outstandingLimitFor(user) {
+    const isPremium = !!(user.isPremium && user.premiumExpiresAt > new Date());
+    return isPremium ? MAX_OUTSTANDING_PREMIUM : MAX_OUTSTANDING_FREE;
+}
 
 /**
  * Middleware: حد المحادثات اليومية
@@ -56,28 +78,22 @@ async function conversationLimitMiddleware(req, res, next) {
         //    خلال سبعة أيام عبر managePendingConversations.
         //    بعد وصول v10.2 لأغلب المستخدمين يُعاد النظر في العودة للرصيد
         //    الكلّي، لأن الإلغاء سيصير متاحاً فعلاً.
-        const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
         const outstandingLimit = isPremium ? MAX_OUTSTANDING_PREMIUM : MAX_OUTSTANDING_FREE;
         // ⚠️ عمر الطلب هو `requestedAt` لا `createdAt`: استئناف محادثة مُغلقة
         //    يُعيد الوثيقة إلى pending ويحدّث `requestedAt` وحده، فطلبٌ أُرسل
         //    قبل دقيقة على وثيقة عمرها شهر كان يسقط من النافذة بلا حساب.
         //    الاحتياط لوثائق ما قبل الحقل: `requestedAt: null` → `createdAt`.
-        const since = new Date(Date.now() - OUTSTANDING_WINDOW_MS);
-        const outstanding = await Conversation.countDocuments({
-            creator: user._id,
-            status: 'pending',
-            $or: [
-                { requestedAt: { $ne: null, $gte: since } },
-                { requestedAt: null, createdAt: { $gte: since } }
-            ]
-        });
+        const outstanding = await Conversation.countDocuments(outstandingFilter(user._id));
 
         if (outstanding >= outstandingLimit) {
             return res.status(429).json({
                 success: false,
                 // ⚠️ لا تطلب من المستخدم فعلاً لا تملك واجهته تنفيذه.
                 //    الصياغة تصف ما سيحدث تلقائياً بدل توجيهه إلى زرّ غير موجود.
-                message: `أرسلت ${outstanding} طلباً خلال يومين ولم تُجَب بعد. امنحها وقتاً — تُفتح المساحة تلقائياً مع كل ردّ يصلك.`,
+                // ⚠️ صار للمستخدم مخرج بيده: شاشة «طلباتي المُرسَلة» تعرض
+                //    الطلبات التي تشغل النافذة وتسمح بسحبها. لا تعده بالانتظار
+                //    وحده بعد أن صار الإلغاء متاحاً.
+                message: `أرسلت ${outstanding} طلباً خلال يومين ولم تُجَب بعد. اسحب بعضها من «طلباتي المُرسَلة» لتفتح مساحة فوراً، أو امنحها وقتاً.`,
                 code: 'OUTSTANDING_REQUESTS_LIMIT',
                 data: { limit: outstandingLimit, outstanding, windowHours: 48 }
             });
@@ -142,4 +158,11 @@ async function conversationLimitMiddleware(req, res, next) {
     }
 }
 
-module.exports = { conversationLimitMiddleware };
+module.exports = {
+    conversationLimitMiddleware,
+    outstandingFilter,
+    outstandingLimitFor,
+    OUTSTANDING_WINDOW_MS,
+    MAX_OUTSTANDING_FREE,
+    MAX_OUTSTANDING_PREMIUM
+};

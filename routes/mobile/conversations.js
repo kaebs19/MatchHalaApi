@@ -10,7 +10,12 @@ const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned, getBlockState } = require('./helpers');
-const { conversationLimitMiddleware } = require('../../middleware/conversationLimits');
+const {
+    conversationLimitMiddleware,
+    outstandingFilter,
+    outstandingLimitFor,
+    OUTSTANDING_WINDOW_MS
+} = require('../../middleware/conversationLimits');
 
 // تهدئة بعد الرفض قبل السماح بدعوة استئناف جديدة (بالمللي ثانية)
 const REINVITE_COOLDOWN_MS = 60 * 1000;
@@ -1051,6 +1056,174 @@ router.get('/conversations/pending-count', protect, async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// @route   GET /api/mobile/conversations/sent-requests
+// @desc    طلبات المحادثة التي أرسلها المستخدم ولم تُجَب بعد
+// @access  Private
+//
+// ⚠️ سبب وجود هذا المسار: سقف الطلبات المعلّقة كان يحجب المُرسِل بلا أن
+//    يريه ما الذي يشغل السقف ولا كيف يفرّغه. والفرق الذي يجب أن تُظهره
+//    الواجهة: السحب لا يفتح مساحة إلا لطلبٍ داخل نافذة الـ ٤٨ ساعة —
+//    سحب الطلبات القديمة تنظيفٌ للسجل ولا يرفع الحجب.
+router.get('/conversations/sent-requests', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const since = new Date(Date.now() - OUTSTANDING_WINDOW_MS);
+        const limit = outstandingLimitFor(req.user);
+
+        const sent = await Conversation.find({
+            creator: userId,
+            status: 'pending'
+        })
+            .populate('participants', 'name profileImage isPremium isOnline lastLogin isActive suspension bannedWords verification.isVerified')
+            .select('participants requestedAt createdAt reminderSent')
+            .lean();
+
+        const requests = sent.map(conv => {
+            const target = (conv.participants || []).find(
+                p => p && p._id.toString() !== userId.toString()
+            );
+            const requestedAt = conv.requestedAt || conv.createdAt;
+            const hidden = !target
+                || target.isActive === false
+                || target.suspension?.isSuspended === true
+                || target.bannedWords?.isBanned === true;
+
+            return {
+                _id: conv._id,
+                requestedAt,
+                // ⚠️ الحقل الذي تبني عليه الواجهة وسمَ «يشغل مساحة»
+                countsTowardLimit: new Date(requestedAt) >= since,
+                // انتهاء الصلاحية التلقائي بعد 7 أيام من الطلب
+                expiresAt: new Date(new Date(requestedAt).getTime() + 7 * 24 * 60 * 60 * 1000),
+                reminderSent: conv.reminderSent === true,
+                hidden,
+                user: hidden ? null : {
+                    _id: target._id,
+                    name: target.name,
+                    profileImage: getFullUrl(getBestUserImage(target)),
+                    isPremium: !!target.isPremium,
+                    isOnline: !!target.isOnline,
+                    isVerified: target.verification?.isVerified || false
+                }
+            };
+        })
+            // طلبات لمستخدمين موقوفين/محذوفين: لا تعرضها، لكنها تبقى محسوبة
+            // في `outstanding` لأن الخادم يحسبها — وإخفاء ما يشغل السقف
+            // بلا تفسير هو نفس العمى الذي جاء هذا المسار ليزيله.
+            .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+
+        const outstanding = requests.filter(r => r.countsTowardLimit).length;
+
+        res.status(200).json({
+            success: true,
+            data: {
+                requests,
+                total: requests.length,
+                outstanding,
+                limit,
+                remaining: Math.max(0, limit - outstanding),
+                windowHours: OUTSTANDING_WINDOW_MS / (60 * 60 * 1000)
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب الطلبات المُرسَلة:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
+    }
+});
+
+// @route   POST /api/mobile/conversations/sent-requests/withdraw
+// @desc    سحب عدة طلبات معلّقة دفعةً واحدة
+// @access  Private
+//
+// ⚠️ نظير `PUT /conversations/:id/cancel` لطلب واحد، بنفس قواعده: لا تهدئة
+//    ولا تصعيد ولا إشعار للمستلم — معاقبةُ من ينظّف طلباته تجعله يكفّ عن
+//    التنظيف. الفرق أنه يقبل حتى 50 معرّفاً في نداء واحد.
+router.post('/conversations/sent-requests/withdraw', protect, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const { ids, scope } = req.body || {};
+
+        let match = { creator: userId, status: 'pending' };
+
+        if (Array.isArray(ids) && ids.length > 0) {
+            const valid = ids
+                .filter(id => mongoose.Types.ObjectId.isValid(id))
+                .slice(0, 50)
+                .map(id => new mongoose.Types.ObjectId(id));
+            if (valid.length === 0) {
+                return res.status(400).json({ success: false, message: 'لا توجد معرّفات صالحة' });
+            }
+            match._id = { $in: valid };
+        } else if (scope === 'outstanding') {
+            // ما يشغل نافذة الـ 48 ساعة وحده — وهو الوحيد الذي يفكّ الحجب
+            match = outstandingFilter(userId);
+        } else if (scope === 'all') {
+            // كل المعلّق
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'حدّد ids أو scope (outstanding | all)'
+            });
+        }
+
+        const targets = await Conversation.find(match).select('_id participants').lean();
+        if (targets.length === 0) {
+            return res.status(200).json({ success: true, message: 'لا توجد طلبات للسحب', data: { withdrawn: 0 } });
+        }
+
+        const now = new Date();
+        await Conversation.updateMany(
+            { _id: { $in: targets.map(t => t._id) } },
+            {
+                $set: {
+                    status: 'cancelled',
+                    isActive: false,
+                    cancelledBy: userId,
+                    cancelledAt: now,
+                    requestedAt: null,
+                    withdrawn: true
+                }
+            }
+        );
+
+        if (global.invalidatePartnersCache) {
+            global.invalidatePartnersCache(userId.toString());
+        }
+
+        // إخفاء الطلبات من قوائم المستلمين فوراً (بلا push — لم يفتحوها أصلاً)
+        if (global.io) {
+            for (const conv of targets) {
+                const receiver = (conv.participants || []).find(
+                    p => p && p.toString() !== userId.toString()
+                );
+                if (receiver) {
+                    global.io.to(`user:${receiver.toString()}`).emit('conversation:cancelled', {
+                        conversationId: conv._id,
+                        withdrawn: true
+                    });
+                }
+            }
+        }
+
+        const outstanding = await Conversation.countDocuments(outstandingFilter(userId));
+        const limit = outstandingLimitFor(req.user);
+
+        res.status(200).json({
+            success: true,
+            message: `تم سحب ${targets.length} طلباً`,
+            data: {
+                withdrawn: targets.length,
+                outstanding,
+                limit,
+                remaining: Math.max(0, limit - outstanding)
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في سحب الطلبات:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر', error: error.message });
     }
 });
 
