@@ -24,6 +24,7 @@ const REVERT_START = new Date('2026-09-05T02:10:00Z');
 async function run() {
     await connectDB();
     const BannedDevice = require('../models/BannedDevice');
+    require('../models/User'); // populate يحتاج النموذج مسجَّلاً
 
     const filter = {
         isActive: false,
