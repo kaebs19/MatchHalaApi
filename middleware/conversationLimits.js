@@ -13,6 +13,11 @@ const MAX_OUTSTANDING_PREMIUM = 60;
 //    ⚠️ عند إعادته تذكّر سبب وجوده: ٦٠٢ مُرسِلاً كانوا يحملون ٧٤٪ من كل
 //    الطلبات المعلّقة.
 const OUTSTANDING_CAP_ENABLED = false;
+
+// 🔓 مفتاح الحدّ اليومي (٥٠ لليوم الأول / ١٠٠). أُطفئ بنفس الطلب وفي نفس
+//    اليوم. يبقى فحص السبام (spamCheckMiddleware) والحظر والخصوصية.
+//    عند إعادته: true — والتطبيق يعرض «شاهد إعلاناً» تلقائياً عند بلوغه.
+const DAILY_LIMIT_ENABLED = false;
 const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
@@ -108,6 +113,11 @@ async function conversationLimitMiddleware(req, res, next) {
             });
         }
 
+        // الحدّ اليومي مُطفأ → لا عدّ ولا استعلام
+        if (!DAILY_LIMIT_ENABLED) {
+            return next();
+        }
+
         // تجاوز الحد اليومي بعد مشاهدة إعلان
         if (req.body?.adRewarded === true) {
             return next();
@@ -172,6 +182,7 @@ module.exports = {
     outstandingFilter,
     outstandingLimitFor,
     OUTSTANDING_CAP_ENABLED,
+    DAILY_LIMIT_ENABLED,
     OUTSTANDING_WINDOW_MS,
     MAX_OUTSTANDING_FREE,
     MAX_OUTSTANDING_PREMIUM
