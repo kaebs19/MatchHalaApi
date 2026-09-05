@@ -11,6 +11,7 @@ const { checkSignals: checkFpNoise, NOISE_THRESHOLD } = require('../utils/device
 const upload = require('../config/multer');
 const { processImage } = require('../utils/imageProcessor');
 const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
+const { banDeviceForUser } = require('../services/deviceBanService');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -1745,6 +1746,18 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
+        // 🔒 العقوبة الدائمة تحظر الجهاز الآن، لا عند محاولة دخولٍ لاحقة.
+        //    كان الحظر يُسجَّل فقط إن جرّب الموقوفُ حسابَه القديم؛ من ذهب
+        //    مباشرةً إلى «إنشاء حساب» لم يجد ما يمنعه.
+        if (suspendedUntil === null) {
+            await banDeviceForUser(user._id, {
+                reason: 'violation',
+                details: reason || 'مخالفة شروط الاستخدام',
+                bannedBy: source === 'admin' ? 'admin' : 'auto',
+                adminId: req.user?._id || null
+            });
+        }
+
         // ✅ إشعار المستخدم
         if (notify) {
             const suspendTitle = '⚠️ تم تعليق حسابك';
@@ -1827,6 +1840,11 @@ router.post("/:id/escalate", protect, adminOnly, async (req, res) => {
             history: [...(user.suspension?.history || []), { level: nextLevel, reason, suspendedAt: new Date(), source: "admin_escalate" }]
         });
         await user.save();
+
+        // 🔒 المستوى 5 دائم → حظر الجهاز فوراً (انظر التعليق في /suspend)
+        if (nextLevel === 5) {
+            await banDeviceForUser(user._id, { reason: 'violation', details: reason, bannedBy: 'admin', adminId: req.user?._id || null });
+        }
 
         const labels = { 1: "تحذير أول", 2: "تحذير أخير", 3: "تقييد 3 أيام", 4: "تعليق 7 أيام", 5: "حظر نهائي" };
 

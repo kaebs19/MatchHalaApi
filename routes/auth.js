@@ -32,6 +32,7 @@ const { detectExternalPromotion, recordExternalPromoViolation, isBioLocked } = r
 
 // ✅ حظر الأجهزة
 const BannedDevice = require('../models/BannedDevice');
+const { isPermanentlyPunished } = require('../services/deviceBanService');
 const bannedDeviceCheck = require('../middleware/bannedDeviceCheck');
 const { isStrictDeviceVersion } = require('../utils/strictDeviceMode');
 const { checkSignals: checkFpNoise } = require('../utils/deviceFingerprintNoise');
@@ -246,16 +247,13 @@ const saveLoginRecord = async (user, req) => {
  */
 const recordDeviceBanForUser = async (user, req, reason = 'manual', details = '') => {
     try {
-        // ✅ فحص: هل العقوبة دائمة فعليًا؟
-        const isPermanentSuspension =
-            user?.suspension?.isSuspended === true &&
-            !user.suspension.suspendedUntil; // null = دائم
-
-        const isInactiveByAdmin = user?.isActive === false;
-
-        // ✅ bannedWords وحدها لا تستوجب حظر جهاز (24h auto-lift)
-        // ✅ suspension مؤقت لا يستوجب حظر جهاز (سينتهي تلقائيًا)
-        const isPermanent = isPermanentSuspension || isInactiveByAdmin;
+        // ✅ فحص: هل العقوبة دائمة فعليًا؟ (services/deviceBanService — مصدر واحد)
+        // ⚠️ كان `isActive === false` يُعَدّ دليلَ دوام، بينما حظرُ الكلمات
+        //    (٢٤ ساعة) والتعليقُ المؤقت كلاهما يُطفئه ثم يُعيده — فكان دخولٌ
+        //    واحد أثناء حظر كلمات ليومٍ يحوّله حظرَ جهازٍ أبدياً، والتعليقُ
+        //    أعلاه كان يقول العكس. سكربت cleanupTemporaryDeviceBans وُلد
+        //    لتنظيف هذا الأثر لا لعلاج سببه.
+        const isPermanent = isPermanentlyPunished(user);
 
         if (!isPermanent) {
             // الحالة مؤقتة → نكتفي بحظر الحساب فقط
