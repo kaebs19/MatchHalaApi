@@ -14,6 +14,7 @@ const {
     conversationLimitMiddleware,
     outstandingFilter,
     outstandingLimitFor,
+    OUTSTANDING_CAP_ENABLED,
     OUTSTANDING_WINDOW_MS
 } = require('../../middleware/conversationLimits');
 
@@ -1123,8 +1124,10 @@ router.get('/conversations/sent-requests', protect, async (req, res) => {
                 requests,
                 total: requests.length,
                 outstanding,
-                limit,
-                remaining: Math.max(0, limit - outstanding),
+                // السقف مُطفأ → limit: 0 والتطبيق يخفي المقياس ويُبقي القائمة
+                capEnabled: OUTSTANDING_CAP_ENABLED,
+                limit: OUTSTANDING_CAP_ENABLED ? limit : 0,
+                remaining: OUTSTANDING_CAP_ENABLED ? Math.max(0, limit - outstanding) : 0,
                 windowHours: OUTSTANDING_WINDOW_MS / (60 * 60 * 1000)
             }
         });

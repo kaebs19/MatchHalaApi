@@ -6,6 +6,13 @@ const Conversation = require('../models/Conversation');
 // يحملون ٧٤٪ من كل الطلبات المعلّقة). نظير `MAX_PENDING_SENT` في الأصدقاء.
 const MAX_OUTSTANDING_FREE = 30;
 const MAX_OUTSTANDING_PREMIUM = 60;
+
+// 🔓 مفتاح السقف. أُطفئ بطلب صاحب المشروع (٥ سبتمبر ٢٠٢٦): «بدء محادثة
+//    جديدة مفتوح». الحدّ اليومي وفحص السبام باقيان، وشاشة «طلباتي
+//    المُرسَلة» باقية للتنظيف الطوعي. لإعادة السقف: true — لا شيء غيره.
+//    ⚠️ عند إعادته تذكّر سبب وجوده: ٦٠٢ مُرسِلاً كانوا يحملون ٧٤٪ من كل
+//    الطلبات المعلّقة.
+const OUTSTANDING_CAP_ENABLED = false;
 const OUTSTANDING_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
@@ -83,9 +90,11 @@ async function conversationLimitMiddleware(req, res, next) {
         //    يُعيد الوثيقة إلى pending ويحدّث `requestedAt` وحده، فطلبٌ أُرسل
         //    قبل دقيقة على وثيقة عمرها شهر كان يسقط من النافذة بلا حساب.
         //    الاحتياط لوثائق ما قبل الحقل: `requestedAt: null` → `createdAt`.
-        const outstanding = await Conversation.countDocuments(outstandingFilter(user._id));
+        const outstanding = OUTSTANDING_CAP_ENABLED
+            ? await Conversation.countDocuments(outstandingFilter(user._id))
+            : 0;
 
-        if (outstanding >= outstandingLimit) {
+        if (OUTSTANDING_CAP_ENABLED && outstanding >= outstandingLimit) {
             return res.status(429).json({
                 success: false,
                 // ⚠️ لا تطلب من المستخدم فعلاً لا تملك واجهته تنفيذه.
@@ -162,6 +171,7 @@ module.exports = {
     conversationLimitMiddleware,
     outstandingFilter,
     outstandingLimitFor,
+    OUTSTANDING_CAP_ENABLED,
     OUTSTANDING_WINDOW_MS,
     MAX_OUTSTANDING_FREE,
     MAX_OUTSTANDING_PREMIUM
