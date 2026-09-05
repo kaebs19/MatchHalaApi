@@ -76,6 +76,7 @@ function PermanentBans({ onViewUserDetail }) {
     const deviceChip = (d) => {
         if (!d || d.status === 'none') return { text: 'بلا حظر جهاز', icon: '⚠️', style: { background: '#fef3c7', color: '#92400e' } };
         if (d.status === 'pending') return { text: 'جهاز قيد الانتظار', icon: '⏳', style: { background: '#e0e7ff', color: '#3730a3' } };
+        if (d.sharedRecord) return { text: 'الجهاز محظور (بصمة مشتركة)', icon: '📵', style: { background: '#fee2e2', color: '#991b1b' } };
         return { text: 'الجهاز محظور', icon: '📵', style: { background: '#fee2e2', color: '#991b1b' } };
     };
 
@@ -240,7 +241,7 @@ function PermanentBans({ onViewUserDetail }) {
                                         <button className='unban-btn' onClick={() => handleUnsuspend(u)}>
                                             ✅ إلغاء التعليق
                                         </button>
-                                        {a.device?.status !== 'none' && (
+                                        {a.device?.status !== 'none' && !a.device?.sharedRecord && (
                                             <button className='view-user-btn' onClick={() => handleUnbanDeviceOnly(u)} title='يبقى الحساب موقوفاً — يُسمح للجهاز بحساب جديد'>
                                                 🔓 الجهاز فقط
                                             </button>
