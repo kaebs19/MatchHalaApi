@@ -20,7 +20,6 @@ const ProfileView = require('../models/ProfileView');
 const SuperLike = require('../models/SuperLike');
 const FlaggedMessage = require('../models/FlaggedMessage');
 const { checkBannedWords } = require('./bannedWords');
-const { banDeviceForUser } = require('../services/deviceBanService');
 
 // Helper: تحويل المسار النسبي إلى URL كامل
 const getFullUrl = (path) => {
@@ -3241,15 +3240,6 @@ router.post('/reports', protect, async (req, res) => {
                 // isActive يبقى true — التعليق المؤقت لا يعطّل الحساب
                 if (suspendedUntil === null) targetUser.isActive = false; // المستوى 5 دائم
                 await targetUser.save();
-
-                // 🔒 المستوى 5 دائم → حظر الجهاز فوراً، لا عند محاولة دخولٍ لاحقة
-                if (suspendedUntil === null) {
-                    await banDeviceForUser(targetUser._id, {
-                        reason: 'harassment',
-                        details: suspendReason,
-                        bannedBy: 'auto'
-                    });
-                }
 
                 // إشعار المستخدم المعلّق
                 const suspendTitle = '⚠️ تم تعليق حسابك';

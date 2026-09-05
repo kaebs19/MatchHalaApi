@@ -17,7 +17,6 @@
 
 const User = require('../models/User');
 const BannedDevice = require('../models/BannedDevice');
-const { banDeviceForUser } = require('../services/deviceBanService');
 const Notification = require('../models/Notification');
 
 const ESCALATION_LEVELS = {
@@ -103,7 +102,7 @@ async function escalateUser(userId, reason = 'مخالفة سياسة الاست
         });
 
     } else if (levelConfig.type === 'ban') {
-        // حظر نهائي + حظر جهاز
+        // حظر نهائي (الحساب فقط — الجهاز قرار منفصل)
         user.set('suspension', {
             isSuspended: true,
             suspendedAt: new Date(),
@@ -119,18 +118,9 @@ async function escalateUser(userId, reason = 'مخالفة سياسة الاست
         user.isActive = false;
         await user.save();
 
-        // 🔒 حظر الجهاز فوراً — بالخدمة الموحّدة.
-        //    ⚠️ الكتلة السابقة كانت تتجاهل vendorId، ولا تُنشئ سجلاً معلّقاً
-        //    (pendingFingerprint) للحسابات بلا بصمة فيفلت أصحابها، وتكتب
-        //    reason: 'auto_escalation' خارج enum النموذج.
-        const banResult = await banDeviceForUser(userId, {
-            reason: 'violation',
-            details: reason,
-            bannedBy: source === 'admin' ? 'admin' : 'auto'
-        });
-        if (banResult.banned) {
-            console.log(`📵 Device banned for ${user.name}${banResult.pending ? ' (pending fingerprint)' : ''}`);
-        }
+        // ⚠️ لا حظر جهاز هنا: التصعيد إلى الدائم يعلّق الحساب فقط. حظر الجهاز
+        //    قرار منفصل للأدمن بزرّه الصريح — ما دام الحساب معلّقاً فالطرف
+        //    الآخر يراه «مستخدماً موقوفاً» ولا يمكنه الدخول أصلاً.
 
         emitToUser(userId, 'account-suspended', {
             suspendedUntil: null, reason, level: 5

@@ -11,7 +11,6 @@ const { checkSignals: checkFpNoise, NOISE_THRESHOLD } = require('../utils/device
 const upload = require('../config/multer');
 const { processImage } = require('../utils/imageProcessor');
 const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
-const { banDeviceForUser } = require('../services/deviceBanService');
 
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
@@ -1746,18 +1745,10 @@ router.put('/:id/suspend', protect, adminOnly, async (req, res) => {
         await user.save();
         invalidateUsers();
 
-        // 🔒 العقوبة الدائمة تحظر الجهاز الآن، لا عند محاولة دخولٍ لاحقة.
-        //    كان الحظر يُسجَّل فقط إن جرّب الموقوفُ حسابَه القديم؛ من ذهب
-        //    مباشرةً إلى «إنشاء حساب» لم يجد ما يمنعه.
-        if (suspendedUntil === null) {
-            await banDeviceForUser(user._id, {
-                reason: 'violation',
-                details: reason || 'مخالفة شروط الاستخدام',
-                bannedBy: source === 'admin' ? 'admin' : 'auto',
-                adminId: req.user?._id || null
-            });
-        }
-
+        // ⚠️ التعليق — حتى الدائم — يعلّق الحساب فقط ولا يحظر الجهاز.
+        //    حظر الجهاز قرار منفصل بزرّه الصريح (POST /:id/ban-device).
+        //    كان هنا استدعاءٌ يحظر الجهاز تلقائياً (f2197b2) بُني على قراءة
+        //    معكوسة لشكوى المالك، وأُزيل في اليوم نفسه.
         // ✅ إشعار المستخدم
         if (notify) {
             const suspendTitle = '⚠️ تم تعليق حسابك';
@@ -1841,10 +1832,6 @@ router.post("/:id/escalate", protect, adminOnly, async (req, res) => {
         });
         await user.save();
 
-        // 🔒 المستوى 5 دائم → حظر الجهاز فوراً (انظر التعليق في /suspend)
-        if (nextLevel === 5) {
-            await banDeviceForUser(user._id, { reason: 'violation', details: reason, bannedBy: 'admin', adminId: req.user?._id || null });
-        }
 
         const labels = { 1: "تحذير أول", 2: "تحذير أخير", 3: "تقييد 3 أيام", 4: "تعليق 7 أيام", 5: "حظر نهائي" };
 
@@ -2182,6 +2169,7 @@ router.get('/permanent-suspensions/list', protect, adminOnly, async (req, res) =
             thisWeek: enriched.filter(e => e.u.suspension?.suspendedAt >= weekAgo).length,
             byAdmin: enriched.filter(e => e.u.suspension?.suspendedBy).length,
             withoutDevice: enriched.filter(e => e.device.status === 'none').length,
+            withDevice: enriched.filter(e => e.device.status === 'banned').length,
             pendingCount: enriched.filter(e => e.device.status === 'pending').length
         };
         stats.byAuto = stats.total - stats.byAdmin;

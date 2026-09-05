@@ -7,8 +7,8 @@ import { formatDateTime } from '../utils/formatters';
 import './BannedDevices.css';
 
 // الحسابات المعلّقة دائماً — الحساب هو الوحدة هنا، والجهاز حالةٌ عليه.
-// صفحة «الأجهزة المحظورة» تبقى لحظر الجهاز الصريح؛ خلطُهما أغرقها بـ ١٣١٩
-// حساباً بعد الـ backfill لا أجهزة.
+// القاعدة: التعليق يعلّق الحساب فقط؛ حظر الجهاز قرار صريح منفصل، فالأصل هنا
+// «الحساب فقط» و«جهازه محظور أيضاً» هو الاستثناء الذي يستحقّ عدّاداً.
 function PermanentBans({ onViewUserDetail }) {
     const [accounts, setAccounts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -19,7 +19,7 @@ function PermanentBans({ onViewUserDetail }) {
     const [searchInput, setSearchInput] = useState('');
     const [device, setDevice] = useState('all');     // all | banned | pending | none
     const [source, setSource] = useState('all');     // all | admin | auto
-    const [stats, setStats] = useState({ total: 0, today: 0, thisWeek: 0, byAdmin: 0, byAuto: 0, withoutDevice: 0, pendingCount: 0 });
+    const [stats, setStats] = useState({ total: 0, today: 0, thisWeek: 0, byAdmin: 0, byAuto: 0, withoutDevice: 0, withDevice: 0, pendingCount: 0 });
     const { showToast } = useToast();
 
     const fetchAccounts = useCallback(async () => {
@@ -74,7 +74,7 @@ function PermanentBans({ onViewUserDetail }) {
     };
 
     const deviceChip = (d) => {
-        if (!d || d.status === 'none') return { text: 'بلا حظر جهاز', icon: '⚠️', style: { background: '#fef3c7', color: '#92400e' } };
+        if (!d || d.status === 'none') return { text: 'الحساب فقط', icon: '👤', style: { background: '#f1f5f9', color: '#334155' } };
         if (d.status === 'pending') return { text: 'جهاز قيد الانتظار', icon: '⏳', style: { background: '#e0e7ff', color: '#3730a3' } };
         if (d.sharedRecord) return { text: 'الجهاز محظور (بصمة مشتركة)', icon: '📵', style: { background: '#fee2e2', color: '#991b1b' } };
         return { text: 'الجهاز محظور', icon: '📵', style: { background: '#fee2e2', color: '#991b1b' } };
@@ -119,10 +119,10 @@ function PermanentBans({ onViewUserDetail }) {
                     </div>
                 </div>
                 <div className='banned-stat-card month'>
-                    <div className='stat-icon'>⚠️</div>
+                    <div className='stat-icon'>📵</div>
                     <div className='stat-info'>
-                        <div className='stat-value'>{stats.withoutDevice}</div>
-                        <div className='stat-label'>بلا حظر جهاز</div>
+                        <div className='stat-value'>{stats.withDevice}</div>
+                        <div className='stat-label'>جهازه محظور أيضاً</div>
                     </div>
                 </div>
             </div>
@@ -135,9 +135,9 @@ function PermanentBans({ onViewUserDetail }) {
                 </div>
                 <div className='source-tabs'>
                     <button className={'source-tab ' + (device === 'all' ? 'active' : '')} onClick={() => pickDevice('all')}>كل الأجهزة</button>
-                    <button className={'source-tab ' + (device === 'banned' ? 'active' : '')} onClick={() => pickDevice('banned')}>📵 محظور</button>
+                    <button className={'source-tab ' + (device === 'banned' ? 'active' : '')} onClick={() => pickDevice('banned')}>📵 محظور ({stats.withDevice})</button>
                     <button className={'source-tab ' + (device === 'pending' ? 'active' : '')} onClick={() => pickDevice('pending')}>⏳ قيد الانتظار ({stats.pendingCount})</button>
-                    <button className={'source-tab ' + (device === 'none' ? 'active' : '')} onClick={() => pickDevice('none')}>⚠️ بلا حظر ({stats.withoutDevice})</button>
+                    <button className={'source-tab ' + (device === 'none' ? 'active' : '')} onClick={() => pickDevice('none')}>الحساب فقط ({stats.withoutDevice})</button>
                 </div>
             </div>
 
