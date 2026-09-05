@@ -78,6 +78,7 @@ async function banDeviceForUser(userId, { reason = 'manual', details = '', banne
         // ⚠️ $setOnInsert لا يجوز أن يكرّر مفتاحاً في $set (ConflictingUpdateOperators)
         const setOnInsert = {
             originalUserId: user._id,
+            viaSuspension: true,   // سجل تبِع تعليقاً — لا حظر جهاز صريح من الأدمن
             reason,
             reasonDetails: details || `banned on permanent punishment (${reason})`,
             bannedBy,

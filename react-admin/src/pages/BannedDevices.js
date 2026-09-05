@@ -6,7 +6,7 @@ import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDateTime } from '../utils/formatters';
 import './BannedDevices.css';
 
-function BannedDevices({ onViewUserDetail }) {
+function BannedDevices({ onViewUserDetail, onPageChange }) {
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
@@ -17,7 +17,7 @@ function BannedDevices({ onViewUserDetail }) {
     const [source, setSource] = useState('all'); // all | manual | auto
     const [stats, setStats] = useState({
         totalActive: 0, today: 0, thisWeek: 0, thisMonth: 0,
-        manualCount: 0, autoCount: 0
+        manualCount: 0, autoCount: 0, viaSuspensionCount: 0
     });
     const [bulkLoading, setBulkLoading] = useState(false);
     const { showToast } = useToast();
@@ -208,6 +208,16 @@ function BannedDevices({ onViewUserDetail }) {
                     </div>
                 </div>
             </div>
+
+            {/* الحسابات المعلّقة دائماً لها صفحتها — هنا الأجهزة المحظورة صراحةً فقط */}
+            {stats.viaSuspensionCount > 0 && (
+                <div className='results-count' style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span>ℹ️ {stats.viaSuspensionCount} جهازاً محظوراً تبعاً لتعليق حساب دائم لا يظهر هنا.</span>
+                    <button className='view-user-btn' onClick={() => onPageChange && onPageChange('permanent-bans')}>
+                        ⛔ الحسابات المحظورة دائماً →
+                    </button>
+                </div>
+            )}
 
             {/* Filter Tabs + Bulk Action */}
             <div className='banned-filter-row'>

@@ -1985,8 +1985,19 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
         const { search = '', page = 1, limit = 50, source = 'all' } = req.query;
         const skip = (Number(page) - 1) * Number(limit);
 
+        // ✅ هذه الصفحة للأجهزة المحظورة صراحةً. السجلات التي تبعت تعليقاً
+        //    دائماً (viaSuspension، ومنها backfill القديم بلا العلم) لها صفحتها:
+        //    «الحسابات المحظورة دائماً». خلطُهما أغرق الصفحة بـ ١٣١٩ حساباً.
+        const notViaSuspension = {
+            viaSuspension: { $ne: true },
+            reasonDetails: { $not: /^backfill:/ }
+        };
+        const viaSuspension = {
+            $or: [{ viaSuspension: true }, { reasonDetails: /^backfill:/ }]
+        };
+
         // ✅ بناء الفلتر مع البحث + مصدر الحظر
-        let filter = { isActive: true };
+        let filter = { isActive: true, ...notViaSuspension };
         let userIds = null;
 
         // ✅ فلتر مصدر الحظر (manual/admin أو auto/spam_system)
@@ -2015,20 +2026,22 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
             ];
         }
 
-        // ✅ إحصائيات (قبل pagination)
+        // ✅ إحصائيات (قبل pagination) — أجهزة صريحة فقط
         const now = new Date();
         const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const base = { isActive: true, ...notViaSuspension };
 
-        const [totalActive, today, thisWeek, thisMonth, manualCount, autoCount, totalCount] = await Promise.all([
-            BannedDevice.countDocuments({ isActive: true }),
-            BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: dayAgo } }),
-            BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: weekAgo } }),
-            BannedDevice.countDocuments({ isActive: true, createdAt: { $gte: monthAgo } }),
-            BannedDevice.countDocuments({ isActive: true, bannedBy: 'admin' }),
-            BannedDevice.countDocuments({ isActive: true, bannedBy: { $in: ['auto', 'spam_system'] } }),
-            BannedDevice.countDocuments(filter)
+        const [totalActive, today, thisWeek, thisMonth, manualCount, autoCount, totalCount, viaSuspensionCount] = await Promise.all([
+            BannedDevice.countDocuments(base),
+            BannedDevice.countDocuments({ ...base, createdAt: { $gte: dayAgo } }),
+            BannedDevice.countDocuments({ ...base, createdAt: { $gte: weekAgo } }),
+            BannedDevice.countDocuments({ ...base, createdAt: { $gte: monthAgo } }),
+            BannedDevice.countDocuments({ ...base, bannedBy: 'admin' }),
+            BannedDevice.countDocuments({ ...base, bannedBy: { $in: ['auto', 'spam_system'] } }),
+            BannedDevice.countDocuments(filter),
+            BannedDevice.countDocuments({ isActive: true, ...viaSuspension })
         ]);
 
         const devices = await BannedDevice.find(filter)
@@ -2083,13 +2096,152 @@ router.get('/banned-devices/list', protect, adminOnly, async (req, res) => {
                     thisWeek,
                     thisMonth,
                     manualCount,
-                    autoCount
+                    autoCount,
+                    // سجلات تبعت تعليقاً دائماً — مخفية هنا، لها صفحتها
+                    viaSuspensionCount
                 },
                 devices: enriched
             }
         });
     } catch (error) {
         console.error('banned-devices/list error:', error);
+        res.status(500).json({ success: false, message: 'خطأ في الخادم' });
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+// @route   GET /api/users/permanent-suspensions/list
+// @desc    الحسابات المعلّقة دائماً + حالة حظر جهاز كلٍّ منها
+// @access  Private/Admin
+//
+// ⚠️ صفحة مستقلة عن «الأجهزة المحظورة»: هناك يُدار الجهاز، هنا يُدار
+//    الحساب. الخلط كان يُظهر ٦٠٪ من الموقوفين كـ«أجهزة» بعد الـ backfill.
+// ══════════════════════════════════════════════════════════
+router.get('/permanent-suspensions/list', protect, adminOnly, async (req, res) => {
+    try {
+        const BannedDevice = require('../models/BannedDevice');
+        const { search = '', page = 1, limit = 50, device = 'all', source = 'all' } = req.query;
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const base = { 'suspension.isSuspended': true, 'suspension.suspendedUntil': null };
+        const filter = { ...base };
+
+        if (search && search.trim()) {
+            const clean = search.trim().replace(/[^a-zA-Z0-9@.\-\s\u0600-\u06FF]/g, '');
+            const rx = new RegExp(clean, 'i');
+            filter.$or = [{ name: rx }, { email: rx }, { halaId: rx }];
+        }
+        if (source === 'admin') filter['suspension.suspendedBy'] = { $ne: null };
+        if (source === 'auto') filter['suspension.suspendedBy'] = null;
+
+        // حالة الجهاز تُحسب من BannedDevice، فالفلتر عليها يمرّ عبر قائمة معرّفات
+        if (device !== 'all') {
+            const allIds = await User.find(filter).select('_id').lean();
+            const ids = allIds.map(u => u._id);
+            const bans = await BannedDevice.find(
+                { isActive: true, originalUserId: { $in: ids } },
+                { originalUserId: 1, pendingFingerprint: 1 }
+            ).lean();
+            const banned = new Set(), pending = new Set();
+            for (const b of bans) {
+                (b.pendingFingerprint ? pending : banned).add(String(b.originalUserId));
+            }
+            const keep = ids.filter(id => {
+                const k = String(id);
+                if (device === 'banned') return banned.has(k);
+                if (device === 'pending') return pending.has(k) && !banned.has(k);
+                if (device === 'none') return !banned.has(k) && !pending.has(k);
+                return true;
+            });
+            filter._id = { $in: keep };
+        }
+
+        const now = new Date();
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        const [total, today, thisWeek, byAdmin, totalCount, users] = await Promise.all([
+            User.countDocuments(base),
+            User.countDocuments({ ...base, 'suspension.suspendedAt': { $gte: dayAgo } }),
+            User.countDocuments({ ...base, 'suspension.suspendedAt': { $gte: weekAgo } }),
+            User.countDocuments({ ...base, 'suspension.suspendedBy': { $ne: null } }),
+            User.countDocuments(filter),
+            User.find(filter)
+                .select('name email halaId profileImage gender country city age createdAt lastLogin isPremium suspension bannedWords')
+                .populate('suspension.suspendedBy', 'name')
+                .sort({ 'suspension.suspendedAt': -1 })
+                .skip(skip)
+                .limit(Number(limit))
+                .lean()
+        ]);
+
+        // حالة حظر الجهاز لكل حساب في الصفحة + إجمالي «بلا حظر جهاز» للإحصاء
+        const pageIds = users.map(u => u._id);
+        const [pageBans, allBans] = await Promise.all([
+            BannedDevice.find({ isActive: true, originalUserId: { $in: pageIds } })
+                .select('originalUserId pendingFingerprint bannedBy viaSuspension reasonDetails rejectedAttempts createdAt')
+                .lean(),
+            BannedDevice.find({ isActive: true })
+                .select('originalUserId pendingFingerprint')
+                .lean()
+        ]);
+        const bansByUser = new Map();
+        for (const b of pageBans) {
+            const k = String(b.originalUserId);
+            // سجل فعلي يغلب المعلّق
+            if (!bansByUser.has(k) || (bansByUser.get(k).pendingFingerprint && !b.pendingFingerprint)) {
+                bansByUser.set(k, b);
+            }
+        }
+        const permanentIds = new Set((await User.find(base).select('_id').lean()).map(u => String(u._id)));
+        const coveredIds = new Set(allBans.map(b => String(b.originalUserId)));
+        const pendingOnly = new Set(allBans.filter(b => b.pendingFingerprint).map(b => String(b.originalUserId)));
+        let withoutDevice = 0, pendingCount = 0;
+        for (const id of permanentIds) {
+            if (!coveredIds.has(id)) withoutDevice++;
+            else if (pendingOnly.has(id)) pendingCount++;
+        }
+
+        const accounts = users.map(u => {
+            const b = bansByUser.get(String(u._id));
+            return {
+                id: u._id,
+                user: {
+                    _id: u._id, name: u.name, email: u.email, halaId: u.halaId,
+                    profileImage: u.profileImage, gender: u.gender, country: u.country,
+                    city: u.city, age: u.age, createdAt: u.createdAt, lastLogin: u.lastLogin,
+                    isPremium: u.isPremium, bannedWords: u.bannedWords
+                },
+                reason: u.suspension?.reason || null,
+                suspendedAt: u.suspension?.suspendedAt || null,
+                suspendedBy: u.suspension?.suspendedBy || null,   // null = تلقائي
+                level: u.suspension?.level || 0,
+                totalSuspensions: u.suspension?.totalSuspensions || 0,
+                device: b
+                    ? {
+                        status: b.pendingFingerprint ? 'pending' : 'banned',
+                        bannedBy: b.bannedBy,
+                        viaSuspension: b.viaSuspension === true || /^backfill:/.test(b.reasonDetails || ''),
+                        rejectedAttempts: b.rejectedAttempts?.length || 0,
+                        lastAttempt: b.rejectedAttempts?.slice(-1)[0] || null,
+                        bannedAt: b.createdAt
+                    }
+                    : { status: 'none' }
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                total: totalCount,
+                page: Number(page),
+                totalPages: Math.ceil(totalCount / Number(limit)),
+                stats: { total, today, thisWeek, byAdmin, byAuto: total - byAdmin, withoutDevice, pendingCount },
+                accounts
+            }
+        });
+    } catch (error) {
+        console.error('permanent-suspensions/list error:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
 });

@@ -57,6 +57,15 @@ const bannedDeviceSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
+    // ✅ حظرٌ تبِع تعليقاً دائماً للحساب (لا حظرَ جهازٍ صريحاً من الأدمن).
+    //    صفحة «الأجهزة المحظورة» تخفيه افتراضياً وتعرضه صفحة «الحسابات
+    //    المحظورة دائماً»: ١٣١٩ سجلاً من الـ backfill أغرقت صفحة الأجهزة
+    //    بحسابات لا أجهزة.
+    viaSuspension: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
     // هل الحظر فعّال
     isActive: {
         type: Boolean,

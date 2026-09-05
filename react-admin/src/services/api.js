@@ -745,6 +745,12 @@ export const unbanNoisyDevices = async ({ dryRun = false } = {}) => {
     return response.data;
 };
 
+// ✅ الحسابات المعلّقة دائماً + حالة جهاز كلٍّ منها
+export const getPermanentSuspensions = async (params = {}) => {
+    const response = await api.get('/users/permanent-suspensions/list', { params });
+    return response.data;
+};
+
 // ============ Violations APIs ============
 
 export const getUserViolations = async (userId, params = {}) => {

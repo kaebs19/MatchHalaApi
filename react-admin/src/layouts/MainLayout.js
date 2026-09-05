@@ -21,6 +21,7 @@ const BannedWords = lazy(() => import('../pages/BannedWords'));
 const Appeals = lazy(() => import('../pages/Appeals'));
 const Newcomers = lazy(() => import('../pages/Newcomers'));
 const BannedDevices = lazy(() => import('../pages/BannedDevices'));
+const PermanentBans = lazy(() => import('../pages/PermanentBans'));
 const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
 const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
 
@@ -402,7 +403,9 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'newcomers':
                 return <Newcomers onViewUserDetail={handleViewUserDetail} />;
             case 'banned-devices':
-                return <BannedDevices onViewUserDetail={handleViewUserDetail} />;
+                return <BannedDevices onViewUserDetail={handleViewUserDetail} onPageChange={setCurrentPage} />;
+            case 'permanent-bans':
+                return <PermanentBans onViewUserDetail={handleViewUserDetail} />;
             case 'banned-words':
                 return <BannedWords onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'sensitive-content':

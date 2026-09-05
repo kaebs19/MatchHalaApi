@@ -11,6 +11,7 @@ export const PAGES = {
     appeals: { title: 'المراجعات', icon: '📋', nav: true, adminOnly: true, badge: 'appeals' },
     newcomers: { title: 'الحسابات الجديدة', icon: '🆕', nav: true, adminOnly: true, badge: 'newcomers' },
     'banned-devices': { title: 'الأجهزة المحظورة', icon: '📵', nav: true, adminOnly: true },
+    'permanent-bans': { title: 'الحسابات المحظورة دائماً', icon: '⛔', nav: true, adminOnly: true },
     analytics: { title: 'التحليلات', icon: '🔍', nav: true, adminOnly: true },
     stats: { title: 'الإحصائيات', icon: '📈', nav: true, adminOnly: true },
     'banned-words': { title: 'الكلمات المحظورة', icon: '🚫', nav: true, adminOnly: true },
