@@ -255,21 +255,85 @@
         gap: 10px;
     }
 
-    /* ── المحادثات: الدردشة تملأ الشاشة، والقائمة تختفي ── */
-    .conv-page {
-        /* dvh يستبعد شريط المتصفح المتحرك على الجوال */
-        height: calc(100dvh - 190px);
-        min-height: 380px;
+    /* ── المحادثات ──
+       القائمة: كانت لوحة بارتفاع ثابت تُمرَّر من داخلها، فبعد شريط الإحصاء
+       (صفّان) والفلاتر (صفّان) لا يبقى للقائمة إلا ~٢٨٠px وثلاث محادثات.
+       على الجوال تُمرَّر الصفحة كلها طبيعياً، والإحصاء والفلاتر صفٌّ واحد
+       يُمرَّر أفقياً. الدردشة وحدها تملأ الشاشة (dvh) والقائمة تختفي. */
+    .conv-page:not(.split-active) {
+        height: auto;
+        min-height: 0;
+        overflow: visible;
+        display: block;
+    }
+    .conv-page:not(.split-active) .conv-sidebar,
+    .conv-page:not(.split-active) .conv-list {
+        overflow: visible;
+        height: auto;
+        max-width: 100%;
+    }
+    .conv-page.split-active {
+        height: calc(100dvh - 56px);
+        min-height: 360px;
     }
 
-    .conv-chat-header {
-        padding: 10px 12px;
+    .conv-stats-bar {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
     }
+    .conv-stats-bar::-webkit-scrollbar { display: none; }
+    .conv-stat { flex: 1 0 auto; min-width: 0; padding: 8px 14px; }
+    .conv-stat-num { font-size: 16px; }
 
+    .conv-toolbar { padding: 10px 12px; }
+    .conv-filters {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding-bottom: 2px;
+    }
+    .conv-filters::-webkit-scrollbar { display: none; }
+    .conv-filter-btn { flex: 0 0 auto; white-space: nowrap; min-height: 34px; }
+
+    .conv-item { padding: 12px; }
+
+    /* رأس الدردشة: صفّان — الأسماء، ثم شريط أدوات يُمرَّر أفقياً (كان ١٦١px
+       بأزرار تلتفّ ونصّ «كلمة محظورة» ينكسر سطرَين داخل ٣٢px) */
+    .conv-chat-header { padding: 8px 10px; gap: 8px; }
+    .conv-chat-header-actions {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        gap: 6px;
+        padding-bottom: 2px;
+    }
+    .conv-chat-header-actions::-webkit-scrollbar { display: none; }
+    .conv-chat-search { flex: 0 0 150px; min-width: 150px; min-height: 38px; }
+    .conv-chat-quick-actions { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; width: auto; }
     .conv-chat-quick-actions .conv-chat-user-btn,
     .conv-chat-quick-actions .conv-chat-action-btn {
-        min-height: 38px;
+        width: auto;
+        min-width: 40px;
+        height: 40px;
+        min-height: 40px;
+        padding: 0 10px;
+        white-space: nowrap;
+        flex: 0 0 auto;
     }
+    .conv-msg-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .conv-msg-filters::-webkit-scrollbar { display: none; }
+    .conv-msg-filter { flex: 0 0 auto; white-space: nowrap; }
+    .conv-chat-messages { padding: 10px; }
+
+    /* ترقيم الصفحات: ٢٣ ألف صفحة لا تُعرض أزراراً — السابق/التالي والرقم الحالي */
+    .pagination-container { flex-direction: column; gap: 8px; padding: 10px 12px; margin-top: 10px; }
+    .pagination-info { font-size: 12px; }
+    .pagination-controls { width: 100%; justify-content: space-between; }
+    .pagination-pages .pagination-page:not(.active) { display: none; }
+    .pagination-page.active::after { content: ' / ' attr(data-total); font-weight: 500; opacity: 0.7; }
+    .pagination-btn { min-height: 40px; padding: 0 14px; }
 
     /* شريط الأدلة: عناصر أصغر ولمس أسهل */
     .media-strip-track { gap: 8px; }

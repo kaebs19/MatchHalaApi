@@ -89,6 +89,7 @@ function Pagination({ currentPage, totalPages, onPageChange, itemsPerPage, total
                         <button
                             key={index}
                             className={`pagination-page ${page === currentPage ? 'active' : ''} ${page === '...' ? 'dots' : ''}`}
+                            data-total={totalPages}
                             onClick={() => handlePageClick(page)}
                             disabled={page === '...'}
                         >
