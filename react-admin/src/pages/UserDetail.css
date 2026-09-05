@@ -598,76 +598,6 @@
 }
 
 /* Responsive Design */
-@media (max-width: 768px) {
-    .user-detail { padding: 12px; }
-
-    /* ترويسة الصفحة مكرّرة على الجوال: الرأس العلوي يحمل العنوان وفتات
-       الطريق أصلاً، وزرّ «رجوع» كان شريطاً بعرض الشاشة يليه العنوان مرة
-       ثانية — ١٠٠px قبل أول معلومة. زرّ صغير في سطر، بلا عنوان. */
-    .detail-header { margin-bottom: 12px; gap: 10px; }
-    .detail-header h2 { display: none; }
-    .back-btn { padding: 8px 14px; font-size: 13px; }
-
-    .user-info-card {
-        flex-direction: column;
-        text-align: center;
-        padding: 16px;
-    }
-
-    .user-badges {
-        justify-content: center;
-    }
-
-    /* التبويبات: شريط أفقي يُمرَّر بدل ١١ زرّاً تلتفّ في ٥ صفوف (٣٣٥px)
-       تدفع المحتوى تحت الطيّة. التبويب النشط يُمرَّر إلى المنتصف من JS. */
-    .tabs-navigation {
-        justify-content: flex-start;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        gap: 8px;
-        padding: 10px;
-        margin-bottom: 14px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        scroll-snap-type: x proximity;
-    }
-    .tabs-navigation::-webkit-scrollbar { display: none; }
-
-    .user-detail .tab-btn {
-        padding: 9px 14px;
-        font-size: 13px;
-        flex: 0 0 auto;
-        white-space: nowrap;
-        scroll-snap-align: center;
-    }
-
-    /* أزرار الإجراء: شبكة عمودَين متساويَين بدل التفاف غير منتظم */
-    .quick-actions-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-    .quick-action-btn { padding: 10px 8px; text-align: center; }
-
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .conversation-meta {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .privacy-grid,
-    .device-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
 @media (max-width: 480px) {
     .stats-grid {
         grid-template-columns: 1fr;
@@ -2242,3 +2172,77 @@
     color: var(--text-danger);
     font-weight: 600;
 }
+
+/* ⚠️ قواعد الجوال في آخر الملف عمداً: .quick-actions-row و.back-btn تُعرَّفان
+   بعد الكتلة القديمة (سطر ~600) فكانت تغلب على أي @media يسبقها. */
+@media (max-width: 768px) {
+    .user-detail { padding: 12px; }
+
+    /* ترويسة الصفحة مكرّرة على الجوال: الرأس العلوي يحمل العنوان وفتات
+       الطريق أصلاً، وزرّ «رجوع» كان شريطاً بعرض الشاشة يليه العنوان مرة
+       ثانية — ١٠٠px قبل أول معلومة. زرّ صغير في سطر، بلا عنوان. */
+    .detail-header { margin-bottom: 12px; gap: 10px; }
+    .detail-header h2 { display: none; }
+    /* width/flex صريحان: قاعدة لاحقة في الملف كانت تمدّه بعرض الشاشة */
+    .back-btn { padding: 8px 14px; font-size: 13px; width: auto; flex: 0 0 auto; }
+
+    .user-info-card {
+        flex-direction: column;
+        text-align: center;
+        padding: 16px;
+    }
+
+    .user-badges {
+        justify-content: center;
+    }
+
+    /* التبويبات: شريط أفقي يُمرَّر بدل ١١ زرّاً تلتفّ في ٥ صفوف (٣٣٥px)
+       تدفع المحتوى تحت الطيّة. التبويب النشط يُمرَّر إلى المنتصف من JS. */
+    .tabs-navigation {
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 8px;
+        padding: 10px;
+        margin-bottom: 14px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+    }
+    .tabs-navigation::-webkit-scrollbar { display: none; }
+
+    .user-detail .tab-btn {
+        padding: 9px 14px;
+        font-size: 13px;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        scroll-snap-align: center;
+    }
+
+    /* أزرار الإجراء: شبكة عمودَين متساويَين بدل التفاف غير منتظم */
+    .quick-actions-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .quick-action-btn { padding: 10px 8px; text-align: center; }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .conversation-meta {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .privacy-grid,
+    .device-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
