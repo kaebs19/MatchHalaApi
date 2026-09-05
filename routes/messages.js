@@ -23,7 +23,9 @@ const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 router.get('/conversation/:conversationId', protect, adminOnly, async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const { page = 1, limit = 50, search = '' } = req.query;
+        const { page = 1, search = '' } = req.query;
+        // اللوحة تطلب 100؛ السقف 200 يحمي من طلب عشوائي كبير
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
 
         // ✅ التحقق من صحة الـ ID
         const mongoose = require('mongoose');

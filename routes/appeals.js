@@ -694,13 +694,21 @@ router.get('/', protect, adminOnly, async (req, res) => {
             .populate('user', 'name email avatar profileImage halaId createdAt isActive isPremium suspension restrictions warnings bannedWords country birthDate gender lastLogin isOnline deviceFingerprint')
             .populate('resolvedBy', 'name');
 
-        // فلترة + ترتيب يدوي (الـ count صغير، لا حاجة لـ aggregation)
-        // المستخدم المحذوف لا استئناف له — لكن نعدّها ونُبلّغ اللوحة بالعدد
-        //    بدل أن تختفي بلا أثر
-        const deletedUserAppeals = appeals.filter(a => !a.user).length;
+        // ⚠️ populate يُبدّل معرّف مستخدمٍ محذوف بـ null فيضيع المعرّف نفسه —
+        //    نحتفظ به لأن استئناف حظر الجهاز يُقبَل عليه (BannedDevice.originalUserId)
+        const rawUserIds = new Map(
+            (await Appeal.find(filter).select('user').lean()).map(a => [String(a._id), a.user])
+        );
+
+        // ⚠️ كانت القائمة تُسقط كل استئناف بلا حساب وتُخبر اللوحة «أصحابها حذفوا
+        //    حساباتهم». لكن ٩٥ استئنافاً معلّقاً على الإنتاج كانت كلها استئنافات
+        //    **حظر جهاز**: صاحبه حذف حسابه ثم استأنف من الجهاز — والقرار (فكّ الجهاز)
+        //    لا يحتاج حساباً. تُخفى فقط استئنافات الحساب التي لم يبقَ لها حساب.
+        const isActionable = (a) => !!a.user || a.actionType === 'device_ban';
+        const deletedUserAppeals = appeals.filter(a => !isActionable(a)).length;
 
         const visibleAppeals = appeals
-            .filter(appeal => !!appeal.user)
+            .filter(isActionable)
             .sort((a, b) => {
                 // المغلقة تلقائياً في الذيل مهما كانت حالتها
                 if (!!a.autoClosed !== !!b.autoClosed) return a.autoClosed ? 1 : -1;
@@ -720,12 +728,15 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const enriched = await Promise.all(pagedAppeals.map(async (a) => {
             const obj = a.toObject();
             const user = a.user;
+            const userId = user?._id || rawUserIds.get(String(a._id));
+            obj.userDeleted = !user;
+            obj.userIdRaw = userId || null;
 
             // 1. عدد الاستئنافات السابقة (أي سبب) — لكل المستخدمين
-            obj.totalPastAppeals = await Appeal.countDocuments({
-                user: user._id,
+            obj.totalPastAppeals = userId ? await Appeal.countDocuments({
+                user: userId,
                 _id: { $ne: a._id }
-            });
+            }) : 0;
 
             // 2. هل الحالة ترويج خارجي؟ نتحقق من ٣ مصادر موثوقة على المستخدم
             // (لا نعتمد على نص الاستئناف — لأنه ما يكتبه المستخدم بنفسه)
@@ -737,9 +748,9 @@ router.get('/', protect, adminOnly, async (req, res) => {
             obj.isExternalPromoCase = isExternalPromoCase;
 
             // 3. لو ترويج خارجي → نحسب الإيقافات السابقة بنفس النوع
-            if (isExternalPromoCase) {
+            if (isExternalPromoCase && userId) {
                 obj.previousSuspensionsCount = await Appeal.countDocuments({
-                    user: user._id,
+                    user: userId,
                     _id: { $ne: a._id },
                     actionType: { $in: ['suspension', 'restriction'] }
                 });

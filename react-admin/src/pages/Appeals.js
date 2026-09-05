@@ -400,7 +400,19 @@ function Appeals({ onViewUserDetail }) {
 
     const renderUserCell = (appeal) => {
         const user = appeal.user;
-        if (!user) return <span className="text-muted">-</span>;
+        // استئناف حظر جهاز من شخص حذف حسابه: لا ملف، لكن القرار (فكّ الجهاز) قائم
+        if (!user) {
+            return (
+                <div className="user-cell">
+                    <div className="user-avatar-small" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)' }}>📵</div>
+                    <div className="user-cell-info">
+                        <span style={{ fontWeight: 600 }}>استئناف جهاز محظور</span>
+                        <small dir="ltr" style={{ color: 'var(--text-secondary)' }}>{appeal.publicEmail || 'بلا بريد'}</small>
+                        <small style={{ color: 'var(--text-warning)' }}>الحساب الأصلي محذوف</small>
+                    </div>
+                </div>
+            );
+        }
         const unread = appeal.unreadForAdmin || 0;
         return (
             <div className="user-cell">
@@ -669,6 +681,21 @@ function Appeals({ onViewUserDetail }) {
                                 </div>
                             );
                         })()}
+
+                        {/* استئناف جهاز بلا حساب */}
+                        {!selectedAppeal.user && (
+                            <div className="appeal-user-info-enhanced">
+                                <div className="appeal-user-header">
+                                    <div className="appeal-user-avatar-lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-subtle)', fontSize: 28 }}>📵</div>
+                                    <div className="appeal-user-main">
+                                        <h4>استئناف حظر جهاز — الحساب الأصلي محذوف</h4>
+                                        {selectedAppeal.publicEmail && <p dir="ltr" className="user-email-lg">{selectedAppeal.publicEmail}</p>}
+                                        <p className="user-hala-id">القبول يفكّ حظر الجهاز فقط؛ لا حساب يُعاد.</p>
+                                    </div>
+                                    <div className="appeal-user-status-col">{getStatusBadge(selectedAppeal.status)}</div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* User Info Enhanced */}
                         {selectedAppeal.user && (

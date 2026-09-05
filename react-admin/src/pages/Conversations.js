@@ -237,7 +237,7 @@ function Conversations({ onViewUserDetail }) {
         if (!selectedConv) return;
         setMessagesLoading(true);
         try {
-            const res = await getConversationMessages(selectedConv._id, page, 50, search);
+            const res = await getConversationMessages(selectedConv._id, page, 100, search);
             if (res.success) {
                 setMessages(res.data.messages);
                 setMsgTotalPages(res.data.totalPages);
