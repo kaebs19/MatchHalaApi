@@ -217,17 +217,19 @@
     /* ── أرضية أحجام النصوص ──
        قياس على 390px: ٨٤ عنصراً نصّياً بحجم ١٠–١١px في الشاشة الواحدة،
        وخلايا الجداول ١٢px. أبل توصي بـ ١١ للتسميات و١٥–١٧ للنصّ. */
+    /* !important مقصود: هذه طبقة تجاوز تنافس محدّدات أعلى خصوصية في ملفات
+       الصفحات (.users-page .ubadge.premium …) ولا سبيل لغلبتها بالترتيب وحده */
     .ubadge, .nav-badge, .notification-badge, .user-meta-chip, .uinfo,
     .users-stat-label, .stat-label, .detail-label, .qap-badge,
     .coming-soon, .hala-id, .auth-badge, .violations-count, .last-seen-text, .date-text {
-        font-size: 12px;
+        font-size: 12px !important;
     }
     .data-table th, .data-table td,
     .users-table th, .users-table td {
-        font-size: 14px;
+        font-size: 14px !important;
     }
-    .detail-value, .email-text, .user-name-text, .stat-value + .stat-label { font-size: 13px; }
-    .nav-name { font-size: 15px; }
+    .detail-value, .email-text, .user-name-text { font-size: 13px !important; }
+    .nav-name { font-size: 15px !important; }
 
     /* ── أهداف لمس: الأزرار الأيقونية ≥ 40px وفراغ بينها ── */
     .users-page .action-btn,

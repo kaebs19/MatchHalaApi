@@ -349,16 +349,23 @@
         align-items: center;
     }
 
-    /* حقل البحث مخفيّ حتى يُفتح، وعندها يأخذ صفاً كاملاً تحت العنوان */
+    /* حقل البحث مخفيّ حتى يُفتح، وعندها يطفو تحت الرأس بلا أن يرفعه
+       (position: absolute نسبةً إلى الرأس اللاصق) — الرأس يبقى ٥٦px */
+    .top-header { overflow: visible; }
     .global-search-container { display: none; }
     .header-actions.search-open .global-search-container {
         display: block;
-        flex: 1 1 100%;
-        order: 10;
+        position: absolute;
+        top: 100%;
+        left: 8px;
+        right: 8px;
+        padding: 8px;
+        background: var(--bg-card);
+        border-radius: 0 0 14px 14px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        z-index: 60;
     }
-    .header-actions.search-open { width: 100%; }
-    .header-actions.search-open .mobile-search-toggle,
-    .header-actions.search-open .notifications-btn { order: 1; }
+    .header-actions.search-open .search-results-dropdown { position: static; margin-top: 8px; box-shadow: none; }
 
     /* فتات الطريق تصغر ولا تُضيف صفاً */
     .breadcrumb-parent { font-size: 11px; }

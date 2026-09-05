@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import Sidebar from '../components/Sidebar';
 
 // تحميل كسول — كل صفحة chunk مستقل، فلا يحمّل الأدمن ٢٤ صفحة ليرى واحدة.
@@ -50,6 +50,10 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     // بحث الجوال: مطويّ خلف 🔍 حتى لا يشغل صفاً كاملاً من رأسٍ لاصق
     const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+    const searchInputRef = useRef(null);
+    useEffect(() => {
+        if (mobileSearchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
+    }, [mobileSearchOpen]);
 
     // الرجوع لأعلى الصفحة عند تبديلها — كان موضع التمرير القديم يبقى أحياناً
     // فتُفتح الصفحة الجديدة من منتصفها
@@ -532,7 +536,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                                     className="search-input"
                                     placeholder="بحث عن مستخدم..."
                                     value={searchQuery}
-                                    autoFocus={mobileSearchOpen}
+                                    ref={searchInputRef}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onFocus={() => { if (searchResults.length > 0) setShowSearchDropdown(true); }}
                                     onKeyDown={(e) => { if (e.key === 'Enter') executeSearch(); }}
