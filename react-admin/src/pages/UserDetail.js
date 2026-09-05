@@ -3108,7 +3108,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             <div style={{marginTop:"20px",background:"#fff",borderRadius:"12px",padding:"16px",boxShadow:"0 1px 4px rgba(0,0,0,0.08)"}}>
                                 <h4 style={{margin:"0 0 12px",display:"flex",alignItems:"center",gap:"8px"}}>📋 سجل المخالفات والإجراءات ({user.suspension.history.length})</h4>
                                 <div style={{maxHeight:"300px",overflowY:"auto"}}>
-                                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:"13px"}}>
+                                    <table className="m-cards" style={{width:"100%",borderCollapse:"collapse",fontSize:"13px"}}>
                                         <thead><tr style={{background:"#f5f5f5",textAlign:"right"}}>
                                             <th style={{padding:"8px"}}>المستوى</th>
                                             <th style={{padding:"8px"}}>السبب</th>
@@ -3118,10 +3118,10 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         <tbody>
                                             {user.suspension.history.slice().reverse().map((h, i) => (
                                                 <tr key={i} style={{borderBottom:"1px solid #eee"}}>
-                                                    <td style={{padding:"8px"}}><span style={{background: h.level >= 5 ? "#f44336" : h.level >= 3 ? "#FF9800" : "#FFC107", color:"#fff", padding:"2px 8px", borderRadius:"12px", fontSize:"11px"}}>{h.level}</span></td>
-                                                    <td style={{padding:"8px"}}>{h.reason || "—"}</td>
-                                                    <td style={{padding:"8px"}}>{h.source === "auto" ? "تلقائي" : h.source === "admin_escalate" ? "تصعيد أدمن" : "أدمن"}</td>
-                                                    <td style={{padding:"8px",direction:"ltr"}}>{h.suspendedAt ? new Date(h.suspendedAt).toLocaleString("ar-SA") : "—"}</td>
+                                                    <td style={{padding:"8px"}} className="dt-primary" data-label="المستوى"><span style={{background: h.level >= 5 ? "#f44336" : h.level >= 3 ? "#FF9800" : "#FFC107", color:"#fff", padding:"2px 8px", borderRadius:"12px", fontSize:"11px"}}>{h.level}</span></td>
+                                                    <td style={{padding:"8px"}} data-label="السبب">{h.reason || "—"}</td>
+                                                    <td style={{padding:"8px"}} data-label="المصدر">{h.source === "auto" ? "تلقائي" : h.source === "admin_escalate" ? "تصعيد أدمن" : "أدمن"}</td>
+                                                    <td style={{padding:"8px",direction:"ltr"}} data-label="التاريخ">{h.suspendedAt ? new Date(h.suspendedAt).toLocaleString("ar-SA") : "—"}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -3191,7 +3191,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
                                 {/* Logs table */}
                                 <div style={{maxHeight:"260px",overflowY:"auto"}}>
-                                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px"}}>
+                                    <table className="m-cards" style={{width:"100%",borderCollapse:"collapse",fontSize:"12px"}}>
                                         <thead><tr style={{background:"#f5f5f5",textAlign:"right"}}>
                                             <th style={{padding:"6px"}}>المنصات</th>
                                             <th style={{padding:"6px"}}>المصدر</th>
@@ -3201,12 +3201,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         <tbody>
                                             {promoLogs.logs.map((log, i) => (
                                                 <tr key={log._id || i} style={{borderBottom:"1px solid #eee"}}>
-                                                    <td style={{padding:"6px"}}>{(log.categories || []).join(', ')}</td>
-                                                    <td style={{padding:"6px"}}>{log.source === 'bio' ? '📝' : log.source === 'message' ? '💬' : '👤'} {log.source}</td>
-                                                    <td style={{padding:"6px",fontFamily:"monospace",fontSize:"11px",color:"#6b7280"}}>
+                                                    <td style={{padding:"6px"}} className="dt-primary" data-label="المنصات">{(log.categories || []).join(', ')}</td>
+                                                    <td style={{padding:"6px"}} data-label="المصدر">{log.source === 'bio' ? '📝' : log.source === 'message' ? '💬' : '👤'} {log.source}</td>
+                                                    <td style={{padding:"6px",fontFamily:"monospace",fontSize:"11px",color:"#6b7280"}} data-label="النصوص المطابقة">
                                                         {(log.matchedPatterns || []).slice(0, 3).join(' · ').slice(0, 80)}
                                                     </td>
-                                                    <td style={{padding:"6px",direction:"ltr"}}>{new Date(log.createdAt).toLocaleString("ar-SA")}</td>
+                                                    <td style={{padding:"6px",direction:"ltr"}} data-label="التاريخ">{new Date(log.createdAt).toLocaleString("ar-SA")}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

@@ -839,7 +839,7 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                     ) : (
                         <>
                             <div className="bw-table-container">
-                                <table className="bw-table">
+                                <table className="m-cards bw-table">
                                     <thead>
                                         <tr>
                                             <th>الكلمة</th>
@@ -853,20 +853,20 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                     <tbody>
                                         {words.map((word) => (
                                             <tr key={word._id} className={!word.isActive ? 'inactive-row' : ''}>
-                                                <td className="word-cell">
+                                                <td className="dt-primary word-cell" data-label="الكلمة">
                                                     <span className="word-text">{word.word}</span>
                                                 </td>
-                                                <td>
+                                                <td data-label="التصنيف">
                                                     <span className={`bw-badge category-${word.category}`}>
                                                         {getCategoryLabel(word.category)}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td data-label="اللغة">
                                                     <span className="bw-badge language">
                                                         {getLanguageLabel(word.language)}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td data-label="الحالة">
                                                     <button
                                                         className={`bw-toggle ${word.isActive ? 'active' : 'inactive'}`}
                                                         onClick={() => handleToggleActive(word)}
@@ -875,10 +875,10 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                                         {word.isActive ? '🟢 مفعل' : '🔴 معطل'}
                                                     </button>
                                                 </td>
-                                                <td className="date-cell">
+                                                <td className="date-cell" data-label="التاريخ">
                                                     {new Date(word.createdAt).toLocaleDateString('ar-SA')}
                                                 </td>
-                                                <td>
+                                                <td className="dt-actions" data-label="إجراءات">
                                                     <div className="bw-action-btns">
                                                         <button
                                                             className="bw-icon-btn edit"
@@ -999,7 +999,7 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                     ) : (
                         <>
                             <div className="bw-table-container">
-                                <table className="bw-table bw-flagged-table">
+                                <table className="m-cards bw-table bw-flagged-table">
                                     <thead>
                                         <tr>
                                             <th className="bw-checkbox-col">
@@ -1023,7 +1023,7 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                         {flagged.map((item) => (
                                             <tr key={item._id} className={getRowClass(item)}>
                                                 {/* خانة التحديد */}
-                                                <td className="bw-checkbox-col">
+                                                <td className="dt-check bw-checkbox-col" data-label="">
                                                     <input
                                                         type="checkbox"
                                                         checked={selectedIds.has(item._id)}
@@ -1032,7 +1032,7 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                                 </td>
 
                                                 {/* المرسل + شارة المخالفات */}
-                                                <td>
+                                                <td className="dt-primary" data-label="المرسل">
                                                     <div className="bw-sender">
                                                         <span
                                                             className="sender-name clickable"
@@ -1050,7 +1050,7 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                                 </td>
 
                                                 {/* المستقبل */}
-                                                <td>
+                                                <td data-label="المستقبل">
                                                     <div className="bw-sender">
                                                         <span
                                                             className="sender-name clickable"
@@ -1063,12 +1063,12 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                                 </td>
 
                                                 {/* المحتوى */}
-                                                <td className="content-cell">
+                                                <td className="content-cell" data-label="المحتوى الأصلي">
                                                     <span className="flagged-content">{item.originalContent}</span>
                                                 </td>
 
                                                 {/* الكلمات المطابقة */}
-                                                <td>
+                                                <td data-label="الكلمات المطابقة">
                                                     <div className="matched-words">
                                                         {(item.matchedWords || []).map((w, i) => (
                                                             <span key={i} className="bw-badge danger">{w}</span>
@@ -1077,19 +1077,19 @@ function BannedWords({ onViewUserDetail, onViewConversation }) {
                                                 </td>
 
                                                 {/* الحالة */}
-                                                <td>
+                                                <td data-label="الحالة">
                                                     <span className={`bw-status ${getStatusClass(item.status)}`}>
                                                         {getStatusLabel(item.status)}
                                                     </span>
                                                 </td>
 
                                                 {/* الوقت (منذ ...) */}
-                                                <td className="date-cell" title={new Date(item.createdAt).toLocaleString('ar-SA')}>
+                                                <td className="date-cell" title={new Date(item.createdAt).toLocaleString('ar-SA')} data-label="الوقت">
                                                     {timeAgo(item.createdAt)}
                                                 </td>
 
                                                 {/* إجراءات سريعة */}
-                                                <td>
+                                                <td className="dt-actions" data-label="إجراءات سريعة">
                                                     <div className="bw-quick-actions">
                                                         {/* عرض المرسل */}
                                                         <button
@@ -1726,7 +1726,7 @@ function ExternalPromoTab({ onViewUserDetail }) {
                     <p style={{textAlign:'center',color: 'var(--text-muted)',padding:'20px'}}>لا يوجد بيانات في هذه الفترة</p>
                 ) : (
                     <div style={{maxHeight:'400px',overflowY:'auto'}}>
-                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                        <table className="m-cards" style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
                             <thead><tr style={{background: 'var(--bg-subtle)',textAlign:'right',position:'sticky',top:0}}>
                                 <th style={{padding:'8px'}}>#</th>
                                 <th style={{padding:'8px'}}>الاسم</th>
@@ -1739,23 +1739,23 @@ function ExternalPromoTab({ onViewUserDetail }) {
                             <tbody>
                                 {offenders.map((o, i) => (
                                     <tr key={o._id} style={{borderBottom: '1px solid var(--border-light)'}}>
-                                        <td style={{padding:'8px'}}>{i + 1}</td>
-                                        <td style={{padding:'8px',fontWeight:'600'}}>
+                                        <td style={{padding:'8px'}} data-label="#">{i + 1}</td>
+                                        <td style={{padding:'8px',fontWeight:'600'}} className="dt-primary" data-label="الاسم">
                                             {o.name}
                                             {o.isPremium && <span style={{marginRight:'6px'}}>👑</span>}
                                         </td>
-                                        <td style={{padding:'8px'}}>
+                                        <td style={{padding:'8px'}} data-label="المحاولات">
                                             <span style={{
                                                 background: o.attempts >= 10 ? '#f44336' : o.attempts >= 5 ? '#FF9800' : '#FFC107',
                                                 color: 'var(--text-on-brand)',padding:'2px 8px',borderRadius:'12px',fontSize:'11px'
                                             }}>{o.attempts}</span>
                                         </td>
-                                        <td style={{padding:'8px',fontSize:'11px'}}>{(o.categories || []).join(', ')}</td>
-                                        <td style={{padding:'8px',fontSize:'11px'}}>{(o.sources || []).map(s => sourceLabels[s] || s).join(', ')}</td>
-                                        <td style={{padding:'8px',direction:'ltr',fontSize:'11px'}}>
+                                        <td style={{padding:'8px',fontSize:'11px'}} data-label="المنصات">{(o.categories || []).join(', ')}</td>
+                                        <td style={{padding:'8px',fontSize:'11px'}} data-label="المصدر">{(o.sources || []).map(s => sourceLabels[s] || s).join(', ')}</td>
+                                        <td style={{padding:'8px',direction:'ltr',fontSize:'11px'}} data-label="آخر محاولة">
                                             {o.lastAt ? new Date(o.lastAt).toLocaleString('ar-SA') : '—'}
                                         </td>
-                                        <td style={{padding:'8px'}}>
+                                        <td style={{padding:'8px'}} className="dt-actions" data-label="">
                                             {onViewUserDetail && (
                                                 <button onClick={() => onViewUserDetail(o._id)}
                                                     style={{padding:'4px 10px',borderRadius:'6px',border:'1px solid #E91E63',background: 'var(--bg-card)',color:'#E91E63',cursor:'pointer',fontSize:'12px'}}>

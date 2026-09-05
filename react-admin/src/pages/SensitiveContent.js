@@ -323,7 +323,7 @@ function SensitiveContent({ onViewUserDetail }) {
                     {reveals.items.length === 0 ? (
                         <div className="empty-state">📭 لا يوجد سجل كشف حتى الآن</div>
                     ) : (
-                        <table className="reveals-table">
+                        <table className="m-cards reveals-table">
                             <thead>
                                 <tr>
                                     <th>المستخدم</th>
@@ -336,17 +336,17 @@ function SensitiveContent({ onViewUserDetail }) {
                             <tbody>
                                 {reveals.items.map(r => (
                                     <tr key={r._id}>
-                                        <td>
+                                        <td className="dt-primary" data-label="المستخدم">
                                             {r.user ? (
                                                 <span className="user-link" onClick={() => onViewUserDetail && onViewUserDetail(r.user._id)}>
                                                     {r.user.name} <small>({r.user.halaId})</small>
                                                 </span>
                                             ) : <span className="text-muted">محذوف</span>}
                                         </td>
-                                        <td>{ALL_CATEGORIES.find(ac => ac.value === r.category)?.label || r.category}</td>
-                                        <td>{r.userAgeAtReveal || '-'}</td>
-                                        <td>{r.clientVersion || '-'}</td>
-                                        <td>{formatDateTime(r.revealedAt)}</td>
+                                        <td data-label="الفئة">{ALL_CATEGORIES.find(ac => ac.value === r.category)?.label || r.category}</td>
+                                        <td data-label="العمر">{r.userAgeAtReveal || '-'}</td>
+                                        <td data-label="إصدار التطبيق">{r.clientVersion || '-'}</td>
+                                        <td data-label="التاريخ">{formatDateTime(r.revealedAt)}</td>
                                     </tr>
                                 ))}
                             </tbody>

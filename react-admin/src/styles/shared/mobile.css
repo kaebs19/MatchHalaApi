@@ -120,24 +120,24 @@
        يصير بطاقة: الخلية الأولى (المستخدم) رأسَها، وبقية الخلايا أسطرَ
        «تسمية: قيمة» من data-label، والإجراءات صفاً في الأسفل. يغطّي ٧ صفحات
        دفعةً واحدة (المشتركون، الحسابات الجديدة، المراجعات، التطابقات…). */
-    .data-table,
-    .data-table thead,
-    .data-table tbody,
-    .data-table tr,
-    .data-table td {
+    :is(.data-table, .m-cards),
+    :is(.data-table, .m-cards) thead,
+    :is(.data-table, .m-cards) tbody,
+    :is(.data-table, .m-cards) tr,
+    :is(.data-table, .m-cards) td {
         display: block;
     }
-    .data-table thead { display: none; }
-    .data-table-wrapper { overflow: visible; }
-    .data-table tbody tr {
+    :is(.data-table, .m-cards) thead { display: none; }
+    :is(.data-table, .m-cards)-wrapper { overflow: visible; }
+    :is(.data-table, .m-cards) tbody tr {
         background: var(--bg-card);
         border: 1px solid var(--border-light);
         border-radius: 14px;
         padding: 6px 12px;
         margin: 10px;
     }
-    .data-table tbody tr:hover { background: var(--bg-card); }
-    .data-table td {
+    :is(.data-table, .m-cards) tbody tr:hover { background: var(--bg-card); }
+    :is(.data-table, .m-cards) td {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -146,8 +146,8 @@
         border-bottom: 1px solid var(--border-light);
         text-align: right;
     }
-    .data-table td:last-child { border-bottom: none; }
-    .data-table td[data-label]:not([data-label=""])::before {
+    :is(.data-table, .m-cards) td:last-child { border-bottom: none; }
+    :is(.data-table, .m-cards) td[data-label]:not([data-label=""])::before {
         content: attr(data-label);
         color: var(--text-secondary);
         font-size: 12px;
@@ -155,15 +155,52 @@
         min-width: 84px;
     }
     /* الخلية الأولى رأس البطاقة: بلا تسمية وبحجم أكبر */
-    .data-table td.dt-primary { padding: 10px 0; }
-    .data-table td.dt-primary::before { display: none; }
-    .data-table td.dt-primary > * { flex: 1; }
+    :is(.data-table, .m-cards) td.dt-primary { padding: 10px 0; }
+    :is(.data-table, .m-cards) td.dt-primary::before { display: none; }
+    :is(.data-table, .m-cards) td.dt-primary > * { flex: 1; }
     /* الإجراءات: صفّ أزرار بلا تسمية */
-    .data-table td.dt-actions::before { display: none; }
-    .data-table td.dt-actions { justify-content: flex-start; flex-wrap: wrap; }
+    :is(.data-table, .m-cards) td.dt-actions::before { display: none; }
+    :is(.data-table, .m-cards) td.dt-actions { justify-content: flex-start; flex-wrap: wrap; }
     /* خلايا بلا عنوان (أسهم بين مستخدمَين) تتوسّط */
-    .data-table td[data-label=""] { justify-content: center; }
-    .data-table td[colspan] { display: block; text-align: center; }
+    :is(.data-table, .m-cards) td[data-label=""] { justify-content: center; }
+    :is(.data-table, .m-cards) td[colspan] { display: block; text-align: center; }
+
+    /* الجداول اليدوية التي حُوّلت بطاقات (الكلمات المحظورة، المحتوى الحساس،
+       سجلّا تفاصيل المستخدم): أعرِضها كاملةً ولا تُمرَّر */
+    .m-cards { min-width: 0 !important; width: 100% !important; }
+    .m-cards td[style] { padding: 8px 0 !important; }
+    /* خانة التحديد: سطر صغير بلا تسمية */
+    :is(.data-table, .m-cards) td.dt-check { justify-content: flex-start; padding: 4px 0; }
+    :is(.data-table, .m-cards) td.dt-check::before { display: none; }
+
+    /* ── بطاقات الإحصاء أصغر: عمودان، أيقونة ٣٨px، رقم ٢٠px ──
+       كانت ٢٥px حاشية + أيقونة ٧٠px فتأخذ الست بطاقات شاشةً كاملة قبل المحتوى */
+    .stats-grid, .bw-stats-grid, .banned-stats-row, .nc-stats,
+    .reports-stats, .notifications-stats,
+    .sensitive-content-page .stats-grid, .user-detail .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+        margin-bottom: 14px;
+    }
+    .stat-card, .banned-stat-card, .bw-stat-card {
+        padding: 10px 12px !important;
+        gap: 10px !important;
+        border-radius: 12px;
+        min-width: 0;
+    }
+    .stat-card:hover, .stat-card.clickable:hover, .banned-stat-card:hover { transform: none; }
+    .stat-card .stat-icon, .banned-stat-card .stat-icon, .bw-stat-icon {
+        width: 38px !important;
+        height: 38px !important;
+        min-width: 38px;
+        font-size: 20px !important;
+        border-radius: 10px;
+    }
+    .stat-info { min-width: 0; }
+    .stat-info h3, .banned-stat-card .stat-value, .bw-stat-number { font-size: 20px !important; margin: 0 0 2px !important; }
+    .stat-info p, .banned-stat-card .stat-label, .bw-stat-label { font-size: 12px !important; }
+    .stat-info p + * { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 
     /* الجدول اليدوي للمستخدمين له بطاقاته الخاصة (Users.css) — يبقى العمود الأول ثابتاً حيث ما زال جدولاً */
     .users-table tbody td:first-child {
