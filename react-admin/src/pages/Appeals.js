@@ -528,7 +528,7 @@ function Appeals({ onViewUserDetail }) {
 
             {deletedUserAppeals > 0 && (
                 <p className="appeals-note">
-                    {deletedUserAppeals} مراجعة لا تظهر لأن أصحابها حذفوا حساباتهم.
+                    {deletedUserAppeals} مراجعة محسومة سابقاً لأصحاب حسابات محذوفة — مخفيّة لأنه لا إجراء عليها.
                 </p>
             )}
 
