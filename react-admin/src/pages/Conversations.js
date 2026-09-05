@@ -58,6 +58,15 @@ function Conversations({ onViewUserDetail }) {
     const [highlightedMsg, setHighlightedMsg] = useState(null);
     const highlightTimer = React.useRef(null);
 
+    // رسائل النظام تُخزَّن JSON { action, textAr, textEn } — كانت تُعرض خاماً في اللوحة
+    const displayContent = (m) => {
+        if (!m) return '';
+        if (m.type === 'system' || (typeof m.content === 'string' && m.content.startsWith('{"action"'))) {
+            try { const j = JSON.parse(m.content); return j.textAr || j.textEn || m.content; } catch (e) { return m.content; }
+        }
+        return m.content;
+    };
+
     const imageMessages = React.useMemo(() => messages.filter(m => m.type === 'image' && !m.isDeleted), [messages]);
     const audioMessages = React.useMemo(() => messages.filter(m => m.type === 'audio' && !m.isDeleted), [messages]);
     const flaggedMessages = React.useMemo(() => messages.filter(m => m.hasBannedWords), [messages]);
@@ -460,7 +469,7 @@ function Conversations({ onViewUserDetail }) {
                                             <span className="conv-item-preview">
                                                 {conv.lastMessage?.sender?.name && <strong>{conv.lastMessage.sender.name}: </strong>}
                                                 {conv.lastMessage?.type === 'image' ? '📷 صورة' :
-                                                 conv.lastMessage?.content || 'لا توجد رسائل'}
+                                                 displayContent(conv.lastMessage) || 'لا توجد رسائل'}
                                             </span>
                                         </div>
                                         <div className="conv-item-badges">
@@ -641,7 +650,7 @@ function Conversations({ onViewUserDetail }) {
                                                 )}
                                                 <div
                                                     id={`conv-msg-${msg._id}`}
-                                                    className={`conv-msg ${isP1 ? 'right' : 'left'} ${msg.isDeleted ? 'deleted' : ''} ${msg.hasBannedWords ? 'flagged' : ''} ${highlightedMsg === msg._id ? 'highlighted' : ''}`}
+                                                    className={`conv-msg ${isP1 ? 'right' : 'left'} ${msg.type === 'system' ? 'system' : ''} ${msg.isDeleted ? 'deleted' : ''} ${msg.hasBannedWords ? 'flagged' : ''} ${highlightedMsg === msg._id ? 'highlighted' : ''}`}
                                                 >
                                                     <img
                                                         className="conv-msg-avatar"
@@ -685,7 +694,7 @@ function Conversations({ onViewUserDetail }) {
                                                             <p className="conv-msg-deleted">تم حذف هذه الرسالة</p>
                                                         ) : (
                                                             <>
-                                                                {msg.content && <p className="conv-msg-text">{msg.content}</p>}
+                                                                {msg.content && <p className="conv-msg-text">{displayContent(msg)}</p>}
                                                                 {msg.type === 'image' && (() => {
                                                                     // ✅ الصورة المؤقتة المنتهية تُعرض من أرشيف الإشراف
                                                                     const src = getMessagePhotoUrl(msg);

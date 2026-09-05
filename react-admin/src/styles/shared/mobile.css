@@ -301,17 +301,20 @@
 
     /* رأس الدردشة: صفّان — الأسماء، ثم شريط أدوات يُمرَّر أفقياً (كان ١٦١px
        بأزرار تلتفّ ونصّ «كلمة محظورة» ينكسر سطرَين داخل ٣٢px) */
+    /* ⚠️ !important هنا لأن Conversations.css يُحمَّل كسولاً بعد هذه الطبقة
+       فيغلبها بالترتيب (قاعدة 600px فيه تجعل الأدوات تلتفّ بعرض كامل) */
     .conv-chat-header { padding: 8px 10px; gap: 8px; }
     .conv-chat-header-actions {
-        flex-wrap: nowrap;
+        flex-wrap: nowrap !important;
+        width: 100%;
         overflow-x: auto;
         scrollbar-width: none;
         gap: 6px;
         padding-bottom: 2px;
     }
     .conv-chat-header-actions::-webkit-scrollbar { display: none; }
-    .conv-chat-search { flex: 0 0 150px; min-width: 150px; min-height: 38px; }
-    .conv-chat-quick-actions { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; width: auto; }
+    .conv-chat-search { flex: 0 0 150px !important; width: 150px !important; min-width: 150px; min-height: 38px; }
+    .conv-chat-quick-actions { flex: 0 0 auto !important; flex-wrap: nowrap !important; gap: 6px; width: auto !important; }
     .conv-chat-quick-actions .conv-chat-user-btn,
     .conv-chat-quick-actions .conv-chat-action-btn {
         width: auto;
