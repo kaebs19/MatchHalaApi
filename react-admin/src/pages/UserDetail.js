@@ -1208,8 +1208,15 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 </button>
             </div>
 
-            {/* Tabs Navigation */}
-            <div className="tabs-navigation">
+            {/* Tabs Navigation — على الجوال شريط أفقي؛ ref لتمرير النشط إلى المنتصف */}
+            <div
+                className="tabs-navigation"
+                ref={(el) => {
+                    if (!el || window.innerWidth > 768) return;
+                    const active = el.querySelector('.tab-btn.active');
+                    if (active) active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                }}
+            >
                 <button
                     className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
                     onClick={() => setActiveTab('info')}
