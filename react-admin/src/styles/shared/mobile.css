@@ -115,19 +115,62 @@
         font-size: 13px;
     }
 
-    .data-table tbody td:first-child,
+    /* ── DataTable → بطاقات ──
+       الجدول (٥–٦ أعمدة) كان يُمرَّر أفقياً فلا يُرى منه إلا عمودان. كل صفّ
+       يصير بطاقة: الخلية الأولى (المستخدم) رأسَها، وبقية الخلايا أسطرَ
+       «تسمية: قيمة» من data-label، والإجراءات صفاً في الأسفل. يغطّي ٧ صفحات
+       دفعةً واحدة (المشتركون، الحسابات الجديدة، المراجعات، التطابقات…). */
+    .data-table,
+    .data-table thead,
+    .data-table tbody,
+    .data-table tr,
+    .data-table td {
+        display: block;
+    }
+    .data-table thead { display: none; }
+    .data-table-wrapper { overflow: visible; }
+    .data-table tbody tr {
+        background: var(--bg-card);
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        padding: 6px 12px;
+        margin: 10px;
+    }
+    .data-table tbody tr:hover { background: var(--bg-card); }
+    .data-table td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-light);
+        text-align: right;
+    }
+    .data-table td:last-child { border-bottom: none; }
+    .data-table td[data-label]:not([data-label=""])::before {
+        content: attr(data-label);
+        color: var(--text-secondary);
+        font-size: 12px;
+        flex: 0 0 auto;
+        min-width: 84px;
+    }
+    /* الخلية الأولى رأس البطاقة: بلا تسمية وبحجم أكبر */
+    .data-table td.dt-primary { padding: 10px 0; }
+    .data-table td.dt-primary::before { display: none; }
+    .data-table td.dt-primary > * { flex: 1; }
+    /* الإجراءات: صفّ أزرار بلا تسمية */
+    .data-table td.dt-actions::before { display: none; }
+    .data-table td.dt-actions { justify-content: flex-start; flex-wrap: wrap; }
+    /* خلايا بلا عنوان (أسهم بين مستخدمَين) تتوسّط */
+    .data-table td[data-label=""] { justify-content: center; }
+    .data-table td[colspan] { display: block; text-align: center; }
+
+    /* الجدول اليدوي للمستخدمين له بطاقاته الخاصة (Users.css) — يبقى العمود الأول ثابتاً حيث ما زال جدولاً */
     .users-table tbody td:first-child {
         position: sticky;
         inset-inline-start: 0;
         background: var(--bg-card);
         z-index: 2;
-    }
-
-    .data-table thead th:first-child {
-        position: sticky;
-        inset-inline-start: 0;
-        background: var(--bg-subtle);
-        z-index: 3;
     }
 
     /* رأس جدول المستخدمين متدرّج اللون — الخلية الثابتة تأخذ لوناً صلباً

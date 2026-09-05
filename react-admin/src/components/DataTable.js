@@ -64,7 +64,12 @@ function DataTable({
                                     className={rowClassName ? rowClassName(row) : ''}
                                 >
                                     {columns.map((col, colIndex) => (
-                                        <td key={col.key || colIndex}>
+                                        <td
+                                            key={col.key || colIndex}
+                                            // على الجوال تصير الخلية سطراً «تسمية: قيمة» — التسمية من عنوان العمود
+                                            data-label={typeof col.label === 'string' ? col.label : ''}
+                                            className={colIndex === 0 ? 'dt-primary' : (col.key === 'actions' ? 'dt-actions' : '')}
+                                        >
                                             {col.render ? col.render(row, index) : row[col.key]}
                                         </td>
                                     ))}
