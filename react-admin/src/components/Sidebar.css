@@ -197,18 +197,36 @@
     .sidebar {
         width: 82%;
         max-width: 300px;
-        height: 100vh;
+        /* dvh: شريط سفاري المتحرّك كان يقصّ تذييل القائمة */
+        height: 100dvh;
         position: fixed;
         top: 0;
         right: 0;
         /* مخفي خارج الشاشة (يمين) افتراضياً — RTL */
         transform: translateX(100%);
         box-shadow: -4px 0 20px rgba(0, 0, 0, 0.25);
+        /* ⚠️ visibility لا display: المنزلقة المحوَّلة خارج الشاشة كانت
+           تُحتسب في عرض الصفحة على سفاري فتُجرّ الصفحة أفقياً ويختفي زرّ ☰
+           خلف الحافّة. مخفيّة = لا تُلمس ولا تُقاس، مع إبقاء الحركة. */
+        visibility: hidden;
+        transition: transform 0.3s ease, visibility 0s linear 0.3s;
     }
 
     .sidebar.open {
         transform: translateX(0);
+        visibility: visible;
+        transition: transform 0.3s ease, visibility 0s;
     }
+
+    /* رأس أصغر وعناصر أرشق — كانت ٨ من ١٤ عنصراً فقط تظهر على ٨٤٤px */
+    .sidebar-header { padding: 18px 20px 14px; }
+    .sidebar-logo { width: 44px; height: 44px; padding: 5px; margin-bottom: 6px; }
+    .sidebar-header h2 { font-size: 20px; }
+    .sidebar-header p { font-size: 12px; }
+    .nav-item { padding: 11px 14px; margin-bottom: 6px; font-size: 14px; }
+    .nav-icon { font-size: 18px; }
+    .sidebar-footer { padding: 12px 15px; }
+    .user-info { padding: 10px 12px; }
 
     .sidebar-close-btn {
         display: flex;

@@ -48,6 +48,18 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // القائمة المنزلقة: قفل تمرير الصفحة خلفها، وإغلاقها بـ Escape
+    useEffect(() => {
+        document.body.classList.toggle('drawer-open', sidebarOpen);
+        if (!sidebarOpen) return undefined;
+        const onKey = (e) => { if (e.key === 'Escape') setSidebarOpen(false); };
+        window.addEventListener('keydown', onKey);
+        return () => {
+            window.removeEventListener('keydown', onKey);
+            document.body.classList.remove('drawer-open');
+        };
+    }, [sidebarOpen]);
     const [showNotificationModal, setShowNotificationModal] = useState(false);
     const [notificationData, setNotificationData] = useState({
         title: '',

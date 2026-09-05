@@ -50,7 +50,7 @@
     border: 2px solid #ede9fe;
 }
 
-.nc-name { font-weight: 600; color: #1e293b; }
+.nc-name { font-weight: 600; color: var(--text-heading); }
 .nc-meta { font-size: 12px; color: #94a3b8; }
 .nc-muted { color: #cbd5e1; }
 .nc-reason { color: #b91c1c; font-size: 13px; }

@@ -559,7 +559,7 @@
     text-align: center;
 }
 
-.user-to-delete strong { display: block; margin-bottom: 4px; color: #1f2937; font-size: 15px; }
+.user-to-delete strong { display: block; margin-bottom: 4px; color: var(--text-heading); font-size: 15px; }
 .user-to-delete span { color: #6b7280; font-size: 13px; }
 
 /* ============================================
@@ -656,7 +656,7 @@
 .qap-user-info h3 {
     margin: 0;
     font-size: 16px;
-    color: #1e293b;
+    color: var(--text-heading);
 }
 
 .qap-user-info span {

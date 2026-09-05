@@ -128,7 +128,7 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.pie-center span { font-size: 28px; font-weight: 700; color: #333; }
+.pie-center span { font-size: 28px; font-weight: 700; color: var(--text-heading); }
 .pie-center small { font-size: 12px; color: #666; }
 
 .pie-legend { display: flex; flex-direction: column; gap: 12px; width: 100%; }
@@ -198,7 +198,7 @@
 img.user-avatar { background: #f0f0f0; }
 
 .user-details { flex: 1; text-align: right; }
-.user-details h4 { margin: 0 0 5px 0; color: #333; font-size: 16px; }
+.user-details h4 { margin: 0 0 5px 0; color: var(--text-heading); font-size: 16px; }
 .user-details p { margin: 0; color: #666; font-size: 14px; direction: ltr; text-align: right; }
 .user-date { display: inline-block; margin-top: 5px; font-size: 12px; color: #999; }
 

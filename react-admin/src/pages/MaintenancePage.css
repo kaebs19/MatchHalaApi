@@ -19,7 +19,7 @@
 .maint-header h1 {
     font-size: 32px;
     margin-bottom: 8px;
-    color: #1a1a1a;
+    color: var(--text-heading);
 }
 
 .maint-header p {
@@ -55,7 +55,7 @@
 .status-info h2 {
     font-size: 20px;
     margin-bottom: 8px;
-    color: #1a1a1a;
+    color: var(--text-heading);
 }
 
 .status-details p {
@@ -75,7 +75,7 @@
 
 .maint-form h3 {
     margin-bottom: 20px;
-    color: #1a1a1a;
+    color: var(--text-heading);
 }
 
 .form-group {
@@ -174,7 +174,7 @@
 
 .info-card h4 {
     margin-bottom: 12px;
-    color: #1e293b;
+    color: var(--text-primary);
 }
 
 .info-card ul {

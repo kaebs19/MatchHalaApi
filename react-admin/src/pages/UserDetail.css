@@ -1872,7 +1872,7 @@
 
 .location-time { font-size: 11px; color: #6b7280; }
 .location-place { margin: 0; font-size: 15px; font-weight: 600; color: #111827; }
-.location-coords { margin: 4px 0 0; font-size: 13px; color: #374151; direction: ltr; text-align: right; }
+.location-coords { margin: 4px 0 0; font-size: 13px; color: var(--text-primary); direction: ltr; text-align: right; }
 .location-meta { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
 .location-empty { font-size: 13px; color: #6b7280; }
 
