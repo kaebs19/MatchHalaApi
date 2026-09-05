@@ -24,6 +24,12 @@
     gap: 12px;
 }
 
+/* عناصر الجوال فقط */
+.mobile-only { display: none !important; }
+@media (max-width: 768px) {
+    .mobile-only { display: inline-flex !important; }
+}
+
 /* زر فتح القائمة (hamburger) — يظهر على الجوال فقط */
 .sidebar-toggle-btn {
     display: none;
@@ -316,13 +322,16 @@
         justify-content: center;
     }
 
+    /* الرأس صفّ واحد (~٥٦px): ☰ · العنوان · 🔍 · 🔔. كان ثلاثة صفوف (١١١px،
+       و١٣٦ مع فتات الطريق) لاصقةً تأكل ١٣–١٦٪ من الشاشة. البحث يتمدّد عند
+       لمس 🔍 فقط، وأزرار الإشعار والثيم والخروج انتقلت إلى تذييل القائمة. */
     .top-header {
-        /* الرأس كان يبلغ ١٨٠px على الجوال (عنوان + بحث + أزرار) فيبتلع
-           ربع الشاشة ويخفي رؤوس الصفحات الملتصقة تحته */
-        padding: 8px 12px;
+        padding: 6px 10px;
         flex-wrap: wrap;
         row-gap: 6px;
+        min-height: 56px;
     }
+    .desktop-only { display: none !important; }
 
     .top-header h1 {
         font-size: 17px;
@@ -330,32 +339,43 @@
         min-width: 0;
     }
 
-    /* شريط الإجراءات ينزل لصف كامل ويلتفّ */
+    /* شريط الإجراءات يبقى في الصفّ نفسه: 🔍 و🔔 فقط */
     .header-actions {
-        width: 100%;
-        flex-wrap: nowrap;
+        width: auto;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
         gap: 6px;
-        justify-content: flex-start;
-        overflow-x: auto;
-        scrollbar-width: none;
+        justify-content: flex-end;
+        align-items: center;
     }
 
-    .header-actions::-webkit-scrollbar { display: none; }
-
-    .global-search-container {
+    /* حقل البحث مخفيّ حتى يُفتح، وعندها يأخذ صفاً كاملاً تحت العنوان */
+    .global-search-container { display: none; }
+    .header-actions.search-open .global-search-container {
+        display: block;
         flex: 1 1 100%;
-        order: -1;
+        order: 10;
     }
+    .header-actions.search-open { width: 100%; }
+    .header-actions.search-open .mobile-search-toggle,
+    .header-actions.search-open .notifications-btn { order: 1; }
+
+    /* فتات الطريق تصغر ولا تُضيف صفاً */
+    .breadcrumb-parent { font-size: 11px; }
 
     .search-input-wrapper,
     .search-input {
         width: 100%;
     }
 
+    /* أهداف لمس ≥ 40px */
     .header-icon-btn {
-        padding: 6px 10px;
-        font-size: 16px;
-        min-height: 38px;
+        padding: 0;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        min-height: 40px;
+        font-size: 17px;
         flex-shrink: 0;
     }
 
@@ -650,12 +670,7 @@
 }
 
 @media (max-width: 768px) {
-    /* إظهار البحث على الجوال بعرض كامل (بدل إخفائه) */
-    .global-search-container {
-        display: block;
-        flex: 1 1 100%;
-        order: -1;
-    }
+    /* البحث على الجوال بعرض كامل — حين يُفتح من 🔍 (انظر القاعدة أعلاه) */
     .search-input {
         width: 100%;
     }

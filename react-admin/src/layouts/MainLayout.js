@@ -48,6 +48,42 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    // بحث الجوال: مطويّ خلف 🔍 حتى لا يشغل صفاً كاملاً من رأسٍ لاصق
+    const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+
+    // الرجوع لأعلى الصفحة عند تبديلها — كان موضع التمرير القديم يبقى أحياناً
+    // فتُفتح الصفحة الجديدة من منتصفها
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+        setMobileSearchOpen(false);
+    }, [currentPage]);
+
+    // سحبٌ من الحافّة اليمنى يفتح القائمة (RTL) — كما في التطبيقات
+    useEffect(() => {
+        let startX = null, startY = null;
+        const onStart = (e) => {
+            if (window.innerWidth > 768) return;
+            const t = e.touches[0];
+            // من آخر 24px عند الحافّة اليمنى فقط — لا يتعارض مع تمرير الجداول
+            if (t.clientX >= window.innerWidth - 24) { startX = t.clientX; startY = t.clientY; }
+        };
+        const onMove = (e) => {
+            if (startX === null) return;
+            const t = e.touches[0];
+            const dx = startX - t.clientX, dy = Math.abs(t.clientY - startY);
+            if (dx > 40 && dy < 60) { setSidebarOpen(true); startX = null; }
+            else if (dy > 60) startX = null;
+        };
+        const onEnd = () => { startX = null; };
+        window.addEventListener('touchstart', onStart, { passive: true });
+        window.addEventListener('touchmove', onMove, { passive: true });
+        window.addEventListener('touchend', onEnd, { passive: true });
+        return () => {
+            window.removeEventListener('touchstart', onStart);
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend', onEnd);
+        };
+    }, []);
 
     // القائمة المنزلقة: قفل تمرير الصفحة خلفها، وإغلاقها بـ Escape
     useEffect(() => {
@@ -440,6 +476,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 onProfileClick={() => { setCurrentPage('profile'); setSidebarOpen(false); }}
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
+                onLogout={onLogout}
+                onSendNotification={user?.role === 'admin' ? () => { setSidebarOpen(false); setShowNotificationModal(true); } : null}
                 badges={{
                     reports: pendingReportsCount,
                     appeals: appealsStats.total + appealsStats.awaitingReply,
@@ -474,7 +512,17 @@ function MainLayout({ onLogout, user: initialUser }) {
                         )}
                         <h1>{pageTitle(currentPage)}</h1>
                     </div>
-                    <div className="header-actions">
+                    <div className={`header-actions ${mobileSearchOpen ? 'search-open' : ''}`}>
+                        {/* 🔍 على الجوال: يفتح حقل البحث بدل أن يشغل صفاً دائماً */}
+                        <button
+                            className="header-icon-btn mobile-only mobile-search-toggle"
+                            onClick={() => setMobileSearchOpen(v => !v)}
+                            aria-label="بحث"
+                            title="بحث"
+                        >
+                            {mobileSearchOpen ? '✕' : '🔍'}
+                        </button>
+
                         {/* Global Search Bar */}
                         <div className="global-search-container" ref={searchRef}>
                             <div className="search-input-wrapper">
@@ -484,6 +532,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                                     className="search-input"
                                     placeholder="بحث عن مستخدم..."
                                     value={searchQuery}
+                                    autoFocus={mobileSearchOpen}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onFocus={() => { if (searchResults.length > 0) setShowSearchDropdown(true); }}
                                     onKeyDown={(e) => { if (e.key === 'Enter') executeSearch(); }}
@@ -525,7 +574,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {/* زر إرسال إشعار */}
                         {user?.role === 'admin' && (
                             <button
-                                className="header-icon-btn send-notification-btn"
+                                className="header-icon-btn send-notification-btn desktop-only"
                                 onClick={() => setShowNotificationModal(true)}
                                 title="إرسال إشعار"
                             >
@@ -541,14 +590,20 @@ function MainLayout({ onLogout, user: initialUser }) {
                         >
                             <span className="notification-icon">🔔</span>
                             {unreadNotifications > 0 && (
-                                <span className="notification-badge">{unreadNotifications}</span>
+                                <span className="notification-badge desktop-only">{unreadNotifications}</span>
+                            )}
+                            {/* على الجوال: عدّاد واحد لكل ما ينتظر — أزرار البلاغات/المراجعات مخفيّة هناك */}
+                            {(unreadNotifications + (user?.role === 'admin' ? pendingReportsCount + appealsStats.total + appealsStats.awaitingReply : 0)) > 0 && (
+                                <span className="notification-badge mobile-only">
+                                    {unreadNotifications + (user?.role === 'admin' ? pendingReportsCount + appealsStats.total + appealsStats.awaitingReply : 0)}
+                                </span>
                             )}
                         </button>
 
                         {/* زر البلاغات المعلقة */}
                         {user?.role === 'admin' && pendingReportsCount > 0 && (
                             <button
-                                className="header-icon-btn reports-notification-btn"
+                                className="header-icon-btn reports-notification-btn desktop-only"
                                 onClick={() => setCurrentPage('reports')}
                                 title={`${pendingReportsCount} بلاغات في انتظار المراجعة`}
                             >
@@ -560,7 +615,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {/* زر المراجعات (جديدة + ردود مستخدمين بلا قراءة) */}
                         {user?.role === 'admin' && (appealsStats.total > 0 || appealsStats.awaitingReply > 0) && (
                             <button
-                                className="header-icon-btn appeals-notification-btn"
+                                className="header-icon-btn appeals-notification-btn desktop-only"
                                 onClick={() => setCurrentPage('appeals')}
                                 title={`${appealsStats.pending} جديدة · ${appealsStats.underReview} قيد المراجعة · ${appealsStats.awaitingReply} رد مستخدم بلا قراءة`}
                             >
@@ -571,9 +626,9 @@ function MainLayout({ onLogout, user: initialUser }) {
                             </button>
                         )}
 
-                        <ThemeToggle />
+                        <span className="desktop-only"><ThemeToggle /></span>
 
-                        <button onClick={onLogout} className="logout-btn">
+                        <button onClick={onLogout} className="logout-btn desktop-only">
                             تسجيل الخروج 🚪
                         </button>
                     </div>

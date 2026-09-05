@@ -391,6 +391,66 @@ function Users({ onViewDetail }) {
                 </div>
             ) : (
                 <>
+                    {/* على الجوال: بطاقة لكل مستخدم بدل جدول 900px لا يُرى منه إلا عمودان.
+                        نفس البيانات والأفعال؛ الجدول يبقى لسطح المكتب (CSS يبدّل بينهما). */}
+                    <div className="users-cards">
+                        {loading ? (
+                            <div className="users-card skeleton-card">جارٍ التحميل…</div>
+                        ) : paginatedUsers.map((user) => {
+                            const loc = bestLocation(user);
+                            return (
+                                <div key={user._id} className={`users-card ${user.bannedWords?.isBanned ? 'row-banned' : ''}`}>
+                                    <div className="users-card-head" onClick={() => onViewDetail && onViewDetail(user._id)}>
+                                        <div className="user-avatar-wrap">
+                                            <img
+                                                src={user.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user.name)}
+                                                alt={user.name}
+                                                className="user-avatar-small"
+                                                onError={(e) => { e.target.onerror = null; e.target.src = getDefaultAvatar(user.name); }}
+                                            />
+                                            {user.isOnline && <span className="user-online-dot" />}
+                                        </div>
+                                        <div className="users-card-id">
+                                            <div className="users-card-name">
+                                                <span className="user-name-text">{user.name}</span>
+                                                {user.isPremium && <span className="ubadge premium">PRO</span>}
+                                                {user.verification?.isVerified && <span className="ubadge verified">✓</span>}
+                                                {user.role === 'admin' && <span className="ubadge admin">مدير</span>}
+                                            </div>
+                                            <span dir="ltr" className="email-text">{user.email}</span>
+                                        </div>
+                                        <div className="status-col">
+                                            {user.bannedWords?.isBanned ? (
+                                                <span className="ubadge banned-badge">محظور</span>
+                                            ) : user.suspension?.isSuspended ? (
+                                                <span className="ubadge suspended-badge">معلّق</span>
+                                            ) : user.isActive ? (
+                                                <span className="ubadge active-badge">نشط</span>
+                                            ) : (
+                                                <span className="ubadge inactive-badge">معطل</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="users-card-meta">
+                                        {user.gender && <span className="uinfo">{user.gender === 'male' ? '♂ ذكر' : '♀ أنثى'}</span>}
+                                        {user.country && <span className="uinfo">🌍 {user.country}{user.city ? ` · ${user.city}` : ''}</span>}
+                                        {loc && <span className="uinfo">{loc.icon} {loc.text}</span>}
+                                        {user.deviceInfo?.platform && <span className="uinfo">{user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻'}</span>}
+                                        {(user.bannedWords?.violations || 0) > 0 && <span className="uinfo warn">⚠️ {user.bannedWords.violations}/3</span>}
+                                        <span className="uinfo">🕐 {formatRelativeTime(user.lastLogin)}</span>
+                                        <span className="uinfo">📅 {formatDate(user.createdAt)}</span>
+                                    </div>
+                                    <div className="actions-cell">
+                                        <button className="action-btn btn-primary" onClick={() => onViewDetail && onViewDetail(user._id)} title="التفاصيل">👁️ التفاصيل</button>
+                                        <button className="action-btn btn-photo" onClick={() => setShowPhotoPreview(user)} title="عرض الصورة">🖼️</button>
+                                        <button className="action-btn btn-admin-actions" onClick={() => openQuickActions(user)} title="إجراءات سريعة">🛡️</button>
+                                        <button className="action-btn btn-danger" onClick={() => confirmDelete(user)} title="حذف">🗑️</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     <div className="table-container">
                         <table className="users-table">
                             <thead>

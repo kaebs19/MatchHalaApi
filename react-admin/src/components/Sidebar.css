@@ -240,3 +240,33 @@
         flex: 1;
     }
 }
+
+/* أفعال الجوال في التذييل — مخفيّة على سطح المكتب (لها مكانها في الرأس) */
+.sidebar-mobile-actions { display: none; }
+
+@media (max-width: 768px) {
+    .sidebar-mobile-actions {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .sidebar-mobile-actions .sidebar-action-btn,
+    .sidebar-mobile-actions .header-icon-btn {
+        flex: 1;
+        min-height: 42px;
+        border: none;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+    .sidebar-mobile-actions .header-icon-btn { flex: 0 0 48px; font-size: 18px; }
+    .sidebar-mobile-actions .sidebar-action-btn.danger { background: rgba(255, 82, 82, 0.28); }
+}

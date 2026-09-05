@@ -1,9 +1,10 @@
 import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
 import { navItems } from '../config/pages';
+import ThemeToggle from './ThemeToggle';
 import './Sidebar.css';
 
-function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {}, isOpen = false, onClose }) {
+function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {}, isOpen = false, onClose, onLogout, onSendNotification }) {
     const isAdmin = user?.role === 'admin';
     const menuItems = navItems(isAdmin);
 
@@ -45,6 +46,16 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
             </nav>
 
             <div className="sidebar-footer">
+                {/* أفعال نادرة أُخرجت من رأس الجوال (كان ثلاثة صفوف لاصقة) إلى هنا */}
+                <div className="sidebar-mobile-actions">
+                    {onSendNotification && (
+                        <button className="sidebar-action-btn" onClick={onSendNotification}>📢 إرسال إشعار</button>
+                    )}
+                    <ThemeToggle />
+                    {onLogout && (
+                        <button className="sidebar-action-btn danger" onClick={onLogout}>🚪 خروج</button>
+                    )}
+                </div>
                 <div className="user-info" onClick={onProfileClick} style={{ cursor: 'pointer' }} title="عرض الملف الشخصي">
                     <img
                         src={user?.profileImage ? getImageUrl(user.profileImage) : getDefaultAvatar(user?.name)}

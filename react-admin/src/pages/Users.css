@@ -572,15 +572,42 @@
     .email-text { max-width: 140px; }
 }
 
+/* بطاقات الجوال — مخفيّة على سطح المكتب */
+.users-cards { display: none; }
+
 @media (max-width: 768px) {
-    .users-page { padding: 16px; }
+    .users-page { padding: 12px; }
     .users-stats-bar { flex-wrap: wrap; }
     .users-stat { min-width: 25%; }
     .users-search-row { flex-wrap: wrap; }
     .users-page .search-box { min-width: 100%; }
     .users-filters-grid { grid-template-columns: 1fr 1fr; }
-    .table-container { overflow-x: auto; }
-    .users-table { min-width: 900px; }
+
+    /* الجدول (900px) يختفي، وتحلّ محلّه البطاقات */
+    .table-container { display: none; }
+    .users-cards { display: flex; flex-direction: column; gap: 10px; }
+
+    .users-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-light);
+        border-radius: 14px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .users-card.row-banned { border-color: #fca5a5; }
+    .users-card-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .users-card-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .users-card-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .users-card-name .user-name-text { font-size: 15px; font-weight: 700; max-width: none; }
+    .users-card-id .email-text { font-size: 12px; color: var(--text-secondary); max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .users-card-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+    .users-card-meta .uinfo { font-size: 12px; color: var(--text-secondary); }
+    .users-card-meta .uinfo.warn { color: var(--text-warning); font-weight: 600; }
+    .users-card .actions-cell { display: flex; gap: 8px; justify-content: flex-start; }
+    .users-card .action-btn { width: auto; min-width: 44px; height: 40px; padding: 0 12px; font-size: 14px; }
+    .users-card .action-btn.btn-primary { flex: 1; }
 }
 
 /* Error */

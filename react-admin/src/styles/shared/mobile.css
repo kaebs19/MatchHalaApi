@@ -213,6 +213,30 @@
     body {
         overflow-x: hidden;
     }
+
+    /* ── أرضية أحجام النصوص ──
+       قياس على 390px: ٨٤ عنصراً نصّياً بحجم ١٠–١١px في الشاشة الواحدة،
+       وخلايا الجداول ١٢px. أبل توصي بـ ١١ للتسميات و١٥–١٧ للنصّ. */
+    .ubadge, .nav-badge, .notification-badge, .user-meta-chip, .uinfo,
+    .users-stat-label, .stat-label, .detail-label, .qap-badge,
+    .coming-soon, .hala-id, .auth-badge, .violations-count, .last-seen-text, .date-text {
+        font-size: 12px;
+    }
+    .data-table th, .data-table td,
+    .users-table th, .users-table td {
+        font-size: 14px;
+    }
+    .detail-value, .email-text, .user-name-text, .stat-value + .stat-label { font-size: 13px; }
+    .nav-name { font-size: 15px; }
+
+    /* ── أهداف لمس: الأزرار الأيقونية ≥ 40px وفراغ بينها ── */
+    .users-page .action-btn,
+    .device-actions .view-user-btn,
+    .qap-btn {
+        min-width: 40px;
+        min-height: 40px;
+    }
+    .actions-cell { gap: 8px; }
 }
 
 @media (max-width: 480px) {
