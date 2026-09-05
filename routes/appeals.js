@@ -78,6 +78,33 @@ function hasActivePenalty(user, now) {
     return false;
 }
 
+// يُغلق الاستئنافات المفتوحة التي حُذف صاحبها (deleteOne يمسح المستند فيعود
+// populate بـ null). كانت تبقى «قيد الانتظار» إلى الأبد: ٩٥ على الإنتاج، تُحصى
+// في الإحصاء ولا يمكن فتحها. حذف الحساب من الآن يُغلقها لحظتها
+// (utils/cleanupDeletedUser)، وهذا المسح يلتقط ما سبق وأي فجوة.
+async function sweepOrphanAppeals() {
+    try {
+        const now = new Date();
+        const open = await Appeal.find({
+            status: { $in: OPEN_STATUSES },
+            autoClosed: { $ne: true }
+        }).select('user').populate('user', '_id').lean();
+
+        const orphanIds = open.filter(a => !a.user).map(a => a._id);
+        if (orphanIds.length) {
+            await Appeal.updateMany(
+                { _id: { $in: orphanIds } },
+                // (لا $push في statusHistory: enum الحالة لا يحوي auto_closed — كما في sweepExpiredAppeals)
+                { $set: { autoClosed: true, autoClosedAt: now } }
+            );
+        }
+        return orphanIds.length;
+    } catch (e) {
+        console.error('خطأ في إغلاق استئنافات الحسابات المحذوفة:', e.message);
+        return 0;
+    }
+}
+
 // يُعلّم الاستئنافات المفتوحة التي انتهت عقوبتها بـ autoClosed
 async function sweepExpiredAppeals() {
     try {
@@ -672,6 +699,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         // ✅ إخفاء الاستئنافات التي انتهت مدة عقوبتها قبل الجلب
         await sweepExpiredAppeals();
+        await sweepOrphanAppeals();
 
         // ⚠️ كان الفلتر يستثني autoClosed نهائياً، فتختفي من اللوحة استئنافات
         //    لم يرها أحد: عند القياس على الإنتاج كانت **٣٠٤ مراجعة pending**

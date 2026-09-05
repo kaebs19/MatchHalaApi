@@ -100,6 +100,20 @@ async function cleanupDeletedUser(userId, userDoc = null) {
         }
     }
 
+    // ── 5. استئنافاته المفتوحة ──
+    // كانت تبقى «قيد الانتظار» إلى الأبد بعد حذف الحساب (٩٥ على الإنتاج) —
+    // تُحصى في إحصاء المراجعات ولا يمكن فتحها لأن populate(user) يعود null.
+    try {
+        const Appeal = require('../models/Appeal');
+        const closed = await Appeal.updateMany(
+            { user: userId, status: { $in: ['pending', 'forwarded', 'under_review'] }, autoClosed: { $ne: true } },
+            { $set: { autoClosed: true, autoClosedAt: new Date() } }
+        );
+        counts.appealsClosed = closed.modifiedCount;
+    } catch (e) {
+        console.error('⚠️ فشل إغلاق استئنافات الحساب المحذوف:', e.message);
+    }
+
     console.log(`🧹 cleanupDeletedUser(${userId}):`, JSON.stringify(counts));
     return counts;
 }
