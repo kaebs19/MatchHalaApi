@@ -607,7 +607,9 @@
     .users-card-meta .uinfo.warn { color: var(--text-warning); font-weight: 600; }
     .users-card .actions-cell { display: flex; gap: 8px; justify-content: flex-start; }
     .users-card .action-btn { width: auto; min-width: 44px; height: 40px; padding: 0 12px; font-size: 14px; }
-    .users-card .action-btn.btn-primary { flex: 1; }
+    /* «التفاصيل» يحمل نصاً هنا (على المكتب أيقونة فقط): .btn-primary العامة
+       تجعله أبيض فوق خلفية زرقاء فاتحة — غير مقروء */
+    .users-card .action-btn.btn-primary { flex: 1; color: var(--text-info); font-weight: 600; }
 }
 
 /* Error */
