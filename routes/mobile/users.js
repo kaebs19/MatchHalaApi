@@ -794,9 +794,10 @@ router.post('/profile-views', protect, async (req, res) => {
             });
         }
 
-        // ✅ إشعار الزيارة — تصميمان حسب اشتراك viewedUser
-        // Premium: إشعار كامل مع اسم وصورة الزائر
-        // مجاني: إشعار تعريفي مبهم يقود لـ Paywall (نموذج Tinder/Bumble)
+        // ✅ إشعار الزيارة — باسم الزائر وصورته للجميع (قرار منتج 2026-09-07).
+        // كان المجاني يتلقّى صيغة مبهمة «شاب من X زار ملفك» بلا اسم؛ صار الاسم يظهر
+        // للكل في الإشعار، بينما تبقى **قائمة الزوّار** الكاملة ميزة Premium
+        // (`locked` يُبقي القفل على الشاشة لا على الإشعار).
         const nowDate = new Date();
         const viewedIsPremiumActive = !!(viewedUser.isPremium &&
             viewedUser.premiumExpiresAt &&
@@ -807,62 +808,43 @@ router.post('/profile-views', protect, async (req, res) => {
                 const Notification = require('../../models/Notification');
                 const pushService = require('../../services/pushNotificationService');
 
-                // ✅ بناء صيغة "غامضة + إثارة" للمجاني: جنس + بلد/مدينة (بدون اسم)
-                const buildTeaserTitle = () => {
-                    const gender = req.user.gender;
-                    const country = req.user.country || req.user.city;
-                    const verb = gender === 'female' ? 'زارت' : 'زار';
-                    let subject;
-                    if (gender === 'female') {
-                        subject = 'أنثى';
-                    } else if (gender === 'male') {
-                        subject = 'شاب';
-                    } else {
-                        subject = 'شخص ما';
-                    }
-                    if (country) {
-                        return `👀 ${subject} من ${country} ${verb} ملفك!`;
-                    }
-                    return `👀 ${subject} ${verb} ملفك!`;
-                };
+                const viewerName = req.user.name || 'مستخدم';
+                const verb = req.user.gender === 'female' ? 'زارت' : 'زار';
+                const viewerImage = getFullUrl(req.user.profileImage) || '';
+                const title = '👀 زيارة جديدة لملفك';
+                const body = `${viewerName} ${verb} ملفك الشخصي`;
 
-                const title = viewedIsPremiumActive
-                    ? '👀 زيارة جديدة'
-                    : buildTeaserTitle();
-                const body = viewedIsPremiumActive
-                    ? `${req.user.name || 'مستخدم'} زار ملفك الشخصي`
-                    : 'اشترك في Premium لاكتشاف من هو/هي ←';
-
-                // in-app: للـ Premium نُعطي data كاملة، للمجاني data مقفلة (locked)
+                // in-app: مرة واحدة هنا — pushService لا يحفظ (saveToDb=false) وإلا تكرّر الصفّ
                 await Notification.create({
                     title, body,
                     type: 'profile_view',
-                    sender: viewedIsPremiumActive ? req.user._id : null,
+                    sender: req.user._id,
                     recipients: 'specific',
                     targetUsers: [viewedUserId],
-                    data: viewedIsPremiumActive ? {
+                    data: {
                         viewerId: String(req.user._id),
-                        viewerName: req.user.name,
-                        viewerAvatar: getFullUrl(req.user.profileImage),
+                        viewerName,
+                        viewerAvatar: viewerImage,
                         isPremium: !!req.user.isPremium,
                         isVerified: !!req.user.verification?.isVerified,
-                        locked: false
-                    } : {
-                        locked: true,
-                        requiresPremium: true
+                        locked: !viewedIsPremiumActive,
+                        requiresPremium: !viewedIsPremiumActive
                     },
                     status: 'sent',
                     sentAt: new Date()
                 });
 
-                // push (fail-silent)
+                // push (fail-silent) — senderImage تُظهر صورة الزائر كأيقونة كبيرة على أندرويد وiOS
                 pushService.sendNotificationToUser(String(viewedUserId), {
                     title, body
                 }, {
                     type: 'profile_view',
                     locked: viewedIsPremiumActive ? '0' : '1',
-                    viewerId: viewedIsPremiumActive ? String(req.user._id) : ''
-                }).catch(() => {});
+                    viewerId: String(req.user._id),
+                    senderId: String(req.user._id),
+                    senderName: viewerName,
+                    senderImage: viewerImage
+                }, false).catch(() => {});
             } catch (notifErr) {
                 console.error('profile-view notify error:', notifErr.message);
             }
