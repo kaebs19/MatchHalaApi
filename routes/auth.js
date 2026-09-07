@@ -13,6 +13,7 @@ const FlaggedMessage = require('../models/FlaggedMessage');
 const { generateToken, generateRefreshToken } = require('../utils/generateToken');
 const { buildIpLocation } = require('../utils/geo');
 const sendEmail = require('../utils/sendEmail');
+const EMAIL_SITE_URL = process.env.EMAIL_SITE_URL || 'https://www.chathala.com';
 const { renderCodeEmail } = require('../services/emailService');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
@@ -1003,13 +1004,19 @@ router.post('/forgot-password', async (req, res) => {
         await user.save();
 
         // إرسال البريد الإلكتروني
+        // ✅ الزر رابط مباشر لصفحة التغيير على الموقع والرمز مُعبّأ (كان يفتح
+        //    /download فيضيع المستخدم). على الآيفون الرابط نفسه Universal Link
+        //    يفتح التطبيق على شاشة الرمز. الرمز صالح ١٠ دقائق وموجود في البريد أصلاً.
+        const resetUrl = `${EMAIL_SITE_URL}/forgot-password?email=${encodeURIComponent(user.email)}&code=${encodeURIComponent(resetToken)}`;
         const { html, text } = renderCodeEmail({
             title: 'إعادة تعيين كلمة المرور',
             name: user.name,
             intro: 'لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بحسابك.',
             code: resetToken,
             recipient: user.email,
-            warning: 'إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.'
+            warning: 'إذا لم تطلب إعادة تعيين كلمة المرور، تجاهل هذه الرسالة ولا تشارك الرمز مع أحد.',
+            ctaUrl: resetUrl,
+            ctaText: 'تغيير كلمة المرور'
         });
 
         await sendEmail({
