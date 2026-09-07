@@ -94,7 +94,7 @@ async function sendEmail({ to, subject, html, text }) {
 function layout({ title, body, preheader = '', accent = BRAND_COLOR, recipient = '' }) {
     const FONT = "Tahoma,Arial,'Segoe UI','Helvetica Neue',sans-serif";
     const link = (href, label) =>
-        `<a href="${href}" style="color:#7A8B93;text-decoration:none;font-size:12px;">${label}</a>`;
+        `<a href="${escapeHtml(href)}" style="color:#7A8B93;text-decoration:none;font-size:12px;">${label}</a>`;
 
     return `<!DOCTYPE html>
 <html dir="rtl" lang="ar" xmlns:v="urn:schemas-microsoft-com:vml">
@@ -165,7 +165,7 @@ function button(href, label, accent = BRAND_COLOR) {
     const FONT = "Tahoma,Arial,'Segoe UI',sans-serif";
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
        <tr><td align="center" bgcolor="${accent}" style="background-color:${accent};border-radius:9px;">
-         <a href="${href}" style="display:inline-block;padding:13px 34px;font-family:${FONT};font-size:15px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:9px;">${escapeHtml(label)}</a>
+         <a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 34px;font-family:${FONT};font-size:15px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:9px;">${escapeHtml(label)}</a>
        </td></tr>
       </table>`;
 }
