@@ -388,27 +388,59 @@ router.post('/:id/reply', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'تم إغلاق هذا الاستئناف' });
         }
 
+        // ⚠️ الاستئناف المغلق تلقائياً يبقى status=pending، والتطبيق لا يعرف
+        //    autoClosed فيعرضه كمحادثة مفتوحة، فيردّ عليه المستخدم بعد عقوبة
+        //    جديدة: تصل اللوحة نبضة «رد جديد» بينما الاستئناف مدفون تحت
+        //    «مغلقة تلقائياً» (حالة على الإنتاج: ١٤ رسالة غير مقروءة على
+        //    استئناف أُغلق بعد ١٠ دقائق من إنشائه، آخرها بعد حظر جهاز).
+        //    إن كانت عقوبته سارية الآن يُعاد فتحه فيظهر في «قيد الانتظار»
+        //    ويُنبَّه الأدمن كاستئناف جديد؛ وإلا تُحفظ الرسالة بلا تنبيه — لا إجراء عليها.
+        const now = new Date();
+        let reopened = false;
+        if (appeal.autoClosed && hasActivePenalty(req.user, now)) {
+            appeal.autoClosed = false;
+            appeal.autoClosedAt = null;
+            appeal.statusHistory.push({
+                status: appeal.status,
+                note: 'أُعيد فتحه تلقائياً: ردّ المستخدم وعقوبته سارية',
+                changedAt: now
+            });
+            reopened = true;
+        }
+
         appeal.messages.push({
             sender: 'user',
             authorId: req.user._id,
             content: content.trim(),
             readByUser: true,
             readByAdmin: false,
-            createdAt: new Date()
+            createdAt: now
         });
         appeal.unreadForAdmin = (appeal.unreadForAdmin || 0) + 1;
         await appeal.save();
 
-        // ✅ تنبيه فوري لكل الأدمنز المتصلين
-        if (global.io) {
-            global.io.to('admin-dashboard').emit('admin:appeal-user-reply', {
-                appealId: appeal._id.toString(),
-                userId: req.user._id.toString(),
-                userName: req.user.name,
-                preview: content.trim().slice(0, 120),
-                unreadForAdmin: appeal.unreadForAdmin,
-                createdAt: new Date()
-            });
+        // ✅ تنبيه فوري لكل الأدمنز المتصلين — لا تنبيه على استئناف مغلق تلقائياً
+        if (global.io && !appeal.autoClosed) {
+            const preview = content.trim().slice(0, 120);
+            if (reopened) {
+                global.io.to('admin-dashboard').emit('admin:new-appeal', {
+                    appealId: appeal._id.toString(),
+                    userId: req.user._id.toString(),
+                    userName: req.user.name,
+                    actionType: appeal.actionType,
+                    reason: preview,
+                    createdAt: now
+                });
+            } else {
+                global.io.to('admin-dashboard').emit('admin:appeal-user-reply', {
+                    appealId: appeal._id.toString(),
+                    userId: req.user._id.toString(),
+                    userName: req.user.name,
+                    preview,
+                    unreadForAdmin: appeal.unreadForAdmin,
+                    createdAt: now
+                });
+            }
         }
 
         res.json({ success: true, data: appeal });
