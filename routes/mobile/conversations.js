@@ -559,6 +559,18 @@ router.put('/conversations/:id/reject', protect, async (req, res) => {
             });
         }
 
+        // ✅ Idempotent: طلب مرفوض أصلاً يعود 200 بلا أثر جانبي.
+        //    الرفض المكرّر (كان التطبيق يُعيد إظهار الطلب من الكاش) كان يُرسل
+        //    للمرسِل إشعار رفض جديداً ويمدّ تهدئة الاستئناف في كل مرة.
+        if (conversation.status === 'rejected') {
+            return res.status(200).json({
+                success: true,
+                message: 'تم رفض طلب المحادثة',
+                code: 'ALREADY_REJECTED',
+                data: { conversation }
+            });
+        }
+
         // تحديث حالة المحادثة
         conversation.status = 'rejected';
         conversation.isActive = false;
