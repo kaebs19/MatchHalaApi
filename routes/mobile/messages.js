@@ -1803,6 +1803,12 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                 }
             }
 
+            // 🎧 للمرسل فقط: هل سُمعت؟ — ولا تُرسَل القائمة نفسها لأحد
+            if (isMine && msgObj.type === 'audio') {
+                msgObj.isListened = (msgObj.listenedBy || []).some(l => String(l.user) !== userId);
+            }
+            delete msgObj.listenedBy;
+
             if (isMine) {
                 // رسالتي أنا
                 msgObj.isRead = msgObj.status === 'read' ||
@@ -2265,6 +2271,69 @@ router.post('/messages/forward', protect, async (req, res) => {
 // ==========================================
 // 📷 مشاهدة صورة مؤقتة | View Disappearing Photo
 // ==========================================
+
+// @route   POST /api/v2/mobile/messages/:messageId/listened
+// @desc    🎧 المستلم سمع الرسالة الصوتية → يُبلَّغ المرسل (إيقونة سماعة)
+// @access  Private
+// قواعد: المستلم وحده (لا المرسل)، عضو في المحادثة، لا حظر بين الطرفين،
+// ومن فعّل القراءة الخفية لا يُسجَّل عنه شيء إطلاقاً (لا بثّ ولا تخزين —
+// التخزين وحده يكشفه عند إعادة جلب الرسائل). مرة واحدة لكل مستمع.
+router.post('/messages/:messageId/listened', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        if (!mongoose.isValidObjectId(messageId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const userId = String(req.user._id);
+
+        const message = await Message.findById(messageId)
+            .select('sender conversation type isDeleted').lean();
+        if (!message || message.isDeleted || message.type !== 'audio') {
+            return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
+        }
+        const senderId = String(message.sender);
+        if (senderId === userId) {
+            return res.json({ success: true, data: { recorded: false } });
+        }
+
+        const [conversation, me, blocked] = await Promise.all([
+            Conversation.findById(message.conversation).select('participants').lean(),
+            User.findById(userId).select('privacySettings.invisibleRead').lean(),
+            User.exists({
+                $or: [
+                    { _id: userId, blockedUsers: senderId },
+                    { _id: senderId, blockedUsers: userId }
+                ]
+            })
+        ]);
+
+        const isMember = (conversation?.participants || []).some(p => String(p) === userId);
+        if (!isMember) {
+            return res.status(403).json({ success: false, message: 'غير مصرّح' });
+        }
+        if (blocked || me?.privacySettings?.invisibleRead === true) {
+            return res.json({ success: true, data: { recorded: false } });
+        }
+
+        const result = await Message.updateOne(
+            { _id: messageId, 'listenedBy.user': { $ne: req.user._id } },
+            { $push: { listenedBy: { user: req.user._id, listenedAt: new Date() } } }
+        );
+
+        if (result.modifiedCount > 0 && global.io) {
+            global.io.to(`user:${senderId}`).emit('voice-listened', {
+                messageId: String(messageId),
+                conversationId: String(message.conversation),
+                listenedBy: userId
+            });
+        }
+
+        res.json({ success: true, data: { recorded: result.modifiedCount > 0 } });
+    } catch (error) {
+        console.error('Voice listened error:', error.message);
+        res.status(500).json({ success: false, message: 'حدث خطأ' });
+    }
+});
 
 // @route   POST /api/mobile/messages/:messageId/view-photo
 // @desc    تسجيل مشاهدة صورة مؤقتة وبدء العد التنازلي

@@ -143,6 +143,11 @@ const messageSchema = new mongoose.Schema({
     // ✅ بيانات الرسالة الصوتية
     audioWaveform: { type: [Number], default: undefined },
     audioDuration: { type: Number, default: null },
+    // 🎧 من سمع الرسالة الصوتية — لا يُسجَّل لمن فعّل القراءة الخفية
+    listenedBy: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        listenedAt: { type: Date, default: Date.now }
+    }],
     // ✅ Photo Privacy Lock — صورة مقفلة (blurred) حتى يطلب المستلم unlock
     isBlurred: { type: Boolean, default: false },
     blurredUnlockedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
