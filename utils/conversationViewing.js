@@ -20,6 +20,8 @@ const User = require('../models/User');
 const Conversation = require('../models/Conversation');
 
 const EVENT = 'conversation:viewing';
+const NUDGE_COOLDOWN_SECONDS = 30;
+const localNudgeCooldown = new Map();   // ارتداد إن تعذّر Redis: key → expiresAt
 const CROSS_NODE_TIMEOUT_MS = 1200;
 const VIEW_THROTTLE_MS = 1000;
 
@@ -155,6 +157,62 @@ function stopAllViewing(io, socket) {
     }
 }
 
+// ══════════════════════════════════════════
+// 👋 النكزة — اهتزاز يصل فقط لمن هو داخل المحادثة الآن
+// ══════════════════════════════════════════
+// قواعد: نفس أهلية العين (أدمن/إخفاء/حظر/محادثة مقبولة)، والمُرسِل داخل
+// المحادثة، والمستلم داخلها ومستقبِلٌ لعين المرسل. لا إشعار ولا تخزين.
+// الحدّ: نكزة كل 30 ثانية لكل (مرسل، محادثة) عبر Redis — مشترك بين النسخ
+// الأربع، ولا يُستهلك إلا عند نكزة وصلت فعلاً.
+async function acquireNudgeSlot(userId, conversationId) {
+    const key = `nudge:${userId}:${conversationId}`;
+    try {
+        const c = await require('./redisClient').getClient();
+        if (c) {
+            const ok = await c.set(key, '1', { NX: true, EX: NUDGE_COOLDOWN_SECONDS });
+            if (ok) return { ok: true };
+            const ttl = await c.ttl(key);
+            return { ok: false, retryAfter: ttl > 0 ? ttl : NUDGE_COOLDOWN_SECONDS };
+        }
+    } catch (_) { /* ارتداد محلي */ }
+
+    const now = Date.now();
+    const until = localNudgeCooldown.get(key) || 0;
+    if (until > now) return { ok: false, retryAfter: Math.ceil((until - now) / 1000) };
+    localNudgeCooldown.set(key, now + NUDGE_COOLDOWN_SECONDS * 1000);
+    return { ok: true };
+}
+
+async function sendNudge(io, socket, conversationId) {
+    if (typeof conversationId !== 'string' || !mongoose.isValidObjectId(conversationId)) {
+        return { ok: false, reason: 'invalid' };
+    }
+    // المرسل يجب أن يكون داخل المحادثة (والإدخال نفسه مرّ بفحص الأهلية)
+    if (!socket.data?.viewing?.[conversationId]) return { ok: false, reason: 'not-here' };
+
+    const recipients = await eligibleRecipients(socket, conversationId);
+    if (recipients.length === 0) return { ok: false, reason: 'not-allowed' };
+
+    const me = String(socket.userId);
+    const targets = [];
+    for (const id of recipients) {
+        const sockets = await fetchSocketsWithTimeout(io, `user:${id}`);
+        for (const s of sockets) {
+            const theirs = s.data?.viewing?.[conversationId];
+            if (Array.isArray(theirs) && theirs.includes(me)) targets.push(s.id);
+        }
+    }
+    if (targets.length === 0) return { ok: false, reason: 'not-here' };
+
+    const slot = await acquireNudgeSlot(me, conversationId);
+    if (!slot.ok) return { ok: false, reason: 'cooldown', retryAfter: slot.retryAfter };
+
+    for (const sid of targets) {
+        io.to(sid).emit('conversation:nudged', { conversationId, userId: me });
+    }
+    return { ok: true, retryAfter: NUDGE_COOLDOWN_SECONDS };
+}
+
 function registerViewingHandlers(io, socket) {
     const readId = (p) => (typeof p === 'string' ? p : p?.conversationId || null);
 
@@ -166,8 +224,18 @@ function registerViewingHandlers(io, socket) {
         if (socket.data.lastViewAt) delete socket.data.lastViewAt[id];
         stopViewing(io, socket, id);
     });
+    socket.on('conversation:nudge', async (payload, ack) => {
+        let result;
+        try {
+            result = await sendNudge(io, socket, readId(payload));
+        } catch (error) {
+            console.error('خطأ في conversation:nudge:', error.message);
+            result = { ok: false, reason: 'error' };
+        }
+        if (typeof ack === 'function') ack(result);
+    });
     // socket.data ما زالت متاحة هنا — كل ما شوهد يُغلق عند انقطاع الاتصال
     socket.on('disconnect', () => stopAllViewing(io, socket));
 }
 
-module.exports = { registerViewingHandlers, hidesPresence };
+module.exports = { registerViewingHandlers, hidesPresence, sendNudge };
