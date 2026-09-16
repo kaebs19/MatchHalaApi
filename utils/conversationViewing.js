@@ -85,6 +85,71 @@ async function eligibleRecipients(socket, conversationId) {
     });
 }
 
+// ══════════════════════════════════════════
+// 🔄 فهرس «من يشاهدني» في Redis — للاستعلام بعد إعادة الاتصال
+// ══════════════════════════════════════════
+// الأحداث لحظية: من أعاد الاتصال فاته «دخل» مَن كان داخل محادثته. الفهرس
+// viewers:<مستقبِل> = { "<conv>:<مشاهد>": 1 } يُكتب عند الدخول ويُحذف عند
+// الخروج. قد يبقى مدخل يتيم إن ماتت العملية — لذا كل مدخل يُتحقَّق منه حيّاً
+// (سوكِت المشاهد ما زال يشاهد) قبل إرجاعه.
+const VIEWERS_TTL_SECONDS = 6 * 60 * 60;
+
+async function redisOrNull() {
+    try { return await require('./redisClient').getClient(); } catch (_) { return null; }
+}
+
+async function indexViewing(me, conversationId, recipients, add) {
+    const c = await redisOrNull();
+    if (!c) return;
+    try {
+        for (const id of recipients) {
+            const key = `viewers:${id}`;
+            if (add) {
+                await c.hSet(key, `${conversationId}:${me}`, '1');
+                await c.expire(key, VIEWERS_TTL_SECONDS);
+            } else {
+                await c.hDel(key, `${conversationId}:${me}`);
+            }
+        }
+    } catch (error) {
+        console.error('⚠️ فهرس المشاهدة:', error.message);
+    }
+}
+
+async function currentViewersOf(io, socket) {
+    if (socket.user?.role === 'admin') return [];
+    const me = String(socket.userId);
+    const c = await redisOrNull();
+    if (!c) return [];
+
+    const fields = await c.hKeys(`viewers:${me}`).catch(() => []);
+    if (fields.length === 0) return [];
+
+    const self = await User.findById(me)
+        .select('role stealthMode privacySettings.showLastSeen privacySettings.invisibleRead').lean();
+    if (!self || self.role === 'admin' || hidesPresence(self)) return [];
+
+    const result = [];
+    for (const field of fields.slice(0, 50)) {
+        const [conversationId, viewerId] = field.split(':');
+        if (!mongoose.isValidObjectId(conversationId) || !mongoose.isValidObjectId(viewerId)) continue;
+
+        const sockets = await fetchSocketsWithTimeout(io, `user:${viewerId}`);
+        const live = sockets.some(s => {
+            const list = s.data?.viewing?.[conversationId];
+            return Array.isArray(list) && list.includes(me);
+        });
+        if (!live) {
+            c.hDel(`viewers:${me}`, field).catch(() => {});
+            continue;
+        }
+        const blocked = await User.exists({ _id: { $in: [me, viewerId] }, blockedUsers: { $in: [me, viewerId] } });
+        if (blocked) continue;
+        result.push({ conversationId, userId: viewerId });
+    }
+    return result;
+}
+
 function viewingMap(socket) {
     if (!socket.data.viewing) socket.data.viewing = {};
     return socket.data.viewing;
@@ -113,6 +178,7 @@ async function startViewing(io, socket, conversationId) {
 
         map[conversationId] = recipients;
         const me = String(socket.userId);
+        indexViewing(me, conversationId, recipients, true);
         for (const id of recipients) {
             io.to(`user:${id}`).emit(EVENT, { conversationId, userId: me, viewing: true });
         }
@@ -146,6 +212,7 @@ function stopViewing(io, socket, conversationId) {
     delete map[conversationId];
 
     const me = String(socket.userId);
+    indexViewing(me, conversationId, recipients, false);
     for (const id of recipients) {
         io.to(`user:${id}`).emit(EVENT, { conversationId, userId: me, viewing: false });
     }
@@ -224,6 +291,17 @@ function registerViewingHandlers(io, socket) {
         if (socket.data.lastViewAt) delete socket.data.lastViewAt[id];
         stopViewing(io, socket, id);
     });
+    // 🔄 بعد إعادة الاتصال: من يشاهد محادثاتي الآن؟
+    socket.on('conversation:viewers', async (_payload, ack) => {
+        let viewers = [];
+        try {
+            viewers = await currentViewersOf(io, socket);
+        } catch (error) {
+            console.error('خطأ في conversation:viewers:', error.message);
+        }
+        if (typeof ack === 'function') ack({ viewers });
+    });
+
     socket.on('conversation:nudge', async (payload, ack) => {
         let result;
         try {
