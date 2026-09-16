@@ -56,6 +56,7 @@ const io = new Server(server, {
 
 // ✅ Redis Adapter — يدعم PM2 cluster mode (أكثر من process)
 const { createAdapter } = require("@socket.io/redis-adapter");
+const { registerViewingHandlers } = require('./utils/conversationViewing');
 const { createClient } = require("redis");
 const pubClient = createClient({ url: process.env.REDIS_URL || "redis://127.0.0.1:6379" });
 const subClient = pubClient.duplicate();
@@ -740,6 +741,9 @@ io.on('connection', async (socket) => {
             socket.emit('error', { message: 'حدث خطأ أثناء الانضمام للمحادثة' });
         }
     });
+
+    // 👁 «داخل المحادثة الآن» — حدث مستقل عن الغرف (انظر utils/conversationViewing.js)
+    registerViewingHandlers(io, socket);
 
     // عند مغادرة محادثة
     socket.on('leave-conversation', (rawPayload) => {
