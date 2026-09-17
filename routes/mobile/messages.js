@@ -2527,10 +2527,10 @@ router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
 router.post('/messages/:messageId/security-alert', protect, async (req, res) => {
     try {
         const { messageId } = req.params;
-        const { alertType } = req.body; // 'screenshot' | 'screen_record' | 'photo_saved'
+        let { alertType } = req.body; // 'screenshot' | 'screen_record' | 'photo_saved' | 'screenshot_blocked'
         const userId = req.user._id;
 
-        if (!['screenshot', 'screen_record', 'photo_saved'].includes(alertType)) {
+        if (!['screenshot', 'screen_record', 'photo_saved', 'screenshot_blocked'].includes(alertType)) {
             return res.status(400).json({ success: false, message: 'نوع التنبيه غير صالح' });
         }
 
@@ -2541,10 +2541,18 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
             return res.status(404).json({ success: false, message: 'الرسالة غير موجودة' });
         }
 
+        // 🛡️ «مُنعت» لا تُقبل إلا على صورة مؤقتة (المحمية من الالتقاط) — وإلا
+        //    يمكن لعميل أن يطمئن الطرف الآخر زوراً بأن لقطة حقيقية «مُنعت»
+        if (alertType === 'screenshot_blocked' && !message.disappearing?.enabled) {
+            alertType = 'screenshot';
+        }
+        const isBlocked = alertType === 'screenshot_blocked';
+
         // تسجيل التنبيه
         if (!message.securityAlerts) message.securityAlerts = [];
         message.securityAlerts.push({
-            type: alertType,
+            // الـ schema يقبل screenshot — المنع يُميَّز برسالة النظام لا بنوع جديد
+            type: isBlocked ? 'screenshot' : alertType,
             user: userId,
             createdAt: new Date()
         });
@@ -2555,17 +2563,27 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
             p => p.toString() !== userId.toString()
         );
 
-        const alertEmoji = alertType === 'screenshot' ? '📸' : alertType === 'screen_record' ? '🎥' : '💾';
-        const alertTextAr = alertType === 'screenshot' ? 'أخذ لقطة شاشة' :
+        const alertEmoji = isBlocked ? '🛡️' : alertType === 'screenshot' ? '📸' : alertType === 'screen_record' ? '🎥' : '💾';
+        const alertTextAr = isBlocked ? 'حاول أخذ لقطة شاشة للصورة المؤقتة — تم منعها' :
+                           alertType === 'screenshot' ? 'أخذ لقطة شاشة' :
                            alertType === 'screen_record' ? 'سجّل الشاشة' : 'حفظ الصورة';
-        const alertTextEn = alertType === 'screenshot' ? 'took a screenshot' :
+        const alertTextEn = isBlocked ? 'tried to screenshot the disappearing photo — blocked' :
+                           alertType === 'screenshot' ? 'took a screenshot' :
                            alertType === 'screen_record' ? 'recorded the screen' : 'saved the photo';
 
         // ✅ إنشاء رسالة نظام في المحادثة (مثل سناب شات)
+        // 🛡️ المنع بصيغة JSON (action) ليرسمه التطبيق كبسولة داكنة؛ الإصدارات
+        //    القديمة تقرأ textAr/textEn من نفس JSON فلا ترى نصاً خاماً
         const systemMessage = await Message.create({
             conversation: message.conversation._id,
             sender: userId,
-            content: `${alertEmoji} ${req.user.name} ${alertTextAr}`,
+            content: isBlocked
+                ? JSON.stringify({
+                    action: 'screenshot_blocked',
+                    textAr: `${alertEmoji} ${req.user.name} ${alertTextAr}`,
+                    textEn: `${alertEmoji} ${req.user.name} ${alertTextEn}`
+                })
+                : `${alertEmoji} ${req.user.name} ${alertTextAr}`,
             type: 'system'
         });
 
@@ -2603,6 +2621,7 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
                 try {
                     await pushNotificationService.sendNotificationToUser(participantId, {
                         title: `${alertEmoji} تنبيه أمان`,
+                        // body يبقى نصاً عادياً حتى للمنع
                         body: `${req.user.name} ${alertTextAr}`
                     }, {
                         type: 'security_alert',
