@@ -2577,11 +2577,12 @@ router.post('/messages/:messageId/security-alert', protect, async (req, res) => 
         const systemMessage = await Message.create({
             conversation: message.conversation._id,
             sender: userId,
+            // الاسم آخر الجملة: الأسماء قد تحوي شرطة («Admin - مشرف») فتتصادم مع الفاصل
             content: isBlocked
                 ? JSON.stringify({
                     action: 'screenshot_blocked',
-                    textAr: `${alertEmoji} ${req.user.name} ${alertTextAr}`,
-                    textEn: `${alertEmoji} ${req.user.name} ${alertTextEn}`
+                    textAr: `مُنعت لقطة شاشة للصورة المؤقتة من ${req.user.name}`,
+                    textEn: `Blocked a screenshot of the disappearing photo by ${req.user.name}`
                 })
                 : `${alertEmoji} ${req.user.name} ${alertTextAr}`,
             type: 'system'
