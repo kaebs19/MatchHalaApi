@@ -20,6 +20,8 @@ const userGameQuestionSchema = new mongoose.Schema({
     // active | pending_review | approved | rejected | reported
     //   reported = عُطّلت بسبب بلاغ (تنتظر قرار الأدمن)
     status: { type: String, enum: ['active', 'pending_review', 'approved', 'rejected', 'reported'], default: 'active', index: true },
+    // آخر بلاغ — يُحتسب للإيقاف المؤقت عن إضافة أسئلة (3 بلاغات خلال 30 يوماً)
+    reportedAt: { type: Date, default: null },
     reports: [{
         by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         at: { type: Date, default: Date.now }

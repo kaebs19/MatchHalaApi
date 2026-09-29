@@ -228,6 +228,7 @@ router.put('/user-questions/:id', async (req, res) => {
                 q.status = 'active';
                 q.active = true;
                 q.reports = [];
+                q.reportedAt = null;   // قرار الأدمن أن البلاغ غير صحيح → لا يُحتسب مخالفة
                 break;
             case 'disable':
                 q.status = 'rejected';

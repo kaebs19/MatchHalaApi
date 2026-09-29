@@ -16,6 +16,7 @@ const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const GameConfig = require('../../models/GameConfig');
 const UserGameQuestion = require('../../models/UserGameQuestion');
+const Notification = require('../../models/Notification');
 const { getBanks } = require('../../utils/gameBanks');
 const pushNotificationService = require('../../services/pushNotificationService');
 const {
@@ -518,6 +519,37 @@ function buildUserQuestion(bank, body) {
 
 const OWNER_VISIBLE = ['active', 'pending_review', 'approved', 'reported'];
 
+// 3 أسئلة مُبلَّغ عنها خلال 30 يوماً → إيقاف إضافة أسئلة جديدة 7 أيام من آخر بلاغ
+const STRIKE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const STRIKE_LIMIT = 3;
+const SUSPEND_MS = 7 * 24 * 60 * 60 * 1000;
+
+// يرجع تاريخ انتهاء الإيقاف إن كان المستخدم موقوفاً عن إضافة أسئلة، وإلا null
+async function questionsSuspendedUntil(ownerId) {
+    const recent = await UserGameQuestion.find({
+        owner: ownerId,
+        reportedAt: { $gte: new Date(Date.now() - STRIKE_WINDOW_MS) }
+    }).select('reportedAt').sort({ reportedAt: -1 }).lean();
+    if (recent.length < STRIKE_LIMIT) return null;
+    const until = new Date(new Date(recent[0].reportedAt).getTime() + SUSPEND_MS);
+    return until > new Date() ? until : null;
+}
+
+// إشعار صاحب السؤال: سجلّ ظاهر في تبويب الإشعارات + push حرِج (غير إداري، يتجاوز الكتم)
+async function notifyQuestionOwner(ownerId, title, body, extra = {}) {
+    try {
+        await Notification.create({
+            title, body, type: 'system', recipients: 'specific', targetUsers: [ownerId],
+            data: { type: 'game_question_reported', ...extra }, status: 'sent', sentAt: new Date()
+        });
+        await pushNotificationService.sendNotificationToUser(
+            ownerId, { title, body }, { type: 'report_alert', ...extra }, false
+        );
+    } catch (err) {
+        console.error('🎮 notify question owner:', err.message);
+    }
+}
+
 router.get('/games/my-questions', protect, async (req, res) => {
     try {
         const items = await UserGameQuestion.find({ owner: req.user._id, status: { $in: OWNER_VISIBLE } })
@@ -540,6 +572,16 @@ router.post('/games/my-questions', protect, async (req, res) => {
         }
         if (await statementsBlocked(texts)) {
             return res.status(422).json({ success: false, message: 'النص يحتوي محتوى غير مسموح — عدّله وأعد المحاولة', code: 'GAME_TEXT_BLOCKED' });
+        }
+
+        const suspendedUntil = await questionsSuspendedUntil(req.user._id);
+        if (suspendedUntil) {
+            return res.status(403).json({
+                success: false,
+                message: 'أُوقفت إضافة أسئلة جديدة مؤقتاً بسبب بلاغات على أسئلتك السابقة',
+                code: 'QUESTIONS_SUSPENDED',
+                data: { until: suspendedUntil.toISOString() }
+            });
         }
 
         const count = await UserGameQuestion.countDocuments({ owner: req.user._id, status: { $in: OWNER_VISIBLE } });
@@ -602,7 +644,14 @@ router.delete('/games/my-questions/:id', protect, async (req, res) => {
     try {
         const q = await ownedQuestion(req, res);
         if (!q) return;
-        await q.deleteOne();
+        if (q.status === 'reported') {
+            // المُبلَّغ عنه لا يُحذف فعلياً: يبقى سجلّ البلاغ (وعدّاد المخالفات) للأدمن
+            q.status = 'rejected';
+            q.active = false;
+            await q.save();
+        } else {
+            await q.deleteOne();
+        }
         res.json({ success: true });
     } catch (error) {
         console.error('❌ games/my-questions delete:', error);
@@ -650,8 +699,32 @@ router.post('/games/report-question', protect, async (req, res) => {
             return res.status(400).json({ success: false, message: 'لا يمكنك الإبلاغ عن سؤالك' });
         }
         if (!q.reports.some(r => String(r.by) === String(req.user._id))) q.reports.push({ by: req.user._id });
-        if (q.status !== 'reported') q.status = 'reported';
+        const firstReport = q.status !== 'reported';
+        if (firstReport) {
+            q.status = 'reported';
+            q.reportedAt = new Date();
+        }
         await q.save();
+
+        // أبلِغ صاحب السؤال (مرة عند أول بلاغ)، وأخبره لو بلغ حدّ الإيقاف المؤقت
+        if (firstReport) {
+            const suspendedUntil = await questionsSuspendedUntil(q.owner);
+            if (suspendedUntil) {
+                await notifyQuestionOwner(
+                    q.owner,
+                    'تنبيه بخصوص أسئلتك في الألعاب',
+                    'تلقّت أسئلتك عدة بلاغات، لذا أُوقفت إضافة أسئلة جديدة لمدة 7 أيام. يرجى الالتزام بقواعد الاستخدام.',
+                    { questionId: String(q._id), suspended: true }
+                );
+            } else {
+                await notifyQuestionOwner(
+                    q.owner,
+                    'تنبيه بخصوص أسئلتك في الألعاب',
+                    'عُطّل أحد أسئلتك بعد بلاغ من لاعب وسيراجعه فريق الإدارة. تكرار البلاغات قد يوقف إضافة أسئلة جديدة.',
+                    { questionId: String(q._id), suspended: false }
+                );
+            }
+        }
 
         if (global.io) {
             global.io.to('admin-dashboard').emit('game-question-reported', { questionId: String(q._id), bank: q.bank });

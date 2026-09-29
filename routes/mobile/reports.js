@@ -250,14 +250,20 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
                 });
 
                 // Push notification
+                // ⚠️ النوع `report_warning` معلَّم adminOnly في notificationCategories فكانت الدالة تتوقف قبل
+                //    الإرسال (admin_only_no_push) ولا يصل أي push. `report_alert` غير إداري وحرِج (يتجاوز
+                //    الكتم وساعات الهدوء). saveToDb=false: الإشعار محفوظ أعلاه بنوع `system` الظاهر للمستخدم.
                 await pushNotificationService.sendNotificationToUser(targetUser._id, {
                     title: msg.title,
                     body: msg.body
-                }, { type: 'report_warning', warningType, reportCount, maxReports: 5 });
+                }, { type: 'report_alert', warningType, reportCount, maxReports: 5 }, false);
 
                 // Socket.IO — تحذير فوري
+                // ⚠️ الغرفة `user:<id>` (ينضم إليها السوكِت في server.js) لا `user-<id>`، والتطبيق يتجاهل
+                //    account-warning بلا `level` رقمي (1 = أولي، 2 = أخير) فيعرض البانر.
                 if (global.io) {
-                    global.io.to('user-' + targetUser._id).emit('account-warning', {
+                    global.io.to('user:' + targetUser._id).emit('account-warning', {
+                        level: warningType === 'final' ? 2 : 1,
                         warningType: warningType,
                         title: msg.title,
                         body: msg.body,
@@ -374,7 +380,7 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
 
                 // Socket.IO — تعليق فوري
                 if (global.io) {
-                    global.io.to(`user-${targetUser._id}`).emit('account-suspended', {
+                    global.io.to(`user:${targetUser._id}`).emit('account-suspended', {
                         suspendedUntil, reason: suspendReason,
                         duration: levelInfo.text, level: newLevel
                     });
