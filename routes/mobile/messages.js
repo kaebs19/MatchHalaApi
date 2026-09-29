@@ -888,6 +888,19 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
         }
 
+        // 🛡️ تنبيه أمان للطرف الآخر: حاول هذا المستخدم مشاركة حسابات خارجية (قد يكون احتيالاً)
+        if (externalPromoDetected) {
+            try {
+                await require('../../utils/externalPromoNotice').createExternalPromoNotice(
+                    conversation._id,
+                    req.user._id,
+                    conversation.participants.map(p => p._id)
+                );
+            } catch (noticeErr) {
+                console.error('⚠️ تنبيه الحسابات الخارجية للطرف الآخر فشل:', noticeErr.message);
+            }
+        }
+
         // ✅ تحذير عند اكتشاف ترويج خارجي (Snap/Insta/...) — sheet احترافي على iOS
         if (externalPromoDetected) {
             const v = externalPromoViolation?.violations || 0;
