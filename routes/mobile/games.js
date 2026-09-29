@@ -56,17 +56,50 @@ function emitToPlayers(game, event, payload) {
     }
 }
 
-async function pushTurn(recipientId, senderUser, conversationId, messageId, text) {
+// نصوص الإشعار (push + تنبيه داخل التطبيق) لكل حدث. null = لا إشعار (رفض/إنهاء يكفيهما تحديث البطاقة).
+function gameCopy(event, game, actorName, kindTitle) {
+    const title = event === 'invite' ? '🎮 دعوة للعب' : `🎮 ${kindTitle}`;
+    const n = actorName || 'صديقك';
+    switch (event) {
+        case 'invite':
+            return { title, body: `${n} يدعوك للعب «${kindTitle}» — اضغط للقبول` };
+        case 'accept':
+            if (game.kind === 'truth_dare') return { title, body: `${n} قبل دعوتك 🎉 ابدأ باختيار حقيقة أو جرأة` };
+            if (game.kind === 'two_truths_lie') return { title, body: `${n} قبل دعوتك 🎉 اكتب عباراتك الثلاث` };
+            return { title, body: `${n} قبل دعوتك 🎉 اختر إجابتك` };
+        case 'done':
+        case 'skip':
+            return { title, body: `${n} أنهى جولته — دورك الآن` };
+        case 'submit':
+            return { title, body: `${n} كتب عباراته 🕵️ خمّن أيّها الكذبة` };
+        case 'guess':
+            return { title, body: `${n} خمّن ${game.current?.correct ? 'صح 🎯' : 'خطأ 😅'} — شاهد النتيجة` };
+        case 'pick':
+            return game.phase === 'reveal'
+                ? { title, body: 'ظهرت النتيجة! شاهد إجابتيكما 🎉' }
+                : { title, body: `${n} اختار — بانتظار اختيارك` };
+        case 'next':
+            return game.kind === 'two_truths_lie'
+                ? { title, body: 'جولة جديدة — دورك لكتابة عباراتك ✍️' }
+                : { title, body: `${n} فتح سؤالاً جديداً — اختر إجابتك` };
+        default:
+            return null;
+    }
+}
+
+async function pushGame(recipientId, senderUser, conversationId, messageId, copy, event) {
     try {
-        if (await isUserSocketConnected(recipientId)) return;
+        if (!copy) return;
+        if (await isUserSocketConnected(recipientId)) return;   // متصل: يصله تنبيه داخل التطبيق
         await pushNotificationService.sendNewMessageNotification(
             recipientId,
             senderUser.name,
-            text,
+            copy.body,
             String(conversationId),
             getBestUserImage(senderUser),
             senderUser._id,
-            messageId
+            messageId,
+            { title: copy.title, data: { gameEvent: event } }
         );
     } catch (err) {
         console.error('🎮 push error:', err.message);
@@ -216,8 +249,8 @@ router.post('/games/start', protect, async (req, res) => {
             }
         }
 
-        pushTurn(opponent._id, req.user, conversation._id, message._id,
-            `🎮 يدعوك للعب «${KIND_TITLES[kind]}»`);
+        pushGame(opponent._id, req.user, conversation._id, message._id,
+            gameCopy('invite', game, req.user.name, KIND_TITLES[kind]), 'invite');
 
         res.status(201).json({ success: true, data: { message: populated } });
     } catch (error) {
@@ -299,16 +332,24 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
             });
         }
 
+        // من يُنبَّه؟ من انتقل إليه الدور/المطلوب منه فعل — يحمل الحدث نصّ التنبيه ليعرضه التطبيق
+        // داخلياً إن لم تكن المحادثة مفتوحة، ويُرسَل push فقط لغير المتصل.
+        const notifyUser = result.notify && String(result.notify) !== String(req.user._id) ? String(result.notify) : null;
+        const copy = notifyUser ? gameCopy(action, saved.game, req.user.name, KIND_TITLES[saved.game.kind]) : null;
+
         emitToPlayers(saved.game, 'game-updated', {
-            messageId, conversationId: String(saved.conversation), game: saved.game
+            messageId,
+            conversationId: String(saved.conversation),
+            game: saved.game,
+            event: action,
+            actorId: String(req.user._id),
+            notifyUser: copy ? notifyUser : null,
+            notifyTitle: copy?.title || null,
+            notifyBody: copy?.body || null
         });
 
-        if (result.notify && conversation && String(result.notify) !== String(req.user._id)) {
-            const text = result.game.status === 'active' && result.game.phase === 'reveal'
-                ? '🎮 ظهرت النتيجة!'
-                : action === 'accept' ? '🎮 قبل دعوتك — ابدأ اللعب'
-                : '🎮 دورك في اللعبة';
-            pushTurn(result.notify, req.user, saved.conversation, messageId, text);
+        if (copy && conversation) {
+            pushGame(notifyUser, req.user, saved.conversation, messageId, copy, action);
         }
 
         res.json({ success: true, data: { messageId, game: saved.game } });

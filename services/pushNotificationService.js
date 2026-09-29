@@ -331,7 +331,7 @@ const broadcastNotification = async (notification, data = {}, filter = {}) => {
  * @param {string} messagePreview - معاينة الرسالة
  * @param {string} conversationId - معرف المحادثة
  */
-const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null, senderId = null, messageId = null) => {
+const sendNewMessageNotification = async (recipientId, senderName, messagePreview, conversationId, senderImage = null, senderId = null, messageId = null, options = {}) => {
     try {
         // التحقق من كتم المحادثة
         const user = await User.findById(recipientId);
@@ -362,7 +362,8 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
         // ملاحظة: فحص ساعات الهدوء (عدم الإزعاج) صار مركزياً في sendNotificationToUser
 
         const notification = {
-            title: senderName,
+            // options.title: إشعارات الألعاب تحمل عنواناً خاصاً (🎮 …) بدل اسم المرسل
+            title: options.title || senderName,
             body: messagePreview.length > 100 ? messagePreview.substring(0, 100) + '...' : messagePreview
         };
 
@@ -382,7 +383,8 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
             senderImage: fullSenderImage,
             senderId: senderId ? senderId.toString() : '',
             threadId: conversationId.toString(),
-            messageId: messageId ? messageId.toString() : ''
+            messageId: messageId ? messageId.toString() : '',
+            ...(options.data || {})
         };
 
         const result = await sendNotificationToUser(recipientId, notification, data, true);
