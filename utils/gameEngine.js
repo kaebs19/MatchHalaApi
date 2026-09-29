@@ -12,6 +12,14 @@
 
 const { TRUTHS, DARES, WOULD_YOU_RATHER, NEVER_HAVE_I_EVER } = require('./gameQuestions');
 
+// بنوك افتراضية (ثابتة) — الإنتاج يمرّر بنوك قاعدة البيانات (utils/gameBanks.js)
+const DEFAULT_BANKS = {
+    truth: TRUTHS.map((q, i) => ({ id: i, ar: q.ar, en: q.en })),
+    dare: DARES.map((q, i) => ({ id: i, ar: q.ar, en: q.en })),
+    never: NEVER_HAVE_I_EVER.map((q, i) => ({ id: i, ar: q.ar, en: q.en })),
+    wyr: WOULD_YOU_RATHER.map((q, i) => ({ id: i, a: q.a, b: q.b }))
+};
+
 const KINDS = ['truth_dare', 'would_you_rather', 'never_have_i_ever', 'two_truths_lie'];
 // ألعاب يختار فيها الطرفان معاً ثم يُكشف الاثنان
 const PICK_KINDS = ['would_you_rather', 'never_have_i_ever'];
@@ -30,9 +38,10 @@ class GameError extends Error {
 const other = (game, userId) => game.players.find(p => p !== userId);
 const isPlayer = (game, userId) => game.players.includes(userId);
 
-function pickIndex(bank, used, rand = Math.random) {
-    let pool = bank.map((_, i) => i).filter(i => !used.includes(i));
-    if (pool.length === 0) pool = bank.map((_, i) => i); // استُنفد البنك → ندور من جديد
+function pickQuestion(bank, used, rand = Math.random) {
+    if (!bank || bank.length === 0) throw new GameError('NO_QUESTIONS', 'لا توجد أسئلة متاحة', 503);
+    let pool = bank.filter(q => !used.includes(q.id));
+    if (pool.length === 0) pool = bank; // استُنفد البنك → ندور من جديد
     return pool[Math.floor(rand() * pool.length)];
 }
 
@@ -42,33 +51,30 @@ function usedKey(game, bankName) {
     return game.used[bankName];
 }
 
-function drawTruthOrDare(game, choice, rand) {
+function drawTruthOrDare(game, choice, rand, banks) {
     const bankName = choice === 'truth' ? 'truth' : 'dare';
-    const bank = choice === 'truth' ? TRUTHS : DARES;
     const used = usedKey(game, bankName);
-    const idx = pickIndex(bank, used, rand);
-    used.push(idx);
-    return { id: idx, ar: bank[idx].ar, en: bank[idx].en };
+    const q = pickQuestion(banks[bankName], used, rand);
+    used.push(q.id);
+    return { id: q.id, ar: q.ar, en: q.en };
 }
 
-function drawWouldYouRather(game, rand) {
+function drawWouldYouRather(game, rand, banks) {
     const used = usedKey(game, 'wyr');
-    const idx = pickIndex(WOULD_YOU_RATHER, used, rand);
-    used.push(idx);
-    const q = WOULD_YOU_RATHER[idx];
-    return { id: idx, a: q.a, b: q.b };
+    const q = pickQuestion(banks.wyr, used, rand);
+    used.push(q.id);
+    return { id: q.id, a: q.a, b: q.b };
 }
 
-function drawNever(game, rand) {
+function drawNever(game, rand, banks) {
     const used = usedKey(game, 'never');
-    const idx = pickIndex(NEVER_HAVE_I_EVER, used, rand);
-    used.push(idx);
-    const q = NEVER_HAVE_I_EVER[idx];
-    return { id: idx, ar: q.ar, en: q.en };
+    const q = pickQuestion(banks.never, used, rand);
+    used.push(q.id);
+    return { id: q.id, ar: q.ar, en: q.en };
 }
 
-function drawPickQuestion(game, rand) {
-    return game.kind === 'never_have_i_ever' ? drawNever(game, rand) : drawWouldYouRather(game, rand);
+function drawPickQuestion(game, rand, banks) {
+    return game.kind === 'never_have_i_ever' ? drawNever(game, rand, banks) : drawWouldYouRather(game, rand, banks);
 }
 
 function createGame(kind, starterId, otherId, now = new Date()) {
@@ -95,7 +101,7 @@ function isExpired(game, now = new Date()) {
 
 // يطبّق إجراءً. يُرجع { game, secret, notify } — notify = معرّف من يجب تنبيهه
 // (الدور انتقل إليه) أو null. لا يعدّل المُدخلات.
-function applyAction(inputGame, inputSecret, userId, action, payload = {}, now = new Date(), rand = Math.random) {
+function applyAction(inputGame, inputSecret, userId, action, payload = {}, now = new Date(), rand = Math.random, banks = DEFAULT_BANKS) {
     const game = JSON.parse(JSON.stringify(inputGame));
     let secret = inputSecret ? JSON.parse(JSON.stringify(inputSecret)) : {};
     userId = String(userId);
@@ -140,7 +146,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             } else {
                 game.round = 1;
                 game.phase = 'pick';
-                game.current = { question: drawPickQuestion(game, rand), pickedBy: [], picks: null };
+                game.current = { question: drawPickQuestion(game, rand, banks), pickedBy: [], picks: null };
                 secret = { picks: {} };
                 notify = game.players[0];
             }
@@ -173,7 +179,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             const choice = payload.choice;
             if (choice !== 'truth' && choice !== 'dare') throw new GameError('INVALID_CHOICE', 'اختيار غير صالح');
             game.round += 1;
-            game.current = { choice, question: drawTruthOrDare(game, choice, rand), swaps: 0 };
+            game.current = { choice, question: drawTruthOrDare(game, choice, rand, banks), swaps: 0 };
             game.phase = 'answer';
             break;
         }
@@ -184,7 +190,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             requireTurn();
             if (game.current.swaps >= MAX_SWAPS) throw new GameError('NO_SWAPS_LEFT', 'انتهت مرات التبديل', 409);
             game.current.swaps += 1;
-            game.current.question = drawTruthOrDare(game, game.current.choice, rand);
+            game.current.question = drawTruthOrDare(game, game.current.choice, rand, banks);
             break;
         }
 
@@ -234,7 +240,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             if (!PICK_KINDS.includes(game.kind) || game.phase !== 'reveal') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
             game.round += 1;
             game.phase = 'pick';
-            game.current = { question: drawPickQuestion(game, rand), pickedBy: [], picks: null };
+            game.current = { question: drawPickQuestion(game, rand, banks), pickedBy: [], picks: null };
             secret = { picks: {} };
             notify = opponent;
             break;

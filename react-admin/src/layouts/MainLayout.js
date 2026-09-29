@@ -12,6 +12,7 @@ const ReportsManagement = lazy(() => import('../pages/ReportsManagement'));
 const ConversationMessages = lazy(() => import('../pages/ConversationMessages'));
 const Stats = lazy(() => import('../pages/Stats'));
 const Settings = lazy(() => import('../pages/Settings'));
+const GamesManagement = lazy(() => import('../pages/GamesManagement'));
 const Profile = lazy(() => import('../pages/Profile'));
 const Notifications = lazy(() => import('../pages/Notifications'));
 const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
@@ -462,6 +463,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <BannedWords onViewUserDetail={handleViewUserDetail} onViewConversation={handleViewConversation} />;
             case 'sensitive-content':
                 return <SensitiveContent onViewUserDetail={handleViewUserDetail} />;
+            case 'games':
+                return <GamesManagement />;
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':

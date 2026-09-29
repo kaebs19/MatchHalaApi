@@ -385,6 +385,7 @@ app.use('/api/verifications', require('./routes/verifications'));
 app.use('/api/swipes', require('./routes/swipes'));
 app.use('/api/matches', require('./routes/matches'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
+app.use('/api/admin/games', require('./routes/adminGames'));
 app.use('/api/interests', require('./routes/interests'));
 app.use('/api/appeals', require('./routes/appeals'));
 app.use('/api/newcomers', require('./routes/newcomers'));

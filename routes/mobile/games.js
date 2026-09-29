@@ -13,6 +13,8 @@ const mongoose = require('mongoose');
 const { protect } = require('../../middleware/auth');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
+const GameConfig = require('../../models/GameConfig');
+const { getBanks } = require('../../utils/gameBanks');
 const pushNotificationService = require('../../services/pushNotificationService');
 const {
     getBestUserImage,
@@ -117,6 +119,19 @@ function isFullyMessagingRestricted(user) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// GET /games/config — الألعاب المتاحة الآن (تُدار من لوحة التحكم)
+// ─────────────────────────────────────────────────────────────
+router.get('/games/config', protect, async (req, res) => {
+    try {
+        const config = await GameConfig.getConfig();
+        res.json({ success: true, data: { enabledKinds: config.enabledKinds } });
+    } catch (error) {
+        console.error('❌ games/config:', error);
+        res.status(500).json({ success: false, message: 'تعذّر جلب الإعدادات' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
 // POST /games/start { conversationId, kind }
 // ─────────────────────────────────────────────────────────────
 router.post('/games/start', protect, async (req, res) => {
@@ -124,6 +139,10 @@ router.post('/games/start', protect, async (req, res) => {
         const { conversationId, kind } = req.body;
         if (!KINDS.includes(kind)) {
             return res.status(400).json({ success: false, message: 'لعبة غير مدعومة', code: 'INVALID_KIND' });
+        }
+        const gameConfig = await GameConfig.getConfig();
+        if (!gameConfig.enabledKinds.includes(kind)) {
+            return res.status(403).json({ success: false, message: 'هذه اللعبة غير متاحة حالياً', code: 'GAME_DISABLED' });
         }
         if (isFullyMessagingRestricted(req.user)) {
             return res.status(403).json({ success: false, message: 'حسابك مقيّد من المراسلة مؤقتاً', code: 'MESSAGING_RESTRICTED' });
@@ -241,7 +260,8 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
         const previousStamp = message.game.updatedAt;
         let result;
         try {
-            result = applyAction(message.game, message.gameSecret, req.user._id, action, { choice, statements, lie, index });
+            result = applyAction(message.game, message.gameSecret, req.user._id, action,
+                { choice, statements, lie, index }, new Date(), Math.random, await getBanks());
         } catch (err) {
             if (err instanceof GameError) {
                 // انتهت بالوقت: نحفظ الحالة المنتهية ونبثّها ثم نردّ 410
@@ -249,7 +269,7 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
                     const saved = await Message.findOneAndUpdate(
                         { _id: messageId, 'game.updatedAt': previousStamp },
                         { $set: { game: err.game, gameSecret: {} } },
-                        { new: true }
+                        { returnDocument: 'after' }
                     ).select('game conversation').lean();
                     if (saved) {
                         emitToPlayers(saved.game, 'game-updated', {
@@ -272,7 +292,7 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
         const saved = await Message.findOneAndUpdate(
             { _id: messageId, 'game.updatedAt': previousStamp },
             { $set: { game: result.game, gameSecret: result.secret } },
-            { new: true }
+            { returnDocument: 'after' }
         ).select('game conversation').lean();
         if (!saved) {
             const fresh = await Message.findById(messageId).select('game').lean();

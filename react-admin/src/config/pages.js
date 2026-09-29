@@ -15,6 +15,7 @@ export const PAGES = {
     analytics: { title: 'التحليلات', icon: '🔍', nav: true, adminOnly: true },
     stats: { title: 'الإحصائيات', icon: '📈', nav: true, adminOnly: true },
     'banned-words': { title: 'الكلمات المحظورة', icon: '🚫', nav: true, adminOnly: true },
+    games: { title: 'الألعاب', icon: '🎮', nav: true, adminOnly: true },
     'sensitive-content': { title: 'المحتوى الحساس', icon: '🔞', nav: true, adminOnly: true },
     settings: { title: 'الإعدادات', icon: '⚙️', nav: true, adminOnly: true },
 
