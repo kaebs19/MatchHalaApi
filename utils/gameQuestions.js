@@ -83,4 +83,32 @@ const WOULD_YOU_RATHER = [
     { a: { ar: 'العودة للطفولة يوماً', en: 'Be a kid again for a day' }, b: { ar: 'رؤية نفسك بعد 20 سنة', en: 'See yourself 20 years from now' } }
 ];
 
-module.exports = { TRUTHS, DARES, WOULD_YOU_RATHER };
+// لم أفعل قط — عبارات خفيفة. «فعلتها» / «لم أفعلها» يُكشفان معاً.
+const NEVER_HAVE_I_EVER = [
+    { ar: 'لم أسافر وحدي قط', en: 'I have never traveled alone' },
+    { ar: 'لم أنسَ موعداً مهماً قط', en: 'I have never forgotten an important appointment' },
+    { ar: 'لم أضحك في موقف لا يجوز الضحك فيه قط', en: 'I have never laughed at a moment I should not have' },
+    { ar: 'لم أتأخر عن موعد بسبب النوم قط', en: 'I have never been late because I overslept' },
+    { ar: 'لم أغنِّ بصوت عالٍ في السيارة قط', en: 'I have never sung loudly in the car' },
+    { ar: 'لم أشاهد مسلسلاً كاملاً في يوم واحد قط', en: 'I have never binged a whole series in one day' },
+    { ar: 'لم أتظاهر بأني أعرف شيئاً وأنا لا أعرفه قط', en: 'I have never pretended to know something I did not' },
+    { ar: 'لم أطلب طعاماً وأنا غير جائع قط', en: 'I have never ordered food while not hungry' },
+    { ar: 'لم أبكِ أمام فيلم قط', en: 'I have never cried at a movie' },
+    { ar: 'لم أخبّئ هديةً حتى يوم المناسبة قط', en: 'I have never hidden a gift until the big day' },
+    { ar: 'لم أضيّع هاتفي قط', en: 'I have never lost my phone' },
+    { ar: 'لم أتحدث مع نفسي بصوت عالٍ قط', en: 'I have never talked to myself out loud' },
+    { ar: 'لم أغيّر رأيي في شخص بعد أول انطباع قط', en: 'I have never changed my mind after a first impression' },
+    { ar: 'لم أقرأ كتاباً كاملاً في جلسة واحدة قط', en: 'I have never read a whole book in one sitting' },
+    { ar: 'لم أتعلّم مهارة جديدة لمجرد الفضول قط', en: 'I have never learned a skill out of pure curiosity' },
+    { ar: 'لم أرقص وحدي في البيت قط', en: 'I have never danced alone at home' },
+    { ar: 'لم أخطط لرحلة ثم ألغيتها قط', en: 'I have never planned a trip and cancelled it' },
+    { ar: 'لم أنم في السينما قط', en: 'I have never fallen asleep at the cinema' },
+    { ar: 'لم أحتفظ برسالة قديمة لأني أحبها قط', en: 'I have never kept an old message because I love it' },
+    { ar: 'لم أجرّب طبخة جديدة وفشلت فيها قط', en: 'I have never tried a new recipe and failed' },
+    { ar: 'لم أضِع في طريق أعرفه قط', en: 'I have never gotten lost on a route I know' },
+    { ar: 'لم أقل «سأبدأ غداً» ولم أبدأ قط', en: 'I have never said "I will start tomorrow" and did not' },
+    { ar: 'لم أشاهد شروق الشمس عمداً قط', en: 'I have never watched a sunrise on purpose' },
+    { ar: 'لم أضحك حتى دمعت عيناي قط', en: 'I have never laughed until I cried' }
+];
+
+module.exports = { TRUTHS, DARES, WOULD_YOU_RATHER, NEVER_HAVE_I_EVER };

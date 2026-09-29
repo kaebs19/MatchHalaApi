@@ -21,14 +21,31 @@ const {
     isUserFullyBanned,
     isUserSocketConnected
 } = require('./helpers');
+const { checkBannedWords } = require('../bannedWords');
+const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 const { KINDS, GameError, createGame, applyAction, isExpired, fallbackText } = require('../../utils/gameEngine');
 
 const START_COOLDOWN_MS = 60 * 1000;
 
 const KIND_TITLES = {
     truth_dare: 'حقيقة أم جرأة',
-    would_you_rather: 'هل تفضّل؟'
+    would_you_rather: 'هل تفضّل؟',
+    never_have_i_ever: 'لم أفعل قط',
+    two_truths_lie: 'حقيقتان وكذبة'
 };
+
+// النص الحرّ الوحيد في الألعاب: عبارات «حقيقتان وكذبة». نفس فلاتر الرسائل
+// (ترويج خارجي + كلمات محظورة) لكن بلا تسجيل مخالفات: نرفض ليعدّل صاحبها.
+async function statementsBlocked(statements) {
+    if (!Array.isArray(statements)) return false;
+    for (const t of statements) {
+        if (typeof t !== 'string' || !t.trim()) continue;
+        if (detectExternalPromotion(t).detected) return true;
+        const banned = await checkBannedWords(t);
+        if (banned.hasBannedWords) return true;
+    }
+    return false;
+}
 
 function emitToPlayers(game, event, payload) {
     if (!global.io) return;
@@ -199,7 +216,7 @@ router.post('/games/start', protect, async (req, res) => {
 router.post('/games/:messageId/action', protect, async (req, res) => {
     try {
         const { messageId } = req.params;
-        const { action, choice } = req.body;
+        const { action, choice, statements, lie, index } = req.body;
         if (!mongoose.isValidObjectId(messageId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
@@ -213,10 +230,18 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
         const { conversation, error } = await guardConversation(message.conversation, req.user);
         if (error && action !== 'end') return res.status(error.status).json(error.body);
 
+        if (action === 'submit' && await statementsBlocked(statements)) {
+            return res.status(422).json({
+                success: false,
+                message: 'إحدى العبارات تحتوي محتوى غير مسموح — عدّلها وأعد المحاولة',
+                code: 'GAME_TEXT_BLOCKED'
+            });
+        }
+
         const previousStamp = message.game.updatedAt;
         let result;
         try {
-            result = applyAction(message.game, message.gameSecret, req.user._id, action, { choice });
+            result = applyAction(message.game, message.gameSecret, req.user._id, action, { choice, statements, lie, index });
         } catch (err) {
             if (err instanceof GameError) {
                 // انتهت بالوقت: نحفظ الحالة المنتهية ونبثّها ثم نردّ 410

@@ -1,18 +1,21 @@
 // MatchHala - محرّك ألعاب المحادثة (منطق صرف بلا قاعدة بيانات)
 //
-// لعبتان: حقيقة أم جرأة (truth_dare) · هل تفضّل؟ (would_you_rather)
+// أربع ألعاب: حقيقة أم جرأة · هل تفضّل؟ · لم أفعل قط · حقيقتان وكذبة
 // الحالة تعيش داخل رسالة واحدة (type: 'game') وتتحدّث في مكانها.
 //
-// ⚠️ لا نصوص حرّة من اللاعبين هنا إطلاقاً: الأسئلة من البنك، والإجابة تُكتب في
-//    المحادثة كرسالة عادية فتمرّ على فلاتر الكلمات المحظورة والترويج والسبام.
-//    اللعبة تتتبّع الدور فقط.
+// ⚠️ النص الحرّ الوحيد: عبارات «حقيقتان وكذبة». تُفحَص في المسار (routes/mobile/games.js)
+//    بفلاتر الكلمات المحظورة والترويج قبل وصولها هنا؛ المحرّك يتحقق من الشكل والطول فقط.
+//    باقي الألعاب أسئلتها من البنك، والإجابة تُكتب في المحادثة كرسالة عادية.
 //
 // اختيارات «هل تفضّل؟» سرّية حتى يختار الطرفان، لذا تُخزَّن في `secret`
 // (حقل gameSecret في الرسالة، select:false) ولا تصل للعميل قبل الكشف.
 
-const { TRUTHS, DARES, WOULD_YOU_RATHER } = require('./gameQuestions');
+const { TRUTHS, DARES, WOULD_YOU_RATHER, NEVER_HAVE_I_EVER } = require('./gameQuestions');
 
-const KINDS = ['truth_dare', 'would_you_rather'];
+const KINDS = ['truth_dare', 'would_you_rather', 'never_have_i_ever', 'two_truths_lie'];
+// ألعاب يختار فيها الطرفان معاً ثم يُكشف الاثنان
+const PICK_KINDS = ['would_you_rather', 'never_have_i_ever'];
+const MAX_STATEMENT_LEN = 100;
 const MAX_SWAPS = 2;
 const EXPIRY_MS = 24 * 60 * 60 * 1000;
 
@@ -56,6 +59,18 @@ function drawWouldYouRather(game, rand) {
     return { id: idx, a: q.a, b: q.b };
 }
 
+function drawNever(game, rand) {
+    const used = usedKey(game, 'never');
+    const idx = pickIndex(NEVER_HAVE_I_EVER, used, rand);
+    used.push(idx);
+    const q = NEVER_HAVE_I_EVER[idx];
+    return { id: idx, ar: q.ar, en: q.en };
+}
+
+function drawPickQuestion(game, rand) {
+    return game.kind === 'never_have_i_ever' ? drawNever(game, rand) : drawWouldYouRather(game, rand);
+}
+
 function createGame(kind, starterId, otherId, now = new Date()) {
     if (!KINDS.includes(kind)) throw new GameError('INVALID_KIND', 'لعبة غير مدعومة');
     return {
@@ -67,7 +82,7 @@ function createGame(kind, starterId, otherId, now = new Date()) {
         round: 0,
         current: null,
         used: {},
-        stats: { done: 0, skipped: 0 },
+        stats: { done: 0, skipped: 0, correct: 0 },
         endedBy: null,
         updatedAt: now.toISOString()
     };
@@ -117,10 +132,15 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
                 game.turn = game.players[0]; // صاحب الدعوة يبدأ
                 game.phase = 'choose';
                 notify = game.turn;
+            } else if (game.kind === 'two_truths_lie') {
+                game.round = 1;
+                game.turn = game.players[0];
+                game.phase = 'write';
+                notify = game.turn;
             } else {
                 game.round = 1;
                 game.phase = 'pick';
-                game.current = { question: drawWouldYouRather(game, rand), pickedBy: [], picks: null };
+                game.current = { question: drawPickQuestion(game, rand), pickedBy: [], picks: null };
                 secret = { picks: {} };
                 notify = game.players[0];
             }
@@ -183,7 +203,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
 
         case 'pick': {
             requireActive();
-            if (game.kind !== 'would_you_rather' || game.phase !== 'pick') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
+            if (!PICK_KINDS.includes(game.kind) || game.phase !== 'pick') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
             const choice = payload.choice;
             if (choice !== 'a' && choice !== 'b') throw new GameError('INVALID_CHOICE', 'اختيار غير صالح');
             secret.picks = secret.picks || {};
@@ -203,12 +223,58 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
 
         case 'next': {
             requireActive();
-            if (game.kind !== 'would_you_rather' || game.phase !== 'reveal') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
+            if (game.kind === 'two_truths_lie' && game.phase === 'reveal') {
+                // من خمّن للتوّ يكتب الجولة التالية (turn ما زال عنده)
+                game.round += 1;
+                game.phase = 'write';
+                game.current = null;
+                notify = game.turn === userId ? null : game.turn;
+                break;
+            }
+            if (!PICK_KINDS.includes(game.kind) || game.phase !== 'reveal') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
             game.round += 1;
             game.phase = 'pick';
-            game.current = { question: drawWouldYouRather(game, rand), pickedBy: [], picks: null };
+            game.current = { question: drawPickQuestion(game, rand), pickedBy: [], picks: null };
             secret = { picks: {} };
             notify = opponent;
+            break;
+        }
+
+        case 'submit': {
+            requireActive();
+            if (game.kind !== 'two_truths_lie' || game.phase !== 'write') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
+            requireTurn();
+            const statements = payload.statements;
+            const lie = payload.lie;
+            if (!Array.isArray(statements) || statements.length !== 3) throw new GameError('INVALID_STATEMENTS', 'اكتب ثلاث عبارات');
+            const clean = statements.map(t => (typeof t === 'string' ? t.trim().replace(/\s+/g, ' ') : ''));
+            if (clean.some(t => t.length < 2 || t.length > MAX_STATEMENT_LEN)) {
+                throw new GameError('INVALID_STATEMENTS', `كل عبارة بين 2 و${MAX_STATEMENT_LEN} حرفاً`);
+            }
+            if (new Set(clean.map(t => t.toLowerCase())).size !== 3) throw new GameError('INVALID_STATEMENTS', 'العبارات الثلاث يجب أن تكون مختلفة');
+            if (!Number.isInteger(lie) || lie < 0 || lie > 2) throw new GameError('INVALID_LIE', 'حدّد أيّها الكذبة');
+            game.current = { writer: userId, statements: clean, guess: null, lie: null, correct: null };
+            secret = { lie };
+            game.turn = opponent;
+            game.phase = 'guess';
+            notify = opponent;
+            break;
+        }
+
+        case 'guess': {
+            requireActive();
+            if (game.kind !== 'two_truths_lie' || game.phase !== 'guess') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
+            requireTurn();
+            const index = payload.index;
+            if (!Number.isInteger(index) || index < 0 || index > 2) throw new GameError('INVALID_CHOICE', 'اختيار غير صالح');
+            const correct = index === secret.lie;
+            game.current.guess = index;
+            game.current.lie = secret.lie;
+            game.current.correct = correct;
+            if (correct) game.stats.correct = (game.stats.correct || 0) + 1;
+            game.phase = 'reveal';
+            secret = {};
+            notify = game.current.writer;
             break;
         }
 
@@ -222,9 +288,13 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
 
 // نصّ احتياطي في content — يراه العملاء القدامى وقوائم المحادثات
 function fallbackText(kind) {
-    return kind === 'truth_dare'
-        ? '🎮 لعبة «حقيقة أم جرأة» — حدّث التطبيق للعب'
-        : '🎮 لعبة «هل تفضّل؟» — حدّث التطبيق للعب';
+    const titles = {
+        truth_dare: 'حقيقة أم جرأة',
+        would_you_rather: 'هل تفضّل؟',
+        never_have_i_ever: 'لم أفعل قط',
+        two_truths_lie: 'حقيقتان وكذبة'
+    };
+    return `🎮 لعبة «${titles[kind] || 'جديدة'}» — حدّث التطبيق للعب`;
 }
 
 module.exports = { KINDS, GameError, createGame, applyAction, isExpired, fallbackText, MAX_SWAPS, EXPIRY_MS };
