@@ -91,9 +91,6 @@ async function guardConversation(conversationId, user) {
     if (conversation.participants.length !== 2) {
         return { error: { status: 400, body: { success: false, message: 'الألعاب للمحادثات الثنائية فقط', code: 'GAME_NOT_SUPPORTED' } } };
     }
-    if (user.role === 'admin') {
-        return { error: { status: 403, body: { success: false, message: 'غير متاح', code: 'GAME_NOT_ALLOWED' } } };
-    }
     if (await isOtherParticipantDeleted(conversation, userId)) {
         return { error: { status: 410, body: { success: false, message: 'تم حذف حساب هذا المستخدم', code: 'USER_DELETED' } } };
     }

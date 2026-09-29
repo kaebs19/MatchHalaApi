@@ -7,7 +7,10 @@ const ALL_KINDS = ['truth_dare', 'would_you_rather', 'never_have_i_ever', 'two_t
 const gameConfigSchema = new mongoose.Schema({
     key: { type: String, default: 'main', unique: true },
     // الألعاب المتاحة للمستخدمين. فارغة = الميزة متوقفة.
-    enabledKinds: { type: [String], enum: ALL_KINDS, default: ALL_KINDS }
+    enabledKinds: { type: [String], enum: ALL_KINDS, default: ALL_KINDS },
+    // زرع الأسئلة الابتدائية (utils/gameBanks.js ensureSeeded): نسخة الزرع وعدد ما زُرع من كل بنك
+    seedVersion: { type: Number, default: 0 },
+    seededCounts: { type: mongoose.Schema.Types.Mixed, default: undefined }
 }, { timestamps: true });
 
 gameConfigSchema.statics.getConfig = async function () {

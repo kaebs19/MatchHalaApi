@@ -15,7 +15,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 const GameQuestion = require('../models/GameQuestion');
 const GameConfig = require('../models/GameConfig');
 const Message = require('../models/Message');
-const { invalidateBanks } = require('../utils/gameBanks');
+const { invalidateBanks, ensureSeeded } = require('../utils/gameBanks');
 
 router.use(protect, adminOnly);
 
@@ -43,6 +43,8 @@ function buildQuestion(bank, body) {
 
 router.get('/questions', async (req, res) => {
     try {
+        // الصفحة قد تُفتح قبل أول لعبة — تأكّد من زرع الأسئلة الابتدائية
+        await ensureSeeded().catch(err => console.error('🎮 seed:', err.message));
         const { bank, search, active } = req.query;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));

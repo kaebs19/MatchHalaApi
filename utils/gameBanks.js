@@ -10,7 +10,6 @@ const STATIC = require('./gameQuestions');
 const TTL_MS = 60 * 1000;
 let cache = null;
 let cachedAt = 0;
-let seeding = null;
 
 function staticBanks() {
     const withIds = (arr) => arr.map((q, i) => ({ id: `s${i}`, ar: q.ar, en: q.en }));
@@ -22,19 +21,55 @@ function staticBanks() {
     };
 }
 
-async function seedIfEmpty() {
-    if (await GameQuestion.estimatedDocumentCount() > 0) return;
-    if (!seeding) {
-        seeding = (async () => {
-            if (await GameQuestion.countDocuments() > 0) return;
-            const b = { truth: STATIC.TRUTHS, dare: STATIC.DARES, never: STATIC.NEVER_HAVE_I_EVER };
-            const docs = [];
-            for (const [bank, arr] of Object.entries(b)) {
-                for (const q of arr) docs.push({ bank, ar: q.ar, en: q.en, seeded: true });
+// نسخة الزرع: ارفعها عند إضافة أسئلة جديدة إلى gameQuestions(+Extra).js.
+// نزرع فقط ما بعد العدد المزروع سابقاً — فلا يعود سؤال حذفه الأدمن.
+// المطالبة ذرّية (findOneAndUpdate على seedVersion) فلا تزرع نسختا PM2 معاً.
+const SEED_VERSION = 2;
+let seeded = false;
+let seeding = null;
+
+async function runSeed() {
+    const GameConfig = require('../models/GameConfig');
+    await GameConfig.getConfig();
+    const old = await GameConfig.findOneAndUpdate(
+        { key: 'main', $or: [{ seedVersion: { $exists: false } }, { seedVersion: { $lt: SEED_VERSION } }] },
+        { $set: { seedVersion: SEED_VERSION } },
+        { returnDocument: 'before' }
+    );
+    if (!old) return;   // نسخة أخرى زرعت (أو زُرع مسبقاً)
+
+    try {
+        const banks = {
+            truth: STATIC.TRUTHS, dare: STATIC.DARES, never: STATIC.NEVER_HAVE_I_EVER, wyr: STATIC.WOULD_YOU_RATHER
+        };
+        // مجموعة فيها أسئلة ولا سجلّ زرع = زُرعت بالنسخة الأولى (الأعداد الأساسية)
+        const hadDocs = await GameQuestion.estimatedDocumentCount() > 0;
+        const from = old.seededCounts || (hadDocs ? STATIC.BASE_COUNTS : { truth: 0, dare: 0, wyr: 0, never: 0 });
+
+        const docs = [];
+        for (const [bank, arr] of Object.entries(banks)) {
+            for (const q of arr.slice(from[bank] || 0)) {
+                docs.push(bank === 'wyr'
+                    ? { bank, a: q.a, b: q.b, seeded: true }
+                    : { bank, ar: q.ar, en: q.en, seeded: true });
             }
-            for (const q of STATIC.WOULD_YOU_RATHER) docs.push({ bank: 'wyr', a: q.a, b: q.b, seeded: true });
-            await GameQuestion.insertMany(docs);
-        })().finally(() => { seeding = null; });
+        }
+        if (docs.length) await GameQuestion.insertMany(docs);
+        await GameConfig.updateOne({ key: 'main' }, {
+            $set: { seededCounts: { truth: banks.truth.length, dare: banks.dare.length, wyr: banks.wyr.length, never: banks.never.length } }
+        });
+        cache = null;
+    } catch (err) {
+        // تراجع كي تُعاد المحاولة عند الطلب التالي
+        await GameConfig.updateOne({ key: 'main' }, { $set: { seedVersion: old.seedVersion || 0 } }).catch(() => {});
+        throw err;
+    }
+}
+
+async function ensureSeeded() {
+    if (seeded) return;
+    if (!seeding) {
+        seeding = runSeed().then(() => { seeded = true; }).finally(() => { seeding = null; });
     }
     await seeding;
 }
@@ -42,7 +77,7 @@ async function seedIfEmpty() {
 async function getBanks() {
     if (cache && Date.now() - cachedAt < TTL_MS) return cache;
     try {
-        await seedIfEmpty();
+        await ensureSeeded();
         const rows = await GameQuestion.find({ active: true }).select('bank ar en a b').lean();
         const fallback = staticBanks();
         const out = { truth: [], dare: [], never: [], wyr: [] };
@@ -62,4 +97,4 @@ async function getBanks() {
 
 function invalidateBanks() { cache = null; cachedAt = 0; }
 
-module.exports = { getBanks, invalidateBanks, staticBanks };
+module.exports = { getBanks, invalidateBanks, staticBanks, ensureSeeded };

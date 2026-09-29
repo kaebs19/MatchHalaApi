@@ -111,4 +111,14 @@ const NEVER_HAVE_I_EVER = [
     { ar: 'لم أضحك حتى دمعت عيناي قط', en: 'I have never laughed until I cried' }
 ];
 
-module.exports = { TRUTHS, DARES, WOULD_YOU_RATHER, NEVER_HAVE_I_EVER };
+// الإضافات تُلحق بالنهاية فقط — utils/gameBanks.js يزرع ما بعد العدد المزروع سابقاً
+const EXTRA = require('./gameQuestionsExtra');
+TRUTHS.push(...EXTRA.TRUTHS);
+DARES.push(...EXTRA.DARES);
+WOULD_YOU_RATHER.push(...EXTRA.WOULD_YOU_RATHER);
+NEVER_HAVE_I_EVER.push(...EXTRA.NEVER_HAVE_I_EVER);
+
+// عدد ما كان مزروعاً قبل أول إضافة (25/20/25/24) — قاعدة بيانات بلا سجلّ زرع تُعامَل كأنها زُرعت إلى هنا
+const BASE_COUNTS = { truth: 25, dare: 20, wyr: 25, never: 24 };
+
+module.exports = { TRUTHS, DARES, WOULD_YOU_RATHER, NEVER_HAVE_I_EVER, BASE_COUNTS };
