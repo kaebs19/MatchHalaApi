@@ -81,3 +81,16 @@
     .games-page { padding: 14px; }
     .game-stats { grid-template-columns: repeat(3, 1fr); }
 }
+
+.games-levels { display: flex; gap: 6px; margin-bottom: 10px; }
+.games-levels button { border: 1px solid var(--border-color, rgba(128,128,128,.25)); background: var(--bg-card); color: var(--text-primary);
+    padding: 5px 14px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px; }
+.games-levels button.active { background: var(--color-primary); color: #fff; border-color: transparent; }
+.lvl-badge { align-self: flex-start; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(245,158,11,.16); color: #b45309; }
+.lvl-badge.user { background: rgba(31,106,168,.12); color: var(--color-primary-dark); }
+.tab-badge { background: var(--color-danger); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-inline-start: 6px; }
+.q-actions.wide { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.q-actions.wide button { font-size: 13px; padding: 8px 12px; }
+.btn-primary.danger { background: var(--gradient-red); }
+.games-modal select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; font-family: inherit; font-size: 14px;
+    border: 1px solid var(--border-color, rgba(128,128,128,.3)); background: var(--bg-subtle); color: var(--text-primary); }

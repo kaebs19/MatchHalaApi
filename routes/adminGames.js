@@ -14,6 +14,7 @@ const router = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');
 const GameQuestion = require('../models/GameQuestion');
 const GameConfig = require('../models/GameConfig');
+const UserGameQuestion = require('../models/UserGameQuestion');
 const Message = require('../models/Message');
 const { invalidateBanks, ensureSeeded } = require('../utils/gameBanks');
 
@@ -24,33 +25,40 @@ const MAX_LEN = 200;
 
 const clean = (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '');
 
+const LEVELS = ['light', 'bold'];
+
 // يبني وثيقة سؤال صالحة أو يرجع { error }
 function buildQuestion(bank, body) {
     if (!BANKS.includes(bank)) return { error: 'بنك غير صالح' };
+    const level = body.level === undefined ? undefined : body.level;
+    if (level !== undefined && !LEVELS.includes(level)) return { error: 'مستوى غير صالح' };
+    const withLevel = (doc) => (level ? { ...doc, level } : doc);
     if (bank === 'wyr') {
         const a = { ar: clean(body.a?.ar), en: clean(body.a?.en) };
         const b = { ar: clean(body.b?.ar), en: clean(body.b?.en) };
         if (!a.ar || !b.ar) return { error: 'الخياران العربيان مطلوبان' };
         if ([a.ar, a.en, b.ar, b.en].some(t => t.length > MAX_LEN)) return { error: `الحد الأقصى ${MAX_LEN} حرفاً` };
-        return { doc: { bank, a, b } };
+        return { doc: withLevel({ bank, a, b }) };
     }
     const ar = clean(body.ar);
     const en = clean(body.en);
     if (!ar) return { error: 'النص العربي مطلوب' };
     if (ar.length > MAX_LEN || en.length > MAX_LEN) return { error: `الحد الأقصى ${MAX_LEN} حرفاً` };
-    return { doc: { bank, ar, en } };
+    return { doc: withLevel({ bank, ar, en }) };
 }
 
 router.get('/questions', async (req, res) => {
     try {
         // الصفحة قد تُفتح قبل أول لعبة — تأكّد من زرع الأسئلة الابتدائية
         await ensureSeeded().catch(err => console.error('🎮 seed:', err.message));
-        const { bank, search, active } = req.query;
+        const { bank, search, active, level } = req.query;
         const page = Math.max(1, parseInt(req.query.page) || 1);
         const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
 
         const query = {};
         if (bank && BANKS.includes(bank)) query.bank = bank;
+        if (level === 'bold') query.level = 'bold';
+        if (level === 'light') query.level = { $ne: 'bold' };
         if (active === 'true') query.active = true;
         if (active === 'false') query.active = false;
         if (search && typeof search === 'string') {
@@ -94,6 +102,7 @@ router.post('/questions', async (req, res) => {
 router.post('/questions/bulk', async (req, res) => {
     try {
         const { bank, text } = req.body;
+        const level = req.body.level === 'bold' ? 'bold' : 'light';
         if (!['truth', 'dare', 'never'].includes(bank)) {
             return res.status(400).json({ success: false, message: 'الإضافة الجماعية للبنوك النصية فقط' });
         }
@@ -105,7 +114,7 @@ router.post('/questions/bulk', async (req, res) => {
         for (const line of text.split('\n').slice(0, 200)) {
             if (!line.trim()) continue;
             const [ar, en = ''] = line.split('|');
-            const { doc } = buildQuestion(bank, { ar, en });
+            const { doc } = buildQuestion(bank, { ar, en, level });
             if (doc) docs.push({ ...doc, active: true }); else skipped += 1;
         }
         if (docs.length) await GameQuestion.insertMany(docs);
@@ -127,10 +136,15 @@ router.put('/questions/:id', async (req, res) => {
 
         const update = {};
         if (typeof req.body.active === 'boolean') update.active = req.body.active;
+        if (req.body.level !== undefined) {
+            if (!LEVELS.includes(req.body.level)) return res.status(400).json({ success: false, message: 'مستوى غير صالح' });
+            update.level = req.body.level;
+        }
         const hasContent = ['ar', 'en', 'a', 'b'].some(k => req.body[k] !== undefined);
         if (hasContent) {
             const { doc, error } = buildQuestion(existing.bank, req.body);
             if (error) return res.status(400).json({ success: false, message: error });
+            delete doc.level;   // المستوى يُغيَّر بالحقل الصريح فقط
             Object.assign(update, doc);
             delete update.bank;
         }
@@ -155,6 +169,77 @@ router.delete('/questions/:id', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('❌ admin games delete:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// أسئلة المستخدمين: اقتراحات للنشر العام + المُبلَّغ عنها
+// ─────────────────────────────────────────────────────────────
+router.get('/user-questions', async (req, res) => {
+    try {
+        const status = ['pending_review', 'reported', 'approved', 'rejected', 'active'].includes(req.query.status)
+            ? req.query.status : null;
+        const query = status ? { status } : { status: { $in: ['pending_review', 'reported'] } };
+        const [items, counts] = await Promise.all([
+            UserGameQuestion.find(query).sort({ updatedAt: -1 }).limit(100)
+                .populate('owner', 'name email profileImage').lean(),
+            UserGameQuestion.aggregate([
+                { $match: { status: { $in: ['pending_review', 'reported'] } } },
+                { $group: { _id: '$status', n: { $sum: 1 } } }
+            ])
+        ]);
+        const pending = { pending_review: 0, reported: 0 };
+        for (const c of counts) pending[c._id] = c.n;
+        res.json({ success: true, data: { items, pending } });
+    } catch (error) {
+        console.error('❌ admin user-questions:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// approve: يُنسخ للبنك العام (خفيف) · reject: يُرفض · restore: يعود نشطاً لصاحبه · disable: يُعطَّل · (delete)
+router.put('/user-questions/:id', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const q = await UserGameQuestion.findById(req.params.id);
+        if (!q) return res.status(404).json({ success: false, message: 'السؤال غير موجود' });
+
+        switch (req.body.action) {
+            case 'approve': {
+                if (q.status !== 'pending_review') {
+                    return res.status(409).json({ success: false, message: 'ليس اقتراحاً معلّقاً' });
+                }
+                const pub = q.bank === 'wyr'
+                    ? { bank: 'wyr', a: q.a, b: q.b }
+                    : { bank: q.bank, ar: q.ar, en: q.en };
+                await GameQuestion.create({ ...pub, level: 'light', active: true, fromUser: q.owner });
+                q.status = 'approved';
+                invalidateBanks();
+                break;
+            }
+            case 'reject':
+                q.status = 'rejected';
+                q.active = false;
+                break;
+            case 'restore':
+                q.status = 'active';
+                q.active = true;
+                q.reports = [];
+                break;
+            case 'disable':
+                q.status = 'rejected';
+                q.active = false;
+                break;
+            default:
+                return res.status(400).json({ success: false, message: 'إجراء غير معروف' });
+        }
+        await q.save();
+        res.json({ success: true, data: q });
+    } catch (error) {
+        console.error('❌ admin user-questions action:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

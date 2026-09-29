@@ -1,10 +1,11 @@
-// MatchHala - ألعاب المحادثة (حقيقة أم جرأة · هل تفضّل؟)
+// MatchHala - ألعاب المحادثة (حقيقة أم جرأة · هل تفضّل؟ · لم أفعل قط · حقيقتان وكذبة)
 //
 // اللعبة رسالة واحدة type:'game' تتحدّث في مكانها. المنطق كله في
 // utils/gameEngine.js؛ هذا الملف يحرس الوصول ويحفظ ويبثّ فقط.
 //
-// الإجابات النصية تُكتب في المحادثة كرسائل عادية (فتمرّ على فلاتر الكلمات
-// المحظورة والترويج) — لا نستقبل هنا أي نص حرّ من اللاعبين.
+// النصوص الحرّة التي نستقبلها هنا: عبارات «حقيقتان وكذبة» + «أسئلتي» (أسئلة المستخدم).
+// كلاهما يمرّ على فلاتر الكلمات المحظورة والترويج قبل الحفظ. الإجابات نفسها تُكتب في
+// المحادثة كرسائل عادية فتمرّ على الفلاتر المعتادة.
 
 const express = require('express');
 const router = express.Router();
@@ -14,6 +15,7 @@ const { protect } = require('../../middleware/auth');
 const Message = require('../../models/Message');
 const Conversation = require('../../models/Conversation');
 const GameConfig = require('../../models/GameConfig');
+const UserGameQuestion = require('../../models/UserGameQuestion');
 const { getBanks } = require('../../utils/gameBanks');
 const pushNotificationService = require('../../services/pushNotificationService');
 const {
@@ -25,7 +27,7 @@ const {
 } = require('./helpers');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
-const { KINDS, GameError, createGame, applyAction, isExpired, fallbackText } = require('../../utils/gameEngine');
+const { KINDS, SOURCES, LEVELS, GameError, createGame, applyAction, isExpired, fallbackText } = require('../../utils/gameEngine');
 
 const START_COOLDOWN_MS = 60 * 1000;
 
@@ -62,7 +64,10 @@ function gameCopy(event, game, actorName, kindTitle) {
     const n = actorName || 'صديقك';
     switch (event) {
         case 'invite':
-            return { title, body: `${n} يدعوك للعب «${kindTitle}» — اضغط للقبول` };
+            return {
+                title,
+                body: `${n} يدعوك للعب «${kindTitle}»${game.level === 'bold' ? ' بمستوى جريء 🌶️' : ''} — اضغط للقبول`
+            };
         case 'accept':
             if (game.kind === 'truth_dare') return { title, body: `${n} قبل دعوتك 🎉 ابدأ باختيار حقيقة أو جرأة` };
             if (game.kind === 'two_truths_lie') return { title, body: `${n} قبل دعوتك 🎉 اكتب عباراتك الثلاث` };
@@ -113,7 +118,7 @@ async function guardConversation(conversationId, user) {
         return { error: { status: 400, body: { success: false, message: 'معرّف غير صالح' } } };
     }
     const conversation = await Conversation.findById(conversationId)
-        .populate('participants', 'name isActive bannedWords suspension deviceToken profileImage');
+        .populate('participants', 'name isActive bannedWords suspension deviceToken profileImage birthDate');
     if (!conversation) {
         return { error: { status: 404, body: { success: false, message: 'المحادثة غير موجودة' } } };
     }
@@ -142,6 +147,34 @@ async function guardConversation(conversationId, user) {
     return { conversation };
 }
 
+function ageOf(birthDate) {
+    if (!birthDate) return 0;
+    return Math.floor((Date.now() - new Date(birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+// سياق الأسئلة لإجراء: بنوك المستوى + أسئلة اللاعبين الخاصة (فقط عند الحاجة لسحب سؤال)
+const DRAW_ACTIONS = ['accept', 'choose', 'swap', 'next'];
+async function buildCtx(game, action) {
+    const banks = await getBanks(game.level === 'bold' ? 'bold' : 'light');
+    const custom = {};
+    if ((game.source || 'default') !== 'default' && DRAW_ACTIONS.includes(action)) {
+        const rows = await UserGameQuestion.find({
+            owner: { $in: game.players },
+            active: true,
+            // pending_review: اقتراحه للجميع لا يعطّل استخدامه الشخصي
+            status: { $in: ['active', 'pending_review', 'approved'] }
+        }).select('owner bank ar en a b').lean();
+        for (const r of rows) {
+            const owner = String(r.owner);
+            custom[owner] = custom[owner] || { truth: [], dare: [], wyr: [], never: [] };
+            custom[owner][r.bank].push(r.bank === 'wyr'
+                ? { id: `u:${r._id}`, a: r.a, b: r.b }
+                : { id: `u:${r._id}`, ar: r.ar, en: r.en });
+        }
+    }
+    return { banks, custom };
+}
+
 function isFullyMessagingRestricted(user) {
     const r = user.restrictions;
     if (!r?.messagingRestricted || r.messagingRestrictedLevel !== 'all') return false;
@@ -167,6 +200,11 @@ router.get('/games/config', protect, async (req, res) => {
 router.post('/games/start', protect, async (req, res) => {
     try {
         const { conversationId, kind } = req.body;
+        const level = req.body.level || 'light';
+        const source = req.body.source || 'default';
+        if (!LEVELS.includes(level) || !SOURCES.includes(source)) {
+            return res.status(400).json({ success: false, message: 'خيار غير صالح', code: 'INVALID_OPTION' });
+        }
         if (!KINDS.includes(kind)) {
             return res.status(400).json({ success: false, message: 'لعبة غير مدعومة', code: 'INVALID_KIND' });
         }
@@ -183,6 +221,11 @@ router.post('/games/start', protect, async (req, res) => {
 
         const userId = String(req.user._id);
         const opponent = conversation.participants.find(p => String(p._id) !== userId);
+
+        // 🌶️ المستوى الجريء: للبالغين فقط (الطرفان 18+)، وبقبول الدعوة يوافق الطرف الآخر
+        if (level === 'bold' && !conversation.participants.every(p => ageOf(p.birthDate) >= 18)) {
+            return res.status(403).json({ success: false, message: 'المستوى الجريء للبالغين فقط (18+) من الطرفين', code: 'BOLD_AGE_RESTRICTED' });
+        }
 
         // لعبة واحدة حيّة في المحادثة. المنتهية بالوقت تُغلق كسلاً ثم نكمل.
         const live = await Message.findOne({
@@ -219,7 +262,7 @@ router.post('/games/start', protect, async (req, res) => {
             return res.status(429).json({ success: false, message: 'انتظر قليلاً قبل دعوة جديدة', code: 'GAME_COOLDOWN' });
         }
 
-        const game = createGame(kind, userId, opponent._id);
+        const game = createGame(kind, userId, opponent._id, new Date(), { level, source });
         const message = await Message.create({
             conversation: conversation._id,
             sender: req.user._id,
@@ -291,7 +334,7 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
         let result;
         try {
             result = applyAction(message.game, message.gameSecret, req.user._id, action,
-                { choice, statements, lie, index }, new Date(), Math.random, await getBanks());
+                { choice, statements, lie, index }, new Date(), Math.random, await buildCtx(message.game, action));
         } catch (err) {
             if (err instanceof GameError) {
                 // انتهت بالوقت: نحفظ الحالة المنتهية ونبثّها ثم نردّ 410
@@ -356,6 +399,267 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
     } catch (error) {
         console.error('❌ games/action:', error);
         res.status(500).json({ success: false, message: 'تعذّر تنفيذ الإجراء' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /games/:messageId/react { emoji } — تفاعل سريع على النتيجة/آخر جولة
+// ذرّي ولا يمسّ updatedAt: لا يتعارض مع إجراءات اللعب ولا يمدّ مهلة الـ 24 ساعة.
+// الضغط على نفس الإيموجي مرة ثانية يسحب التفاعل.
+// ─────────────────────────────────────────────────────────────
+const REACTION_EMOJIS = ['😂', '🔥', '😮', '🙈', '👏', '✋', '😎', '❤️'];
+
+router.post('/games/:messageId/react', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        if (!mongoose.isValidObjectId(messageId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        if (!REACTION_EMOJIS.includes(emoji)) {
+            return res.status(400).json({ success: false, message: 'تفاعل غير مدعوم', code: 'INVALID_REACTION' });
+        }
+
+        const message = await Message.findById(messageId).select('game conversation type');
+        if (!message || message.type !== 'game' || !message.game) {
+            return res.status(404).json({ success: false, message: 'اللعبة غير موجودة' });
+        }
+        const game = message.game;
+        const userId = String(req.user._id);
+        if (!game.players.includes(userId)) {
+            return res.status(403).json({ success: false, message: 'لست طرفاً في هذه اللعبة' });
+        }
+        if (game.status !== 'active' || isExpired(game)) {
+            return res.status(409).json({ success: false, message: 'انتهت اللعبة', code: 'GAME_ENDED' });
+        }
+        const reactable = (game.kind === 'truth_dare' && game.last) || game.phase === 'reveal';
+        if (!reactable) {
+            return res.status(409).json({ success: false, message: 'لا يوجد ما يُتفاعل عليه الآن', code: 'NOT_REACTABLE' });
+        }
+
+        const toggleOff = game.reactions?.[userId] === emoji;
+        const update = toggleOff
+            ? { $unset: { [`game.reactions.${userId}`]: '' } }
+            : { $set: { [`game.reactions.${userId}`]: emoji } };
+        const saved = await Message.findOneAndUpdate(
+            { _id: messageId, 'game.updatedAt': game.updatedAt },   // نفس الجولة
+            update,
+            { returnDocument: 'after' }
+        ).select('game conversation').lean();
+        if (!saved) {
+            return res.status(409).json({ success: false, message: 'تغيّرت اللعبة', code: 'GAME_CONFLICT' });
+        }
+
+        emitToPlayers(saved.game, 'game-updated', {
+            messageId, conversationId: String(saved.conversation), game: saved.game,
+            event: 'react', actorId: userId
+        });
+        res.json({ success: true, data: { messageId, game: saved.game } });
+    } catch (error) {
+        console.error('❌ games/react:', error);
+        res.status(500).json({ success: false, message: 'تعذّر إرسال التفاعل' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /games/history/:conversationId — سجلّ ألعاب المحادثة
+// ─────────────────────────────────────────────────────────────
+router.get('/games/history/:conversationId', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        if (!mongoose.isValidObjectId(conversationId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const conversation = await Conversation.findById(conversationId).select('participants').lean();
+        if (!conversation || !conversation.participants.some(p => String(p) === String(req.user._id))) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+        const rows = await Message.find({ conversation: conversationId, type: 'game', isDeleted: { $ne: true } })
+            .sort({ createdAt: -1 }).limit(40).select('game createdAt').lean();
+        const items = rows.map(r => ({
+            id: String(r._id),
+            kind: r.game.kind,
+            level: r.game.level || 'light',
+            status: isExpired(r.game) ? 'ended' : r.game.status,
+            rounds: r.game.round || 0,
+            stats: r.game.stats || {},
+            endedBy: r.game.endedBy || null,
+            createdAt: r.createdAt
+        }));
+        res.json({ success: true, data: { items } });
+    } catch (error) {
+        console.error('❌ games/history:', error);
+        res.status(500).json({ success: false, message: 'تعذّر جلب السجل' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// «أسئلتي» — أسئلة يكتبها المستخدم لألعابه
+// ─────────────────────────────────────────────────────────────
+const MY_QUESTIONS_LIMIT = 20;
+const MY_QUESTION_MAX_LEN = 120;
+const BANK_IDS = ['truth', 'dare', 'wyr', 'never'];
+const cleanText = (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '');
+
+// يبني حقول السؤال من الجسم أو يرجع { error }
+function buildUserQuestion(bank, body) {
+    if (!BANK_IDS.includes(bank)) return { error: 'نوع سؤال غير صالح' };
+    const fields = bank === 'wyr'
+        ? { a: { ar: cleanText(body.a?.ar), en: cleanText(body.a?.en) }, b: { ar: cleanText(body.b?.ar), en: cleanText(body.b?.en) } }
+        : { ar: cleanText(body.ar), en: cleanText(body.en) };
+    const texts = bank === 'wyr'
+        ? [fields.a.ar, fields.a.en, fields.b.ar, fields.b.en]
+        : [fields.ar, fields.en];
+    const required = bank === 'wyr' ? [fields.a.ar, fields.b.ar] : [fields.ar];
+    if (required.some(t => !t)) return { error: bank === 'wyr' ? 'اكتب الخيارين' : 'اكتب نص السؤال' };
+    if (texts.some(t => t.length > MY_QUESTION_MAX_LEN)) return { error: `الحد الأقصى ${MY_QUESTION_MAX_LEN} حرفاً` };
+    return { fields, texts: texts.filter(Boolean) };
+}
+
+const OWNER_VISIBLE = ['active', 'pending_review', 'approved', 'reported'];
+
+router.get('/games/my-questions', protect, async (req, res) => {
+    try {
+        const items = await UserGameQuestion.find({ owner: req.user._id, status: { $in: OWNER_VISIBLE } })
+            .sort({ createdAt: -1 }).select('-reports').lean();
+        res.json({ success: true, data: { items, limit: MY_QUESTIONS_LIMIT } });
+    } catch (error) {
+        console.error('❌ games/my-questions list:', error);
+        res.status(500).json({ success: false, message: 'تعذّر جلب أسئلتك' });
+    }
+});
+
+router.post('/games/my-questions', protect, async (req, res) => {
+    try {
+        const { bank } = req.body;
+        const { fields, texts, error } = buildUserQuestion(bank, req.body);
+        if (error) return res.status(400).json({ success: false, message: error });
+
+        if (isFullyMessagingRestricted(req.user)) {
+            return res.status(403).json({ success: false, message: 'حسابك مقيّد مؤقتاً', code: 'MESSAGING_RESTRICTED' });
+        }
+        if (await statementsBlocked(texts)) {
+            return res.status(422).json({ success: false, message: 'النص يحتوي محتوى غير مسموح — عدّله وأعد المحاولة', code: 'GAME_TEXT_BLOCKED' });
+        }
+
+        const count = await UserGameQuestion.countDocuments({ owner: req.user._id, status: { $in: OWNER_VISIBLE } });
+        if (count >= MY_QUESTIONS_LIMIT) {
+            return res.status(403).json({ success: false, message: `الحد الأقصى ${MY_QUESTIONS_LIMIT} سؤالاً — احذف سؤالاً لإضافة جديد`, code: 'QUESTION_LIMIT' });
+        }
+        const dupQuery = bank === 'wyr'
+            ? { 'a.ar': fields.a.ar, 'b.ar': fields.b.ar }
+            : { ar: fields.ar };
+        if (await UserGameQuestion.exists({ owner: req.user._id, bank, status: { $in: OWNER_VISIBLE }, ...dupQuery })) {
+            return res.status(409).json({ success: false, message: 'أضفت هذا السؤال من قبل', code: 'DUPLICATE_QUESTION' });
+        }
+
+        const created = await UserGameQuestion.create({ owner: req.user._id, bank, ...fields });
+        res.status(201).json({ success: true, data: { item: created.toObject() } });
+    } catch (error) {
+        console.error('❌ games/my-questions create:', error);
+        res.status(500).json({ success: false, message: 'تعذّر حفظ السؤال' });
+    }
+});
+
+async function ownedQuestion(req, res) {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+        res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        return null;
+    }
+    const q = await UserGameQuestion.findOne({ _id: req.params.id, owner: req.user._id, status: { $in: OWNER_VISIBLE } });
+    if (!q) res.status(404).json({ success: false, message: 'السؤال غير موجود' });
+    return q;
+}
+
+router.put('/games/my-questions/:id', protect, async (req, res) => {
+    try {
+        const q = await ownedQuestion(req, res);
+        if (!q) return;
+
+        if (typeof req.body.active === 'boolean') q.active = req.body.active;
+        const hasText = ['ar', 'en', 'a', 'b'].some(k => req.body[k] !== undefined);
+        if (hasText) {
+            if (q.status === 'reported') {
+                return res.status(409).json({ success: false, message: 'السؤال معطّل بسبب بلاغ — احذفه وأنشئ غيره', code: 'QUESTION_REPORTED' });
+            }
+            const { fields, texts, error } = buildUserQuestion(q.bank, req.body);
+            if (error) return res.status(400).json({ success: false, message: error });
+            if (await statementsBlocked(texts)) {
+                return res.status(422).json({ success: false, message: 'النص يحتوي محتوى غير مسموح — عدّله وأعد المحاولة', code: 'GAME_TEXT_BLOCKED' });
+            }
+            Object.assign(q, fields);
+            if (q.status === 'pending_review') q.status = 'active';   // تغيّر النص → يُسحب الاقتراح
+        }
+        await q.save();
+        res.json({ success: true, data: { item: q.toObject() } });
+    } catch (error) {
+        console.error('❌ games/my-questions update:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الحفظ' });
+    }
+});
+
+router.delete('/games/my-questions/:id', protect, async (req, res) => {
+    try {
+        const q = await ownedQuestion(req, res);
+        if (!q) return;
+        await q.deleteOne();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ games/my-questions delete:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الحذف' });
+    }
+});
+
+// اقترح للجميع → قائمة مراجعة الأدمن
+router.post('/games/my-questions/:id/suggest', protect, async (req, res) => {
+    try {
+        const q = await ownedQuestion(req, res);
+        if (!q) return;
+        if (q.status !== 'active') {
+            return res.status(409).json({ success: false, message: 'لا يمكن اقتراح هذا السؤال الآن', code: 'NOT_SUGGESTABLE' });
+        }
+        q.status = 'pending_review';
+        await q.save();
+        res.json({ success: true, data: { item: q.toObject() } });
+    } catch (error) {
+        console.error('❌ games/my-questions suggest:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الاقتراح' });
+    }
+});
+
+// بلاغ عن سؤال مخصّص ظهر في لعبة: يُعطَّل فوراً ويُرفع للأدمن
+router.post('/games/report-question', protect, async (req, res) => {
+    try {
+        const { questionId, messageId } = req.body;
+        const raw = typeof questionId === 'string' && questionId.startsWith('u:') ? questionId.slice(2) : '';
+        if (!mongoose.isValidObjectId(raw)) {
+            return res.status(400).json({ success: false, message: 'سؤال غير صالح' });
+        }
+        // المُبلِّغ لاعب في لعبة (تمنع بلاغات عشوائية على أسئلة لم يرها)
+        if (!mongoose.isValidObjectId(messageId)) {
+            return res.status(400).json({ success: false, message: 'لعبة غير صالحة' });
+        }
+        const message = await Message.findById(messageId).select('game type').lean();
+        if (!message || message.type !== 'game' || !message.game?.players?.includes(String(req.user._id))) {
+            return res.status(403).json({ success: false, message: 'غير مصرّح' });
+        }
+
+        const q = await UserGameQuestion.findById(raw);
+        if (!q) return res.status(404).json({ success: false, message: 'السؤال غير موجود' });
+        if (String(q.owner) === String(req.user._id)) {
+            return res.status(400).json({ success: false, message: 'لا يمكنك الإبلاغ عن سؤالك' });
+        }
+        if (!q.reports.some(r => String(r.by) === String(req.user._id))) q.reports.push({ by: req.user._id });
+        if (q.status !== 'reported') q.status = 'reported';
+        await q.save();
+
+        if (global.io) {
+            global.io.to('admin-dashboard').emit('game-question-reported', { questionId: String(q._id), bank: q.bank });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ games/report-question:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الإبلاغ' });
     }
 });
 

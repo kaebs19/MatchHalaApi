@@ -885,5 +885,10 @@ server.listen(PORT, () => {
         } catch (e) {
             console.error('تعذّر بدء مراقب فك التقييد:', e.message);
         }
+        try {
+            require('./utils/gameReminders').startGameReminders();
+        } catch (e) {
+            console.error('تعذّر بدء مذكّر الألعاب:', e.message);
+        }
     }
 });

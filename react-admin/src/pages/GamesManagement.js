@@ -31,7 +31,9 @@ const BANKS = {
     never: { title: 'لم أفعل قط', icon: '🙈' }
 };
 
-const emptyForm = { ar: '', en: '', aAr: '', aEn: '', bAr: '', bEn: '' };
+const emptyForm = { ar: '', en: '', aAr: '', aEn: '', bAr: '', bEn: '', level: 'light' };
+
+const LEVEL_LABELS = { light: 'خفيف', bold: '🌶️ جريء' };
 
 function GamesManagement() {
     const { showToast } = useToast();
@@ -40,6 +42,7 @@ function GamesManagement() {
     // الأسئلة
     const [bank, setBank] = useState('truth');
     const [search, setSearch] = useState('');
+    const [levelFilter, setLevelFilter] = useState('all');
     const [page, setPage] = useState(1);
     const [list, setList] = useState({ items: [], total: 0, pages: 1, byBank: {} });
     const [loading, setLoading] = useState(true);
@@ -53,6 +56,10 @@ function GamesManagement() {
     const [bulkOpen, setBulkOpen] = useState(false);
     const [bulkText, setBulkText] = useState('');
 
+    // أسئلة المستخدمين (اقتراحات + بلاغات)
+    const [uqStatus, setUqStatus] = useState('pending_review');
+    const [uq, setUq] = useState({ items: [], pending: { pending_review: 0, reported: 0 } });
+
     // الإعدادات والإحصائيات
     const [cfg, setCfg] = useState(null);
     const [stats, setStats] = useState(null);
@@ -62,13 +69,14 @@ function GamesManagement() {
         try {
             const params = new URLSearchParams({ bank, page, limit: 30 });
             if (search.trim()) params.set('search', search.trim());
+            if (levelFilter !== 'all') params.set('level', levelFilter);
             setList(await call(`/questions?${params}`));
         } catch (e) {
             showToast(e.message, 'error');
         } finally {
             setLoading(false);
         }
-    }, [bank, page, search, showToast]);
+    }, [bank, page, search, levelFilter, showToast]);
 
     const loadOverview = useCallback(async () => {
         try {
@@ -82,21 +90,43 @@ function GamesManagement() {
 
     useEffect(() => { loadQuestions(); }, [loadQuestions]);
     useEffect(() => { loadOverview(); }, [loadOverview]);
-    useEffect(() => { setPage(1); }, [bank, search]);
+    useEffect(() => { setPage(1); }, [bank, search, levelFilter]);
+
+    const loadUserQuestions = useCallback(async () => {
+        try {
+            setUq(await call(`/user-questions?status=${uqStatus}`));
+        } catch (e) {
+            showToast(e.message, 'error');
+        }
+    }, [uqStatus, showToast]);
+    useEffect(() => { loadUserQuestions(); }, [loadUserQuestions]);
+
+    const uqAction = async (q, action) => {
+        try {
+            await call(`/user-questions/${q._id}`, { method: 'PUT', body: JSON.stringify({ action }) });
+            showToast(action === 'approve' ? 'أُضيف للبنك العام' : 'تم', 'success');
+            loadUserQuestions();
+            if (action === 'approve') loadQuestions();
+        } catch (e) { showToast(e.message, 'error'); }
+    };
 
     const openNew = () => { setForm(emptyForm); setEditing('new'); };
     const openEdit = (q) => {
         setForm({
             ar: q.ar || '', en: q.en || '',
             aAr: q.a?.ar || '', aEn: q.a?.en || '',
-            bAr: q.b?.ar || '', bEn: q.b?.en || ''
+            bAr: q.b?.ar || '', bEn: q.b?.en || '',
+            level: q.level || 'light'
         });
         setEditing(q);
     };
 
-    const payload = () => bank === 'wyr'
-        ? { a: { ar: form.aAr, en: form.aEn }, b: { ar: form.bAr, en: form.bEn } }
-        : { ar: form.ar, en: form.en };
+    const payload = () => ({
+        level: form.level,
+        ...(bank === 'wyr'
+            ? { a: { ar: form.aAr, en: form.aEn }, b: { ar: form.bAr, en: form.bEn } }
+            : { ar: form.ar, en: form.en })
+    });
 
     const save = async () => {
         setSaving(true);
@@ -135,7 +165,7 @@ function GamesManagement() {
 
     const submitBulk = async () => {
         try {
-            const r = await call('/questions/bulk', { method: 'POST', body: JSON.stringify({ bank, text: bulkText }) });
+            const r = await call('/questions/bulk', { method: 'POST', body: JSON.stringify({ bank, text: bulkText, level: levelFilter === 'bold' ? 'bold' : 'light' }) });
             showToast(`أُضيف ${r.added} سؤال${r.skipped ? ` — تجاوز ${r.skipped}` : ''}`, 'success');
             setBulkOpen(false);
             setBulkText('');
@@ -166,6 +196,10 @@ function GamesManagement() {
 
             <div className="games-tabs">
                 <button className={tab === 'questions' ? 'active' : ''} onClick={() => setTab('questions')}>📝 الأسئلة</button>
+                <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>
+                    ✍️ أسئلة المستخدمين
+                    {(uq.pending.pending_review + uq.pending.reported) > 0 && <span className="tab-badge">{uq.pending.pending_review + uq.pending.reported}</span>}
+                </button>
                 <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>⚙️ الألعاب والإحصائيات</button>
             </div>
 
@@ -201,6 +235,43 @@ function GamesManagement() {
                 </div>
             )}
 
+            {tab === 'users' && (
+                <>
+                    <div className="games-banks">
+                        <button className={uqStatus === 'pending_review' ? 'active' : ''} onClick={() => setUqStatus('pending_review')}>
+                            💡 اقتراحات للنشر <small>{uq.pending.pending_review}</small>
+                        </button>
+                        <button className={uqStatus === 'reported' ? 'active' : ''} onClick={() => setUqStatus('reported')}>
+                            🚩 مُبلَّغ عنها <small>{uq.pending.reported}</small>
+                        </button>
+                    </div>
+                    {uq.items.length === 0 ? <div className="games-empty">لا شيء بانتظار المراجعة 🎉</div> : (
+                        <div className="games-list">
+                            {uq.items.map(q => (
+                                <div key={q._id} className="q-row">
+                                    <div className="q-text">
+                                        <span className="lvl-badge user">{BANKS[q.bank]?.icon} {BANKS[q.bank]?.title} — {q.owner?.name || 'مستخدم'}</span>
+                                        {q.bank === 'wyr' ? (
+                                            <>
+                                                <div><span className="ab">A</span> {q.a?.ar}</div>
+                                                <div><span className="ab">B</span> {q.b?.ar}</div>
+                                            </>
+                                        ) : <div>{q.ar}</div>}
+                                        {(q.reports?.length > 0) && <em>🚩 {q.reports.length} بلاغ</em>}
+                                    </div>
+                                    <div className="q-actions wide">
+                                        {q.status === 'pending_review' && <button className="btn-primary" onClick={() => uqAction(q, 'approve')}>✅ نشر للجميع</button>}
+                                        {q.status === 'pending_review' && <button className="btn-ghost" onClick={() => uqAction(q, 'reject')}>رفض</button>}
+                                        {q.status === 'reported' && <button className="btn-ghost" onClick={() => uqAction(q, 'restore')}>↩️ إعادة</button>}
+                                        {q.status === 'reported' && <button className="btn-primary danger" onClick={() => uqAction(q, 'disable')}>🚫 تعطيل نهائي</button>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
             {tab === 'questions' && (
                 <>
                     <div className="games-banks">
@@ -213,6 +284,12 @@ function GamesManagement() {
                                 </button>
                             );
                         })}
+                    </div>
+
+                    <div className="games-levels">
+                        {[['all', 'الكل'], ['light', 'خفيف'], ['bold', '🌶️ جريء']].map(([id, label]) => (
+                            <button key={id} className={levelFilter === id ? 'active' : ''} onClick={() => setLevelFilter(id)}>{label}</button>
+                        ))}
                     </div>
 
                     <div className="games-toolbar">
@@ -232,6 +309,8 @@ function GamesManagement() {
                                 {list.items.map(q => (
                                     <div key={q._id} className={`q-row ${q.active ? '' : 'inactive'}`}>
                                         <div className="q-text">
+                                            {q.level === 'bold' && <span className="lvl-badge">🌶️ جريء</span>}
+                                            {q.fromUser && <span className="lvl-badge user">من مستخدم</span>}
                                             {isWyr ? (
                                                 <>
                                                     <div><span className="ab">A</span> {q.a?.ar} <em>{q.a?.en}</em></div>
@@ -268,6 +347,11 @@ function GamesManagement() {
                 <div className="games-modal-backdrop" onClick={() => setEditing(null)}>
                     <div className="games-modal" onClick={(e) => e.stopPropagation()}>
                         <h3>{editing === 'new' ? 'سؤال جديد' : 'تعديل السؤال'} — {BANKS[bank].icon} {BANKS[bank].title}</h3>
+                        <label>المستوى</label>
+                        <select value={form.level} onChange={e => setForm({ ...form, level: e.target.value })}>
+                            <option value="light">خفيف</option>
+                            <option value="bold">🌶️ جريء (رومانسي/شخصي — بلا محتوى جنسي)</option>
+                        </select>
                         {isWyr ? (
                             <>
                                 <label>الخيار A (عربي)</label>

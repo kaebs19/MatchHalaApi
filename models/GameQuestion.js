@@ -14,9 +14,13 @@ const gameQuestionSchema = new mongoose.Schema({
     // wyr
     a: localized,
     b: localized,
+    // light = الافتراضي · bold = «المستوى الجريء» (رومانسي/شخصي بلا محتوى جنسي، بموافقة الطرفين 18+)
+    level: { type: String, enum: ['light', 'bold'], default: 'light', index: true },
     active: { type: Boolean, default: true },
     // الأسئلة التي زُرعت من الكود — للتمييز فقط
-    seeded: { type: Boolean, default: false }
+    seeded: { type: Boolean, default: false },
+    // جاء من اقتراح مستخدم وافق عليه الأدمن
+    fromUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
 }, { timestamps: true });
 
 gameQuestionSchema.index({ bank: 1, active: 1 });

@@ -51,36 +51,67 @@ function usedKey(game, bankName) {
     return game.used[bankName];
 }
 
-function drawTruthOrDare(game, choice, rand, banks) {
-    const bankName = choice === 'truth' ? 'truth' : 'dare';
+const SOURCES = ['default', 'custom', 'mix'];
+const LEVELS = ['light', 'bold'];
+
+// ctx = { banks, custom } — banks: البنوك العامة للمستوى، custom: { [userId]: { truth, dare, wyr, never } }
+// أسئلة اللاعبين الخاصة. يقبل أيضاً بنوكاً مباشرة (اختبارات قديمة).
+function normalizeCtx(x) {
+    if (x && x.banks) return { banks: x.banks, custom: x.custom || {} };
+    return { banks: x || DEFAULT_BANKS, custom: {} };
+}
+
+// يسحب سؤالاً. answererId: من سيجيب وحده (حقيقة/جرأة) فمؤلف السؤال هو خصمه؛
+// بدونه (ألعاب الاختيار المشترك) يدخل سؤال أي من اللاعبين.
+function draw(game, bankName, ctx, rand, answererId = null) {
     const used = usedKey(game, bankName);
-    const q = pickQuestion(banks[bankName], used, rand);
+    const base = ctx.banks[bankName] || [];
+    const source = game.source || 'default';
+
+    let custom = [];
+    if (source !== 'default') {
+        const authors = answererId ? [other(game, answererId)] : game.players;
+        for (const author of authors) {
+            for (const q of (ctx.custom?.[author]?.[bankName] || [])) custom.push({ ...q, author });
+        }
+    }
+
+    let pool = base;
+    if (source === 'custom' && custom.length) pool = custom;
+    else if (source === 'mix' && custom.length && rand() < 0.5) pool = custom;
+
+    const q = pickQuestion(pool, used, rand);
     used.push(q.id);
-    return { id: q.id, ar: q.ar, en: q.en };
+    return q;
 }
 
-function drawWouldYouRather(game, rand, banks) {
-    const used = usedKey(game, 'wyr');
-    const q = pickQuestion(banks.wyr, used, rand);
-    used.push(q.id);
-    return { id: q.id, a: q.a, b: q.b };
+function drawTruthOrDare(game, choice, rand, ctx, answererId) {
+    const q = draw(game, choice === 'truth' ? 'truth' : 'dare', ctx, rand, answererId);
+    return { id: q.id, ar: q.ar, en: q.en, author: q.author || null };
 }
 
-function drawNever(game, rand, banks) {
-    const used = usedKey(game, 'never');
-    const q = pickQuestion(banks.never, used, rand);
-    used.push(q.id);
-    return { id: q.id, ar: q.ar, en: q.en };
+function drawPickQuestion(game, rand, ctx) {
+    if (game.kind === 'never_have_i_ever') {
+        const q = draw(game, 'never', ctx, rand);
+        return { id: q.id, ar: q.ar, en: q.en, author: q.author || null };
+    }
+    const q = draw(game, 'wyr', ctx, rand);
+    return { id: q.id, a: q.a, b: q.b, author: q.author || null };
 }
 
-function drawPickQuestion(game, rand, banks) {
-    return game.kind === 'never_have_i_ever' ? drawNever(game, rand, banks) : drawWouldYouRather(game, rand, banks);
-}
-
-function createGame(kind, starterId, otherId, now = new Date()) {
+function createGame(kind, starterId, otherId, now = new Date(), opts = {}) {
     if (!KINDS.includes(kind)) throw new GameError('INVALID_KIND', 'لعبة غير مدعومة');
+    const level = opts.level || 'light';
+    const source = opts.source || 'default';
+    if (!LEVELS.includes(level)) throw new GameError('INVALID_LEVEL', 'مستوى غير مدعوم');
+    if (!SOURCES.includes(source)) throw new GameError('INVALID_SOURCE', 'مصدر أسئلة غير مدعوم');
     return {
         kind,
+        level,          // light | bold (الجريء بموافقة الطرفين 18+)
+        source,         // default | custom (أسئلتنا) | mix
+        reactions: {},  // { [userId]: emoji } على آخر نتيجة/جولة
+        last: null,     // آخر جولة حقيقة/جرأة منتهية (للتفاعل عليها)
+        reminded: false,
         status: 'invited',
         players: [String(starterId), String(otherId)],
         turn: null,
@@ -88,7 +119,7 @@ function createGame(kind, starterId, otherId, now = new Date()) {
         round: 0,
         current: null,
         used: {},
-        stats: { done: 0, skipped: 0, correct: 0 },
+        stats: { done: 0, skipped: 0, correct: 0, matched: 0 },
         endedBy: null,
         updatedAt: now.toISOString()
     };
@@ -101,7 +132,8 @@ function isExpired(game, now = new Date()) {
 
 // يطبّق إجراءً. يُرجع { game, secret, notify } — notify = معرّف من يجب تنبيهه
 // (الدور انتقل إليه) أو null. لا يعدّل المُدخلات.
-function applyAction(inputGame, inputSecret, userId, action, payload = {}, now = new Date(), rand = Math.random, banks = DEFAULT_BANKS) {
+function applyAction(inputGame, inputSecret, userId, action, payload = {}, now = new Date(), rand = Math.random, ctxOrBanks = DEFAULT_BANKS) {
+    const ctx = normalizeCtx(ctxOrBanks);
     const game = JSON.parse(JSON.stringify(inputGame));
     let secret = inputSecret ? JSON.parse(JSON.stringify(inputSecret)) : {};
     userId = String(userId);
@@ -134,6 +166,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             if (game.status !== 'invited') throw new GameError('NOT_INVITED', 'لا توجد دعوة معلّقة', 409);
             if (userId !== game.players[1]) throw new GameError('NOT_INVITEE', 'الدعوة ليست لك', 403);
             game.status = 'active';
+            game.reactions = {};
             if (game.kind === 'truth_dare') {
                 game.turn = game.players[0]; // صاحب الدعوة يبدأ
                 game.phase = 'choose';
@@ -146,7 +179,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             } else {
                 game.round = 1;
                 game.phase = 'pick';
-                game.current = { question: drawPickQuestion(game, rand, banks), pickedBy: [], picks: null };
+                game.current = { question: drawPickQuestion(game, rand, ctx), pickedBy: [], picks: null };
                 secret = { picks: {} };
                 notify = game.players[0];
             }
@@ -179,7 +212,9 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             const choice = payload.choice;
             if (choice !== 'truth' && choice !== 'dare') throw new GameError('INVALID_CHOICE', 'اختيار غير صالح');
             game.round += 1;
-            game.current = { choice, question: drawTruthOrDare(game, choice, rand, banks), swaps: 0 };
+            game.current = { choice, question: drawTruthOrDare(game, choice, rand, ctx, userId), swaps: 0 };
+            game.last = null;
+            game.reactions = {};
             game.phase = 'answer';
             break;
         }
@@ -190,7 +225,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             requireTurn();
             if (game.current.swaps >= MAX_SWAPS) throw new GameError('NO_SWAPS_LEFT', 'انتهت مرات التبديل', 409);
             game.current.swaps += 1;
-            game.current.question = drawTruthOrDare(game, game.current.choice, rand, banks);
+            game.current.question = drawTruthOrDare(game, game.current.choice, rand, ctx, userId);
             break;
         }
 
@@ -200,6 +235,14 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             if (game.kind !== 'truth_dare' || game.phase !== 'answer') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
             requireTurn();
             game.stats[action === 'done' ? 'done' : 'skipped'] += 1;
+            game.last = {
+                round: game.round,
+                choice: game.current?.choice || null,
+                question: game.current?.question || null,
+                result: action === 'done' ? 'done' : 'skipped',
+                player: userId
+            };
+            game.reactions = {};
             game.turn = opponent;
             game.phase = 'choose';
             game.current = null;
@@ -218,6 +261,9 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             game.current.pickedBy = Object.keys(secret.picks);
             if (game.current.pickedBy.length === 2) {
                 game.current.picks = secret.picks;
+                game.stats.matched = (game.stats.matched || 0)
+                    + (new Set(Object.values(secret.picks)).size === 1 ? 1 : 0);
+                game.reactions = {};
                 game.phase = 'reveal';
                 secret = {};
                 notify = game.players[0] === userId ? game.players[1] : game.players[0];
@@ -234,13 +280,15 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
                 game.round += 1;
                 game.phase = 'write';
                 game.current = null;
+                game.reactions = {};
                 notify = game.turn === userId ? null : game.turn;
                 break;
             }
             if (!PICK_KINDS.includes(game.kind) || game.phase !== 'reveal') throw new GameError('BAD_PHASE', 'إجراء غير متاح الآن', 409);
             game.round += 1;
             game.phase = 'pick';
-            game.current = { question: drawPickQuestion(game, rand, banks), pickedBy: [], picks: null };
+            game.reactions = {};
+            game.current = { question: drawPickQuestion(game, rand, ctx), pickedBy: [], picks: null };
             secret = { picks: {} };
             notify = opponent;
             break;
@@ -279,6 +327,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
             game.current.correct = correct;
             if (correct) game.stats.correct = (game.stats.correct || 0) + 1;
             game.phase = 'reveal';
+            game.reactions = {};
             secret = {};
             notify = game.current.writer;
             break;
@@ -289,6 +338,7 @@ function applyAction(inputGame, inputSecret, userId, action, payload = {}, now =
     }
 
     game.updatedAt = now.toISOString();
+    game.reminded = false;
     return { game, secret, notify };
 }
 
@@ -303,4 +353,4 @@ function fallbackText(kind) {
     return `🎮 لعبة «${titles[kind] || 'جديدة'}» — حدّث التطبيق للعب`;
 }
 
-module.exports = { KINDS, GameError, createGame, applyAction, isExpired, fallbackText, MAX_SWAPS, EXPIRY_MS };
+module.exports = { SOURCES, LEVELS, KINDS, GameError, createGame, applyAction, isExpired, fallbackText, MAX_SWAPS, EXPIRY_MS };
