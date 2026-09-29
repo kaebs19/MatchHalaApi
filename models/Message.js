@@ -29,7 +29,7 @@ const messageSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['text', 'image', 'file', 'audio', 'video', 'system'],
+        enum: ['text', 'image', 'file', 'audio', 'video', 'system', 'game'],
         default: 'text'
     },
     status: {
@@ -148,6 +148,10 @@ const messageSchema = new mongoose.Schema({
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         listenedAt: { type: Date, default: Date.now }
     }],
+    // 🎮 ألعاب المحادثة — الحالة العلنية (utils/gameEngine.js) + اختيارات سرّية
+    //    لا تصل للعميل قبل الكشف (select:false)
+    game: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    gameSecret: { type: mongoose.Schema.Types.Mixed, default: undefined, select: false },
     // ✅ Photo Privacy Lock — صورة مقفلة (blurred) حتى يطلب المستلم unlock
     isBlurred: { type: Boolean, default: false },
     blurredUnlockedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
