@@ -160,14 +160,20 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
         if (cached) return res.status(200).json(cached);
 
         const FlaggedMessage = require('../models/FlaggedMessage');
+        // ⚠️ أعداد رسائل بلا فلتر مفهرَس كانت تمسح 16 مليون رسالة (~38ث لكل منها، سجلّ mongod):
+        //    الإجمالي = العدّاد التقديري − المحذوف (بفهرس isDeleted)، «اليوم» بمدى _id
+        //    (ObjectId يحمل وقت إنشائه)، والصور بفهرس جزئي { type:'image' } (models/Message).
+        const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+        const todayFirstId = mongoose.Types.ObjectId.createFromTime(Math.floor(todayStart.getTime() / 1000));
         const [
-            totalConversations, activeConversations, totalMessages,
+            totalConversations, activeConversations, allMessages, deletedMessages,
             privateConversations, groupConversations, pendingConversations,
             lockedConversations, totalImages, flaggedMessagesCount, todayMessages
         ] = await Promise.all([
-            Conversation.countDocuments(),
+            Conversation.estimatedDocumentCount(),
             Conversation.countDocuments({ isActive: true }),
-            Message.countDocuments({ isDeleted: false }),
+            Message.estimatedDocumentCount(),
+            Message.countDocuments({ isDeleted: true }),
             Conversation.countDocuments({ type: 'private' }),
             Conversation.countDocuments({ type: 'group' }),
             Conversation.countDocuments({ status: 'pending' }),
@@ -175,10 +181,11 @@ router.get('/stats/overview', protect, adminOnly, async (req, res) => {
             Message.countDocuments({ type: 'image', isDeleted: false }),
             FlaggedMessage.countDocuments(),
             Message.countDocuments({
-                isDeleted: false,
-                createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+                _id: { $gte: todayFirstId },
+                isDeleted: false
             })
         ]);
+        const totalMessages = Math.max(0, allMessages - deletedMessages);
 
         const payload = {
             success: true,

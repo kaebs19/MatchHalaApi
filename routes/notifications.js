@@ -80,7 +80,14 @@ router.get('/', protect, adminOnly, async (req, res) => {
 // @access  Admin
 router.get('/stats', protect, adminOnly, async (req, res) => {
     try {
-        const total = await Notification.countDocuments();
+        // ⚠️ كل عدّ هنا يمسح 3.28 مليون إشعار (لا فهرس يبدأ بـ status) — نخزّنه 5 دقائق،
+        //    والإجمالي من العدّاد التقديري (كان COLLSCAN ‏1.6ث × 188 مرة/يوم)
+        const { get, set } = require('../utils/cache');
+        const CACHE_KEY = 'notifications_admin_stats';
+        const cached = get(CACHE_KEY);
+        if (cached) return res.json(cached);
+
+        const total = await Notification.estimatedDocumentCount();
         const sent = await Notification.countDocuments({ status: 'sent' });
         const pending = await Notification.countDocuments({ status: 'pending' });
         const failed = await Notification.countDocuments({ status: 'failed' });
@@ -95,7 +102,7 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
             }
         ]);
 
-        res.json({
+        const payload = {
             success: true,
             data: {
                 total,
@@ -104,7 +111,9 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
                 failed,
                 byType
             }
-        });
+        };
+        set(CACHE_KEY, payload, 300);
+        res.json(payload);
     } catch (error) {
         console.error('خطأ في جلب إحصائيات الإشعارات:', error);
         res.status(500).json({

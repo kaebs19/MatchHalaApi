@@ -1037,13 +1037,15 @@ router.get('/stats', protect, adminOnly, async (req, res) => {
 
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-        const [totalSwipes, totalLikes, totalDislikes, totalSuperlikes, swipesLast7Days] = await Promise.all([
-            Swipe.countDocuments(),
+        // ⚠️ countDocuments() بلا فلتر كان COLLSCAN على 28 مليون (16ث)، وعدّ dislike يمشي على
+        //    ~22 مليون مفتاح — نفس ما أُصلح في routes/stats.js: عدّاد تقديري + اشتقاق بالطرح.
+        const [totalSwipes, totalLikes, totalSuperlikes, swipesLast7Days] = await Promise.all([
+            Swipe.estimatedDocumentCount(),
             Swipe.countDocuments({ type: 'like' }),
-            Swipe.countDocuments({ type: 'dislike' }),
             Swipe.countDocuments({ type: 'superlike' }),
             Swipe.countDocuments({ createdAt: { $gte: sevenDaysAgo } })
         ]);
+        const totalDislikes = Math.max(0, totalSwipes - totalLikes - totalSuperlikes);
 
         const likeRate = totalSwipes > 0
             ? Math.round(((totalLikes + totalSuperlikes) / totalSwipes) * 100)

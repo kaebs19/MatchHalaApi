@@ -193,6 +193,12 @@ messageSchema.index({ isDeleted: 1 });
 messageSchema.index({ conversation: 1, sender: 1, 'readBy.user': 1 });
 // ✅ Index لحساب الصور اليومية (حد 2 صور/يوم)
 messageSchema.index({ sender: 1, type: 1, createdAt: -1 });
+// ✅ عدّ الصور في لوحة التحكم — جزئي على الصور وحدها (~87 ألفاً من 16 مليون).
+//    ⚠️ الاسم والخيارات مطابقة لما أُنشئ يدوياً في الإنتاج.
+messageSchema.index(
+    { type: 1, isDeleted: 1 },
+    { name: 'type_1_isDeleted_1_images', partialFilterExpression: { type: 'image' } }
+);
 // ✅ تذكير الألعاب (utils/gameReminders.js) — جزئي على رسائل الألعاب وحدها فيبقى صغيراً.
 //    بدونه كان الاستعلام COLLSCAN على كل الرسائل (16 مليون، 24–45ث) كل 15 دقيقة.
 //    ⚠️ الاسم والخيارات مطابقة لما أُنشئ يدوياً في الإنتاج — لا تغيّرها وإلا تعارض الفهرسان.
