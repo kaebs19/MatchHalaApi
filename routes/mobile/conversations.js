@@ -1415,11 +1415,29 @@ router.get('/conversations', protect, async (req, res) => {
         };
 
         // ✅ Delta sync — رجّع فقط المحادثات اللي تغيّرت بعد آخر sync
+        let deltaSince = null;
         if (since) {
             const sinceDate = new Date(since);
             if (!isNaN(sinceDate.getTime())) {
                 convFilter.updatedAt = { $gt: sinceDate };
+                deltaSince = sinceDate;
             }
+        }
+
+        // ✅ محادثات خرجت من القائمة منذ آخر sync (حُذفت/أُخفيت من جهاز آخر، سُحبت، أو تغيّرت
+        //    حالتها خارج المطلوب). بدونها تبقى في كاش الجهاز حتى مزامنة كاملة.
+        let removedIds;
+        if (deltaSince) {
+            const gone = await Conversation.find({
+                participants: userId,
+                updatedAt: { $gt: deltaSince },
+                $or: [
+                    { 'hiddenFor.user': userId },
+                    { withdrawn: true },
+                    { status: { $nin: statusValues } }
+                ]
+            }).select('_id').limit(500).lean();
+            removedIds = gone.map(c => String(c._id));
         }
 
         // ETag: التحقق من آخر تعديل
@@ -1441,7 +1459,7 @@ router.get('/conversations', protect, async (req, res) => {
         const skip = (all === 'true' || all === '1') ? 0 : (page - 1) * limit;
 
         const conversations = await Conversation.find(convFilter)
-            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
+            .populate('participants', 'name profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
             .populate('lastMessage')
             .select('+creator')
             .sort({ updatedAt: -1 })
@@ -1594,7 +1612,9 @@ router.get('/conversations', protect, async (req, res) => {
                 currentPage: parseInt(page),
                 totalPages: Math.ceil(total / limit),
                 // ✅ syncedAt — يستخدمه iOS للـ delta sync التالية
-                syncedAt: lastModified.toISOString()
+                syncedAt: lastModified.toISOString(),
+                // ✅ موجود في الردّ التفاضلي فقط — المعرّفات التي يُزيلها الجهاز من قائمته
+                ...(removedIds ? { removedIds } : {})
             }
         });
 
