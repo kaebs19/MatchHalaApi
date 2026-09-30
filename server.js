@@ -509,8 +509,8 @@ async function markPendingMessagesDelivered(userId, conversationId = null) {
                 messageId: String(msg._id),
                 conversationId: String(msg.conversation)
             };
-            io.to(`user:${msg.sender}`).emit('message-delivered', payload);
-            io.to(`conversation-${msg.conversation}`).emit('message-delivered', payload);
+            // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
+            io.to([`user:${msg.sender}`, `conversation-${msg.conversation}`]).emit('message-delivered', payload);
         }
 
         console.log(`📬 delivered-sweep: ${pending.length} رسالة → مُسلَّمة (user=${String(userId).slice(-6)}${conversationId ? ', conv=' + String(conversationId).slice(-6) : ''})`);
@@ -549,10 +549,14 @@ async function emitTypingToParticipants(socket, conversationId, payload) {
         // العضوية شرط — لا يبثّ أحد «يكتب» في محادثة ليست له
         if (!ids.includes(String(socket.userId))) return;
 
+        // ⚠️ بثّ واحد لغرفة المحادثة + غرف الأطراف الأخرى: Socket.IO يوصله لكل جهاز مرة
+        //    واحدة وإن كان في الغرفتين. كان بثّين منفصلين فيصل «يكتب…» مرتين لمن داخل المحادثة.
+        //    socket.to يستثني هذا السوكِت وحده (أجهزة الكاتب الأخرى تراه كما كانت).
+        const rooms = [`conversation-${conversationId}`];
         for (const id of ids) {
-            if (id === String(socket.userId)) continue;
-            io.to(`user:${id}`).emit('user-typing', payload);
+            if (id !== String(socket.userId)) rooms.push(`user:${id}`);
         }
+        socket.to(rooms).emit('user-typing', payload);
     } catch (error) {
         console.error('خطأ في بثّ الكتابة:', error.message);
     }
@@ -764,14 +768,12 @@ io.on('connection', async (socket) => {
     //    التطبيق يرسلها والخادم يُسقطها، فتظهر كلها «يكتب…»
     socket.on('typing', async ({ conversationId, userName, activity }) => {
         const payload = { conversationId, userName, activity: activity || 'typing', isTyping: true };
-        socket.to(`conversation-${conversationId}`).emit('user-typing', payload);
         await emitTypingToParticipants(socket, conversationId, payload);
     });
 
     // عند التوقف عن الكتابة
     socket.on('stop-typing', async ({ conversationId }) => {
         const payload = { conversationId, userName: null, isTyping: false };
-        socket.to(`conversation-${conversationId}`).emit('user-typing', payload);
         await emitTypingToParticipants(socket, conversationId, payload);
     });
 
@@ -791,11 +793,9 @@ io.on('connection', async (socket) => {
             const convId = conversationId || String(msg.conversation);
             const payload = { messageId, conversationId: convId };
 
-            // غرفة المحادثة — لمن يفتح الشاشة الآن
-            socket.to(`conversation-${convId}`).emit('message-delivered', payload);
-            // ✅ غرفة المُرسِل الخاصة — ليصل السهم وهو في قائمة المحادثات
-            //    (join-conversation يحدث داخل شاشة المحادثة فقط، فالبثّ للغرفة وحدها لا يكفي)
-            io.to(`user:${msg.sender}`).emit('message-delivered', payload);
+            // غرفة المحادثة (لمن يفتح الشاشة) + غرفة المُرسِل الخاصة (ليصل السهم وهو في
+            // القائمة) — بثّ واحد فلا يصل من في الغرفتين مرتين. except: هذا السوكِت (المستلم).
+            io.to([`conversation-${convId}`, `user:${msg.sender}`]).except(socket.id).emit('message-delivered', payload);
         } catch (error) {
             console.error('خطأ في message-delivered:', error.message);
         }
@@ -820,16 +820,14 @@ io.on('connection', async (socket) => {
 
             if (result.modifiedCount > 0) {
                 const payload = { conversationId, readBy: socket.userId, count: result.modifiedCount };
-                socket.to(`conversation-${conversationId}`).emit('messages-read', payload);
-
-                // ✅ غرفة كل طرف آخر — ليتحدّث لون السهم في قائمة المحادثات أيضاً
-                //    (نفس ما يفعله مسار HTTP في conversations.js — كان السوكِت يخالفه)
+                // ✅ غرفة المحادثة + غرفة كل طرف آخر (ليتحدّث السهم في القائمة أيضاً) —
+                //    بثّ واحد: كان بثّين فيصل من داخل المحادثة الحدث مرتين
                 const conv = await Conversation.findById(conversationId).select('participants').lean();
+                const rooms = [`conversation-${conversationId}`];
                 (conv?.participants || []).forEach(p => {
-                    if (String(p) !== String(socket.userId)) {
-                        io.to(`user:${p}`).emit('messages-read', payload);
-                    }
+                    if (String(p) !== String(socket.userId)) rooms.push(`user:${p}`);
                 });
+                socket.to(rooms).emit('messages-read', payload);
             }
         } catch (error) {
             console.error('خطأ في mark-read:', error.message);
