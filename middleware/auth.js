@@ -37,7 +37,11 @@ const protect = async (req, res, next) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             // الحصول على بيانات المستخدم (بدون كلمة المرور)
-            req.user = await User.findById(decoded.id).select('-password');
+            // ⚠️ بلا المصفوفات التاريخية: كل عنصر فيها يُبنى مستنداً فرعياً كاملاً مع كل طلب
+            //    (CPU profile: بناء مستندات mongoose أثقل عمل في السيرفر). لا مسار يقرؤها من
+            //    req.user — من يحتاجها يجلبها بنفسه. ولا .lean(): req.user.id في 50 موضعاً
+            //    والحقول المتداخلة تعتمد على قيم الـ schema الافتراضية.
+            req.user = await User.findById(decoded.id).select('-password -loginHistory -photoHistory -nameHistory');
 
             if (!req.user) {
                 return res.status(401).json({
