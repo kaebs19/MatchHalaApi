@@ -16,6 +16,14 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Report = require('../models/Report');
 
+// ✅ آخر بصمة جهاز رأيناها لكل مستخدم (داخل العملية). التطبيق يرسل X-Device-Fingerprint مع
+//    كل طلب، وكان كل طلب مصادَق يقرأ المستخدم من القاعدة مرة ثانية للمقارنة (CPU profile:
+//    _findOne أثقل مدخل لـ mongoose). نفس البصمة خلال يوم = لا قراءة — والكتابة أصلاً لا
+//    تحدث إلا عند تغيّر البصمة أو مرور يوم على lastFingerprintUpdate.
+const seenFingerprints = new Map();   // userId → { fp, kt, at }
+const FINGERPRINT_RECHECK_MS = 24 * 60 * 60 * 1000;
+const FINGERPRINT_CACHE_MAX = 50000;
+
 const protect = async (req, res, next) => {
     let token;
 
@@ -216,9 +224,15 @@ const protect = async (req, res, next) => {
             // (نقرأ من headers أولاً، ثم body — بدون تعطيل الـ request)
             const incomingFp = (req.headers['x-device-fingerprint'] || (req.body && req.body.deviceFingerprint) || '').toString().trim();
             const incomingKt = (req.headers['x-keychain-token'] || (req.body && req.body.keychainToken) || '').toString().trim();
-            if (incomingFp || incomingKt) {
+            const fpKey = String(req.user._id);
+            const seen = seenFingerprints.get(fpKey);
+            const fpUnchanged = seen && seen.fp === incomingFp && seen.kt === incomingKt
+                && Date.now() - seen.at < FINGERPRINT_RECHECK_MS;
+            if ((incomingFp || incomingKt) && !fpUnchanged) {
+                if (seenFingerprints.size >= FINGERPRINT_CACHE_MAX) seenFingerprints.clear();
+                seenFingerprints.set(fpKey, { fp: incomingFp, kt: incomingKt, at: Date.now() });
                 // نقرأ القيم الحالية من DB (select: false تمنع الوصول عبر req.user)
-                User.findById(req.user._id).select('+deviceFingerprint +keychainToken lastFingerprintUpdate')
+                User.findById(req.user._id).select('+deviceFingerprint +keychainToken lastFingerprintUpdate').lean()
                     .then(full => {
                         if (!full) return;
                         const updates = {};
