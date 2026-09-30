@@ -794,9 +794,13 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             }
 
             // ✅ غرفة المحادثة — للأدمن المراقب أو واجهات أخرى (نسخة مكتومة آمنة)
-            global.io.to(`conversation-${conversationId}`).emit('new-message', {
-                message: broadcastMessage
-            });
+            // ⚠️ except: الطرفان وصلتهما نسختهما من غرفتيهما أعلاه، والتطبيق ينضمّ لغرف كل
+            //    محادثاته — بدونها يصل كل طرف الحدث مرتين، والمرسل نسخة مكتومة ثانية.
+            global.io.to(`conversation-${conversationId}`)
+                .except(conversation.participants.map(p => `user:${p._id}`))
+                .emit('new-message', {
+                    message: broadcastMessage
+                });
         }
 
         // إرسال إشعارات للمستقبلين الـ offline فقط عبر FCM

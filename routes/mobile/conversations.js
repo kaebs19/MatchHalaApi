@@ -59,7 +59,10 @@ async function createSystemMessage(conversationId, senderId, action, textAr, tex
                 seen.add(id);
                 global.io.to(`user:${id}`).emit('new-message', { message: populated });
             });
-            global.io.to(`conversation-${conversationId}`).emit('new-message', { message: populated });
+            // ⚠️ except: المشاركون وصلتهم من غرفهم الخاصة أعلاه — الغرفة للأدمن المراقب فقط
+            global.io.to(`conversation-${conversationId}`)
+                .except([...seen].map(id => `user:${id}`))
+                .emit('new-message', { message: populated });
         }
         return populated;
     } catch (e) {
