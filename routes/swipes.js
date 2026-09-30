@@ -773,9 +773,16 @@ router.get('/cards', protect, async (req, res) => {
                 $nin: [...swipedIds, ...blockedIds, ...geoUserIds]
             };
 
-            const noLocationUsers = await User.find(noGeoFilter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
-                .limit(Math.max(0, fetchLimit - geoUsers.length));
+            // ⚠️ limit(0) في MongoDB = بلا حدّ: حين يملأ geoNear الحصّة كاملة (الحالة الغالبة)
+            //    كان Math.max(0, …) يُنتج 0 فيجلب كل المستخدمين بلا موقع (~38 ألفاً) كـ Documents
+            //    كاملة ثم يُرمى الناتج — تجمّد event loop حتى 2.6ث في كل نسخة (CPU profile).
+            const remaining = fetchLimit - geoUsers.length;
+            const noLocationUsers = remaining > 0
+                ? await User.find(noGeoFilter)
+                    .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
+                    .limit(remaining)
+                    .lean()
+                : [];
 
             // 3) دمج النتائج
             const geoCards = geoUsers.map(u => {
@@ -783,10 +790,8 @@ router.get('/cards', protect, async (req, res) => {
                 return mapUserToCard(u, distanceKm);
             });
 
-            const noGeoCards = noLocationUsers.map(u => {
-                const userObj = u.toObject();
-                return mapUserToCard(userObj, null);
-            });
+            // lean: نفس شكل بطاقات geoNear (كائنات خام) — لا toObject
+            const noGeoCards = noLocationUsers.map(u => mapUserToCard(u, null));
 
             users = [...geoCards, ...noGeoCards];
 
