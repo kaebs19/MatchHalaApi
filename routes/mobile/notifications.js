@@ -268,17 +268,23 @@ router.delete('/notifications', protect, async (req, res) => {
         // ونحذف فقط الإشعارات التي يكون فيه target واحد فقط (هو)
         const userId = req.user._id;
 
-        // الإشعارات الموجهة لمستخدمين محددين فقط — نزيل المستخدم
-        await Notification.updateMany(
-            { targetUsers: userId },
-            { $pull: { targetUsers: userId } }
-        );
-
-        // ثم نحذف فعلياً اللي ما بقي فيها أحد
-        await Notification.deleteMany({
-            targetUsers: { $size: 0 },
-            recipients: { $ne: 'all' }
-        });
+        // ⚠️ الحذف مقصور على إشعارات هذا المستخدم (بالمعرّفات): كان deleteMany بشرط
+        //    targetUsers: {$size: 0} على المجموعة كلها — $size لا يُفهرَس، فيمسح 3.28 مليون
+        //    مستند (5–11ث وأقفال على القاعدة) مع كل «حذف الكل» ليحذف غالباً لا شيء.
+        const mine = await Notification.find({ targetUsers: userId }).select('_id').lean();
+        const ids = mine.map(n => n._id);
+        if (ids.length > 0) {
+            await Notification.updateMany(
+                { _id: { $in: ids } },
+                { $pull: { targetUsers: userId } }
+            );
+            // ثم نحذف فعلياً ما لم يبقَ فيه أحد — ضمن هذه المعرّفات فقط
+            await Notification.deleteMany({
+                _id: { $in: ids },
+                targetUsers: { $size: 0 },
+                recipients: { $ne: 'all' }
+            });
+        }
 
         res.json({ success: true, message: 'تم حذف جميع الإشعارات' });
     } catch (error) {

@@ -62,14 +62,19 @@ async function cleanupDeletedUser(userId, userDoc = null) {
     const outgoing = await Notification.deleteMany({ sender: userId, recipients: 'specific' });
     counts.notificationsSent = outgoing.deletedCount;
     // الإشعارات الواردة إليه — يُسحب من المستقبلين ثم تُحذف الفارغة
-    await Notification.updateMany(
-        { targetUsers: userId },
-        { $pull: { targetUsers: userId } }
-    );
-    await Notification.deleteMany({
-        recipients: { $ne: 'all' },
-        targetUsers: { $size: 0 }
-    });
+    // ⚠️ مقصور على إشعاراته بالمعرّفات — شرط $size على المجموعة كلها يمسح ملايين المستندات
+    const incomingIds = (await Notification.find({ targetUsers: userId }).select('_id').lean()).map(n => n._id);
+    if (incomingIds.length > 0) {
+        await Notification.updateMany(
+            { _id: { $in: incomingIds } },
+            { $pull: { targetUsers: userId } }
+        );
+        await Notification.deleteMany({
+            _id: { $in: incomingIds },
+            recipients: { $ne: 'all' },
+            targetUsers: { $size: 0 }
+        });
+    }
 
     // ── 4. ملفات الصور من القرص (المعرض كاملاً + صورة البروفايل) ──
     counts.photoFiles = 0;
