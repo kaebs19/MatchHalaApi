@@ -193,6 +193,13 @@ messageSchema.index({ isDeleted: 1 });
 messageSchema.index({ conversation: 1, sender: 1, 'readBy.user': 1 });
 // ✅ Index لحساب الصور اليومية (حد 2 صور/يوم)
 messageSchema.index({ sender: 1, type: 1, createdAt: -1 });
+// ✅ تذكير الألعاب (utils/gameReminders.js) — جزئي على رسائل الألعاب وحدها فيبقى صغيراً.
+//    بدونه كان الاستعلام COLLSCAN على كل الرسائل (16 مليون، 24–45ث) كل 15 دقيقة.
+//    ⚠️ الاسم والخيارات مطابقة لما أُنشئ يدوياً في الإنتاج — لا تغيّرها وإلا تعارض الفهرسان.
+messageSchema.index(
+    { 'game.status': 1, 'game.updatedAt': 1 },
+    { name: 'game.status_1_game.updatedAt_1', partialFilterExpression: { type: 'game' } }
+);
 
 // دالة للحذف الناعم
 messageSchema.methods.softDelete = function() {
