@@ -802,15 +802,14 @@ router.put('/conversations/:id/read', protect, async (req, res) => {
                 readBy: userId,
                 count: result.modifiedCount
             };
-            // بث لغرفة المحادثة
-            global.io.to(`conversation-${conversationId}`).emit('messages-read', readPayload);
-            // بث لغرفة المستخدمين الآخرين (حتى لو لم ينضموا لغرفة المحادثة)
+            // غرفة المحادثة + غرف الأطراف الأخرى (حتى لو لم ينضموا لها) — بثّ واحد
             const otherParticipants = conversation.participants.filter(
                 p => p.toString() !== userId.toString()
             );
-            for (const participantId of otherParticipants) {
-                global.io.to(`user:${participantId}`).emit('messages-read', readPayload);
-            }
+            global.io.to([
+                `conversation-${conversationId}`,
+                ...otherParticipants.map(p => `user:${p}`)
+            ]).emit('messages-read', readPayload);
         }
 
         res.status(200).json({

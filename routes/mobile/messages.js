@@ -145,8 +145,8 @@ async function destroyDisappearingIfDue(message) {
             conversationId: String(message.conversation),
             destroyed: true
         };
-        global.io.to(`user:${message.sender}`).emit('photo-expired', payload);
-        global.io.to(`conversation-${message.conversation}`).emit('photo-expired', payload);
+        // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
+        global.io.to([`user:${message.sender}`, `conversation-${message.conversation}`]).emit('photo-expired', payload);
     }
     return true;
 }
@@ -1783,9 +1783,8 @@ router.get('/messages/:conversationId', protect, async (req, res) => {
                             messageId: String(m._id),
                             conversationId: String(conversationId)
                         };
-                        global.io.to(`user:${String(m.sender._id || m.sender)}`)
-                            .emit('message-delivered', payload);
-                        global.io.to(`conversation-${conversationId}`)
+                        // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
+                        global.io.to([`user:${String(m.sender._id || m.sender)}`, `conversation-${conversationId}`])
                             .emit('message-delivered', payload);
                     }
                 }
@@ -2137,12 +2136,12 @@ router.put('/messages/:messageId', protect, async (req, res) => {
         };
 
         if (global.io) {
-            global.io.to(`conversation-${message.conversation}`).emit('message-edited', payload);
-            // غرف المستخدمين أيضاً — الطرف الآخر قد لا يكون داخل المحادثة الآن
+            // غرفة المحادثة + غرف المستخدمين (الطرف الآخر قد لا يكون داخلها) — بثّ واحد
             const conv = await Conversation.findById(message.conversation).select('participants').lean();
-            (conv?.participants || []).forEach(p => {
-                global.io.to(`user:${p}`).emit('message-edited', payload);
-            });
+            global.io.to([
+                `conversation-${message.conversation}`,
+                ...(conv?.participants || []).map(p => `user:${p}`)
+            ]).emit('message-edited', payload);
         }
 
         res.json({

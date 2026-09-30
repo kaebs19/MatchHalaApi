@@ -3710,14 +3710,11 @@ router.put('/:id/conversations/censor', protect, adminOnly, async (req, res) => 
         if (global.io) {
             conversations.forEach(conv => {
                 const cId = String(conv._id);
-                (conv.participants || []).forEach(pid => {
-                    global.io.to(`user:${pid}`).emit('messages-censored', {
-                        conversationId: cId,
-                        scope,
-                        targetUserId: String(userId)
-                    });
-                });
-                global.io.to(`conversation-${cId}`).emit('messages-censored', {
+                // غرف المشاركين + غرفة المحادثة — بثّ واحد فلا يصل من فيهما مرتين
+                global.io.to([
+                    ...(conv.participants || []).map(pid => `user:${pid}`),
+                    `conversation-${cId}`
+                ]).emit('messages-censored', {
                     conversationId: cId,
                     scope,
                     targetUserId: String(userId)

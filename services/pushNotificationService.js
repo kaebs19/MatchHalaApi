@@ -405,8 +405,8 @@ const sendNewMessageNotification = async (recipientId, senderName, messagePrevie
                         messageId: messageId.toString(),
                         conversationId: conversationId.toString()
                     };
-                    global.io.to(`user:${updated.sender}`).emit('message-delivered', payload);
-                    global.io.to(`conversation-${conversationId}`).emit('message-delivered', payload);
+                    // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
+                    global.io.to([`user:${updated.sender}`, `conversation-${conversationId}`]).emit('message-delivered', payload);
                 }
             } catch (e) {
                 console.error('⚠️ تعليم الرسالة كمُسلَّمة بعد الـ push فشل:', e.message);

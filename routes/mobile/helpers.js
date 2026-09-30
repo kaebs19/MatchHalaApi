@@ -72,8 +72,8 @@ const markMessageDelivered = async (messageId, conversationId, senderId = null) 
         if (global.io) {
             const convId = String(conversationId || updated.conversation);
             const payload = { messageId: String(messageId), conversationId: convId };
-            global.io.to(`user:${senderId || updated.sender}`).emit('message-delivered', payload);
-            global.io.to(`conversation-${convId}`).emit('message-delivered', payload);
+            // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
+            global.io.to([`user:${senderId || updated.sender}`, `conversation-${convId}`]).emit('message-delivered', payload);
         }
         return true;
     } catch (e) {
