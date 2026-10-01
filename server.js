@@ -499,8 +499,11 @@ async function markPendingMessagesDelivered(userId, conversationId = null) {
             .lean();
         if (pending.length === 0) return;
 
+        // ⚠️ status:'sent' في الشرط نفسه: بين الاختيار أعلاه والتحديث قد يقرأ المستلم الرسالة،
+        //    وكان التحديث بالمعرّف وحده يعيد «مقروءة» إلى «مُسلَّمة» (545 رسالة في الإنتاج
+        //    بـ readBy من المستلم وstatus=delivered — أُصلحت ١ أكتوبر ٢٠٢٦).
         await Message.updateMany(
-            { _id: { $in: pending.map(m => m._id) } },
+            { _id: { $in: pending.map(m => m._id) }, status: 'sent' },
             { $set: { status: 'delivered' } }
         );
 
