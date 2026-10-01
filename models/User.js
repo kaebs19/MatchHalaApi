@@ -646,11 +646,6 @@ userSchema.index({ 'newcomer.status': 1, createdAt: -1 });
 userSchema.index({ 'suspension.isSuspended': 1, 'suspension.suspendedUntil': 1 });
 userSchema.index({ 'hidden.isHidden': 1, 'hidden.hiddenUntil': 1 });
 
-// ✅ lean({ defaults: true }) — protect يقرأ المستخدم خاماً مع قيم الـ schema الافتراضية
-//    (الكائنات المتداخلة موجودة كما في المستند المبني). قورن على 300 مستخدم إنتاج: 0 فروق.
-const leanDefaults = require('mongoose-lean-defaults').default || require('mongoose-lean-defaults');
-userSchema.plugin(leanDefaults);
-
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;

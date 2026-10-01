@@ -41,14 +41,7 @@ const protect = async (req, res, next) => {
             //    (CPU profile: بناء مستندات mongoose أثقل عمل في السيرفر). لا مسار يقرؤها من
             //    req.user — من يحتاجها يجلبها بنفسه. ولا .lean(): req.user.id في 50 موضعاً
             //    والحقول المتداخلة تعتمد على قيم الـ schema الافتراضية.
-            // ⚠️ lean({ defaults: true }) لا مستند mongoose: بناء المستند (81 حقلاً) مع كل طلب كان
-            //    أكبر مستهلك CPU في السيرفر. قورن الناتج بـ toObject() على 300 مستخدم إنتاج — 0
-            //    فروق. الفرق الوحيد خارج البيانات: لا دوالّ مستند (لا مسار يستدعيها على req.user —
-            //    routes/auth.js يتعامل مع الحالتين) ولا virtual ‏id — يُضاف أدناه (50 موضعاً).
-            req.user = await User.findById(decoded.id)
-                .select('-password -loginHistory -photoHistory -nameHistory -resetPasswordToken -resetPasswordExpire')
-                .lean({ defaults: true });
-            if (req.user) req.user.id = String(req.user._id);
+            req.user = await User.findById(decoded.id).select('-password -loginHistory -photoHistory -nameHistory');
 
             if (!req.user) {
                 return res.status(401).json({
