@@ -14,7 +14,7 @@ const { body, param, validationResult } = require('express-validator');
 router.get('/settings', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id)
-            .select('privacySettings blockedUsers mutedConversations');
+            .select('privacySettings blockedUsers mutedConversations acceptingRequests premiumOnlyRequests isPremium premiumExpiresAt');
 
         if (!user) {
             return res.status(404).json({
@@ -28,7 +28,15 @@ router.get('/settings', auth, async (req, res) => {
             data: {
                 privacySettings: user.privacySettings,
                 blockedUsersCount: user.blockedUsers?.length || 0,
-                mutedConversationsCount: user.mutedConversations?.length || 0
+                mutedConversationsCount: user.mutedConversations?.length || 0,
+                // 📨 إعدادات الطلبات — الحالة الفعلية من السيرفر (كانت الواجهة تعتمد على
+                //    ذاكرة الجهاز فتُظهر «مفعّل» لطلبات موقوفة من جهاز آخر). premiumOnlyRequests
+                //    لا يسري إلا مع اشتراك ساري (راجع POST /conversations/request).
+                requestSettings: {
+                    acceptingRequests: user.acceptingRequests !== false,
+                    premiumOnlyRequests: user.premiumOnlyRequests === true,
+                    premiumActive: !!(user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt > new Date())
+                }
             }
         });
     } catch (error) {
