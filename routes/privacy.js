@@ -286,16 +286,15 @@ router.post('/block/:userId', [
         //    الإخفاء عبر hiddenFor قابل للتراجع، ومنع الإرسال مكفول أصلاً
         //    بـ blockGuardForConversation في بوابة الإرسال.
         const Conversation = require('../models/Conversation');
-        const hideForBlocked = await Conversation.updateMany(
-            {
-                type: 'private',
-                participants: { $all: [req.user.id, userId] },
-                'hiddenFor.user': { $ne: userId }
-            },
-            {
-                $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'block' } }
-            }
-        );
+        // ⚠️ (١ أكتوبر ٢٠٢٦) لا إخفاء عند المحظور بعد الآن: تبقى المحادثة للقراءة فقط ويرى
+        //    «هذا المستخدم غير متاح» (محايدة — نفسها للحساب المحذوف/الموقوف)، بلا صورة الحاظر
+        //    ولا حالته (blockState في GET /mobile/conversations). الإرسال ممنوع بـ blockGuard.
+        //    الاختفاء كان يُربك («أين محادثتي؟») ويكشف الحظر أكثر من رسالة محايدة.
+        const hideForBlocked = null;
+        if (typeof global.invalidatePartnersCache === 'function') {
+            global.invalidatePartnersCache(String(req.user.id));
+            global.invalidatePartnersCache(String(userId));
+        }
 
         // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند
         //    الإبلاغ. تُخفى فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
@@ -389,6 +388,10 @@ router.delete('/unblock/:userId', [
                 $pull: { hiddenFor: { user: { $in: [req.user.id, userId] }, reason: 'block' } }
             }
         );
+        if (typeof global.invalidatePartnersCache === 'function') {
+            global.invalidatePartnersCache(String(req.user.id));
+            global.invalidatePartnersCache(String(userId));
+        }
 
         res.json({
             success: true,

@@ -431,6 +431,19 @@ async function getConversationPartners(userId) {
         }
     }
 
+    // 🚫 لا بثّ حالة (متصل/غير متصل) بين طرفَي حظر — المحادثة تبقى ظاهرة عند المحظور الآن
+    //    (لا تُخفى)، فبدون هذا يرى حالة من حظره. الاتجاهان: من حظرتهم ومن حظروني.
+    try {
+        const [me, blockers] = await Promise.all([
+            User.findById(userId).select('blockedUsers').lean(),
+            User.distinct('_id', { blockedUsers: userId })
+        ]);
+        for (const b of (me?.blockedUsers || [])) partnerIds.delete(String(b));
+        for (const b of blockers) partnerIds.delete(String(b));
+    } catch (e) {
+        console.error('getConversationPartners block filter:', e.message);
+    }
+
     // حفظ في الكاش
     partnersCache.set(userId, { partners: partnerIds, expiry: Date.now() + PARTNERS_CACHE_TTL });
 

@@ -1388,6 +1388,29 @@ router.post('/conversations/:id/accept-with-message', protect, async (req, res) 
 // @route   GET /api/mobile/conversations
 // @desc    الحصول على محادثات المستخدم النشطة مع عدد الرسائل غير المقروءة (مع دعم Last-Modified/304)
 // @access  Private
+// 🚫 حالة الحظر لكل محادثة + قناع الحاظر — المحادثة تبقى ظاهرة للطرفين بعد الحظر (١ أكتوبر ٢٠٢٦)
+//    blockedMe: الطرف الآخر حظرني ← بلا صورته ولا «متصل/آخر ظهور»، والتطبيق يعرض «غير متاح»
+//    iBlocked:  أنا حظرته ← شارة «محظور» وزرّ إلغاء الحظر داخل المحادثة
+async function blockContext(user) {
+    const myBlocked = new Set((user.blockedUsers || []).map(String));
+    const blockersOfMe = new Set((await User.distinct('_id', { blockedUsers: user._id })).map(String));
+    return { myBlocked, blockersOfMe };
+}
+
+function applyBlockState(conv, userId, ctx) {
+    const other = (conv.participants || []).find(p => p && String(p._id) !== String(userId));
+    if (!other) return;
+    const oid = String(other._id);
+    if (ctx.blockersOfMe.has(oid)) {
+        conv.blockState = 'blockedMe';
+        other.profileImage = null;
+        other.isOnline = false;
+        other.lastLogin = null;
+    } else if (ctx.myBlocked.has(oid)) {
+        conv.blockState = 'iBlocked';
+    }
+}
+
 router.get('/conversations', protect, async (req, res) => {
     try {
         // ✅ زيادة limit الافتراضي من 20 → 50 (يحل 95% من حالات اختفاء المحادثات)
@@ -1500,6 +1523,10 @@ router.get('/conversations', protect, async (req, res) => {
                 });
             }
         }
+
+        // 🚫 حالة الحظر + قناع الحاظر (بعد تحويل الصور أعلاه)
+        const blockCtx = await blockContext(req.user);
+        for (const conv of conversations) applyBlockState(conv, userId, blockCtx);
 
         // ✅ حساب عدد الرسائل غير المقروءة بـ aggregation واحد بدل N+1 queries
         const convIds = conversations.map(c => c._id);
@@ -1745,6 +1772,9 @@ router.get('/conversations/:id', protect, async (req, res) => {
                 return p;
             });
         }
+
+        // 🚫 حالة الحظر + قناع الحاظر — مثل القائمة
+        applyBlockState(conv, userId, await blockContext(req.user));
 
         // عدّ غير المقروءة لهذه المحادثة فقط
         const unreadCount = await Message.countDocuments({

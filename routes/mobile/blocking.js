@@ -39,20 +39,12 @@ router.post('/users/block/:userId', protect, async (req, res) => {
             $addToSet: { blockedUsers: userId }
         });
 
-        // ✅ المحادثة تختفي عند المحظور — هذا هو الحظر نفسه.
-        //    إبقاؤها عنده يعني إعادة قراءة ولقطات شاشة ومحاولات إرسال متكررة.
-        //    والاختفاء لا يفضح الحظر: المحادثة تختفي أصلاً حين يحذفها الطرف
-        //    الآخر (reason: 'user_delete')، فلا يمكنه التمييز بين الحالتين.
-        await Conversation.updateMany(
-            {
-                type: 'private',
-                participants: { $all: [req.user._id, userId] },
-                'hiddenFor.user': { $ne: userId }
-            },
-            {
-                $push: { hiddenFor: { user: userId, hiddenAt: new Date(), reason: 'block' } }
-            }
-        );
+        // ⚠️ (١ أكتوبر ٢٠٢٦) لا إخفاء عند المحظور: تبقى المحادثة للقراءة فقط مع «هذا المستخدم
+        //    غير متاح» وبلا صورة/حالة الحاظر — راجع routes/privacy.js POST /block/:userId.
+        if (typeof global.invalidatePartnersCache === 'function') {
+            global.invalidatePartnersCache(String(req.user._id));
+            global.invalidatePartnersCache(String(userId));
+        }
 
         // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند الإبلاغ.
         //    تُحذف فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
@@ -131,6 +123,10 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
                 $pull: { hiddenFor: { user: { $in: [req.user._id, userId] }, reason: 'block' } }
             }
         );
+        if (typeof global.invalidatePartnersCache === 'function') {
+            global.invalidatePartnersCache(String(req.user._id));
+            global.invalidatePartnersCache(String(userId));
+        }
 
         res.json({
             success: true,
