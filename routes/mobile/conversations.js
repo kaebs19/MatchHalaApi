@@ -146,7 +146,11 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }
 
         // ✅ Privacy: المستخدم المستهدف يقبل من Premium فقط
-        if (targetUser.premiumOnlyRequests === true && !req.user.isPremium) {
+        // ⚠️ يسري فقط ما دام صاحبه مشتركاً فعلاً: كان يبقى بعد انتهاء الاشتراك (والخيار يختفي
+        //    من إعداداته فلا يستطيع إيقافه) فلا تصله طلبات تقريباً — 9 حسابات في الإنتاج
+        //    (١ أكتوبر ٢٠٢٦). والاشتراك يُحسب بتاريخ الانتهاء لا بحقل isPremium المخزَّن (قد يتأخر).
+        const premiumActive = u => !!(u?.isPremium && u.premiumExpiresAt && new Date(u.premiumExpiresAt) > new Date());
+        if (targetUser.premiumOnlyRequests === true && premiumActive(targetUser) && !premiumActive(req.user)) {
             return res.status(403).json({
                 success: false,
                 message: 'هذا المستخدم يستقبل طلبات من المشتركين فقط',
