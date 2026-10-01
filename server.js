@@ -809,6 +809,12 @@ io.on('connection', async (socket) => {
         try {
             if (!conversationId) return;
 
+            // ⚠️ العضوية شرط (كما في PUT /conversations/:id/read): بدونه كان أي اتصال يعلّم رسائل
+            //    أي محادثة «مقروءة» ويُسجَّل قارئاً فيها — ~0.2% من الرسائل المقروءة في الإنتاج
+            //    قارئها ليس طرفاً، فيرى المرسل «مقروءة» لرسالة لم يقرأها مستقبلها.
+            const conv = await Conversation.findById(conversationId).select('participants').lean();
+            if (!conv || !conv.participants.some(p => String(p) === String(socket.userId))) return;
+
             const result = await Message.updateMany(
                 {
                     conversation: conversationId,
@@ -825,7 +831,6 @@ io.on('connection', async (socket) => {
                 const payload = { conversationId, readBy: socket.userId, count: result.modifiedCount };
                 // ✅ غرفة المحادثة + غرفة كل طرف آخر (ليتحدّث السهم في القائمة أيضاً) —
                 //    بثّ واحد: كان بثّين فيصل من داخل المحادثة الحدث مرتين
-                const conv = await Conversation.findById(conversationId).select('participants').lean();
                 const rooms = [`conversation-${conversationId}`];
                 (conv?.participants || []).forEach(p => {
                     if (String(p) !== String(socket.userId)) rooms.push(`user:${p}`);
