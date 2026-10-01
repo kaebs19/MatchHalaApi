@@ -773,16 +773,18 @@ router.get('/cards', protect, async (req, res) => {
                 $nin: [...swipedIds, ...blockedIds, ...geoUserIds]
             };
 
-            // ⚠️ limit(0) في MongoDB = بلا حدّ: حين يملأ geoNear الحصّة كاملة (الحالة الغالبة)
-            //    كان Math.max(0, …) يُنتج 0 فيجلب كل المستخدمين بلا موقع (~38 ألفاً) كـ Documents
-            //    كاملة ثم يُرمى الناتج — تجمّد event loop حتى 2.6ث في كل نسخة (CPU profile).
-            const remaining = fetchLimit - geoUsers.length;
-            const noLocationUsers = remaining > 0
-                ? await User.find(noGeoFilter)
-                    .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
-                    .limit(remaining)
-                    .lean()
-                : [];
+            // ⚠️ مجموعة ثانية **مرتّبة بآخر نشاط ومحدودة**:
+            //    - كان limit(Math.max(0, …)) يُنتج 0 = بلا حدّ في MongoDB → ~38 ألف Document في كل
+            //      طلب (تجمّد event loop حتى 2.6ث). وحذفها كلياً (e2f2597) جعل المرشّحين أقرب 40 فقط
+            //      مهما كان نشاطهم — لمستخدم حقيقي: 0 نشط خلال ساعة و29/40 أقدم من 7 أيام.
+            //    - الآن: الأحدث نشاطاً ممن لم يظهر في geoNear، بحدّ يكفي الصفحة المطلوبة (~200ms).
+            //      ثم ترتيب الكل بـ calculateRankScore (النشاط أولاً) كما كان.
+            const noGeoLimit = Math.min(300, Math.max(fetchLimit, pageNum * limitNum + limitNum)); // سقف: page/limit بلا حدّ من العميل
+            const noLocationUsers = await User.find(noGeoFilter)
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
+                .sort({ lastLogin: -1 })
+                .limit(noGeoLimit)
+                .lean();
 
             // 3) دمج النتائج
             const geoCards = geoUsers.map(u => {
