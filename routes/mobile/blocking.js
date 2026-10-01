@@ -45,6 +45,7 @@ router.post('/users/block/:userId', protect, async (req, res) => {
             global.invalidatePartnersCache(String(req.user._id));
             global.invalidatePartnersCache(String(userId));
         }
+        require('../../utils/blockStateEvent').emitBlockStateChange(String(req.user._id), String(userId), true);
 
         // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند الإبلاغ.
         //    تُحذف فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
@@ -127,6 +128,7 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
             global.invalidatePartnersCache(String(req.user._id));
             global.invalidatePartnersCache(String(userId));
         }
+        require('../../utils/blockStateEvent').emitBlockStateChange(String(req.user._id), String(userId), false);
 
         res.json({
             success: true,

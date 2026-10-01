@@ -295,6 +295,7 @@ router.post('/block/:userId', [
             global.invalidatePartnersCache(String(req.user.id));
             global.invalidatePartnersCache(String(userId));
         }
+        require('../utils/blockStateEvent').emitBlockStateChange(String(req.user.id), String(userId), true);
 
         // ✅ عند الحاظر تبقى المحادثة افتراضياً — قد يحتاجها إثباتاً عند
         //    الإبلاغ. تُخفى فقط لو طلب ذلك صراحةً من نافذة تأكيد الحظر.
@@ -392,6 +393,7 @@ router.delete('/unblock/:userId', [
             global.invalidatePartnersCache(String(req.user.id));
             global.invalidatePartnersCache(String(userId));
         }
+        require('../utils/blockStateEvent').emitBlockStateChange(String(req.user.id), String(userId), false);
 
         res.json({
             success: true,
