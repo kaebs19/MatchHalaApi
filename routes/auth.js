@@ -564,6 +564,36 @@ const getFullUrl = (imgPath) => {
 // @route   GET /api/auth/me
 // @desc    الحصول على بيانات المستخدم الحالي
 // @access  Private
+// ══════════════════════════════════════════
+// ✍️ حدّ تغيير الاسم — 5 مرات كل 30 يوماً (نافذة متحرّكة)
+// ══════════════════════════════════════════
+const NAME_CHANGE_WINDOW_DAYS = 30;
+const NAME_CHANGE_MAX = 5;
+
+/** تواريخ تغييرات الاسم داخل النافذة (مع ترحيل lastNameChange القديم) */
+function nameChangesInWindow(user) {
+    const cutoff = new Date(Date.now() - NAME_CHANGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    let history = (user.nameChangeHistory || []).map(d => new Date(d)).filter(d => d > cutoff);
+    if (history.length === 0 && user.lastNameChange) {
+        const last = new Date(user.lastNameChange);
+        if (last > cutoff) history = [last];
+    }
+    return history;
+}
+
+/** ما يحتاجه التطبيق ليُبلغ المستخدم: المستخدَم، المتبقي، ومتى تتوفر محاولة جديدة */
+function nameChangeStatus(user) {
+    const history = nameChangesInWindow(user);
+    const used = Math.min(history.length, NAME_CHANGE_MAX);
+    const remaining = Math.max(0, NAME_CHANGE_MAX - used);
+    let nextAvailableAt = null;
+    if (remaining === 0 && history.length > 0) {
+        const oldest = Math.min(...history.map(d => d.getTime()));
+        nextAvailableAt = new Date(oldest + NAME_CHANGE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    }
+    return { max: NAME_CHANGE_MAX, used, remaining, windowDays: NAME_CHANGE_WINDOW_DAYS, nextAvailableAt };
+}
+
 router.get('/me', protect, async (req, res) => {
     try {
         // ✅ حفظ بصمة الجهاز من headers (لو ما وصلت من login)
@@ -620,7 +650,8 @@ router.get('/me', protect, async (req, res) => {
         res.status(200).json({
             success: true,
             data: {
-                user: userObj
+                user: userObj,
+                nameChange: nameChangeStatus(req.user)   // ✍️ المتبقي من تغييرات الاسم
             }
         });
     } catch (error) {
@@ -667,23 +698,10 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             }
         }
 
-        // ✅ فحص cooldown تغيير الاسم (3 مرات كل 30 يوم)
-        const NAME_CHANGE_WINDOW_DAYS = 30;
-        const NAME_CHANGE_MAX = 3;
+        // ✅ فحص حدّ تغيير الاسم (NAME_CHANGE_MAX مرات كل NAME_CHANGE_WINDOW_DAYS يوماً)
         if (name && name !== user.name) {
             const windowMs = NAME_CHANGE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-            const cutoff = new Date(Date.now() - windowMs);
-
-            // فلترة التاريخ → احتفظ فقط بالتعديلات داخل النافذة
-            let history = (user.nameChangeHistory || [])
-                .map(d => new Date(d))
-                .filter(d => d > cutoff);
-
-            // Migration: إذا الـ history فاضي + lastNameChange قديم داخل النافذة → ضمّه
-            if (history.length === 0 && user.lastNameChange) {
-                const last = new Date(user.lastNameChange);
-                if (last > cutoff) history = [last];
-            }
+            const history = nameChangesInWindow(user);
 
             if (history.length >= NAME_CHANGE_MAX) {
                 // أقدم تعديل في النافذة + 30 يوم = متى تتوفر محاولة جديدة
@@ -697,7 +715,8 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
                     code: 'NAME_COOLDOWN',
                     remainingDays,
                     used: history.length,
-                    max: NAME_CHANGE_MAX
+                    max: NAME_CHANGE_MAX,
+                    nameChange: nameChangeStatus(user)
                 });
             }
 
@@ -907,7 +926,9 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             message: 'تم تحديث البيانات بنجاح',
             data: {
                 user: userObj,
-                bioRedacted: bioRedactedNotice  // ✅ {message, categories} لو تمّ حذف ترويج خارجي
+                bioRedacted: bioRedactedNotice,  // ✅ {message, categories} لو تمّ حذف ترويج خارجي
+                nameChange: nameChangeStatus(user),  // ✍️ المتبقي بعد هذا الحفظ
+                nameChanged: !!req._nameChangeHistory   // هل تغيّر الاسم في هذا الطلب؟
             }
         });
 
