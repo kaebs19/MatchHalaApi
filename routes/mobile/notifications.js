@@ -8,7 +8,8 @@ const { buildUserNotificationsFilter, FILTER_CATEGORIES, getTypeMeta } = require
 const { groupNotifications, formatGroupedNotification } = require('../../utils/notificationHelpers');
 
 // شعار التطبيق الرسمي — يُستخدم كأيقونة لإشعارات الأدمن الرسمية بدل صورة الأدمن الشخصية
-const OFFICIAL_NOTIFICATION_LOGO = (process.env.BASE_URL || 'https://matchhala.chathala.com') + '/app-logo.png';
+const OFFICIAL_NOTIFICATION_LOGO = (process.env.BASE_URL || 'https://matchhala.chathala.com') + '/admin/app-logo-v2.png';
+const OFFICIAL_SENDER_NAME = 'هلا شات';
 
 // ==========================================
 // نظام الإشعارات الموحّد
@@ -81,7 +82,10 @@ router.get('/notifications', protect, async (req, res) => {
             // الإشعارات الاجتماعية (إعجاب/متابعة/مطابقة) تبقى تعرض صورة الشخص الفعلي.
             const isOfficial = getTypeMeta(notif.type).category === 'personal';
             if (isOfficial) {
-                notif.sender = { ...(notif.sender || {}), profileImage: OFFICIAL_NOTIFICATION_LOGO };
+                // هوية الحساب الرسمي **بدل** المرسِل لا فوقه: كان يُدمج مع بيانات الأدمن
+                // فيصل اسمه ومعرّفه للتطبيق (والنقر عليه يفتح ملفه). لا شيء من الأدمن يخرج.
+                notif.sender = { name: OFFICIAL_SENDER_NAME, profileImage: OFFICIAL_NOTIFICATION_LOGO, isOfficial: true };
+                notif.isOfficial = true;
             } else if (notif.sender) {
                 notif.sender.profileImage = getFullUrl(getBestUserImage(notif.sender));
             }

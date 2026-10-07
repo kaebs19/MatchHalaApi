@@ -216,7 +216,7 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
                 priority: 'high',
                 notification: {
                     sound: 'default',
-                    channelId: 'matchhala_channel',
+                    channelId: 'hala_system',
                     ...(hasImage ? { imageUrl: String(data.image) } : {})
                 }
             },

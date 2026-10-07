@@ -4,7 +4,11 @@ const router = express.Router();
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { protect, adminOnly } = require('../middleware/auth');
+const mongoose = require('mongoose');
 const { sendToMultipleDevices } = require('../config/firebase');
+
+// الأنواع المسموح إرسالها من اللوحة — كلها فئة personal (تُعرض بهوية الحساب الرسمي)
+const OFFICIAL_BROADCAST_TYPES = ['announcement', 'general', 'system'];
 
 // ✅ إرسال Push عبر FCM لقائمة مستخدمين — يظهر خارج التطبيق (أندرويد + iOS)
 // نفس مسار إشعارات المحادثات العاملة (notification payload + android high priority).
@@ -132,22 +136,55 @@ router.post('/send', protect, adminOnly, async (req, res) => {
         const {
             title,
             body,
-            type = 'general',
             recipients = 'all',
-            targetUserIds = [],
+            targets = '',
             priority = 'normal',
-            data = {},
             sound = 'default',
             badge = 1,
             link,
             image
         } = req.body;
+        let { type = 'announcement', targetUserIds = [] } = req.body;
+        // data مستقلّ عن جسم الطلب — لا نسمح للوحة بحقن senderId/conversationId وغيرها
+        const data = { official: 'true' };
 
         // Validation
         if (!title || !body) {
             return res.status(400).json({
                 success: false,
                 message: 'العنوان والمحتوى مطلوبان'
+            });
+        }
+
+        // ✅ الإشعار من اللوحة **رسمي دائماً**: يُحصر النوع في الأنواع الرسمية. نوع مثل
+        // `message` كان يُعرض في التطبيق كإشعار من شخص، والنقر عليه يفتح ملف الأدمن.
+        if (!OFFICIAL_BROADCAST_TYPES.includes(type)) type = 'announcement';
+
+        // ✅ مستخدمون محدّدون: معرّفات أو بريد، مفصولة بفواصل/أسطر/مسافات
+        if (recipients === 'specific') {
+            const tokens = [
+                ...(Array.isArray(targetUserIds) ? targetUserIds : []),
+                ...String(targets || '').split(/[\s,،;]+/)
+            ].map(t => String(t).trim()).filter(Boolean);
+            const ids = tokens.filter(t => mongoose.Types.ObjectId.isValid(t) && /^[a-f0-9]{24}$/i.test(t));
+            const emails = tokens.filter(t => t.includes('@')).map(t => t.toLowerCase());
+            const found = (ids.length || emails.length)
+                ? await User.find({ $or: [{ _id: { $in: ids } }, { email: { $in: emails } }] }).select('_id').lean()
+                : [];
+            targetUserIds = found.map(u => u._id);
+            if (targetUserIds.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'لم يُعثر على أي مستخدم بالمعرّفات أو البريد المُدخل'
+                });
+            }
+        }
+
+        // ✅ الرابط يجب أن يكون http(s) — لا مخططات أخرى (intent:// إلخ) تُفتح على الجهاز
+        if (link && typeof link === 'string' && link.trim() && !/^https?:\/\/\S+$/i.test(link.trim())) {
+            return res.status(400).json({
+                success: false,
+                message: 'الرابط يجب أن يبدأ بـ http:// أو https://'
             });
         }
 
@@ -197,8 +234,10 @@ router.post('/send', protect, adminOnly, async (req, res) => {
         // ✅ نرد على اللوحة فوراً — تجنّب 504 (إرسال FCM لآلاف المستخدمين يتجاوز مهلة nginx 90s)
         res.json({
             success: true,
-            message: 'بدأ إرسال الإشعار. سيظهر العدد النهائي في سجل الإشعارات بعد الانتهاء.',
-            data: { notification }
+            message: recipients === 'specific'
+                ? `بدأ إرسال الإشعار إلى ${targetUserIds.length} مستخدم.`
+                : 'بدأ إرسال الإشعار. سيظهر العدد النهائي في سجل الإشعارات بعد الانتهاء.',
+            data: { notification, recipientsCount: recipients === 'specific' ? targetUserIds.length : undefined }
         });
 
         // ✅ إرسال FCM في الخلفية (بعد إرسال الرد) — لا يحجب الطلب

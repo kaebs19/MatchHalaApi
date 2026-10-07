@@ -70,8 +70,11 @@ function Dashboard({ user, onPageChange }) {
     const [notificationData, setNotificationData] = useState({
         title: '',
         body: '',
-        type: 'general',
-        recipients: 'all'
+        type: 'announcement',
+        recipients: 'all',
+        targets: '',
+        link: '',
+        image: ''
     });
     const [sending, setSending] = useState(false);
     const { showToast } = useToast();
@@ -159,6 +162,10 @@ function Dashboard({ user, onPageChange }) {
             showToast('العنوان والمحتوى مطلوبان', 'error');
             return;
         }
+        if (notificationData.recipients === 'specific' && !notificationData.targets.trim()) {
+            showToast('أدخل معرّف أو بريد مستخدم واحد على الأقل', 'error');
+            return;
+        }
 
         try {
             setSending(true);
@@ -176,13 +183,16 @@ function Dashboard({ user, onPageChange }) {
             const data = await response.json();
 
             if (data.success) {
-                showToast('تم إرسال الإشعار بنجاح ✅', 'success');
+                showToast(data.message || 'تم إرسال الإشعار بنجاح ✅', 'success');
                 setShowNotificationModal(false);
                 setNotificationData({
                     title: '',
                     body: '',
-                    type: 'general',
-                    recipients: 'all'
+                    type: 'announcement',
+                    recipients: 'all',
+                    targets: '',
+                    link: '',
+                    image: ''
                 });
             } else {
                 showToast(data.message || 'فشل إرسال الإشعار', 'error');
@@ -528,11 +538,9 @@ function Dashboard({ user, onPageChange }) {
                                             type: e.target.value
                                         })}
                                     >
-                                        <option value="general">عام</option>
-                                        <option value="message">رسالة</option>
                                         <option value="announcement">إعلان</option>
-                                        <option value="report">بلاغ</option>
-                                        <option value="system">نظام</option>
+                                        <option value="general">عام</option>
+                                        <option value="system">نظام / تحديث</option>
                                     </select>
                                 </div>
 
@@ -548,6 +556,68 @@ function Dashboard({ user, onPageChange }) {
                                         <option value="all">جميع المستخدمين</option>
                                         <option value="specific">مستخدمون محددون</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            {notificationData.recipients === 'specific' && (
+                                <div className="form-group">
+                                    <label>المستخدمون (معرّف أو بريد) *</label>
+                                    <textarea
+                                        value={notificationData.targets}
+                                        onChange={(e) => setNotificationData({
+                                            ...notificationData,
+                                            targets: e.target.value
+                                        })}
+                                        placeholder="مثال: 66a1f0c2e4b0a1b2c3d4e5f6, user@example.com — افصل بفاصلة أو سطر جديد"
+                                        rows={3}
+                                        dir="ltr"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label>رابط عند الضغط (اختياري)</label>
+                                    <input
+                                        type="url"
+                                        value={notificationData.link}
+                                        onChange={(e) => setNotificationData({
+                                            ...notificationData,
+                                            link: e.target.value
+                                        })}
+                                        placeholder="https://..."
+                                        dir="ltr"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>رابط صورة (اختياري)</label>
+                                    <input
+                                        type="url"
+                                        value={notificationData.image}
+                                        onChange={(e) => setNotificationData({
+                                            ...notificationData,
+                                            image: e.target.value
+                                        })}
+                                        placeholder="https://.../image.jpg"
+                                        dir="ltr"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* معاينة: هكذا يراه المستخدم — بهوية الحساب الرسمي، لا يظهر اسم المشرف */}
+                            <div className="form-group">
+                                <label>معاينة في التطبيق</label>
+                                <div style={{
+                                    display: 'flex', gap: 12, alignItems: 'flex-start',
+                                    padding: 12, borderRadius: 14,
+                                    border: '1px solid rgba(128,128,128,0.25)'
+                                }}>
+                                    <img src={`${process.env.PUBLIC_URL}/app-logo-v2.png`} alt="" style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#E91E8C' }}>✔ هلا شات • حساب رسمي</div>
+                                        <div style={{ fontWeight: 700, marginTop: 2 }}>{notificationData.title || 'عنوان الإشعار'}</div>
+                                        <div style={{ opacity: 0.75, fontSize: 14, whiteSpace: 'pre-wrap' }}>{notificationData.body || 'محتوى الإشعار'}</div>
+                                    </div>
                                 </div>
                             </div>
 
