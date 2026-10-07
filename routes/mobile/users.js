@@ -353,6 +353,13 @@ router.get('/users/search', protect, async (req, res) => {
             return 'بعيد';
         };
 
+        // ✅ شارة الحساب الرسمي في نتائج البحث: التطبيق يحسب isAdmin من role.
+        //    لا يُرسَل role إلا للمشرفين — قيمته لبقية المستخدمين تفصيل داخلي.
+        const exposeAdminRole = (u) => {
+            if (u.role !== 'admin' && u.role !== 'superadmin') delete u.role;
+            return u;
+        };
+
         let users, totalUsers;
 
         // Helper: تطبيق الخصوصية على نتيجة lean/aggregate (lastSeen + إخفاء العمر/الدولة + رابط الصورة)
@@ -370,7 +377,7 @@ router.get('/users/search', protect, async (req, res) => {
             delete obj.verification;
             obj.distance = null;
             obj.distanceLabel = null;
-            return obj;
+            return exposeAdminRole(obj);
         };
 
         // ✅ عيّنة عشوائية (لاقتراحات صفحة البحث) — مستخدمون مختلفون كل مرة
@@ -389,7 +396,7 @@ router.get('/users/search', protect, async (req, res) => {
             const RANDOM_POOL = 300;
 
             const pool = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline lastLogin isPremium stealthMode showAge showCountry verification.isVerified')
+                .select('name email profileImage birthDate gender country bio isOnline lastLogin isPremium stealthMode showAge showCountry verification.isVerified role')
                 .sort({ lastLogin: -1 })
                 .limit(RANDOM_POOL)
                 .lean();
@@ -440,7 +447,7 @@ router.get('/users/search', protect, async (req, res) => {
                         name: 1, email: 1, profileImage: 1, birthDate: 1,
                         gender: 1, country: 1, bio: 1, isOnline: 1, lastLogin: 1,
                         isVerified: '$verification.isVerified', isPremium: 1, stealthMode: 1, distance: 1,
-                        showDistance: 1, showAge: 1, showCountry: 1
+                        showDistance: 1, showAge: 1, showCountry: 1, role: 1
                     }
                 },
                 { $sort: { isOnline: -1, distance: 1 } },
@@ -467,7 +474,7 @@ router.get('/users/search', protect, async (req, res) => {
                 delete result.showDistance;
                 delete result.showAge;
                 delete result.showCountry;
-                return result;
+                return exposeAdminRole(result);
             });
 
             // حساب الإجمالي
@@ -489,7 +496,7 @@ router.get('/users/search', protect, async (req, res) => {
         } else {
             // بدون موقع — البحث العادي
             users = await User.find(filter)
-                .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode showAge showCountry')
+                .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode showAge showCountry role')
                 .sort({ isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum)
@@ -512,7 +519,7 @@ router.get('/users/search', protect, async (req, res) => {
                 delete userObj.verification;
                 userObj.distance = null;
                 userObj.distanceLabel = null;
-                return userObj;
+                return exposeAdminRole(userObj);
             });
         }
 
