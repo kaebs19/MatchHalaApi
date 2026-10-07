@@ -733,6 +733,8 @@ router.get('/cards', protect, async (req, res) => {
                 isVerified: u.verification?.isVerified || false,
                 lastLogin: hidePresence ? null : u.lastLogin,
                 distance: hideDistance ? null : distanceKm,
+                // شارة الحساب الرسمي: role يُرسَل للمشرفين وحدهم (كالبحث)
+                ...((u.role === 'admin' || u.role === 'superadmin') ? { role: u.role } : {}),
                 _score: rankScore
             };
         };
@@ -758,7 +760,7 @@ router.get('/cards', protect, async (req, res) => {
                         isPremium: 1, distance: 1, lastLogin: 1,
                         createdAt: 1, updatedAt: 1, verification: 1, showDistance: 1,
                         privacySettings: 1, stealthMode: 1, showAge: 1, showCountry: 1,
-                        newcomer: 1
+                        newcomer: 1, role: 1
                     }
                 },
                 { $limit: fetchLimit }
@@ -781,7 +783,7 @@ router.get('/cards', protect, async (req, res) => {
             //      ثم ترتيب الكل بـ calculateRankScore (النشاط أولاً) كما كان.
             const noGeoLimit = Math.min(300, Math.max(fetchLimit, pageNum * limitNum + limitNum)); // سقف: page/limit بلا حدّ من العميل
             const noLocationUsers = await User.find(noGeoFilter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer role')
                 .sort({ lastLogin: -1 })
                 .limit(noGeoLimit)
                 .lean();
@@ -808,7 +810,7 @@ router.get('/cards', protect, async (req, res) => {
         } else {
             // بدون موقع - ترتيب بالنقاط فقط
             const rawUsers = await User.find(filter)
-                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer')
+                .select('name profileImage photos birthDate gender country bio isOnline isPremium verification.isVerified lastLogin createdAt updatedAt privacySettings stealthMode showAge showCountry newcomer role')
                 .limit(fetchLimit);
 
             users = rawUsers.map(u => mapUserToCard(u.toObject(), null));

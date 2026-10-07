@@ -578,7 +578,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry'
+            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry role'
         ).lean();
 
         if (!user) {
@@ -716,7 +716,9 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             // ✅ إعدادات الخصوصية للعرض الشرطي في iOS (تعطيل زر الإرسال مسبقاً)
             acceptingRequests: user.acceptingRequests !== false, // افتراضي true
             premiumOnlyRequests: user.premiumOnlyRequests === true,
-            likedYou
+            likedYou,
+            // شارة الحساب الرسمي: role يُرسَل للمشرفين وحدهم (كالبحث والاكتشاف)
+            ...((user.role === 'admin' || user.role === 'superadmin') ? { role: user.role } : {})
         };
 
         // ✅ إخفاء الحساب — العميل يبلر الصورة ويخفي الاسم لمن ليس المستخدم نفسه
