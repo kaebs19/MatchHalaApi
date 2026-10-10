@@ -270,7 +270,6 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     // تغيير نوع المخالفة يُعيد الطلب من السيرفر
     useEffect(() => {
         if (activeTab === 'violations') fetchViolations();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [violationsFilter]);
 
     // lazy-load عند فتح التابات الجديدة
