@@ -96,7 +96,7 @@
 
 .users-page .search-box input {
     width: 100%;
-    padding: 10px 40px 10px 14px;
+    padding: 10px 14px 10px 40px; /* الأيقونة على اليسار — المساحة لها هناك لا على اليمين */
     border: 1.5px solid var(--border-color);
     border-radius: 10px;
     font-size: 13px;
