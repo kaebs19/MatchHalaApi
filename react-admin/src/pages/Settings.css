@@ -168,13 +168,20 @@
         font-size: 2rem;
     }
 
+    /* صفّ أفقي يُمرَّر — كان عموداً من الأزرار بعرض كامل (~514px قبل المحتوى) */
     .settings-tabs {
-        flex-direction: column;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        gap: 6px;
+        margin-bottom: 14px;
     }
+    .settings-tabs::-webkit-scrollbar { display: none; }
 
     .settings-page .tab-btn {
-        width: 100%;
-        justify-content: center;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 10px 14px;
     }
 
     .settings-content {
