@@ -254,6 +254,19 @@ const protect = async (req, res, next) => {
 
             next();
         } catch (error) {
+            // ⚠️ 401 للتوكن وحده. خطأ القاعدة (ECONNREFUSED عند إعادة تشغيل mongod — 6 مرات في السجلّ)
+            //    كان يردّ 401 فيُخرج التطبيق واللوحة المستخدم بلا سبب. 500 لا 503: التطبيق
+            //    يعرض شاشة الصيانة لأي 503 (NetworkManager.handleMaintenance503).
+            const isTokenError = ['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name);
+            if (!isTokenError) {
+                console.error('⚠️ protect: خطأ داخلي أثناء التحقق (ليس توكن):', error.message);
+                if (res.headersSent) return;
+                return res.status(500).json({
+                    success: false,
+                    message: 'خطأ مؤقت في الخادم، حاول مرة أخرى',
+                    code: 'AUTH_CHECK_FAILED'
+                });
+            }
             console.error('خطأ في التحقق من Token:', error.message);
             return res.status(401).json({
                 success: false,
