@@ -417,5 +417,8 @@ img.user-avatar { background: #f0f0f0; }
     .charts-grid { gap: 10px; margin-top: 10px; }
     .chart-card { padding: 14px; }
     .chart-card h4 { margin: 0 0 8px; font-size: 15px; }
-    .growth-chart { height: 130px; gap: 6px; }
+    .growth-chart { height: 110px; gap: 6px; }
+    /* النسخ مرتّبة بعدد المستخدمين تنازلياً — أعلى خمس تكفي على الجوال */
+    .version-list { gap: 7px; padding-top: 4px; }
+    .version-row:nth-child(n+6) { display: none; }
 }
