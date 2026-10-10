@@ -368,28 +368,43 @@ let analyticsInFlight = null;
 async function computeAnalytics() {
         const now = new Date();
         const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
-        // _id يحمل وقت الإنشاء ومفهرس — createdAt على الرسائل غير مفهرس (مسح كامل)
-        const thirtyDaysAgoId = mongoose.Types.ObjectId.createFromTime(Math.floor(thirtyDaysAgo / 1000));
+        // الرسائل تُحدَّد بمدى _id (يحمل وقت الإنشاء ومفهرس) — createdAt عليها غير مفهرس
 
-        // ═══════════ 1+3+7. الرسائل: مرور واحد بدل ثلاثة ═══════════
-        const [msgFacet] = await Message.aggregate([
-            { $match: { _id: { $gte: thirtyDaysAgoId }, isDeleted: false } },
-            { $project: { sender: 1, createdAt: 1 } },
-            { $facet: {
-                bySender: [
-                    { $group: { _id: '$sender', messageCount: { $sum: 1 }, lastMessage: { $max: '$createdAt' } } },
-                    { $sort: { messageCount: -1 } },
-                    { $limit: 30 }
-                ],
-                byDay: [
-                    { $group: {
-                        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                        count: { $sum: 1 }
-                    }},
-                    { $sort: { _id: 1 } }
-                ]
-            }}
-        ]).allowDiskUse(true);
+        // ═══════════ 1+3+7. الرسائل: على دفعات من 3 أيام ═══════════
+        // ⚠️ تجميع الثلاثين يوماً دفعةً واحدة (~5.4 مليون رسالة) تجاوز socketTimeoutMS (45ث)
+        // تحت الحِمل ← MongoNetworkTimeoutError. عشر عمليات قصيرة تُدمج هنا بالنتيجة نفسها.
+        const CHUNK_MS = 3 * 24 * 60 * 60 * 1000;
+        const senderMap = new Map();   // sender → { messageCount, lastMessage }
+        const dayMap = new Map();      // 'YYYY-MM-DD' → count
+        for (let from = thirtyDaysAgo.getTime(); from < now.getTime(); from += CHUNK_MS) {
+            const to = Math.min(from + CHUNK_MS, now.getTime());
+            const [chunk] = await Message.aggregate([
+                { $match: {
+                    _id: {
+                        $gte: mongoose.Types.ObjectId.createFromTime(Math.floor(from / 1000)),
+                        $lt: mongoose.Types.ObjectId.createFromTime(Math.floor(to / 1000))
+                    },
+                    isDeleted: false
+                }},
+                { $project: { sender: 1, createdAt: 1 } },
+                { $facet: {
+                    bySender: [{ $group: { _id: '$sender', c: { $sum: 1 }, last: { $max: '$createdAt' } } }],
+                    byDay: [{ $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } }]
+                }}
+            ]).allowDiskUse(true);
+            for (const r of chunk.bySender) {
+                if (!r._id) continue;
+                const k = String(r._id);
+                const cur = senderMap.get(k);
+                if (cur) { cur.messageCount += r.c; if (r.last > cur.lastMessage) cur.lastMessage = r.last; }
+                else senderMap.set(k, { _id: r._id, messageCount: r.c, lastMessage: r.last });
+            }
+            for (const d of chunk.byDay) dayMap.set(d._id, (dayMap.get(d._id) || 0) + d.count);
+        }
+        const msgFacet = {
+            bySender: [...senderMap.values()].sort((a, b) => b.messageCount - a.messageCount).slice(0, 30),
+            byDay: [...dayMap.entries()].map(([_id, count]) => ({ _id, count })).sort((a, b) => a._id.localeCompare(b._id))
+        };
 
         // ═══════════ 1. الأكثر إرسالاً للرسائل (آخر 30 يوم) ═══════════
         const topSenders = msgFacet.bySender.slice(0, 15);
@@ -410,12 +425,22 @@ async function computeAnalytics() {
             .lean();
 
         // ═══════════ 3. الأكثر نشاطاً (swipes + messages مجتمعة) ═══════════
-        const topSwipersRaw = await Swipe.aggregate([
-            { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-            { $group: { _id: '$swiper', swipeCount: { $sum: 1 } } },
-            { $sort: { swipeCount: -1 } },
-            { $limit: 30 }
-        ]).allowDiskUse(true);
+        // السوايبات بالدفعات نفسها (~5.3 مليون في 30 يوماً — العملية الواحدة ~30ث بلا حِمل)
+        const swiperMap = new Map();
+        for (let from = thirtyDaysAgo.getTime(); from < now.getTime(); from += CHUNK_MS) {
+            const to = Math.min(from + CHUNK_MS, now.getTime());
+            const rows = await Swipe.aggregate([
+                { $match: { createdAt: { $gte: new Date(from), $lt: new Date(to) } } },
+                { $group: { _id: '$swiper', c: { $sum: 1 } } }
+            ]).allowDiskUse(true);
+            for (const r of rows) {
+                if (!r._id) continue;
+                const k = String(r._id);
+                const cur = swiperMap.get(k);
+                if (cur) cur.swipeCount += r.c; else swiperMap.set(k, { _id: r._id, swipeCount: r.c });
+            }
+        }
+        const topSwipersRaw = [...swiperMap.values()].sort((a, b) => b.swipeCount - a.swipeCount).slice(0, 30);
 
         const topMsgRaw = msgFacet.bySender.map(s => ({ _id: s._id, msgCount: s.messageCount }));
 
