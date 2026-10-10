@@ -9,7 +9,6 @@ import {
     getConversationMessages,
     getConversationById,
     deleteMessage,
-    sendMessage,
     suspendUser,
     toggleUserActive
 } from '../services/api';
@@ -44,8 +43,6 @@ function Conversations({ onViewUserDetail }) {
     const [msgPage, setMsgPage] = useState(1);
     const [msgTotalPages, setMsgTotalPages] = useState(1);
     const [msgSearch, setMsgSearch] = useState('');
-    const [newMessage, setNewMessage] = useState('');
-    const [sending, setSending] = useState(false);
     const [imageViewer, setImageViewer] = useState(null);    // {url, sender}
     const [addedWords, setAddedWords] = useState({});        // ✅ {word: 'pending'|'added'|'duplicate'}
     const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -247,27 +244,6 @@ function Conversations({ onViewUserDetail }) {
             showToast('فشل تحميل الرسائل', 'error');
         } finally {
             setMessagesLoading(false);
-        }
-    };
-
-    // إرسال رسالة
-    const handleSend = async (e) => {
-        e.preventDefault();
-        if (!newMessage.trim() || sending || !selectedConv) return;
-        const content = newMessage;
-        setNewMessage('');
-        setSending(true);
-        try {
-            const res = await sendMessage(selectedConv._id, content, 'text');
-            if (!res.success) {
-                setNewMessage(content);
-                showToast(res.message || 'فشل الإرسال', 'error');
-            }
-        } catch {
-            setNewMessage(content);
-            showToast('فشل الإرسال', 'error');
-        } finally {
-            setSending(false);
         }
     };
 
@@ -808,19 +784,6 @@ function Conversations({ onViewUserDetail }) {
                             )}
                         </div>
 
-                        {/* إرسال رسالة */}
-                        <form className="conv-chat-input" onSubmit={handleSend}>
-                            <input
-                                type="text"
-                                placeholder="اكتب رسالة كأدمن..."
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                disabled={sending}
-                            />
-                            <button type="submit" disabled={!newMessage.trim() || sending}>
-                                {sending ? '...' : '📤'}
-                            </button>
-                        </form>
                     </>
                 )}
             </div>

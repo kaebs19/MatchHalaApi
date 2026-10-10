@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getConversationMessages, deleteMessage, getConversationById, sendMessage, toggleUserActive, suspendUser } from '../services/api';
+import { getConversationMessages, deleteMessage, getConversationById, toggleUserActive, suspendUser } from '../services/api';
 import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AudioMessageBubble from '../components/AudioMessageBubble';
@@ -22,8 +22,6 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [typingUser, setTypingUser] = useState(null);
     const [onlineCount, setOnlineCount] = useState(0);
-    const [newMessage, setNewMessage] = useState('');
-    const [sending, setSending] = useState(false);
     const [userActionMenu, setUserActionMenu] = useState(null);
     const [showBanConfirm, setShowBanConfirm] = useState(false);
     const [banningUser, setBanningUser] = useState(null);
@@ -278,66 +276,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    // معالج الكتابة في الـ input
-    const handleMessageInput = (e) => {
-        const value = e.target.value;
-        setNewMessage(value);
-
-        // إرسال حدث "يكتب الآن"
-        if (value.trim()) {
-            const userName = localStorage.getItem('userName') || 'Admin';
-            socketService.emitTyping(conversationId, userName);
-
-            // إيقاف الحدث بعد 3 ثوانٍ
-            if (typingDebounceRef.current) {
-                clearTimeout(typingDebounceRef.current);
-            }
-            typingDebounceRef.current = setTimeout(() => {
-                socketService.emitStopTyping(conversationId);
-            }, 3000);
-        } else {
-            socketService.emitStopTyping(conversationId);
-        }
-    };
-
-    // إرسال رسالة جديدة
-    const handleSendMessage = async (e) => {
-        e.preventDefault();
-
-        if (!newMessage.trim() || sending) return;
-
-        const messageContent = newMessage;
-
-        try {
-            setSending(true);
-            socketService.emitStopTyping(conversationId);
-
-            // تفريغ الـ input فوراً لتحسين UX
-            setNewMessage('');
-
-            // إرسال الرسالة للـ API
-            // سيتم بث الرسالة تلقائياً عبر Socket.IO من Backend
-            const response = await sendMessage(conversationId, messageContent, 'text');
-
-            if (response.success) {
-                showToast('تم إرسال الرسالة ✅', 'success');
-                scrollToBottom();
-            } else {
-                // في حالة الفشل، نعيد النص للـ input
-                setNewMessage(messageContent);
-                showToast(response.message || 'فشل إرسال الرسالة', 'error');
-            }
-
-        } catch (error) {
-            console.error('خطأ في إرسال الرسالة:', error);
-            // نعيد النص للـ input
-            setNewMessage(messageContent);
-            showToast('فشل إرسال الرسالة', 'error');
-        } finally {
-            setSending(false);
-        }
-    };
-
+    // ⚠️ لا إرسال ولا «يكتب» من اللوحة — المشرف يراقب المحتوى فقط
     useEffect(() => {
         if (!loading) {
             scrollToBottom();
@@ -819,25 +758,6 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                     </div>
                 )}
             </div>
-
-            {/* Message Input - واجهة الإرسال */}
-            <form className="message-input-container" onSubmit={handleSendMessage}>
-                <input
-                    type="text"
-                    className="message-input"
-                    placeholder="اكتب رسالتك هنا..."
-                    value={newMessage}
-                    onChange={handleMessageInput}
-                    disabled={sending}
-                />
-                <button
-                    type="submit"
-                    className="send-btn"
-                    disabled={!newMessage.trim() || sending}
-                >
-                    {sending ? '⏳' : '📤'}
-                </button>
-            </form>
 
             {/* Pagination */}
             {totalPages > 1 && (
