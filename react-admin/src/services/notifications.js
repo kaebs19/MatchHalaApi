@@ -3,7 +3,9 @@
 
 class NotificationService {
     constructor() {
-        this.permission = Notification.permission;
+        // ⚠️ Safari/Chrome على iPhone بلا Notification (خارج تطبيق الشاشة الرئيسية).
+        // كان يرمي ReferenceError عند تحميل الملف فيكسر تفاصيل المستخدم والمحادثات على الجوال.
+        this.permission = 'Notification' in window ? Notification.permission : 'unsupported';
     }
 
     // طلب إذن الإشعارات
