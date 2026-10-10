@@ -25,7 +25,8 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const [userActionMenu, setUserActionMenu] = useState(null);
     const [showBanConfirm, setShowBanConfirm] = useState(false);
     const [banningUser, setBanningUser] = useState(null);
-    const [filter, setFilter] = useState('all');           // ✅ all | flagged | images | audio
+    const [filter, setFilter] = useState('all');           // ✅ all | flagged | images | audio — يُطبَّق في السيرفر
+    const [counts, setCounts] = useState(null);            // عدّادات المحادثة كلها من السيرفر
     const [zoomImage, setZoomImage] = useState(null);      // ✅ {url, sender} للصور
     const [flaggedDetails, setFlaggedDetails] = useState(null); // ✅ تفاصيل المخالفة
     const messagesEndRef = useRef(null);
@@ -62,17 +63,18 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const audioMessages = React.useMemo(() => byTime.filter(m => m.type === 'audio' && !m.isDeleted), [byTime]);
     const flaggedMessages = React.useMemo(() => byTime.filter(m => m.hasBannedWords), [byTime]);
 
-    const flaggedCount = flaggedMessages.length;
-    const imagesCount = imageMessages.length;
-    const audioCount = audioMessages.length;
+    // للمحادثة كلها (السيرفر) — كانت تُعدّ من الصفحة المحمّلة (50 رسالة) وحدها
+    const totalCount = counts?.all ?? messages.length;
+    const flaggedCount = counts?.flagged ?? flaggedMessages.length;
+    const imagesCount = counts?.images ?? imageMessages.length;
+    const audioCount = counts?.audio ?? audioMessages.length;
 
     // القفز من الشريط إلى الرسالة في الدردشة + تظليل مؤقّت
     const [highlightedId, setHighlightedId] = useState(null);
     const highlightTimerRef = useRef(null);
 
     const jumpToMessage = (messageId) => {
-        // الفلتر النشط قد يكون مُخفياً للرسالة — نعيده للكل أولاً
-        setFilter('all');
+        // الشريط يُبنى من الرسائل المحمّلة — الرسالة ظاهرة بالفلتر الحالي
         setHighlightedId(messageId);
         if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
         highlightTimerRef.current = setTimeout(() => setHighlightedId(null), 2600);
@@ -208,7 +210,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     useEffect(() => {
         fetchMessages();
         fetchConversationInfo();
-    }, [conversationId, page, search]);
+    }, [conversationId, page, search, filter]);
 
     const fetchConversationInfo = async () => {
         try {
@@ -227,10 +229,11 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
     const fetchMessages = async () => {
         try {
             setLoading(true);
-            const response = await getConversationMessages(conversationId, page, 50, search);
+            const response = await getConversationMessages(conversationId, page, 50, search, filter);
             if (response.success) {
                 setMessages(response.data.messages);
                 setTotalPages(response.data.totalPages);
+                if (response.data.counts) setCounts(response.data.counts);
             }
         } catch (err) {
             console.error('خطأ في جلب الرسائل:', err);
@@ -301,7 +304,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                 <div className="conversation-info">
                     <h2>{conversation?.title || 'المحادثة'}</h2>
                     <div className="header-stats">
-                        <p>{messages.length} رسالة</p>
+                        <p>{totalCount} رسالة</p>
                         {onlineCount > 0 && (
                             <p className="online-count">
                                 <span className="online-dot"></span>
@@ -364,7 +367,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         );
                     })}
                     <div className="conv-stats">
-                        <div><strong>{messages.length}</strong> رسالة</div>
+                        <div><strong>{totalCount}</strong> رسالة</div>
                         {flaggedCount > 0 && <div className="stat-danger"><strong>{flaggedCount}</strong> ⚠️ مخالفة</div>}
                         {imagesCount > 0 && <div><strong>{imagesCount}</strong> 📷 صورة</div>}
                         {audioCount > 0 && <div><strong>{audioCount}</strong> 🎙️ صوتية</div>}
@@ -384,7 +387,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
             {/* شرائط الفلتر + زر إضافة كلمة محظورة */}
             <div className="conv-filters">
                 {[
-                    { id: 'all', label: '📋 الكل', count: messages.length },
+                    { id: 'all', label: '📋 الكل', count: totalCount },
                     { id: 'flagged', label: '⚠️ مخالف', count: flaggedCount },
                     { id: 'images', label: '📷 صور', count: imagesCount },
                     { id: 'audio', label: '🎙️ صوتية', count: audioCount }
@@ -394,7 +397,7 @@ function ConversationMessages({ conversationId, onBack, onViewUser }) {
                         <button
                             key={chip.id}
                             className={`conv-filter-chip cf-${chip.id} ${filter === chip.id ? 'active' : ''}`}
-                            onClick={() => setFilter(chip.id)}
+                            onClick={() => { setFilter(chip.id); setPage(1); }}
                         >
                             {chip.label} <span className="cf-count">({chip.count})</span>
                         </button>

@@ -51,7 +51,8 @@ function Conversations({ onViewUserDetail }) {
     const [msgMenu, setMsgMenu] = useState(null);            // ✅ {message, x, y}
 
     // ── تصفّح الوسائط والأدلة داخل لوحة المحادثة ──
-    const [msgFilter, setMsgFilter] = useState('all');        // all | flagged | images | audio
+    const [msgFilter, setMsgFilter] = useState('all');
+    const [msgCounts, setMsgCounts] = useState(null);         // عدّادات المحادثة كلها من السيرفر        // all | flagged | images | audio
     const [highlightedMsg, setHighlightedMsg] = useState(null);
     const highlightTimer = React.useRef(null);
 
@@ -75,8 +76,8 @@ function Conversations({ onViewUserDetail }) {
         return messages;
     }, [messages, msgFilter]);
 
+    // الرسالة في الصفحة المحمّلة (الشريط يُبنى منها) — لا حاجة لتغيير الفلتر
     const jumpToMessage = (messageId) => {
-        setMsgFilter('all');
         setHighlightedMsg(messageId);
         if (highlightTimer.current) clearTimeout(highlightTimer.current);
         highlightTimer.current = setTimeout(() => setHighlightedMsg(null), 2600);
@@ -185,6 +186,7 @@ function Conversations({ onViewUserDetail }) {
         // الفلتر لا يُورَّث من محادثة لأخرى — كان يبقى «صور» مثلاً فتُفتح
         // محادثة بلا صور فلا تظهر رسالة واحدة
         setMsgFilter('all');
+        setMsgCounts(null);
         setSelectedConv(conv);
         setMsgPage(1);
         setMsgSearch('');
@@ -199,6 +201,7 @@ function Conversations({ onViewUserDetail }) {
             if (msgRes.success) {
                 setMessages(msgRes.data.messages);
                 setMsgTotalPages(msgRes.data.totalPages);
+                if (msgRes.data.counts) setMsgCounts(msgRes.data.counts);
             }
         } catch (err) {
             showToast('فشل تحميل المحادثة', 'error');
@@ -230,21 +233,27 @@ function Conversations({ onViewUserDetail }) {
     };
 
     // تحميل صفحة رسائل
-    const loadMessages = async (page, search) => {
+    const loadMessages = async (page, search, filter = msgFilter) => {
         if (!selectedConv) return;
         setMessagesLoading(true);
         try {
-            const res = await getConversationMessages(selectedConv._id, page, 100, search);
+            const res = await getConversationMessages(selectedConv._id, page, 100, search, filter);
             if (res.success) {
                 setMessages(res.data.messages);
                 setMsgTotalPages(res.data.totalPages);
                 setMsgPage(page);
+                if (res.data.counts) setMsgCounts(res.data.counts);
             }
         } catch (err) {
             showToast('فشل تحميل الرسائل', 'error');
         } finally {
             setMessagesLoading(false);
         }
+    };
+
+    const selectMsgFilter = (id) => {
+        setMsgFilter(id);
+        loadMessages(1, msgSearch, id);
     };
 
     // حذف رسالة
@@ -565,19 +574,19 @@ function Conversations({ onViewUserDetail }) {
                             onZoom={setImageViewer}
                         />
 
-                        {messages.length > 0 && (
+                        {(messages.length > 0 || msgFilter !== 'all') && (
                             <div className="conv-msg-filters">
                                 {[
-                                    { id: 'all', label: '📋 الكل', count: messages.length },
-                                    { id: 'flagged', label: '⚠️ مخالف', count: flaggedMessages.length },
-                                    { id: 'images', label: '📷 صور', count: imageMessages.length },
-                                    { id: 'audio', label: '🎙️ صوتية', count: audioMessages.length }
+                                    { id: 'all', label: '📋 الكل', count: msgCounts?.all ?? messages.length },
+                                    { id: 'flagged', label: '⚠️ مخالف', count: msgCounts?.flagged ?? flaggedMessages.length },
+                                    { id: 'images', label: '📷 صور', count: msgCounts?.images ?? imageMessages.length },
+                                    { id: 'audio', label: '🎙️ صوتية', count: msgCounts?.audio ?? audioMessages.length }
                                 ].map(chip => (
                                     chip.count === 0 && chip.id !== 'all' && msgFilter !== chip.id ? null : (
                                         <button
                                             key={chip.id}
                                             className={`conv-msg-filter cf-${chip.id} ${msgFilter === chip.id ? 'active' : ''}`}
-                                            onClick={() => setMsgFilter(chip.id)}
+                                            onClick={() => selectMsgFilter(chip.id)}
                                         >
                                             {chip.label} <span>({chip.count})</span>
                                         </button>
@@ -606,7 +615,7 @@ function Conversations({ onViewUserDetail }) {
                                     {visibleMessages.length === 0 && (
                                         <div className="conv-chat-no-msg">
                                             <p>لا رسائل تطابق هذا الفلتر</p>
-                                            <button className="conv-msg-filter cf-all" onClick={() => setMsgFilter('all')}>
+                                            <button className="conv-msg-filter cf-all" onClick={() => selectMsgFilter('all')}>
                                                 📋 عرض كل الرسائل
                                             </button>
                                         </div>

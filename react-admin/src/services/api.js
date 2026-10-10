@@ -333,9 +333,13 @@ export const getConversationById = async (conversationId) => {
 // ========== Messages APIs ==========
 
 // جلب رسائل محادثة
-export const getConversationMessages = async (conversationId, page = 1, limit = 50, search = '') => {
+export const getConversationMessages = async (conversationId, page = 1, limit = 50, search = '', filter = 'all') => {
     const params = new URLSearchParams({ page, limit });
     if (search) params.append('search', search);
+    // الفلتر في السيرفر على المحادثة كلها — لا على الصفحة المحمّلة
+    if (filter === 'flagged') params.append('flagged', 'true');
+    else if (filter === 'images') params.append('type', 'image');
+    else if (filter === 'audio') params.append('type', 'audio');
     const response = await api.get(`/messages/conversation/${conversationId}?${params}`);
     return response.data;
 };
