@@ -357,7 +357,7 @@ function BannedDevices({ onViewUserDetail, onPageChange }) {
                                             <span className='detail-label'>📌 السبب:</span>
                                             <span className='detail-value'>{d.reasonDetails || d.reason}</span>
                                         </div>
-                                        <div className='detail-row'>
+                                        <div className='detail-row dr-secondary'>
                                             <span className='detail-label'>🔑 البصمة:</span>
                                             <code className='fingerprint'>
                                                 {d.pendingFingerprint ? '⏳ قيد الانتظار' : d.fingerprint}
@@ -409,7 +409,7 @@ function BannedDevices({ onViewUserDetail, onPageChange }) {
                                             </div>
                                         )}
                                         {d.admin && (
-                                            <div className='detail-row'>
+                                            <div className='detail-row dr-secondary'>
                                                 <span className='detail-label'>👤 الأدمن:</span>
                                                 <span className='detail-value'>{d.admin.name}</span>
                                             </div>
