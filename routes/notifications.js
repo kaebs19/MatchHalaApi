@@ -47,7 +47,9 @@ router.get('/', protect, adminOnly, async (req, res) => {
     try {
         const { page = 1, limit = 20, status, type } = req.query;
 
-        const query = {};
+        // ⚠️ كان بلا فلتر فيعيد إشعارات كل المستخدمين (~2.56 مليون) لصفحة الجرس في اللوحة
+        //    (حُذفت في ١٠ أكتوبر ٢٠٢٦). الآن إشعارات المشرف وحدها — التطبيق يستخدم /mobile/notifications.
+        const query = { adminOnly: true };
         if (status) query.status = status;
         if (type) query.type = type;
 
