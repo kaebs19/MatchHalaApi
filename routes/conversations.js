@@ -64,12 +64,23 @@ router.get('/', protect, adminOnly, async (req, res) => {
         }
 
         // ✅ فلترة المحادثات التي تحتوي صور
+        let imageOnlyCount = null;
         if (hasImages === 'true') {
-            const imagesAgg = await Message.aggregate([
-                { $match: { type: 'image', isDeleted: { $ne: true } } },
-                { $group: { _id: '$conversation' } }
-            ]);
-            const imageConvIds = imagesAgg.map(f => f._id);
+            // تجميع كل رسائل الصور (~87 ألفاً) ~1.5ث في كل نقرة — القائمة تتغيّر ببطء: كاش 5 دقائق
+            const { get: cacheGet, set: cacheSet } = require('../utils/cache');
+            let imageConvIds;
+            const cachedIds = cacheGet('conv_image_ids');
+            if (cachedIds) {
+                imageConvIds = cachedIds.map(id => new mongoose.Types.ObjectId(id));
+            } else {
+                const imagesAgg = await Message.aggregate([
+                    { $match: { type: 'image', isDeleted: { $ne: true } } },
+                    { $group: { _id: '$conversation' } }
+                ]);
+                imageConvIds = imagesAgg.map(f => f._id).filter(Boolean);
+                cacheSet('conv_image_ids', imageConvIds.map(String), 300);
+            }
+            imageOnlyCount = imageConvIds.length;
             // لو فلتر مخالفات مفعّل → تقاطع: محادثات فيها صور AND مخالفات
             if (filter._id?.$in) {
                 const flaggedSet = new Set(filter._id.$in.map(id => id.toString()));
@@ -105,7 +116,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
             // countDocuments على ~990 ألفاً (~1ث من 1.7ث في كل فتح لقائمة المحادثات)
             (Object.keys(filter).every(k => k === 'type') && (!filter.type || filter.type === 'private'))
                 ? Conversation.estimatedDocumentCount()
-                : Conversation.countDocuments(filter)
+                // فلتر الصور وحده: العدد = طول القائمة (لا countDocuments بـ $in على ~52 ألفاً، ~0.8ث)
+                : (imageOnlyCount !== null && hasFlaggedMessages !== 'true'
+                    && Object.keys(filter).every(k => k === 'type' || k === '_id'))
+                    ? Promise.resolve(imageOnlyCount)
+                    : Conversation.countDocuments(filter)
         ]);
 
         const FlaggedMessage = require('../models/FlaggedMessage');
