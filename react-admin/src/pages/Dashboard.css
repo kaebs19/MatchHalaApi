@@ -401,3 +401,21 @@ img.user-avatar { background: #f0f0f0; }
     text-align: left;
     direction: ltr;
 }
+
+/* ── الجوال (١٠ أكتوبر ٢٠٢٦): المنصّات بطاقة لكل صفّ (~600px) والرسوم ~610px
+   كانت تسبق «نظرة عامة» — الآن المنصّات ٢×٢ والرسوم أقصر. */
+@media (max-width: 768px) {
+    .stats-section { margin-bottom: 16px; }
+    .platform-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .platform-card { padding: 10px 12px; }
+    .platform-head { margin-bottom: 4px; }
+    .platform-label { font-size: 13px; }
+    .platform-value { font-size: 20px; margin-bottom: 6px; }
+    .platform-pct { margin-top: 4px; font-size: 11px; }
+    .platform-note { margin-top: 8px; font-size: 11.5px; line-height: 1.6; }
+
+    .charts-grid { gap: 10px; margin-top: 10px; }
+    .chart-card { padding: 14px; }
+    .chart-card h4 { margin: 0 0 8px; font-size: 15px; }
+    .growth-chart { height: 130px; gap: 6px; }
+}
