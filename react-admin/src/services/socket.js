@@ -8,14 +8,15 @@ class SocketService {
     constructor() {
         this.socket = null;
         this.connected = false;
+        // المحادثات المفتوحة — يُعاد الانضمام إليها بعد كل إعادة اتصال (تبديل شبكة الجوال/نوم الجهاز)
+        this.rooms = new Set();
     }
 
     // الاتصال بالسيرفر
     connect(token) {
-        if (this.socket && this.connected) {
-            console.log('✅ Socket.IO متصل بالفعل');
-            return;
-        }
+        // ⚠️ اتصال واحد فقط: كان يُنشئ اتصالاً جديداً إن نودي قبل اكتمال الأول (شبكة جوال
+        //    بطيئة) فتتكرّر الأحداث والتنبيهات. Socket.IO يعيد الاتصال بنفسه.
+        if (this.socket) return;
 
         this.socket = io(SOCKET_URL, {
             auth: {
@@ -27,6 +28,8 @@ class SocketService {
         this.socket.on('connect', () => {
             this.connected = true;
             console.log('✅ Socket.IO متصل بنجاح');
+            // غرف السيرفر تضيع مع الاتصال — بدون هذا تتوقف رسائل المحادثة المفتوحة بعد أي انقطاع
+            this.rooms.forEach(id => this.socket.emit('join-conversation', id));
         });
 
         this.socket.on('disconnect', () => {
@@ -45,12 +48,15 @@ class SocketService {
             this.socket.disconnect();
             this.socket = null;
             this.connected = false;
+            this.rooms.clear();
             console.log('👋 تم قطع اتصال Socket.IO');
         }
     }
 
     // الانضمام لمحادثة
+    // تُسجَّل الغرفة دائماً — وإن لم يكتمل الاتصال بعد يُرسَل الانضمام عند 'connect' (كان يُتجاهل بصمت)
     joinConversation(conversationId) {
+        this.rooms.add(conversationId);
         if (this.socket && this.connected) {
             this.socket.emit('join-conversation', conversationId);
             console.log(`📥 انضممت للمحادثة: ${conversationId}`);
@@ -59,6 +65,7 @@ class SocketService {
 
     // مغادرة محادثة
     leaveConversation(conversationId) {
+        this.rooms.delete(conversationId);
         if (this.socket && this.connected) {
             this.socket.emit('leave-conversation', conversationId);
             console.log(`📤 غادرت المحادثة: ${conversationId}`);
