@@ -170,9 +170,16 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
 
         // صوت تنبيه قصير (Web Audio API — بدون ملف صوت خارجي)
+        // ⚠️ مشغّل واحد يُعاد استخدامه: كان كل تنبيه يُنشئ AudioContext جديداً ولا يغلقه فتتراكم
+        //    (Safari على iPhone يحدّ عددها). يُغلق عند الخروج من اللوحة.
+        let audioCtx = null;
         const playBeep = (freq = 880, duration = 150) => {
             try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (!audioCtx || audioCtx.state === 'closed') {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const ctx = audioCtx;
+                if (ctx.state === 'suspended') ctx.resume().catch(() => {});
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.connect(gain); gain.connect(ctx.destination);
@@ -223,6 +230,7 @@ function MainLayout({ onLogout, user: initialUser }) {
         return () => {
             socketService.offNewAppeal(handleNewAppeal);
             socketService.offAppealUserReply(handleAppealReply);
+            if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
         };
     }, [user, showToast]);
 
