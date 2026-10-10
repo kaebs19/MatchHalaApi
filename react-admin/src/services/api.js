@@ -81,10 +81,12 @@ export const getDashboardStats = async () => {
 };
 
 // الحصول على جميع المستخدمين (Admin فقط)
-export const getAllUsers = async (page = 1, limit = 20, search = '', sort = 'createdAt', order = 'desc', filter = '') => {
+export const getAllUsers = async (page = 1, limit = 20, search = '', sort = 'createdAt', order = 'desc', filter = '', extra = {}) => {
     const params = new URLSearchParams({ page, limit, sort, order });
     if (search) params.append('search', search);
     if (filter) params.append('filter', filter);
+    // فلاتر إضافية تُطبَّق في السيرفر على كل المستخدمين (role/auth/banned/gender/premium/online/newToday)
+    Object.entries(extra).forEach(([k, v]) => { if (v && v !== 'all') params.append(k, v); });
     const response = await api.get('/users?' + params.toString());
     return response.data;
 };

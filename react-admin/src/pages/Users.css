@@ -42,6 +42,36 @@
 }
 
 /* ============================================
+   Quick Filters
+   ============================================ */
+
+.users-quick-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.users-quick-chip {
+    padding: 7px 14px;
+    border-radius: 18px;
+    border: 1.5px solid var(--border-light);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.users-quick-chip.active {
+    background: linear-gradient(135deg, #2F9E85 0%, #1F6AA8 100%);
+    border-color: transparent;
+    color: #fff;
+}
+
+/* ============================================
    Toolbar
    ============================================ */
 
@@ -577,11 +607,42 @@
 
 @media (max-width: 768px) {
     .users-page { padding: 12px; }
-    .users-stats-bar { flex-wrap: wrap; }
-    .users-stat { min-width: 25%; }
-    .users-search-row { flex-wrap: wrap; }
-    .users-page .search-box { min-width: 100%; }
-    .users-filters-grid { grid-template-columns: 1fr 1fr; }
+
+    /* الأرقام: صفّ واحد يُمرَّر أفقياً بدل شبكة 4+3 تأخذ ثلث الشاشة */
+    .users-stats-bar {
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin-bottom: 12px;
+        border-radius: 12px;
+    }
+    .users-stats-bar::-webkit-scrollbar { display: none; }
+    .users-stat { flex: 0 0 auto; min-width: 76px; padding: 10px 8px; }
+    .users-stat-num { font-size: 17px; }
+    .users-stat-label { font-size: 11px; margin-top: 3px; }
+
+    /* الفلاتر السريعة: صفّ واحد قابل للتمرير بدل ثلاثة أسطر */
+    .users-quick-filters {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin: 0 -12px 10px;
+        padding: 0 12px;
+    }
+    .users-quick-filters::-webkit-scrollbar { display: none; }
+    .users-quick-chip { flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
+
+    /* البحث والفلاتر والتحديث في سطر واحد */
+    .users-toolbar { padding: 10px; margin-bottom: 10px; }
+    .users-search-row { flex-wrap: nowrap; gap: 8px; }
+    .users-page .search-box { min-width: 0; flex: 1; }
+    .users-page .search-box input { font-size: 16px; } /* أقل من 16px يجعل Safari يكبّر الصفحة عند التركيز */
+    .users-filter-toggle { flex: 0 0 auto; padding: 0 12px; height: 44px; white-space: nowrap; }
+    .users-page .refresh-btn { flex: 0 0 auto; width: 44px; height: 44px; }
+    .users-filters-grid { grid-template-columns: 1fr 1fr; margin-top: 10px; }
+    .users-filters-grid select { font-size: 16px; min-height: 44px; }
+
+    /* العدد وعدد الصفحة: سطر مضغوط بلا بطاقة */
+    .users-page .table-controls { padding: 0 2px; margin-bottom: 8px; background: none; box-shadow: none; }
 
     /* الجدول (900px) يختفي، وتحلّ محلّه البطاقات */
     .table-container { display: none; }

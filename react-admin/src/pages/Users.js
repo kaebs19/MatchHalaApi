@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getAllUsers, deleteUser, toggleUserActive, updateUser, suspendUser, unsuspendUser, banUser, sendUserNotification, setUserViolations } from '../services/api';
 import { useToast } from '../components/Toast';
 import EditUserModal from '../components/EditUserModal';
@@ -27,6 +27,10 @@ function Users({ onViewDetail }) {
     const [filterGender, setFilterGender] = useState('all');
     const [filterPremium, setFilterPremium] = useState('all');
     const [filterOnline, setFilterOnline] = useState('all');
+    const [newToday, setNewToday] = useState(false);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [serverStats, setServerStats] = useState(null);
+    const fetchSeq = useRef(0);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -45,51 +49,37 @@ function Users({ onViewDetail }) {
     const [quickActionLoading, setQuickActionLoading] = useState(false);
     const toast = useToast();
 
-    useEffect(() => { fetchUsers(); }, [currentPage, itemsPerPage, sortField, sortOrder]);
-    // ✅ الفلاتر client-side تطبق على users (الصفحة الحالية من السيرفر)
-    useEffect(() => { filterUsers(); }, [users, filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender, filterPremium, filterOnline]);
+    // ⚠️ الفلاتر كلها في السيرفر — كانت تُطبَّق هنا على الصفحة المحمّلة وحدها (20 من ~70 ألفاً)
+    useEffect(() => { fetchUsers(); }, [currentPage, itemsPerPage, sortField, sortOrder, debouncedSearch,
+        filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender, filterPremium, filterOnline, newToday]);
+    useEffect(() => { setFilteredUsers(users); setPaginatedUsers(users); }, [users]);
 
-    const fetchUsers = async (pg, srch, flt) => {
+    const fetchUsers = async () => {
+        const seq = ++fetchSeq.current;
         try {
             setLoading(true);
-            const p = pg || currentPage;
-            const s = srch !== undefined ? srch : searchTerm;
-            const f = flt !== undefined ? flt : filterStatus === 'all' ? '' : filterStatus;
-            const response = await getAllUsers(p, itemsPerPage, s, sortField, sortOrder, f);
+            const response = await getAllUsers(currentPage, itemsPerPage, debouncedSearch, sortField, sortOrder,
+                filterStatus === 'all' ? '' : filterStatus,
+                { role: filterRole, auth: filterAuthProvider, banned: filterBanned, gender: filterGender,
+                  premium: filterPremium, online: filterOnline, newToday: newToday ? 'true' : '' });
+            // ردّ قديم وصل بعد أحدث منه (تبديل فلاتر سريع) — يُهمل
+            if (seq !== fetchSeq.current) return;
             if (response.success) {
                 setUsers(response.data.users);
                 setTotalServerPages(response.data.totalPages || 1);
                 setTotalServerCount(response.data.total || 0);
+                if (response.data.stats) setServerStats(response.data.stats);
+                setError('');
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'فشل تحميل المستخدمين');
+            if (seq === fetchSeq.current) setError(err.response?.data?.message || 'فشل تحميل المستخدمين');
         } finally {
-            setLoading(false);
+            if (seq === fetchSeq.current) setLoading(false);
         }
     };
 
-    const filterUsers = () => {
-        let filtered = [...users];
-        // ✅ البحث يعمل من السيرفر (debounced) — لا يحتاج فلترة client-side
-        if (filterStatus !== 'all') filtered = filtered.filter(u => filterStatus === 'active' ? u.isActive : !u.isActive);
-        if (filterRole !== 'all') filtered = filtered.filter(u => u.role === filterRole);
-        if (filterAuthProvider !== 'all') filtered = filtered.filter(u => (u.authProvider || 'app') === filterAuthProvider);
-        if (filterBanned === 'banned') filtered = filtered.filter(u => u.bannedWords?.isBanned);
-        if (filterBanned === 'suspended') filtered = filtered.filter(u => u.suspension?.isSuspended);
-        if (filterBanned === 'violations') filtered = filtered.filter(u => (u.bannedWords?.violations || 0) > 0);
-        if (filterBanned === 'clean') filtered = filtered.filter(u => !u.bannedWords?.isBanned && !u.suspension?.isSuspended && !(u.bannedWords?.violations > 0));
-        if (filterGender !== 'all') filtered = filtered.filter(u => u.gender === filterGender);
-        if (filterPremium === 'premium') filtered = filtered.filter(u => u.isPremium);
-        if (filterPremium === 'free') filtered = filtered.filter(u => !u.isPremium);
-        if (filterOnline === 'online') filtered = filtered.filter(u => u.isOnline);
-        if (filterOnline === 'offline') filtered = filtered.filter(u => !u.isOnline);
-        // ✅ paginatedUsers = filtered مباشرة (السيرفر يرسل الصفحة الصحيحة بالفعل)
-        setFilteredUsers(filtered);
-        setPaginatedUsers(filtered);
-    };
-
-    // sortAndPaginateUsers لم يعد مستخدماً — السيرفر يرتب ويقسم
-    const sortAndPaginateUsers = () => { /* no-op */ };
+    // يغيّر فلتراً ويعود للصفحة الأولى
+    const pick = (setter) => (value) => { setter(value); setCurrentPage(1); };
 
     const handleSort = (field) => {
         if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -225,25 +215,32 @@ function Users({ onViewDetail }) {
     };
 
     const resetFilters = () => {
-        setSearchTerm(''); setFilterStatus('all'); setFilterRole('all');
+        setSearchTerm(''); setDebouncedSearch(''); setFilterStatus('all'); setFilterRole('all');
         setFilterAuthProvider('all'); setFilterBanned('all'); setFilterGender('all');
-        setFilterPremium('all'); setFilterOnline('all');
+        setFilterPremium('all'); setFilterOnline('all'); setNewToday(false); setCurrentPage(1);
     };
 
-    // الإحصائيات
-    const stats = {
-        total: totalServerCount,
-        active: users.filter(u => u.isActive).length,
-        banned: users.filter(u => u.bannedWords?.isBanned).length,
-        violations: users.filter(u => (u.bannedWords?.violations || 0) > 0).length,
-        premium: users.filter(u => u.isPremium).length,
-        online: users.filter(u => u.isOnline).length,
-        today: users.filter(u => {
-            const d = new Date(u.createdAt);
-            const t = new Date();
-            return d.toDateString() === t.toDateString();
-        }).length,
-    };
+    // الإحصائيات — من السيرفر لكل المستخدمين (كاش 5 دقائق)
+    const stats = serverStats || { total: totalServerCount, active: '…', banned: '…', violations: '…', premium: '…', online: '…', today: '…' };
+    const fmt = (n) => typeof n === 'number' ? n.toLocaleString('en-US') : n;
+
+    const onlyDefaults = filterStatus === 'all' && filterRole === 'all' && filterAuthProvider === 'all' && filterGender === 'all';
+    const quickKey = newToday ? 'today'
+        : filterBanned === 'violations' ? 'violations'
+        : filterBanned === 'banned' ? 'banned'
+        : filterBanned === 'suspended' ? 'suspended'
+        : filterPremium === 'premium' ? 'premium'
+        : filterOnline === 'online' ? 'online'
+        : (filterBanned === 'all' && filterPremium === 'all' && filterOnline === 'all' && onlyDefaults) ? 'all' : null;
+    const quickFilters = [
+        { key: 'all', label: 'الكل', icon: '👥', fn: () => resetFilters() },
+        { key: 'today', label: 'جدد اليوم', icon: '🆕', fn: () => { resetFilters(); setNewToday(true); } },
+        { key: 'online', label: 'متصلين', icon: '🟢', fn: () => { resetFilters(); setFilterOnline('online'); } },
+        { key: 'violations', label: 'مخالفين', icon: '⚠️', fn: () => { resetFilters(); setFilterBanned('violations'); } },
+        { key: 'suspended', label: 'معلّقين', icon: '⏸️', fn: () => { resetFilters(); setFilterBanned('suspended'); } },
+        { key: 'banned', label: 'محظورين', icon: '🚫', fn: () => { resetFilters(); setFilterBanned('banned'); } },
+        { key: 'premium', label: 'بريميوم', icon: '⭐', fn: () => { resetFilters(); setFilterPremium('premium'); } },
+    ];
 
     const formatRelativeTime = (date) => {
         if (!date) return '-';
@@ -258,7 +255,7 @@ function Users({ onViewDetail }) {
         return formatDate(date);
     };
 
-    if (loading) {
+    if (loading && !serverStats && users.length === 0) {
         return (
             <div className="users-page">
                 <div className="loading-container"><div className="spinner"></div><p>جاري التحميل...</p></div>
@@ -271,37 +268,44 @@ function Users({ onViewDetail }) {
             {/* Stats Bar */}
             <div className="users-stats-bar">
                 <div className="users-stat" data-color="blue">
-                    <span className="users-stat-num">{stats.total}</span>
+                    <span className="users-stat-num">{fmt(stats.total)}</span>
                     <span className="users-stat-label">إجمالي</span>
                 </div>
                 <div className="users-stat" data-color="green">
-                    <span className="users-stat-num">{stats.active}</span>
+                    <span className="users-stat-num">{fmt(stats.active)}</span>
                     <span className="users-stat-label">نشط</span>
                 </div>
                 <div className="users-stat" data-color="cyan">
-                    <span className="users-stat-num">{stats.online}</span>
+                    <span className="users-stat-num">{fmt(stats.online)}</span>
                     <span className="users-stat-label">متصل</span>
                 </div>
                 <div className="users-stat" data-color="gold">
-                    <span className="users-stat-num">{stats.premium}</span>
+                    <span className="users-stat-num">{fmt(stats.premium)}</span>
                     <span className="users-stat-label">بريميوم</span>
                 </div>
                 <div className="users-stat" data-color="orange">
-                    <span className="users-stat-num">{stats.violations}</span>
+                    <span className="users-stat-num">{fmt(stats.violations)}</span>
                     <span className="users-stat-label">مخالفات</span>
                 </div>
                 <div className="users-stat" data-color="red">
-                    <span className="users-stat-num">{stats.banned}</span>
+                    <span className="users-stat-num">{fmt(stats.banned)}</span>
                     <span className="users-stat-label">محظور</span>
                 </div>
                 <div className="users-stat" data-color="purple">
-                    <span className="users-stat-num">{stats.today}</span>
+                    <span className="users-stat-num">{fmt(stats.today)}</span>
                     <span className="users-stat-label">اليوم</span>
                 </div>
             </div>
 
             {error && <div className="error-banner">{error}</div>}
-            {/* Quick Filters */}            <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>                {[                    { label: "الكل", icon: "👥", fn: () => resetFilters() },                    { label: "جدد اليوم", icon: "🆕", fn: () => { resetFilters(); setFilterStatus("active"); } },                    { label: "مخالفين", icon: "⚠️", fn: () => { resetFilters(); setFilterBanned("violations"); } },                    { label: "محظورين", icon: "🚫", fn: () => { resetFilters(); setFilterBanned("banned"); } },                    { label: "معلّقين", icon: "⏸️", fn: () => { resetFilters(); setFilterBanned("suspended"); } },                    { label: "بريميوم", icon: "⭐", fn: () => { resetFilters(); setFilterPremium("premium"); } },                    { label: "متصلين", icon: "🟢", fn: () => { resetFilters(); setFilterOnline("online"); } },                ].map((f, i) => (                    <button key={i} onClick={f.fn} style={{                        padding: "7px 14px", borderRadius: "18px", border: "1.5px solid #e5e7eb",                        background: "white", cursor: "pointer", fontSize: "12px", fontWeight: "600",                        color: "#374151", transition: "all 0.2s"                    }}>{f.icon} {f.label}</button>                ))}            </div>
+            {/* Quick Filters — صفّ واحد قابل للتمرير على الجوال */}
+            <div className="users-quick-filters">
+                {quickFilters.map(f => (
+                    <button key={f.key} className={`users-quick-chip ${quickKey === f.key ? 'active' : ''}`} onClick={f.fn}>
+                        {f.icon} {f.label}
+                    </button>
+                ))}
+            </div>
 
             {/* Search + Filter Toggle */}
             <div className="users-toolbar">
@@ -311,53 +315,53 @@ function Users({ onViewDetail }) {
                             type="text"
                             placeholder="بحث بالاسم، البريد، ID، الدولة، المدينة..."
                             value={searchTerm}
-                            onChange={(e) => { const v = e.target.value; setSearchTerm(v); if (searchTimer) clearTimeout(searchTimer); setSearchTimer(setTimeout(() => { setCurrentPage(1); fetchUsers(1, v); }, 400)); }}
+                            onChange={(e) => { const v = e.target.value; setSearchTerm(v); if (searchTimer) clearTimeout(searchTimer); setSearchTimer(setTimeout(() => { setCurrentPage(1); setDebouncedSearch(v); }, 400)); }}
                         />
                         <span className="search-icon">🔍</span>
                     </div>
                     <button className={`users-filter-toggle ${showFilters ? 'active' : ''}`} onClick={() => setShowFilters(!showFilters)}>
                         🔽 فلاتر {showFilters ? '▲' : '▼'}
                     </button>
-                    <button className="refresh-btn" onClick={fetchUsers}>🔄</button>
+                    <button className="refresh-btn" onClick={() => fetchUsers()}>🔄</button>
                 </div>
 
                 {showFilters && (
                     <div className="users-filters-grid">
-                        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); const f = e.target.value === "all" ? "" : e.target.value; fetchUsers(1, searchTerm, f); }}>
+                        <select value={filterStatus} onChange={(e) => pick(setFilterStatus)(e.target.value)}>
                             <option value="all">جميع الحالات</option>
                             <option value="active">نشط</option>
                             <option value="inactive">غير نشط</option>
                         </select>
-                        <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
+                        <select value={filterRole} onChange={(e) => pick(setFilterRole)(e.target.value)}>
                             <option value="all">جميع الأدوار</option>
                             <option value="admin">مدير</option>
                             <option value="user">مستخدم</option>
                         </select>
-                        <select value={filterAuthProvider} onChange={(e) => setFilterAuthProvider(e.target.value)}>
+                        <select value={filterAuthProvider} onChange={(e) => pick(setFilterAuthProvider)(e.target.value)}>
                             <option value="all">جميع أنواع التسجيل</option>
                             <option value="app">التطبيق</option>
                             <option value="google">Google</option>
                             <option value="apple">Apple</option>
                             <option value="facebook">Facebook</option>
                         </select>
-                        <select value={filterBanned} onChange={(e) => setFilterBanned(e.target.value)}>
+                        <select value={filterBanned} onChange={(e) => pick(setFilterBanned)(e.target.value)}>
                             <option value="all">جميع - محظور/معلّق</option>
                             <option value="banned">محظور فقط</option>
                             <option value="suspended">معلّق فقط</option>
                             <option value="violations">لديه مخالفات</option>
                             <option value="clean">بدون مخالفات</option>
                         </select>
-                        <select value={filterGender} onChange={(e) => setFilterGender(e.target.value)}>
+                        <select value={filterGender} onChange={(e) => pick(setFilterGender)(e.target.value)}>
                             <option value="all">الجنس - الكل</option>
                             <option value="male">ذكر</option>
                             <option value="female">أنثى</option>
                         </select>
-                        <select value={filterPremium} onChange={(e) => setFilterPremium(e.target.value)}>
+                        <select value={filterPremium} onChange={(e) => pick(setFilterPremium)(e.target.value)}>
                             <option value="all">الاشتراك - الكل</option>
                             <option value="premium">بريميوم</option>
                             <option value="free">مجاني</option>
                         </select>
-                        <select value={filterOnline} onChange={(e) => setFilterOnline(e.target.value)}>
+                        <select value={filterOnline} onChange={(e) => pick(setFilterOnline)(e.target.value)}>
                             <option value="all">الاتصال - الكل</option>
                             <option value="online">متصل الآن</option>
                             <option value="offline">غير متصل</option>
@@ -370,7 +374,7 @@ function Users({ onViewDetail }) {
             {/* Table Controls */}
             <div className="table-controls">
                 <div className="results-info">
-                    عرض {filteredUsers.length} من {users.length} مستخدم
+                    {loading ? 'جارٍ التحميل…' : `${fmt(totalServerCount)} مستخدم`}
                 </div>
                 <div className="items-per-page">
                     <label>عدد:</label>
