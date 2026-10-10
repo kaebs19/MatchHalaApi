@@ -157,7 +157,7 @@ function Conversations({ onViewUserDetail }) {
         try {
             setLoading(true);
             const filters = { type: 'private' };
-            if (filterStatus === 'active') filters.isActive = 'true';
+            if (filterStatus === 'active') { filters.isActive = 'true'; filters.activeWithin = '24'; }
             if (filterStatus === 'inactive') filters.isActive = 'false';
             if (filterStatus === 'flagged') filters.hasFlaggedMessages = 'true';
             if (filterStatus === 'images') filters.hasImages = 'true';
@@ -382,7 +382,7 @@ function Conversations({ onViewUserDetail }) {
                     <div className="conv-filters">
                         {[
                             { key: 'all', label: 'الكل', count: totalItems },
-                            { key: 'active', label: 'نشطة' },
+                            { key: 'active', label: 'نشطة اليوم' },
                             { key: 'inactive', label: 'معطلة' },
                             { key: 'flagged', label: 'مخالفات' },
                             { key: 'images', label: '📷 صور' },

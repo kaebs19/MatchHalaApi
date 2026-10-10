@@ -13,7 +13,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, type, isActive, status, search, hasFlaggedMessages, hasImages, sortBy = 'updatedAt' } = req.query;
+        const { page = 1, limit = 20, type, isActive, activeWithin, status, search, hasFlaggedMessages, hasImages, sortBy = 'updatedAt' } = req.query;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
@@ -21,6 +21,12 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const filter = {};
         if (type) filter.type = type;
         if (isActive !== undefined) filter.isActive = isActive === 'true';
+        // «نشطة» في اللوحة = نشاط خلال آخر N ساعة (فهرس updatedAt). isActive وحده يعني
+        // «غير معطّلة» فقط — ~75% من المحادثات — فكان الفلتر يبدو بلا أثر.
+        const activeHours = parseInt(activeWithin);
+        if (activeHours > 0) {
+            filter.updatedAt = { $gte: new Date(Date.now() - Math.min(activeHours, 720) * 3600 * 1000) };
+        }
         if (status) filter.status = status;
 
         // بحث بالاسم
