@@ -7,8 +7,9 @@ import './styles/shared/index.css';
 import './App.css';
 
 function App() {
+  // بلا توكن لا جلسة — وإلا تُفتح اللوحة وكل طلباتها 401
   const [isLoggedIn, setIsLoggedIn] = useState(
-    localStorage.getItem('isLoggedIn') === 'true'
+    localStorage.getItem('isLoggedIn') === 'true' && !!localStorage.getItem('token')
   );
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('user');

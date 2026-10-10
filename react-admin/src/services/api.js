@@ -30,14 +30,19 @@ api.interceptors.request.use(
 );
 
 // معالجة الأخطاء
+// ⚠️ كان يمسح token وuser ويُبقي isLoggedIn، فيعود التطبيق بعد التحديث إلى
+// اللوحة بلا توكن ← 401 ← تحديث ← … حلقة لا نهائية (830 طلباً في دقائق من جوال).
+// الآن: خروج كامل، وتحديث واحد فقط مهما وصل من 401 متزامنة.
+let loggingOut = false;
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            // إذا انتهت صلاحية Token، سجل خروج
+        if (error.response?.status === 401 && !loggingOut) {
+            loggingOut = true;
+            localStorage.removeItem('isLoggedIn');
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            window.location.href = '/';
+            window.location.reload();
         }
         return Promise.reject(error);
     }
