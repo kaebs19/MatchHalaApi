@@ -359,7 +359,7 @@ router.get('/super-likes', protect, adminOnly, async (req, res) => {
 // الرسائل. كانت تُحسب عند كل فتح للصفحة بثلاث تجميعات تمسح مجموعة الرسائل كاملة،
 // وبكاش منفصل لكل نسخة من النسخ الأربع ← انتهاء مهلة MongoDB و502 (١٠ أكتوبر ٢٠٢٦).
 // الآن: تُحسب مرة في Redis مشتركة بين النسخ، بقفل، وتُعرض القديمة فوراً أثناء التحديث.
-const ANALYTICS_KEY = 'stats:analytics:v2';
+const ANALYTICS_KEY = 'stats:analytics:v3';   // v3: تصحيح «بلا صورة»
 const ANALYTICS_LOCK = 'stats:analytics:lock';
 const ANALYTICS_FRESH_MS = 60 * 60 * 1000;      // ساعة — إحصاءات 30 يوماً لا تحتاج أحدث
 const ANALYTICS_KEEP_S = 24 * 60 * 60;          // تُعرض القديمة حتى يوم كامل
@@ -529,8 +529,10 @@ async function computeAnalytics() {
         // ═══════════ 11. مستخدمين بدون صورة / بدون bio ═══════════
         const noProfileImage = await User.countDocuments({
             isActive: true,
+            // «بلا صورة» محفوظة null (~33 ألفاً) — و null تطابق الحقل الغائب أيضاً.
+            // كان { $exists: false } وحده فيعرض 0.
             $or: [
-                { profileImage: { $exists: false } },
+                { profileImage: null },
                 { profileImage: '' },
                 { profileImage: 'default.png' }
             ]
