@@ -21,7 +21,6 @@ export const PAGES = {
 
     // صفحات خارج القائمة الجانبية
     profile: { title: 'الملف الشخصي', icon: '👤', adminOnly: false },
-    notifications: { title: 'الإشعارات', icon: '🔔', adminOnly: false },
     'verification-requests': { title: 'طلبات التوثيق', icon: '✅', adminOnly: true },
     'super-likes': { title: 'Super Likes', icon: '⚡', adminOnly: true },
     swipes: { title: 'Swipes', icon: '👆', adminOnly: true },

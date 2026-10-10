@@ -14,7 +14,6 @@ const Stats = lazy(() => import('../pages/Stats'));
 const Settings = lazy(() => import('../pages/Settings'));
 const GamesManagement = lazy(() => import('../pages/GamesManagement'));
 const Profile = lazy(() => import('../pages/Profile'));
-const Notifications = lazy(() => import('../pages/Notifications'));
 const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
 const SuperLikes = lazy(() => import('../pages/SuperLikes'));
 const Analytics = lazy(() => import('../pages/Analytics'));
@@ -26,7 +25,7 @@ const PermanentBans = lazy(() => import('../pages/PermanentBans'));
 const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
 const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
 
-import { getReportsStats, getAppealsStats, getNotifications, searchUsers, getNewcomersStats } from '../services/api';
+import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -46,7 +45,6 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
     const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
     const [newcomersCount, setNewcomersCount] = useState(0);
-    const [unreadNotifications, setUnreadNotifications] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     // بحث الجوال: مطويّ خلف 🔍 حتى لا يشغل صفاً كاملاً من رأسٍ لاصق
@@ -135,15 +133,13 @@ function MainLayout({ onLogout, user: initialUser }) {
         if (user?.role === 'admin') {
             fetchReportsCount();
             fetchAppealsCount();
-            fetchNotificationsCount();
             fetchNewcomersCount();
             // لا فائدة من استطلاع أربعة مسارات كل دقيقة والتبويب مخفي —
             // نوقفه عند الإخفاء ونحدّث مرة واحدة عند العودة.
             const refreshAll = () => {
                 fetchReportsCount();
                 fetchAppealsCount();
-                fetchNotificationsCount();
-                fetchNewcomersCount();
+                    fetchNewcomersCount();
             };
             let interval = setInterval(refreshAll, 60000);
             const onVisibility = () => {
@@ -395,17 +391,6 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
-    const fetchNotificationsCount = async () => {
-        try {
-            const response = await getNotifications({ unreadOnly: true, limit: 1 });
-            if (response.success) {
-                setUnreadNotifications(response.data.unreadCount || 0);
-            }
-        } catch (error) {
-            console.error('خطأ في جلب عدد الإشعارات:', error);
-        }
-    };
-
     const handleUserUpdate = (updatedUser) => {
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -443,8 +428,6 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <Settings />;
             case 'profile':
                 return <Profile user={user} onUserUpdate={handleUserUpdate} />;
-            case 'notifications':
-                return <Notifications onNotificationRead={fetchNotificationsCount} />;
             case 'verification-requests':
                 return <VerificationRequests />;
             case 'analytics':
@@ -589,28 +572,12 @@ function MainLayout({ onLogout, user: initialUser }) {
                             </button>
                         )}
 
-                        {/* زر الإشعارات */}
-                        <button
-                            className="header-icon-btn notifications-btn"
-                            onClick={() => setCurrentPage('notifications')}
-                            title="الإشعارات"
-                        >
-                            <span className="notification-icon">🔔</span>
-                            {unreadNotifications > 0 && (
-                                <span className="notification-badge desktop-only">{unreadNotifications}</span>
-                            )}
-                            {/* على الجوال: عدّاد واحد لكل ما ينتظر — أزرار البلاغات/المراجعات مخفيّة هناك */}
-                            {(unreadNotifications + (user?.role === 'admin' ? pendingReportsCount + appealsStats.total + appealsStats.awaitingReply : 0)) > 0 && (
-                                <span className="notification-badge mobile-only">
-                                    {unreadNotifications + (user?.role === 'admin' ? pendingReportsCount + appealsStats.total + appealsStats.awaitingReply : 0)}
-                                </span>
-                            )}
-                        </button>
-
+                        {/* 🔔 الإشعارات حُذف (١٠ أكتوبر ٢٠٢٦): صفحته كانت تعرض إشعارات كل المستخدمين
+                            (~2.5 مليون) بلا فلتر. البلاغات والمراجعات لها زرّاها أدناه — ظاهران على الجوال أيضاً. */}
                         {/* زر البلاغات المعلقة */}
                         {user?.role === 'admin' && pendingReportsCount > 0 && (
                             <button
-                                className="header-icon-btn reports-notification-btn desktop-only"
+                                className="header-icon-btn reports-notification-btn"
                                 onClick={() => setCurrentPage('reports')}
                                 title={`${pendingReportsCount} بلاغات في انتظار المراجعة`}
                             >
@@ -622,7 +589,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                         {/* زر المراجعات (جديدة + ردود مستخدمين بلا قراءة) */}
                         {user?.role === 'admin' && (appealsStats.total > 0 || appealsStats.awaitingReply > 0) && (
                             <button
-                                className="header-icon-btn appeals-notification-btn desktop-only"
+                                className="header-icon-btn appeals-notification-btn"
                                 onClick={() => setCurrentPage('appeals')}
                                 title={`${appealsStats.pending} جديدة · ${appealsStats.underReview} قيد المراجعة · ${appealsStats.awaitingReply} رد مستخدم بلا قراءة`}
                             >
