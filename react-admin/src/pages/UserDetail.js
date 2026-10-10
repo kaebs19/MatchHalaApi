@@ -228,6 +228,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [violationsList, setViolationsList] = useState([]);
     const [violationsLoading, setViolationsLoading] = useState(false);
     const [violationsFilter, setViolationsFilter] = useState('');
+    const [violationsTotal, setViolationsTotal] = useState(null);   // العدد الكلي من السيرفر (القائمة سقفها 200)
     const [relatedAccounts, setRelatedAccounts] = useState(null);
     const [relatedLoading, setRelatedLoading] = useState(false);
     const [warningTemplates, setWarningTemplates] = useState([]);
@@ -265,6 +266,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             console.error('promoLogs fetch failed', e);
         }
     };
+
+    // تغيير نوع المخالفة يُعيد الطلب من السيرفر
+    useEffect(() => {
+        if (activeTab === 'violations') fetchViolations();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [violationsFilter]);
 
     // lazy-load عند فتح التابات الجديدة
     useEffect(() => {
@@ -541,9 +548,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const fetchViolations = async () => {
         try {
             setViolationsLoading(true);
-            const res = await getUserViolations(userId, { limit: 100 });
+            // النوع يُفلتر في السيرفر — كان يُفلتر هنا على أول 100 فقط
+            const res = await getUserViolations(userId, { limit: 200, ...(violationsFilter ? { type: violationsFilter } : {}) });
             if (res.success) {
                 setViolationsList(res.data.violations || []);
+                setViolationsTotal(res.data.total ?? (res.data.violations || []).length);
                 // Pre-load evidence blobs للـ photo violations
                 (res.data.violations || []).forEach(v => {
                     if (v.evidence?.kind === 'photo' && v.evidence?.photoPath) {
@@ -2349,7 +2358,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                 {activeTab === 'violations' && (
                     <div className="violations-section">
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
-                            <h3 style={{margin:0}}>⚠️ سجل المخالفات ({violationsList.length})</h3>
+                            <h3 style={{margin:0}}>⚠️ سجل المخالفات ({violationsTotal ?? violationsList.length})</h3>
                             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                                 <select value={violationsFilter} onChange={e=>setViolationsFilter(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border: '1px solid var(--border-color)'}}>
                                     <option value="">كل الأنواع</option>
