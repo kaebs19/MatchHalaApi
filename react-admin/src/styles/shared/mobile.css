@@ -443,6 +443,8 @@
         margin-bottom: 12px;
     }
     .reports-page .bulk-actions-bar .select-all-label { grid-column: 1 / -1; }
+    .reports-page .bulk-actions-bar .selected-count { grid-column: 1 / -1; justify-self: start; }
+    .reports-page .bulk-actions-bar > div { display: none; } /* فاصل flex:1 للمكتب — خانة فارغة في الشبكة */
     .reports-page .bulk-actions-bar .bulk-btn { width: 100%; min-height: 40px; padding: 6px 8px; font-size: 13px; }
 
     /* الرقائق السريعة: صفّ واحد يُمرَّر أفقياً */
