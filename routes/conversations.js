@@ -101,7 +101,11 @@ router.get('/', protect, adminOnly, async (req, res) => {
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)
                 .lean(),
-            Conversation.countDocuments(filter)
+            // بلا فلتر (أو type=private وحده — كل المحادثات خاصة): العدّ التقديري 3ms بدل
+            // countDocuments على ~990 ألفاً (~1ث من 1.7ث في كل فتح لقائمة المحادثات)
+            (Object.keys(filter).every(k => k === 'type') && (!filter.type || filter.type === 'private'))
+                ? Conversation.estimatedDocumentCount()
+                : Conversation.countDocuments(filter)
         ]);
 
         const FlaggedMessage = require('../models/FlaggedMessage');
