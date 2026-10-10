@@ -50,11 +50,38 @@ router.get('/', protect, adminOnly, async (req, res) => {
             queryFilter.$or = orConditions;
         }
         if (filter === 'active') queryFilter.isActive = true;
+        else if (filter === 'inactive') queryFilter.isActive = false;
         else if (filter === 'suspended') queryFilter['suspension.isSuspended'] = true;
         else if (filter === 'premium') queryFilter.isPremium = true;
         else if (filter === 'online') queryFilter.isOnline = true;
 
-        const cacheKey = `users_list_${pageNum}_${limitNum}_${search || ''}_${sort}_${order}_${filter || ''}`;
+        // فلاتر اللوحة — كانت تُطبَّق في المتصفح على الصفحة المحمّلة وحدها (20 مستخدماً)،
+        // فـ«محظورين» و«مخالفين» تبحث في أحدث 20 فقط من ~70 ألفاً.
+        const { role, auth, banned, gender, premium, online, newToday } = req.query;
+        if (role === 'admin' || role === 'user') queryFilter.role = role;
+        if (auth === 'app') queryFilter.authProvider = { $in: ['app', null] };
+        else if (['google', 'apple', 'facebook'].includes(auth)) queryFilter.authProvider = auth;
+        if (banned === 'banned') queryFilter['bannedWords.isBanned'] = true;
+        else if (banned === 'suspended') queryFilter['suspension.isSuspended'] = true;
+        else if (banned === 'violations') queryFilter['bannedWords.violations'] = { $gt: 0 };
+        else if (banned === 'clean') {
+            queryFilter['bannedWords.isBanned'] = { $ne: true };
+            queryFilter['suspension.isSuspended'] = { $ne: true };
+            queryFilter['bannedWords.violations'] = { $not: { $gt: 0 } };
+        }
+        if (gender === 'male' || gender === 'female') queryFilter.gender = gender;
+        if (premium === 'premium') queryFilter.isPremium = true;
+        else if (premium === 'free') queryFilter.isPremium = { $ne: true };
+        if (online === 'online') queryFilter.isOnline = true;
+        else if (online === 'offline') queryFilter.isOnline = { $ne: true };
+        if (newToday === 'true') {
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            queryFilter.createdAt = { $gte: startOfDay };
+        }
+
+        const filtersKey = JSON.stringify({ role, auth, banned, gender, premium, online, newToday });
+        const cacheKey = `users_list_${pageNum}_${limitNum}_${search || ''}_${sort}_${order}_${filter || ''}_${filtersKey}`;
         const cachedData = get(cacheKey);
         if (cachedData) {
             return res.status(200).json(cachedData);
@@ -73,10 +100,29 @@ router.get('/', protect, adminOnly, async (req, res) => {
             User.countDocuments(queryFilter)
         ]);
 
+        // إحصاءات الشريط العلوي لكل المستخدمين — كانت تُعدّ من الصفحة المحمّلة فقط
+        let stats = get('users_list_stats');
+        if (!stats) {
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            const [all, active, onlineNow, premiumCount, violations, bannedCount, today] = await Promise.all([
+                User.estimatedDocumentCount(),
+                User.countDocuments({ isActive: true }),
+                User.countDocuments({ isOnline: true }),
+                User.countDocuments({ isPremium: true }),
+                User.countDocuments({ 'bannedWords.violations': { $gt: 0 } }),
+                User.countDocuments({ 'bannedWords.isBanned': true }),
+                User.countDocuments({ createdAt: { $gte: startOfDay } })
+            ]);
+            stats = { total: all, active, online: onlineNow, premium: premiumCount, violations, banned: bannedCount, today };
+            set('users_list_stats', stats, 300);
+        }
+
         const responseData = {
             success: true,
             data: {
                 users,
+                stats,
                 page: pageNum,
                 totalPages: Math.ceil(total / limitNum),
                 total
