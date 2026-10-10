@@ -427,6 +427,24 @@
     .reports-page .reports-filters select { width: 100%; min-height: 44px; font-size: 16px; padding: 8px 10px; }
     .reports-page .reports-filters .refresh-btn { grid-column: 1 / -1; min-height: 40px; padding: 6px 12px; }
 
+    /* إحصاء البلاغات: ثلاثة أعمدة بلا أيقونات — الخمس في صفّين قصيرين */
+    .reports-page .reports-stats { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+    .reports-page .stat-box { padding: 8px 10px !important; flex-direction: column; align-items: flex-start; gap: 0 !important; }
+    .reports-page .stat-box .stat-icon { display: none; }
+    .reports-page .stat-box .stat-info h3 { font-size: 18px !important; margin: 0 !important; }
+    .reports-page .stat-box .stat-info p { font-size: 11px !important; }
+
+    /* الإجراءات الجماعية: «تحديد الكل» سطر، والأزرار الأربعة شبكة ٢×٢ مضغوطة */
+    .reports-page .bulk-actions-bar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        padding: 8px;
+        margin-bottom: 12px;
+    }
+    .reports-page .bulk-actions-bar .select-all-label { grid-column: 1 / -1; }
+    .reports-page .bulk-actions-bar .bulk-btn { width: 100%; min-height: 40px; padding: 6px 8px; font-size: 13px; }
+
     /* الرقائق السريعة: صفّ واحد يُمرَّر أفقياً */
     .quick-filters {
         flex-wrap: nowrap !important;
