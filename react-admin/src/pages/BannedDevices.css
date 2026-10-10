@@ -471,3 +471,13 @@
     color: var(--text-secondary);
     font-weight: 500;
 }
+
+/* ── الجوال (١٠ أكتوبر ٢٠٢٦): البطاقة ~400px × 50 في الصفحة ← تفاصيل أضيق وأزرار في صفّ ── */
+@media (max-width: 768px) {
+    .device-card { padding: 12px; border-radius: 14px; }
+    .device-details { gap: 4px; }
+    .detail-row { gap: 2px 6px; font-size: 12px; line-height: 1.5; }
+    .detail-label { min-width: 92px; }
+    .device-actions { margin-top: 8px; padding-top: 8px; }
+    .device-actions > button { flex: 1; min-height: 40px; }
+}
