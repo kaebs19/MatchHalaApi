@@ -23,7 +23,7 @@ const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 router.get('/conversation/:conversationId', protect, adminOnly, async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const { page = 1, search = '' } = req.query;
+        const { page = 1, search = '', type, flagged } = req.query;
         // اللوحة تطلب 100؛ السقف 200 يحمي من طلب عشوائي كبير
         const limit = Math.min(parseInt(req.query.limit) || 50, 200);
 
@@ -55,6 +55,19 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
             filter.content = { $regex: search, $options: 'i' };
         }
 
+        // ✅ فلاتر «مخالف/صور/صوتية» وعدّاداتها للمحادثة كلها — كانت اللوحة تفلتر
+        // الصفحة المحمّلة وحدها، فمخالفة في صفحة أقدم لا تظهر ويبدو العدّاد صفراً.
+        // FlaggedMessage صغيرة (~22 ألفاً) فلا حاجة لفهرس conversation فيها.
+        const FlaggedMessage = require('../models/FlaggedMessage');
+        const Violation = require('../models/Violation');
+        const [flagMsgIds, violationMsgIds] = await Promise.all([
+            FlaggedMessage.distinct('message', { conversation: conversationId }),
+            Violation.distinct('evidence.messageId', { 'evidence.conversationId': conversationId })
+        ]);
+        const flaggedIds = [...new Set([...flagMsgIds, ...violationMsgIds].filter(Boolean).map(String))];
+        if (type === 'image' || type === 'audio') filter.type = type;
+        if (flagged === 'true') filter._id = { $in: flaggedIds };
+
         // الحصول على الرسائل مع pagination
         const messages = await Message.find(filter)
             .populate('sender', 'name email profileImage')
@@ -62,15 +75,18 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
             .limit(limit * 1)
             .skip((page - 1) * limit);
 
-        // عدد الرسائل الكلي
-        const total = await Message.countDocuments(filter);
+        // عدد الرسائل الكلي (بالفلتر) + عدّادات المحادثة كلها (بلا فلتر)
+        const [total, allCount, imageCount, audioCount] = await Promise.all([
+            Message.countDocuments(filter),
+            Message.countDocuments({ conversation: conversationId }),
+            Message.countDocuments({ conversation: conversationId, type: 'image', isDeleted: { $ne: true } }),
+            Message.countDocuments({ conversation: conversationId, type: 'audio', isDeleted: { $ne: true } })
+        ]);
 
         // ✅ وسم الرسائل المخالفة — المخالفات تُخزَّن في FlaggedMessage و
         // Violation لا داخل Message، فكانت شارة «مخالف» وفلتر المخالفات
         // في اللوحة لا يعملان إطلاقاً (الرد لا يحمل الحقل أصلاً)
         const messageIds = messages.map(m => m._id);
-        const FlaggedMessage = require('../models/FlaggedMessage');
-        const Violation = require('../models/Violation');
         const [flags, violations] = await Promise.all([
             FlaggedMessage.find({ message: { $in: messageIds } })
                 .select('message matchedWords status action originalContent')
@@ -111,7 +127,8 @@ router.get('/conversation/:conversationId', protect, adminOnly, async (req, res)
                 messages: decorated,
                 currentPage: page,
                 totalPages: Math.ceil(total / limit),
-                totalMessages: total
+                totalMessages: total,
+                counts: { all: allCount, images: imageCount, audio: audioCount, flagged: flaggedIds.length }
             }
         });
     } catch (error) {
