@@ -13,7 +13,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
-        const { page = 1, limit = 20, type, isActive, activeWithin, status, search, hasFlaggedMessages, hasImages, sortBy = 'updatedAt' } = req.query;
+        const { page = 1, limit = 20, type, isActive, activeWithin, isLocked, status, search, hasFlaggedMessages, hasImages, sortBy = 'updatedAt' } = req.query;
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
 
@@ -21,6 +21,8 @@ router.get('/', protect, adminOnly, async (req, res) => {
         const filter = {};
         if (type) filter.type = type;
         if (isActive !== undefined) filter.isActive = isActive === 'true';
+        // «مقفلة» — كانت اللوحة ترسلها والسيرفر يتجاهلها فيعيد كل المحادثات
+        if (isLocked === 'true') filter.isLocked = true;
         // «نشطة» في اللوحة = نشاط خلال آخر N ساعة (فهرس updatedAt). isActive وحده يعني
         // «غير معطّلة» فقط — ~75% من المحادثات — فكان الفلتر يبدو بلا أثر.
         const activeHours = parseInt(activeWithin);

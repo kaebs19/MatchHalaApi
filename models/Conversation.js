@@ -145,6 +145,13 @@ conversationSchema.index({ isActive: 1 });
 conversationSchema.index({ participants: 1, status: 1, isActive: 1, updatedAt: -1 });
 // سقف الطلبات المعلّقة المرسَلة — يُفحص عند كل طلب محادثة جديد
 conversationSchema.index({ creator: 1, status: 1 });
+// ✅ فلتر «مقفلة» في اللوحة — جزئي على المقفلة وحدها (0 الآن) فيبقى صغيراً.
+//    بدونه find + sort(updatedAt) يمسح المحادثات كلها (~992 ألفاً، 12ث) حين لا تطابق.
+//    ⚠️ الاسم والخيارات مطابقة لما أُنشئ يدوياً في الإنتاج — لا تغيّرها.
+conversationSchema.index(
+    { isLocked: 1, updatedAt: -1 },
+    { name: 'isLocked_1_updatedAt_-1_locked', partialFilterExpression: { isLocked: true } }
+);
 
 // دالة لحساب عدد المشاركين تلقائياً
 conversationSchema.pre('save', function() {
