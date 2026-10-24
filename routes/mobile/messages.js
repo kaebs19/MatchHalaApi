@@ -2192,6 +2192,28 @@ router.post('/messages/forward', protect, async (req, res) => {
             });
         }
 
+        // ✅ لا تُعاد إلا رسالة من محادثة أنت طرف فيها — بلا هذا كان أي معرّف رسالة
+        //    يكفي لنسخ محتواها (نصّاً أو رابط صورة) إلى محادثتك
+        const isInSource = await Conversation.exists({
+            _id: originalMessage.conversation,
+            participants: userId
+        });
+        if (!isInSource) {
+            return res.status(404).json({
+                success: false,
+                message: 'الرسالة غير موجودة'
+            });
+        }
+
+        // ✅ الوسائط المؤقتة لا تُعاد توجيهها — النسخة كانت تصير رسالة دائمة بنفس الرابط
+        if (originalMessage.disappearing?.enabled) {
+            return res.status(400).json({
+                success: false,
+                message: 'لا يمكن إعادة توجيه الوسائط المؤقتة',
+                code: 'EPHEMERAL_NOT_FORWARDABLE'
+            });
+        }
+
         // التحقق من المحادثة المستهدفة
         const targetConversation = await Conversation.findById(targetConversationId)
             .populate('participants', 'name email deviceToken');
