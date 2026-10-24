@@ -1038,7 +1038,7 @@ router.post('/conversations/bulk-reject-old', protect, async (req, res) => {
 // @route   GET /api/mobile/conversations/pending-count
 // @desc    عدد طلبات المحادثة المعلقة (للـ badge في bottom tab) — خفيف وسريع
 // @access  Private
-router.get('/conversations/pending-count', protect, async (req, res) => {
+const getPendingRequestsCount = async (req, res) => {
     try {
         const Conversation = require('../../models/Conversation');
         const userId = req.user._id;
@@ -1076,7 +1076,8 @@ router.get('/conversations/pending-count', protect, async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
-});
+};
+router.get('/conversations/pending-count', protect, getPendingRequestsCount);
 
 // @route   GET /api/mobile/conversations/sent-requests
 // @desc    طلبات المحادثة التي أرسلها المستخدم ولم تُجَب بعد
@@ -2219,3 +2220,5 @@ router.get('/best-friends', protect, async (req, res) => {
 });
 
 module.exports = router;
+// يستعمله GET /app/bootstrap في bootstrap.js — مصدر واحد للمنطق
+module.exports.getPendingRequestsCount = getPendingRequestsCount;

@@ -241,7 +241,7 @@ router.delete('/notifications/:id', protect, async (req, res) => {
 // @route   GET /api/mobile/notifications/unread-count
 // @desc    عدد الإشعارات غير المقروءة فقط (خفيف — بدون جلب القائمة)
 // @access  Private
-router.get('/notifications/unread-count', protect, async (req, res) => {
+const getUnreadNotificationsCount = async (req, res) => {
     try {
         const userId = req.user._id;
 
@@ -261,7 +261,8 @@ router.get('/notifications/unread-count', protect, async (req, res) => {
         console.error('خطأ في جلب عدد الإشعارات غير المقروءة:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.get('/notifications/unread-count', protect, getUnreadNotificationsCount);
 
 // @route   DELETE /api/mobile/notifications
 // @desc    حذف جميع إشعارات المستخدم
@@ -370,3 +371,5 @@ router.patch('/notifications/preferences', protect, async (req, res) => {
 });
 
 module.exports = router;
+// يستعمله GET /app/bootstrap في bootstrap.js — مصدر واحد للمنطق
+module.exports.getUnreadNotificationsCount = getUnreadNotificationsCount;

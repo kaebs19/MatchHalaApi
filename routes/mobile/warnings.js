@@ -26,7 +26,7 @@ const OfficialWarning = require('../../models/OfficialWarning');
  *   }
  * }
  */
-router.get('/me/active-warning', protect, async (req, res) => {
+const getActiveWarning = async (req, res) => {
     try {
         const userId = req.user._id;
 
@@ -61,7 +61,8 @@ router.get('/me/active-warning', protect, async (req, res) => {
         console.error('active-warning error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
-});
+};
+router.get('/me/active-warning', protect, getActiveWarning);
 
 /**
  * @route   POST /api/mobile/me/acknowledge-warning/:id
@@ -137,3 +138,5 @@ router.get('/me/warnings-history', protect, async (req, res) => {
 });
 
 module.exports = router;
+// يستعمله GET /app/bootstrap في bootstrap.js — مصدر واحد للمنطق
+module.exports.getActiveWarning = getActiveWarning;

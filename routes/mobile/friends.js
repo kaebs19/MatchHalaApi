@@ -722,24 +722,7 @@ router.get('/friends/status/:userId', protect, async (req, res) => {
 //    ويُلتقط ما تكتبه في الاستجابة. أي تعديل عليها ينعكس هنا تلقائياً.
 // ==========================================
 
-/// يشغّل معالج مسار ويلتقط ما كتبه بدل إرساله للعميل
-function captureHandler(handler, req) {
-    return new Promise((resolve) => {
-        let settled = false;
-        const done = (payload) => {
-            if (settled) return;
-            settled = true;
-            resolve(payload);
-        };
-        const fakeRes = {
-            statusCode: 200,
-            status(code) { this.statusCode = code; return this; },
-            json(payload) { done(this.statusCode === 200 ? payload : null); return this; },
-            send(payload) { done(this.statusCode === 200 ? payload : null); return this; }
-        };
-        Promise.resolve(handler(req, fakeRes)).catch(() => done(null));
-    });
-}
+const { captureHandler } = require('../../utils/captureHandler');
 
 router.get('/friends/bootstrap', protect, async (req, res) => {
     try {

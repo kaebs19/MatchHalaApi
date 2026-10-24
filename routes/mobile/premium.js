@@ -431,7 +431,7 @@ router.get('/subscription/status', protect, async (req, res) => {
 // @desc    إعادة فحص انتهاء الاشتراك فوراً (بدل انتظار الـ cron الساعي)
 //         iOS يستدعيه عند فتح التطبيق + بعد restore purchases
 // @access  Protected
-router.post('/subscription/verify-expiration', protect, async (req, res) => {
+const verifySubscriptionExpiration = async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
             .select('isPremium premiumPlan premiumExpiresAt stealthMode customNameColor privacySettings');
@@ -479,6 +479,9 @@ router.post('/subscription/verify-expiration', protect, async (req, res) => {
         console.error('خطأ في فحص انتهاء الاشتراك:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
     }
-});
+};
+router.post('/subscription/verify-expiration', protect, verifySubscriptionExpiration);
 
 module.exports = router;
+// يستعمله GET /app/bootstrap في bootstrap.js — مصدر واحد للمنطق
+module.exports.verifySubscriptionExpiration = verifySubscriptionExpiration;

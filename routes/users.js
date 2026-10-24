@@ -1217,7 +1217,7 @@ router.post('/:id/unhide', protect, adminOnly, async (req, res) => {
 // @desc    حالة إخفاء حسابي (للعميل ليعرض الشريط + خيار الاستئناف)
 // @access  Private
 // ══════════════════════════════════════════════════════════
-router.get('/me/hide-status', protect, async (req, res) => {
+const getHideStatus = async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select('hidden').lean();
         const active = isCurrentlyHidden(user);
@@ -1234,7 +1234,8 @@ router.get('/me/hide-status', protect, async (req, res) => {
         console.error('hide-status error:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
-});
+};
+router.get('/me/hide-status', protect, getHideStatus);
 
 // ══════════════════════════════════════════════════════════
 // @route   POST /api/users/:id/clear-reports
@@ -4034,3 +4035,5 @@ router.get('/:id/name-history', protect, adminOnly, async (req, res) => {
 });
 
 module.exports = router;
+// يستعمله GET /app/bootstrap في bootstrap.js — مصدر واحد للمنطق
+module.exports.getHideStatus = getHideStatus;
