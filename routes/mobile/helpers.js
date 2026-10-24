@@ -230,6 +230,36 @@ const uploadMessageAudio = multer({
     }
 });
 
+// إعداد multer لرفع فيديو المحادثة (15 ثانية، يُضغط على الجهاز).
+// ⚠️ مجلد مستقل: Nginx يقدّمه بلا كاش (Cloudflare لا يحتفظ بنسخة بعد انتهائه).
+const ephemeralUploadDir = path.join(__dirname, '..', '..', 'uploads', 'ephemeral');
+if (!fs.existsSync(ephemeralUploadDir)) {
+    fs.mkdirSync(ephemeralUploadDir, { recursive: true });
+}
+
+const videoStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, ephemeralUploadDir);
+    },
+    filename: (req, file, cb) => {
+        // اسم عشوائي طويل — الرابط عام خلال صلاحيته فلا يُخمَّن
+        const rand = require('crypto').randomBytes(12).toString('hex');
+        cb(null, `vid-${Date.now()}-${rand}.mp4`);
+    }
+});
+
+const uploadMessageVideo = multer({
+    storage: videoStorage,
+    limits: { fileSize: 6 * 1024 * 1024 }, // 720p HEVC لـ 15ث ≈ 1.5–3MB
+    fileFilter: (req, file, cb) => {
+        if (/^video\/(mp4|quicktime)$/.test(file.mimetype) || /\.(mp4|mov)$/i.test(file.originalname)) {
+            cb(null, true);
+        } else {
+            cb(new Error('فقط ملفات الفيديو مسموحة (MP4, MOV)'));
+        }
+    }
+});
+
 // إعداد multer لرفع صور التوثيق (Verification Selfies)
 const verificationsUploadDir = path.join(__dirname, '..', '..', 'uploads', 'verifications');
 if (!fs.existsSync(verificationsUploadDir)) {
@@ -301,6 +331,7 @@ module.exports = {
     blockGuardForConversation,
     uploadMessageImage,
     uploadMessageAudio,
+    uploadMessageVideo,
     uploadVerificationSelfie,
     uploadReportScreenshot
 };

@@ -112,10 +112,12 @@ const messageSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
-    // ✅ الصور المؤقتة (تختفي بعد المشاهدة)
+    // ✅ الوسائط المؤقتة: الصور (تختفي بعد المشاهدة) والفيديو (كل فيديو مؤقت)
     disappearing: {
         enabled: { type: Boolean, default: false },
-        duration: { type: Number, default: null },    // مدة العرض بالثواني (5, 10, 30)
+        duration: { type: Number, default: null },    // مدة العرض بالثواني (5, 10, 30) — للفيديو: طوله
+        // للفيديو فقط: once = يختفي بعد أول مشاهدة · 24h = يبقى يوماً من الإرسال
+        mode: { type: String, enum: ['once', '24h'], default: undefined },
         expiresAt: { type: Date, default: null },      // وقت انتهاء الصلاحية
         viewedBy: [{
             user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -143,6 +145,8 @@ const messageSchema = new mongoose.Schema({
     // ✅ بيانات الرسالة الصوتية
     audioWaveform: { type: [Number], default: undefined },
     audioDuration: { type: Number, default: null },
+    // 🎥 مدة الفيديو بالثواني
+    videoDuration: { type: Number, default: null },
     // 🎧 من سمع الرسالة الصوتية — لا يُسجَّل لمن فعّل القراءة الخفية
     listenedBy: [{
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -205,6 +209,13 @@ messageSchema.index(
 messageSchema.index(
     { 'game.status': 1, 'game.updatedAt': 1 },
     { name: 'game.status_1_game.updatedAt_1', partialFilterExpression: { type: 'game' } }
+);
+
+// ✅ كنس الفيديو المؤقت (utils/disappearingMedia.js) والحدّ اليومي — جزئي على الفيديو وحده.
+//    ⚠️ الاسم والخيارات مطابقة لما أُنشئ يدوياً في الإنتاج.
+messageSchema.index(
+    { 'disappearing.expiresAt': 1 },
+    { name: 'disappearing.expiresAt_1_videos', partialFilterExpression: { type: 'video' } }
 );
 
 // دالة للحذف الناعم

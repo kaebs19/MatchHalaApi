@@ -15,7 +15,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
-const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected, markMessageDelivered } = require('./helpers');
+const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, uploadMessageVideo, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected, markMessageDelivered } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
 
@@ -54,7 +54,7 @@ function checkMessagingRestriction(req, mediaType = 'text') {
 
     const level = req.user.restrictions.messagingRestrictedLevel;
     if (level === 'all') {
-        const labels = { text: 'الرسائل', image: 'الصور', audio: 'الرسائل الصوتية' };
+        const labels = { text: 'الرسائل', image: 'الصور', audio: 'الرسائل الصوتية', video: 'الفيديو' };
         return {
             success: false,
             message: `حسابك مقيّد من إرسال ${labels[mediaType] || 'الرسائل'} مؤقتاً`,
@@ -71,30 +71,7 @@ function checkMessagingRestriction(req, mediaType = 'text') {
     return null;
 }
 
-// ✅ نقل ملف صورة مؤقتة منتهية إلى أرشيف الأدمن (لا يُخدَم عبر /uploads).
-//    يُرجع المسار النسبي داخل الأرشيف، أو null لو تعذّر.
-//    ملاحظة: لا نحذف الملف — الإشراف يحتاجه في البلاغات.
-const EXPIRED_DIR = require('path').join(__dirname, '..', '..', 'uploads', '_expired');
-function archiveDisappearingFile(mediaUrl) {
-    try {
-        if (!mediaUrl) return null;
-        const path = require('path');
-        const fileName = path.basename(String(mediaUrl).split('?')[0]);
-        if (!fileName) return null;
-
-        const source = path.join(__dirname, '..', '..', 'uploads', 'messages', fileName);
-        if (!fs.existsSync(source)) return null;
-
-        fs.mkdirSync(EXPIRED_DIR, { recursive: true });
-        const target = path.join(EXPIRED_DIR, fileName);
-        fs.renameSync(source, target);
-        return `_expired/${fileName}`;
-    } catch (e) {
-        // لا نُفشل الطلب — الأهم أن mediaUrl أُبطل في قاعدة البيانات
-        console.error('⚠️ أرشفة الصورة المؤقتة فشلت:', e.message);
-        return null;
-    }
-}
+const { EXPIRED_DIR, archiveDisappearingFile, destroyDisappearingIfDue } = require('../../utils/disappearingMedia');
 
 // ✅ رسالة جديدة تُعيد إظهار المحادثة لمن حذفها.
 //    من يحذف محادثة يُضاف إلى hiddenFor، وقوائم المحادثات تستبعده منها.
@@ -119,36 +96,6 @@ async function unhideConversationForRecipients(conversationId, senderId) {
     } catch (e) {
         console.error('⚠️ إعادة إظهار المحادثة فشلت:', e.message);
     }
-}
-
-// ✅ تدمير صورة مؤقتة انقضى وقتها — بغضّ النظر عن كون العارض مفتوحاً.
-//    المدة تُحسب بساعة الحائط من أول مشاهدة (expiresAt)، فلو أغلق المستخدم
-//    العارض مبكراً ثم انقضت المدة وهو خارجها يجب أن تُدمَّر أيضاً.
-//    يُستدعى كسلاً عند القراءة/المحاولة — لا يحتاج cron.
-//    يُرجع true لو دُمِّرت الآن.
-async function destroyDisappearingIfDue(message) {
-    const d = message?.disappearing;
-    if (!d?.enabled || d.destroyed) return false;
-    if (!d.expiresAt || new Date(d.expiresAt) > new Date()) return false;
-
-    const archived = archiveDisappearingFile(message.mediaUrl);
-    d.destroyed = true;
-    d.destroyedAt = new Date();
-    d.archivedPath = archived;
-    (d.viewedBy || []).forEach(v => { v.expired = true; });
-    message.mediaUrl = null;
-    await message.save();
-
-    if (global.io) {
-        const payload = {
-            messageId: String(message._id),
-            conversationId: String(message.conversation),
-            destroyed: true
-        };
-        // بثّ واحد لغرفتين — لا يصل من فيهما مرتين
-        global.io.to([`user:${message.sender}`, `conversation-${message.conversation}`]).emit('photo-expired', payload);
-    }
-    return true;
 }
 
 // ✅ Helper موحَّد: بوابة الإرسال في محادثة
@@ -1362,6 +1309,209 @@ router.post('/messages/send-audio', protect, uploadMessageAudio.single('audio'),
     }
 });
 
+// ==========================================
+// 🎥 فيديو المحادثة (15 ثانية، مؤقت دائماً)
+// ==========================================
+
+// الحدّ اليومي: الجميع، وهلا+ أكثر
+const VIDEO_DAILY_LIMIT = { free: 2, premium: 10 };
+const VIDEO_MAX_SECONDS = 15;
+const VIDEO_TTL_MS = 24 * 60 * 60 * 1000;
+// «مشاهدة واحدة»: بعد أول فتح يُدمَّر خلال طول الفيديو + هامش، حتى لو لم يُبلغ التطبيق بالإغلاق
+const VIDEO_ONCE_GRACE_SECONDS = 60;
+
+// multer يرمي خطأ الحجم/النوع قبل المعالج — نحوّله لردّ مفهوم بدل 500
+function receiveVideo(req, res, next) {
+    uploadMessageVideo.single('video')(req, res, (err) => {
+        if (!err) return next();
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(413).json({ success: false, message: 'حجم الفيديو كبير جداً', code: 'VIDEO_TOO_LARGE' });
+        }
+        return res.status(400).json({ success: false, message: err.message || 'ملف الفيديو غير صالح', code: 'VIDEO_INVALID' });
+    });
+}
+
+// @route   POST /api/mobile/messages/send-video
+// @desc    إرسال فيديو (multipart: video, conversationId, duration, mode=once|24h, width, height, replyTo)
+// @access  Private
+router.post('/messages/send-video', protect, receiveVideo, async (req, res) => {
+    const discard = () => { if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} } };
+    try {
+        const { conversationId, duration, mode, width, height, replyTo } = req.body;
+        const senderId = req.user._id;
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'لم يتم رفع فيديو' });
+        }
+        if (!conversationId) {
+            discard();
+            return res.status(400).json({ success: false, message: 'conversationId مطلوب' });
+        }
+
+        const videoMode = mode === '24h' ? '24h' : 'once';
+        const videoDuration = Math.round(parseFloat(duration) * 10) / 10;
+        if (!Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration > VIDEO_MAX_SECONDS + 0.5) {
+            discard();
+            return res.status(400).json({ success: false, message: `مدة الفيديو حتى ${VIDEO_MAX_SECONDS} ثانية`, code: 'VIDEO_TOO_LONG' });
+        }
+
+        const restriction = checkMessagingRestriction(req, 'video');
+        if (restriction) {
+            discard();
+            return res.status(403).json(restriction);
+        }
+
+        if (req.user.bannedWords?.isBanned) {
+            discard();
+            return res.status(403).json({ success: false, message: 'تم حظر حسابك بسبب مخالفات متكررة', code: 'USER_BANNED' });
+        }
+
+        // الحدّ اليومي (من منتصف الليل بتوقيت السيرفر، مثل الصور)
+        const dailyLimit = req.user.isPremium ? VIDEO_DAILY_LIMIT.premium : VIDEO_DAILY_LIMIT.free;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const sentToday = await Message.countDocuments({
+            sender: senderId,
+            type: 'video',
+            createdAt: { $gte: today }
+        });
+        if (sentToday >= dailyLimit) {
+            discard();
+            return res.status(429).json({
+                success: false,
+                message: req.user.isPremium
+                    ? `وصلت للحد اليومي (${dailyLimit} فيديو)`
+                    : `وصلت للحد اليومي (${dailyLimit} فيديو). اشترك في هلا+ لإرسال حتى ${VIDEO_DAILY_LIMIT.premium} يومياً`,
+                code: 'VIDEO_LIMIT_REACHED',
+                data: { dailyLimit, sent: sentToday, premiumLimit: VIDEO_DAILY_LIMIT.premium }
+            });
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email deviceToken');
+        if (!conversation) {
+            discard();
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+        const isParticipant = conversation.participants.some(p => p._id.toString() === senderId.toString());
+        if (!isParticipant) {
+            discard();
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+
+        // بوابة الإرسال (حظر / منتهية / معلّقة)
+        const gate = await checkConversationSendGate(conversation, req.user);
+        if (gate) {
+            discard();
+            return res.status(gate.status).json(gate.body);
+        }
+
+        const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
+        const mediaUrl = `${baseUrl}/uploads/ephemeral/${req.file.filename}`;
+
+        const w = parseInt(width, 10), h = parseInt(height, 10);
+        const messageData = {
+            conversation: conversationId,
+            sender: senderId,
+            type: 'video',
+            mediaUrl,
+            content: '',
+            status: 'sent',
+            videoDuration,
+            metadata: { fileSize: req.file.size, mimeType: req.file.mimetype },
+            // كل فيديو مؤقت: حدّ أقصى 24 ساعة من الإرسال للنمطين (once غير المفتوح أيضاً)
+            disappearing: {
+                enabled: true,
+                mode: videoMode,
+                duration: Math.ceil(videoDuration),
+                expiresAt: new Date(Date.now() + VIDEO_TTL_MS),
+                viewedBy: []
+            }
+        };
+        if (w > 0 && h > 0) {
+            messageData.mediaWidth = w;
+            messageData.mediaHeight = h;
+        }
+        if (replyTo && mongoose.Types.ObjectId.isValid(replyTo)) {
+            messageData.replyTo = replyTo;
+        }
+
+        const message = await Message.create(messageData);
+
+        await unhideConversationForRecipients(conversation._id, req.user._id);
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified')
+            .populate({
+                path: 'replyTo',
+                select: 'content type sender mediaUrl',
+                populate: { path: 'sender', select: 'name' }
+            })
+            .lean();
+
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', { message: populatedMessage });
+        }
+
+        const pushText = videoMode === 'once' ? '🎥 فيديو لمرة واحدة' : '🎥 فيديو';
+        const recipients = conversation.participants.filter(p => p._id.toString() !== senderId.toString());
+        for (const recipient of recipients) {
+            const recipientId = recipient._id.toString();
+            const isOnline = await isUserSocketConnected(recipientId);
+            if (!isOnline && recipient.deviceToken) {
+                try {
+                    await pushNotificationService.sendNewMessageNotification(
+                        recipient._id,
+                        req.user.name,
+                        pushText,
+                        conversationId,
+                        getBestUserImage(req.user),
+                        req.user._id,
+                        message._id
+                    );
+                } catch (pushErr) {
+                    console.error('Push error (video):', pushErr.message);
+                }
+            } else if (isOnline) {
+                if (await markMessageDelivered(message._id, conversationId, req.user._id)) {
+                    populatedMessage.isDelivered = true;
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                message: {
+                    _id: populatedMessage._id,
+                    conversationId,
+                    sender: populatedMessage.sender?._id || senderId,
+                    senderUser: populatedMessage.sender,
+                    content: populatedMessage.content,
+                    type: populatedMessage.type,
+                    mediaUrl: populatedMessage.mediaUrl,
+                    mediaWidth: populatedMessage.mediaWidth,
+                    mediaHeight: populatedMessage.mediaHeight,
+                    videoDuration: populatedMessage.videoDuration,
+                    disappearing: populatedMessage.disappearing,
+                    replyTo: populatedMessage.replyTo,
+                    isRead: false,
+                    createdAt: populatedMessage.createdAt,
+                    updatedAt: populatedMessage.updatedAt
+                },
+                dailyLimit,
+                sentToday: sentToday + 1
+            }
+        });
+    } catch (error) {
+        console.error('Send video error:', error);
+        discard();
+        res.status(500).json({ success: false, message: 'حدث خطأ في إرسال الفيديو' });
+    }
+});
+
 // @route   POST /api/mobile/conversations/:conversationId/messages/image
 // @desc    إرسال صورة في رسالة (multipart/form-data)
 // @access  Private
@@ -2423,9 +2573,19 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
                 viewedAt: new Date(),
                 expired: false
             });
-            // تعيين وقت الانتهاء
+            // تعيين وقت الانتهاء — الصورة: المدة من أول مشاهدة.
+            // فيديو once: طوله + هامش (لا يتجاوز حدّ الـ 24 ساعة المضبوط عند الإرسال).
+            // فيديو 24h: لا يتغيّر بالمشاهدة.
             const duration = message.disappearing.duration || 10;
-            message.disappearing.expiresAt = new Date(Date.now() + duration * 1000);
+            const mode = message.disappearing.mode;
+            if (mode !== '24h') {
+                const windowSeconds = mode === 'once' ? duration + VIDEO_ONCE_GRACE_SECONDS : duration;
+                const viewDeadline = new Date(Date.now() + windowSeconds * 1000);
+                const current = message.disappearing.expiresAt;
+                if (!current || viewDeadline < new Date(current)) {
+                    message.disappearing.expiresAt = viewDeadline;
+                }
+            }
             await message.save();
 
             // إشعار المرسل بأن الصورة شوهدت
@@ -2434,7 +2594,8 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
                     messageId: message._id,
                     conversationId: message.conversation,
                     viewedBy: req.user.name,
-                    duration: duration
+                    duration: duration,
+                    mode: mode || null
                 });
             }
         }
@@ -2443,6 +2604,7 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
             success: true,
             data: {
                 duration: message.disappearing.duration,
+                mode: message.disappearing.mode || null,
                 expiresAt: message.disappearing.expiresAt,
                 mediaUrl: message.mediaUrl
             }
@@ -2496,6 +2658,11 @@ router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
 
         if (!message.disappearing || !message.disappearing.enabled) {
             return res.status(400).json({ success: false, message: 'هذه ليست صورة مؤقتة' });
+        }
+
+        // فيديو 24h يُعاد تشغيله حتى ينقضي يومه — الإغلاق لا ينهيه (الكنس الدوري يتولّاه)
+        if (message.disappearing.mode === '24h') {
+            return res.json({ success: true, data: { destroyed: false } });
         }
 
         // وضع علامة انتهاء المشاهدة

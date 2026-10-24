@@ -909,5 +909,10 @@ server.listen(PORT, () => {
         } catch (e) {
             console.error('تعذّر بدء مذكّر الألعاب:', e.message);
         }
+        try {
+            require('./utils/disappearingMedia').startEphemeralSweeper();
+        } catch (e) {
+            console.error('تعذّر بدء كنس الفيديو المؤقت:', e.message);
+        }
     }
 });
