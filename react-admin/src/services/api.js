@@ -852,3 +852,24 @@ export const censorUserMessages = async (userId, scope = 'all') => {
     const response = await api.put(`/users/${userId}/conversations/censor`, { scope });
     return response.data;
 };
+
+// ═══ 📸 قصص البروفايل (لوحة التحكم) ═══
+export const getUserStories = async (userId) => {
+    const response = await api.get(`/admin/stories/user/${userId}`);
+    return response.data;
+};
+
+export const deleteStoryAdmin = async (storyId) => {
+    const response = await api.delete(`/admin/stories/${storyId}`);
+    return response.data;
+};
+
+export const banUserStories = async (userId, { days, reason, removeActive }) => {
+    const response = await api.post(`/admin/stories/ban/${userId}`, { days, reason, removeActive });
+    return response.data;
+};
+
+export const liftStoryBan = async (userId) => {
+    const response = await api.delete(`/admin/stories/ban/${userId}`);
+    return response.data;
+};

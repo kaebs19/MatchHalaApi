@@ -38,6 +38,7 @@ import {
 } from '../utils/location';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
+import UserStoriesTab from '../components/UserStoriesTab';
 import './UserDetail.css';
 
 const PHOTO_HISTORY_REASONS = {
@@ -1256,6 +1257,12 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                     🖼️ الصور ({(user.photos?.length || 0) + (user.profileImage ? 1 : 0)})
                 </button>
                 <button
+                    className={`tab-btn ${activeTab === 'stories' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('stories')}
+                >
+                    📸 القصص
+                </button>
+                <button
                     className={`tab-btn ${activeTab === 'timeline' ? 'active' : ''}`}
                     onClick={() => setActiveTab('timeline')}
                 >
@@ -1298,6 +1305,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
             {/* Tab Content */}
             <div className="tab-content">
+                {activeTab === 'stories' && <UserStoriesTab userId={userId} />}
                 {/* Personal Info Tab */}
                 {activeTab === 'info' && (
                     <div className="personal-info-section">

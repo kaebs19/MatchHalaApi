@@ -1,0 +1,33 @@
+.stories-tab { display: flex; flex-direction: column; gap: 20px; }
+.stories-tab h3 { margin: 0 0 10px; color: var(--text-heading); font-size: 16px; }
+.stories-tab section { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
+.stories-empty, .stories-hint { color: var(--text-muted); font-size: 13px; margin: 4px 0 10px; }
+.stories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.story-card { display: flex; flex-direction: column; gap: 6px; }
+.story-card.ended { opacity: 0.75; }
+.story-thumb { position: relative; aspect-ratio: 9 / 16; border-radius: 10px; overflow: hidden; background: var(--bg-subtle);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.story-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.story-text { color: #fff; font-weight: 700; text-align: center; padding: 10px; font-size: 13px; word-break: break-word; }
+.story-missing { color: var(--text-muted); font-size: 12px; }
+.story-badge { position: absolute; top: 6px; inset-inline-start: 6px; background: rgba(0,0,0,.6); color: #fff;
+    border-radius: 8px; padding: 2px 6px; font-size: 11px; }
+.story-badge.reported { background: #d32f2f; }
+.story-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
+.story-date { font-size: 11px; color: var(--text-muted); }
+.story-delete { border: none; border-radius: 8px; padding: 6px; background: #fdecea; color: #c62828; cursor: pointer; font-weight: 600; }
+.stories-ban .ban-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.stories-ban label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.stories-ban label.grow { flex: 1; min-width: 180px; }
+.stories-ban label.check { flex-direction: row; align-items: center; gap: 6px; }
+.stories-ban input, .stories-ban select { padding: 8px; border-radius: 8px; border: 1px solid var(--border-color);
+    background: var(--bg-subtle); color: var(--text-heading); }
+.stories-ban button { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: 700;
+    background: var(--bg-subtle); color: var(--text-heading); }
+.stories-ban button.danger { background: #d32f2f; color: #fff; }
+.stories-ban .ban-active { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: #fff3e0; color: #e65100; border-radius: 10px; padding: 10px 14px; }
+.stories-lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center;
+    justify-content: center; z-index: 2000; cursor: zoom-out; }
+.stories-lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 12px; }
+@media (max-width: 600px) { .stories-grid { grid-template-columns: repeat(2, 1fr); } }
