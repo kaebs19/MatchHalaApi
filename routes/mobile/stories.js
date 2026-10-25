@@ -17,7 +17,8 @@ const { getFullUrl, getBlockState, isUserFullyBanned } = require('./helpers');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 
-const STORY_MAX_ACTIVE = 3;
+// القصص النشطة: 3 مجاناً، 10 لمشترك هلا+ (مثل حدّ الفيديو اليومي)
+const STORY_MAX_ACTIVE = { free: 3, premium: 10 };
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 const STORY_MAX_EDGE = 1920;
 const STATUS_MAX_USERS = 200;
@@ -52,6 +53,7 @@ function receiveStoryImage(req, res, next) {
 }
 
 const isPremiumActive = (user) => !!(user?.isPremium && user.premiumExpiresAt && new Date(user.premiumExpiresAt) > new Date());
+const maxStoriesFor = (user) => (isPremiumActive(user) ? STORY_MAX_ACTIVE.premium : STORY_MAX_ACTIVE.free);
 
 // القصص النشطة فعلاً — الكنس كل 5 دقائق، فالوقت يُفحص هنا أيضاً
 const activeFilter = (extra = {}) => ({ status: 'active', expiresAt: { $gt: new Date() }, ...extra });
@@ -115,7 +117,7 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
 
         res.status(201).json({
             success: true,
-            data: { story: serialize(story, { owner: true }), active: activeCount + 1, max: STORY_MAX_ACTIVE }
+            data: { story: serialize(story, { owner: true }), active: activeCount + 1, max: maxStoriesFor(req.user), freeMax: STORY_MAX_ACTIVE.free, premiumMax: STORY_MAX_ACTIVE.premium }
         });
     } catch (error) {
         unlinkQuiet(uploaded);
@@ -144,14 +146,18 @@ async function publishGate(req) {
         };
     }
     const activeCount = await Story.countDocuments(activeFilter({ user: req.user._id }));
-    if (activeCount >= STORY_MAX_ACTIVE) {
+    const max = maxStoriesFor(req.user);
+    if (activeCount >= max) {
+        const premium = isPremiumActive(req.user);
         return {
             status: 429,
             body: {
                 success: false,
-                message: `لديك ${STORY_MAX_ACTIVE} قصص نشطة — احذف واحدة أو انتظر انتهاءها`,
+                message: premium
+                    ? `لديك ${max} قصص نشطة — احذف واحدة أو انتظر انتهاءها`
+                    : `مسموح ${max} قصص نشطة — اشترك في هلا+ لإضافة حتى ${STORY_MAX_ACTIVE.premium}`,
                 code: 'STORY_LIMIT',
-                data: { max: STORY_MAX_ACTIVE, active: activeCount }
+                data: { max, active: activeCount, freeMax: STORY_MAX_ACTIVE.free, premiumMax: STORY_MAX_ACTIVE.premium, isPremium: premium }
             }
         };
     }
@@ -192,7 +198,7 @@ router.post('/stories/text', protect, async (req, res) => {
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
         });
         const active = await Story.countDocuments(activeFilter({ user: req.user._id }));
-        res.status(201).json({ success: true, data: { story: serialize(story, { owner: true }), active, max: STORY_MAX_ACTIVE } });
+        res.status(201).json({ success: true, data: { story: serialize(story, { owner: true }), active, max: maxStoriesFor(req.user), freeMax: STORY_MAX_ACTIVE.free, premiumMax: STORY_MAX_ACTIVE.premium } });
     } catch (error) {
         console.error('خطأ في نشر قصة نصّية:', error);
         res.status(500).json({ success: false, message: 'فشل نشر القصة' });
@@ -207,7 +213,7 @@ router.get('/stories/me', protect, async (req, res) => {
         const stories = await Story.find(activeFilter({ user: req.user._id })).sort({ createdAt: 1 }).lean();
         res.json({
             success: true,
-            data: { stories: stories.map(s => serialize(s, { owner: true })), max: STORY_MAX_ACTIVE }
+            data: { stories: stories.map(s => serialize(s, { owner: true })), max: maxStoriesFor(req.user), freeMax: STORY_MAX_ACTIVE.free, premiumMax: STORY_MAX_ACTIVE.premium }
         });
     } catch (error) {
         console.error('خطأ في جلب قصصي:', error);
