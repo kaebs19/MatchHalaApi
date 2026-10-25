@@ -14,11 +14,15 @@ const Story = require('../../models/Story');
 const StoryView = require('../../models/StoryView');
 const { protect } = require('../../middleware/auth');
 const { getFullUrl, getBlockState, isUserFullyBanned } = require('./helpers');
+const { checkBannedWords } = require('../bannedWords');
+const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 
 const STORY_MAX_ACTIVE = 3;
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 const STORY_MAX_EDGE = 1920;
 const STATUS_MAX_USERS = 200;
+const STORY_TEXT_MAX = 250;
+const STORY_BACKGROUNDS = 8;   // عدد خلفيات القصة النصّية في التطبيق (0…7)
 
 // ⚠️ uploads/ephemeral لا uploads/stories: Nginx يقدّمه بـ private, no-store فلا يبقى في
 //    Cloudflare بعد انتهاء القصة. مجلد جديد تحت /uploads/ كان سيُخزَّن 30 يوماً (immutable).
@@ -54,6 +58,9 @@ const activeFilter = (extra = {}) => ({ status: 'active', expiresAt: { $gt: new 
 
 const serialize = (story, { owner = false, viewed = false } = {}) => ({
     _id: story._id,
+    kind: story.kind || 'image',
+    text: story.kind === 'text' ? story.text : undefined,
+    background: story.kind === 'text' ? (story.background || 0) : undefined,
     imageUrl: getFullUrl(story.imageUrl),
     width: story.width,
     height: story.height,
@@ -73,21 +80,12 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'لم يتم رفع صورة', code: 'STORY_INVALID' });
         }
-        if (isUserFullyBanned(req.user) || req.user.suspension?.isSuspended) {
+        const gate = await publishGate(req);
+        if (gate) {
             unlinkQuiet(uploaded);
-            return res.status(403).json({ success: false, message: 'لا يمكنك نشر قصص حالياً', code: 'STORY_FORBIDDEN' });
+            return res.status(gate.status).json(gate.body);
         }
-
         const activeCount = await Story.countDocuments(activeFilter({ user: req.user._id }));
-        if (activeCount >= STORY_MAX_ACTIVE) {
-            unlinkQuiet(uploaded);
-            return res.status(429).json({
-                success: false,
-                message: `لديك ${STORY_MAX_ACTIVE} قصص نشطة — احذف واحدة أو انتظر انتهاءها`,
-                code: 'STORY_LIMIT',
-                data: { max: STORY_MAX_ACTIVE, active: activeCount }
-            });
-        }
 
         // إعادة ترميز: تطبيق اتجاه EXIF، تصغير، وإسقاط كل البيانات الوصفية (الموقع GPS)
         const sharp = require('sharp');
@@ -122,6 +120,67 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
     } catch (error) {
         unlinkQuiet(uploaded);
         console.error('خطأ في نشر القصة:', error);
+        res.status(500).json({ success: false, message: 'فشل نشر القصة' });
+    }
+});
+
+// قبل أي نشر: ممنوع/محظور + الحدّ. يُرجع ردّ الرفض أو null
+async function publishGate(req) {
+    if (isUserFullyBanned(req.user) || req.user.suspension?.isSuspended) {
+        return { status: 403, body: { success: false, message: 'لا يمكنك نشر قصص حالياً', code: 'STORY_FORBIDDEN' } };
+    }
+    const activeCount = await Story.countDocuments(activeFilter({ user: req.user._id }));
+    if (activeCount >= STORY_MAX_ACTIVE) {
+        return {
+            status: 429,
+            body: {
+                success: false,
+                message: `لديك ${STORY_MAX_ACTIVE} قصص نشطة — احذف واحدة أو انتظر انتهاءها`,
+                code: 'STORY_LIMIT',
+                data: { max: STORY_MAX_ACTIVE, active: activeCount }
+            }
+        };
+    }
+    return null;
+}
+
+// @route   POST /api/mobile/stories/text
+// @desc    قصة نصّية { text ≤250, background 0…7 } — فلتر الترويج الخارجي والكلمات المحظورة (422)
+// @access  Private
+router.post('/stories/text', protect, async (req, res) => {
+    try {
+        const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+        if (!text) {
+            return res.status(400).json({ success: false, message: 'اكتب نصّ القصة', code: 'STORY_INVALID' });
+        }
+        if (text.length > STORY_TEXT_MAX) {
+            return res.status(400).json({ success: false, message: `النصّ حتى ${STORY_TEXT_MAX} حرفاً`, code: 'STORY_INVALID' });
+        }
+        const gate = await publishGate(req);
+        if (gate) return res.status(gate.status).json(gate.body);
+
+        // ⚠️ النصّ الحرّ الوحيد في القصص — يفلت منه الترويج لحسابات خارجية إن لم يُفحص
+        if (detectExternalPromotion(text).detected || (await checkBannedWords(text)).hasBannedWords) {
+            return res.status(422).json({
+                success: false,
+                message: 'النص يحتوي محتوى غير مسموح (حسابات خارجية أو كلمات محظورة) — عدّله وأعد المحاولة',
+                code: 'STORY_TEXT_BLOCKED'
+            });
+        }
+
+        const bg = Number.isInteger(req.body?.background) && req.body.background >= 0 && req.body.background < STORY_BACKGROUNDS
+            ? req.body.background : 0;
+        const story = await Story.create({
+            user: req.user._id,
+            kind: 'text',
+            text,
+            background: bg,
+            expiresAt: new Date(Date.now() + STORY_TTL_MS)
+        });
+        const active = await Story.countDocuments(activeFilter({ user: req.user._id }));
+        res.status(201).json({ success: true, data: { story: serialize(story, { owner: true }), active, max: STORY_MAX_ACTIVE } });
+    } catch (error) {
+        console.error('خطأ في نشر قصة نصّية:', error);
         res.status(500).json({ success: false, message: 'فشل نشر القصة' });
     }
 });

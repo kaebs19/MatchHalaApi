@@ -11,7 +11,11 @@ const storySchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+    // image = صورة · text = نصّ على خلفية (يمرّ على فلتر الترويج والكلمات المحظورة)
+    kind: { type: String, enum: ['image', 'text'], default: 'image' },
     imageUrl: { type: String, default: null },
+    text: { type: String, default: null, maxlength: 250 },
+    background: { type: Number, default: 0 },
     width: { type: Number, default: null },
     height: { type: Number, default: null },
     status: {
