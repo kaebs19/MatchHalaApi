@@ -361,6 +361,14 @@ const userSchema = new mongoose.Schema({
         banReason: { type: String, default: null }
     },
 
+    // 📸 منع نشر القصص لفترة (من لوحة التحكم) — until=null أو ماضٍ = غير ممنوع
+    storyBan: {
+        until: { type: Date, default: null },
+        reason: { type: String, default: null },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        at: { type: Date, default: null }
+    },
+
     // ✅ تعليق العضوية (إيقاف مؤقت) — نظام تدريجي
     // المستويات: 0=لا تعليق, 1=24h, 2=48h, 3=3d, 4=7d, 5=دائم
     suspension: {

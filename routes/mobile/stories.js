@@ -129,6 +129,20 @@ async function publishGate(req) {
     if (isUserFullyBanned(req.user) || req.user.suspension?.isSuspended) {
         return { status: 403, body: { success: false, message: 'لا يمكنك نشر قصص حالياً', code: 'STORY_FORBIDDEN' } };
     }
+    // منع من المشرف لفترة (لوحة التحكم ← قصص المستخدم)
+    const banUntil = req.user.storyBan?.until ? new Date(req.user.storyBan.until) : null;
+    if (banUntil && banUntil > new Date()) {
+        const day = banUntil.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long' });
+        return {
+            status: 403,
+            body: {
+                success: false,
+                message: `أنت ممنوع من نشر القصص حتى ${day} لمخالفة سياسة المحتوى`,
+                code: 'STORY_BANNED',
+                data: { until: banUntil, reason: req.user.storyBan.reason || null }
+            }
+        };
+    }
     const activeCount = await Story.countDocuments(activeFilter({ user: req.user._id }));
     if (activeCount >= STORY_MAX_ACTIVE) {
         return {
