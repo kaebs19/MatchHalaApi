@@ -31,3 +31,37 @@
     justify-content: center; z-index: 2000; cursor: zoom-out; }
 .stories-lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 12px; }
 @media (max-width: 600px) { .stories-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* عارض القصص (الضغط على صورة المستخدم) */
+.story-viewer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 2000; display: flex;
+    align-items: center; justify-content: center; }
+.story-viewer { position: relative; width: min(420px, 92vw); height: min(80vh, 760px); background: #000; border-radius: 16px;
+    overflow: hidden; display: flex; flex-direction: column; }
+.story-viewer-bars { position: absolute; top: 10px; inset-inline: 12px; display: flex; gap: 4px; z-index: 2; }
+.story-viewer-bars span { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.35); }
+.story-viewer-bars span.on { background: #fff; }
+.story-viewer-close { position: absolute; top: 22px; inset-inline-end: 12px; z-index: 3; width: 34px; height: 34px;
+    border-radius: 50%; border: none; background: rgba(255,255,255,.2); color: #fff; cursor: pointer; font-size: 15px; }
+.story-viewer-media { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.story-viewer-media img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.story-viewer-text { color: #fff; font-weight: 800; font-size: 22px; text-align: center; padding: 24px; word-break: break-word; }
+.story-viewer-empty { color: #bbb; margin: auto; font-size: 14px; }
+.story-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%;
+    border: none; background: rgba(255,255,255,.2); color: #fff; font-size: 26px; cursor: pointer; z-index: 2; }
+.story-nav.prev { inset-inline-start: 8px; }
+.story-nav.next { inset-inline-end: 8px; }
+.story-viewer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px;
+    background: #111; color: #ddd; font-size: 12px; }
+.story-viewer-meta .pill { background: rgba(255,255,255,.12); border-radius: 8px; padding: 2px 8px; }
+.story-viewer-meta .pill.danger { background: #d32f2f; color: #fff; }
+.story-viewer-meta .story-delete { margin-inline-start: auto; }
+
+/* صورة المستخدم بحلقة القصة في صفحة التفاصيل */
+.user-avatar-container.has-stories { cursor: pointer; }
+.user-avatar-container.has-stories .user-avatar-image,
+.user-avatar-container.has-stories .user-avatar-large {
+    box-shadow: 0 0 0 3px var(--bg-card), 0 0 0 6px #d62976, 0 0 14px 6px rgba(214, 41, 118, .35); }
+.user-avatar-container.has-ended-stories { cursor: pointer; }
+.user-avatar-container.has-ended-stories .user-avatar-image,
+.user-avatar-container.has-ended-stories .user-avatar-large { box-shadow: 0 0 0 3px var(--bg-card), 0 0 0 5px #9e9e9e; }
+.quick-action-btn.stories { background: linear-gradient(90deg, #f58529, #dd2a7b); color: #fff; }

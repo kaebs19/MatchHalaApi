@@ -48,7 +48,7 @@ function StoryCard({ story, onDelete, onOpen }) {
     );
 }
 
-export default function UserStoriesTab({ userId }) {
+export default function UserStoriesTab({ userId, onChanged }) {
     const { showToast } = useToast();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -61,12 +61,13 @@ export default function UserStoriesTab({ userId }) {
         try {
             const res = await getUserStories(userId);
             setData(res.data);
+            onChanged && onChanged();
         } catch (e) {
             showToast(e?.response?.data?.message || 'فشل جلب القصص', 'error');
         } finally {
             setLoading(false);
         }
-    }, [userId, showToast]);
+    }, [userId, showToast, onChanged]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -149,8 +150,8 @@ export default function UserStoriesTab({ userId }) {
             </section>
 
             <section>
-                <h3>آخر القصص المنتهية ({data.ended.length})</h3>
-                <p className="stories-hint">صور المنتهية لا تُحفظ إلا للمُبلَّغ عنها (أرشيف للمشرف).</p>
+                <h3>القصص المنتهية — للمراجعة ({data.ended.length})</h3>
+                <p className="stories-hint">كل قصة منتهية تبقى هنا للمراجعة (صورها في أرشيف المشرف، لا تظهر للمستخدمين).</p>
                 {data.ended.length === 0 ? <p className="stories-empty">لا شيء</p> : (
                     <div className="stories-grid">
                         {data.ended.map(s => <StoryCard key={s._id} story={s} onOpen={setLightbox} />)}
@@ -163,6 +164,91 @@ export default function UserStoriesTab({ userId }) {
                     <img src={lightbox} alt="قصة" />
                 </div>
             )}
+        </div>
+    );
+}
+
+// ═══ عارض القصص عند الضغط على صورة المستخدم ═══
+// يعرض النشطة؛ إن لم توجد يعرض المنتهية (للمراجعة) مع وسمها. ←/→ للتنقّل، Esc للإغلاق.
+export function UserStoriesViewer({ userId, onClose, onChanged }) {
+    const { showToast } = useToast();
+    const [items, setItems] = useState(null);
+    const [index, setIndex] = useState(0);
+    const [fromEnded, setFromEnded] = useState(false);
+
+    useEffect(() => {
+        let alive = true;
+        getUserStories(userId).then(res => {
+            if (!alive) return;
+            const active = res.data?.active || [];
+            const ended = res.data?.ended || [];
+            setFromEnded(active.length === 0);
+            setItems(active.length ? active : ended);
+        }).catch(() => { if (alive) setItems([]); });
+        return () => { alive = false; };
+    }, [userId]);
+
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === 'Escape') onClose();
+            // RTL: السهم الأيسر = التالي
+            if (e.key === 'ArrowLeft') setIndex(i => Math.min(i + 1, (items?.length || 1) - 1));
+            if (e.key === 'ArrowRight') setIndex(i => Math.max(i - 1, 0));
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [items, onClose]);
+
+    const story = items?.[index];
+    const isText = story?.kind === 'text';
+    const src = story ? (story.imageUrl ? getImageUrl(story.imageUrl) : archivedSrc(story.archivedUrl)) : null;
+    const bg = story ? (TEXT_BACKGROUNDS[story.background % TEXT_BACKGROUNDS.length] || TEXT_BACKGROUNDS[0]) : null;
+
+    const remove = async () => {
+        if (!story || story.status !== 'active') return;
+        if (!window.confirm('حذف هذه القصة؟ تختفي فوراً عند كل المستخدمين.')) return;
+        try {
+            await deleteStoryAdmin(story._id);
+            showToast('تم حذف القصة', 'success');
+            const next = items.filter(x => x._id !== story._id);
+            setItems(next);
+            setIndex(i => Math.max(0, Math.min(i, next.length - 1)));
+            onChanged && onChanged();
+        } catch (e) {
+            showToast(e?.response?.data?.message || 'فشل الحذف', 'error');
+        }
+    };
+
+    return (
+        <div className="story-viewer-backdrop" onClick={onClose}>
+            <div className="story-viewer" onClick={e => e.stopPropagation()}>
+                <div className="story-viewer-bars">
+                    {(items || []).map((s, i) => <span key={s._id} className={i <= index ? 'on' : ''} />)}
+                </div>
+                <button className="story-viewer-close" onClick={onClose} aria-label="إغلاق">✕</button>
+                {items === null ? <div className="story-viewer-empty">جاري التحميل…</div>
+                    : !story ? <div className="story-viewer-empty">لا توجد قصص لهذا المستخدم</div>
+                    : (
+                        <>
+                            <div className="story-viewer-media"
+                                 style={isText ? { background: `linear-gradient(135deg, ${bg[0]}, ${bg[1]})` } : undefined}>
+                                {isText ? <span className="story-viewer-text">{story.text}</span>
+                                    : src ? <img src={src} alt="قصة" />
+                                    : <span className="story-viewer-empty">الملف غير محفوظ</span>}
+                            </div>
+                            {index > 0 && <button className="story-nav prev" onClick={() => setIndex(index - 1)} aria-label="السابقة">›</button>}
+                            {index < items.length - 1 && <button className="story-nav next" onClick={() => setIndex(index + 1)} aria-label="التالية">‹</button>}
+                            <div className="story-viewer-meta">
+                                {fromEnded && <span className="pill">منتهية — للمراجعة</span>}
+                                <span className="pill">{STATUS_LABEL[story.status] || story.status}</span>
+                                <span>👁 {story.viewCount}</span>
+                                {story.reportCount > 0 && <span className="pill danger">🚩 {story.reportCount}</span>}
+                                <span>{formatDateTimeLong(story.createdAt)}</span>
+                                {story.status === 'active' && <button className="story-delete" onClick={remove}>🗑️ حذف</button>}
+                            </div>
+                        </>
+                    )}
+            </div>
         </div>
     );
 }

@@ -28,7 +28,8 @@ import { userBioAction,
     clearUserReports,
     getUserReports,
     getUserPhotoHistory,
-    fetchPhotoHistoryBlob
+    fetchPhotoHistoryBlob,
+    getUserStories
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
@@ -38,7 +39,7 @@ import {
 } from '../utils/location';
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
-import UserStoriesTab from '../components/UserStoriesTab';
+import UserStoriesTab, { UserStoriesViewer } from '../components/UserStoriesTab';
 import './UserDetail.css';
 
 const PHOTO_HISTORY_REASONS = {
@@ -242,6 +243,16 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
     // ========== البلاغات + سجل الصور ==========
     const [reportsData, setReportsData] = useState(null);
+    // 📸 القصص: ملخّص (حلقة الصورة + عدّاد الزرّ) والعارض عند الضغط على الصورة
+    const [storiesSummary, setStoriesSummary] = useState({ active: 0, ended: 0 });
+    const [showStoriesViewer, setShowStoriesViewer] = useState(false);
+    const refreshStoriesSummary = React.useCallback(() => {
+        if (!userId) return;
+        getUserStories(userId)
+            .then(res => setStoriesSummary({ active: res.data?.active?.length || 0, ended: res.data?.ended?.length || 0 }))
+            .catch(() => {});
+    }, [userId]);
+    useEffect(() => { refreshStoriesSummary(); }, [refreshStoriesSummary]);
     const [reportsLoading, setReportsLoading] = useState(false);
     const [reportsDirection, setReportsDirection] = useState('against'); // against | by
     const [photoHistory, setPhotoHistory] = useState(null);
@@ -998,7 +1009,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
             {/* User Info Card */}
             <div className="user-info-card">
-                <div className="user-avatar-container">
+                <div
+                    className={`user-avatar-container ${storiesSummary.active ? 'has-stories' : storiesSummary.ended ? 'has-ended-stories' : ''}`}
+                    onClick={() => (storiesSummary.active || storiesSummary.ended) && setShowStoriesViewer(true)}
+                    title={storiesSummary.active ? `${storiesSummary.active} قصة نشطة — اضغط للعرض` : storiesSummary.ended ? 'قصص منتهية — اضغط للمراجعة' : undefined}
+                >
                     {user.profileImage ? (
                         <img
                             src={getImageUrl(user.profileImage)}
@@ -1209,6 +1224,16 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                         🙈 إخفاء الحساب
                     </button>
                 )}
+                <button
+                    className="quick-action-btn stories"
+                    title="قصص المستخدم: العرض والحذف ومنع النشر"
+                    onClick={() => {
+                        setActiveTab('stories');
+                        setTimeout(() => document.querySelector('.tabs-navigation')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }}
+                >
+                    📸 القصص{storiesSummary.active ? ` (${storiesSummary.active})` : ''} — إجراءات الأدمن
+                </button>
                 <button className="quick-action-btn notify" onClick={() => setShowNotifyModal(true)} disabled={actionLoading}>
                     📩 إرسال إشعار
                 </button>
@@ -1305,7 +1330,10 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
             {/* Tab Content */}
             <div className="tab-content">
-                {activeTab === 'stories' && <UserStoriesTab userId={userId} />}
+                {activeTab === 'stories' && <UserStoriesTab userId={userId} onChanged={refreshStoriesSummary} />}
+                {showStoriesViewer && (
+                    <UserStoriesViewer userId={userId} onClose={() => setShowStoriesViewer(false)} onChanged={refreshStoriesSummary} />
+                )}
                 {/* Personal Info Tab */}
                 {activeTab === 'info' && (
                     <div className="personal-info-section">
