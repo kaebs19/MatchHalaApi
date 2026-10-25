@@ -102,7 +102,7 @@ router.get('/user/:userId', async (req, res) => {
         const [active, ended] = await Promise.all([
             Story.find({ user: userId, status: 'active', expiresAt: { $gt: now } }).sort({ createdAt: -1 }).lean(),
             Story.find({ user: userId, $or: [{ status: { $ne: 'active' } }, { expiresAt: { $lte: now } }] })
-                .sort({ createdAt: -1 }).limit(30).lean()
+                .sort({ createdAt: -1 }).limit(60).lean()
         ]);
         const until = user.storyBan?.until && new Date(user.storyBan.until) > now ? user.storyBan.until : null;
         res.json({

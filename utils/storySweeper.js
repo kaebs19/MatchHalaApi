@@ -1,32 +1,20 @@
 // كنس قصص البروفايل المنتهية (24 ساعة) — instance 0 فقط، كل 5 دقائق.
 // المسارات تفحص expiresAt بنفسها، فالكنس لا يحدّد ظهور القصة؛ مهمته الملف والمشاهدات:
-//   • مُبلَّغ عنها → تُنقل لأرشيف الأدمن (_expired) دليلاً.
-//   • غيرها → يُحذف الملف نهائياً.
+//   • كل صورة قصة تنتهي (انتهاء/حذف صاحبها/حذف المشرف) تُنقل لأرشيف الأدمن (_expired) للمراجعة —
+//     قرار منتج ٢٥ أكتوبر ٢٠٢٦ (كانت تُحذف إلا المُبلَّغ عنها). المحجوب في Nginx، يُعرض للمشرف فقط.
+//     ⚠️ بلا حدّ زمني بعد: يتراكم مع _expired (سياسة التنظيف مؤجّلة).
 // ومشاهداتها (StoryView) تُحذف — لا حاجة لها بعد الانتهاء.
 
-const fs = require('fs');
-const path = require('path');
 const Story = require('../models/Story');
 const StoryView = require('../models/StoryView');
 const { archiveDisappearingFile } = require('./disappearingMedia');
 
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const SWEEP_BATCH = 500;
 
 // ينهي قصة واحدة: الملف + الحالة + المشاهدات. status: expired | deleted | removed
 async function endStory(story, status) {
-    let archivedPath = null;
-    if (story.imageUrl) {
-        if ((story.reportCount || 0) > 0) {
-            archivedPath = archiveDisappearingFile(story.imageUrl);
-        } else {
-            try {
-                const rel = String(story.imageUrl).split('?')[0].replace(/^.*\/uploads\//, '');
-                fs.unlinkSync(path.join(UPLOADS_DIR, rel));
-            } catch (e) { /* الملف غير موجود — لا بأس */ }
-        }
-    }
+    const archivedPath = story.imageUrl ? archiveDisappearingFile(story.imageUrl) : null;
     await Story.updateOne(
         { _id: story._id },
         { $set: { status, imageUrl: null, archivedPath, endedAt: new Date() } }
