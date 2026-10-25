@@ -536,6 +536,20 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                                             />
                                                         </>
                                                     )}
+                                                    {report.reportedMessage.type === 'video' && getMessagePhotoUrl(report.reportedMessage) && (
+                                                        <>
+                                                            {report.reportedMessage.isExpiredPhoto && (
+                                                                <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>⏱️ فيديو مؤقت منتهٍ — أرشيف الإشراف</span>
+                                                            )}
+                                                            <video
+                                                                src={getMessagePhotoUrl(report.reportedMessage)}
+                                                                controls
+                                                                playsInline
+                                                                preload="metadata"
+                                                                className="reported-message-image"
+                                                            />
+                                                        </>
+                                                    )}
                                                     {report.reportedMessage.hasBannedWords && report.reportedMessage.bannedWordsFound?.length > 0 && (
                                                         <div className="banned-words-badges">
                                                             <span className="banned-label">🚫 كلمات محظورة:</span>
@@ -789,6 +803,14 @@ function Reports({ onViewUserDetail, onViewConversation }) {
                                         <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>⏱️ صورة مؤقتة منتهية — أرشيف الإشراف</span>
                                     )}
                                     <img src={getMessagePhotoUrl(selectedReport.reportedMessage)} alt="" className="context-msg-image" onError={(e) => { e.target.style.display = 'none'; }} />
+                                </>
+                            )}
+                            {selectedReport.reportedMessage?.type === 'video' && getMessagePhotoUrl(selectedReport.reportedMessage) && (
+                                <>
+                                    {selectedReport.reportedMessage.isExpiredPhoto && (
+                                        <span style={{fontSize:11,color:'#7c3aed',fontWeight:700}}>⏱️ فيديو مؤقت منتهٍ — أرشيف الإشراف</span>
+                                    )}
+                                    <video src={getMessagePhotoUrl(selectedReport.reportedMessage)} controls playsInline preload="metadata" className="context-msg-image" />
                                 </>
                             )}
 
