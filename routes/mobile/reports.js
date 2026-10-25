@@ -21,7 +21,8 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
         const {
             reportedUser,   // userId للمستخدم المبلغ عنه
             reason,         // spam | inappropriate | harassment | fake_profile | other
-            description     // وصف إضافي (اختياري)
+            description,    // وصف إضافي (اختياري)
+            messageId       // الرسالة المبلَّغ عنها (اختياري) — من عارض الصورة المؤقتة/الفيديو
         } = req.body;
 
         // ✅ Phase 3: لقطة شاشة اختيارية (multipart "screenshot" field)
@@ -61,6 +62,17 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             });
         }
 
+        // ✅ ربط الرسالة دليلاً — فقط إن كانت من المبلَّغ عنه وفي محادثة يشارك فيها المبلِّغ.
+        //    ملف الوسيط المؤقت يبقى في _expired بعد انتهائه فيراه المشرف (adminMediaUrl).
+        let evidence = null;
+        if (messageId && require('mongoose').isValidObjectId(messageId)) {
+            const msg = await Message.findById(messageId).select('conversation sender').lean();
+            if (msg && String(msg.sender) === String(reportedUser)) {
+                const isMember = await Conversation.exists({ _id: msg.conversation, participants: req.user._id });
+                if (isMember) evidence = { message: msg._id, conversation: msg.conversation };
+            }
+        }
+
         // ✅ منع التكرار — لا تسمح ببلاغين pending/reviewing من نفس المُبلّغ ضد نفس المستخدم
         // (نعتبر بلاغاً واحداً لكل مستخدم — بغض النظر عن السبب)
         const existingActive = await Report.findOne({
@@ -79,6 +91,20 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
                 } catch (e) { /* ignore */ }
             }
         };
+
+        if (existingActive && evidence && !existingActive.reportedMessage) {
+            // بلاغ قائم بلا رسالة → أرفق الرسالة دليلاً (ومعها اللقطة إن وُجدت ولم تكن)
+            const $set = { reportedMessage: evidence.message, reportedConversation: evidence.conversation };
+            if (screenshotPath && !existingActive.screenshot) $set.screenshot = screenshotPath;
+            else deleteOrphanScreenshot();
+            await Report.updateOne({ _id: existingActive._id }, { $set });
+            return res.status(200).json({
+                success: true,
+                message: 'تم استلام بلاغك سابقاً + إرفاق الرسالة دليلاً',
+                code: 'REPORT_UPDATED_WITH_MESSAGE',
+                data: { report: { _id: existingActive._id, status: existingActive.status } }
+            });
+        }
 
         if (existingActive) {
             // ✅ Phase 3: لو في صورة جديدة و الـ existing بدون screenshot → حدّثه (تعزيز الدليل)
@@ -134,7 +160,9 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             description: description || '',
             status: 'pending',
             priority,
-            screenshot: screenshotPath   // ✅ Phase 3
+            screenshot: screenshotPath,   // ✅ Phase 3
+            reportedMessage: evidence?.message,
+            reportedConversation: evidence?.conversation
         });
 
         // إرسال إشعار للأدمن عند إنشاء بلاغ جديد
