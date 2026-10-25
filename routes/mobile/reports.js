@@ -22,7 +22,8 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             reportedUser,   // userId للمستخدم المبلغ عنه
             reason,         // spam | inappropriate | harassment | fake_profile | other
             description,    // وصف إضافي (اختياري)
-            messageId       // الرسالة المبلَّغ عنها (اختياري) — من عارض الصورة المؤقتة/الفيديو
+            messageId,      // الرسالة المبلَّغ عنها (اختياري) — من عارض الصورة المؤقتة/الفيديو
+            storyId         // القصة المبلَّغ عنها (اختياري) — من عارض القصص
         } = req.body;
 
         // ✅ Phase 3: لقطة شاشة اختيارية (multipart "screenshot" field)
@@ -73,6 +74,19 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             }
         }
 
+        // 📸 ربط القصة دليلاً — فقط إن كانت للمبلَّغ عنه ونشطة. عدّاد بلاغاتها يجعل الكنس
+        //    يؤرشف ملفها عند الانتهاء بدل حذفه (utils/storySweeper.js).
+        let storyEvidence = null;
+        if (storyId && require('mongoose').isValidObjectId(storyId)) {
+            const Story = require('../../models/Story');
+            const st = await Story.findById(storyId).select('user status').lean();
+            if (st && st.status === 'active' && String(st.user) === String(reportedUser)) storyEvidence = st._id;
+        }
+        const markStoryReported = async () => {
+            if (!storyEvidence) return;
+            await require('../../models/Story').updateOne({ _id: storyEvidence }, { $inc: { reportCount: 1 } });
+        };
+
         // ✅ منع التكرار — لا تسمح ببلاغين pending/reviewing من نفس المُبلّغ ضد نفس المستخدم
         // (نعتبر بلاغاً واحداً لكل مستخدم — بغض النظر عن السبب)
         const existingActive = await Report.findOne({
@@ -102,6 +116,21 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
                 success: true,
                 message: 'تم استلام بلاغك سابقاً + إرفاق الرسالة دليلاً',
                 code: 'REPORT_UPDATED_WITH_MESSAGE',
+                data: { report: { _id: existingActive._id, status: existingActive.status } }
+            });
+        }
+
+        if (existingActive && storyEvidence && !existingActive.reportedStory) {
+            // بلاغ قائم بلا قصة → أرفق القصة دليلاً
+            const $set = { reportedStory: storyEvidence };
+            if (screenshotPath && !existingActive.screenshot) $set.screenshot = screenshotPath;
+            else deleteOrphanScreenshot();
+            await Report.updateOne({ _id: existingActive._id }, { $set });
+            await markStoryReported();
+            return res.status(200).json({
+                success: true,
+                message: 'تم استلام بلاغك سابقاً + إرفاق القصة دليلاً',
+                code: 'REPORT_UPDATED_WITH_STORY',
                 data: { report: { _id: existingActive._id, status: existingActive.status } }
             });
         }
@@ -162,8 +191,10 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             priority,
             screenshot: screenshotPath,   // ✅ Phase 3
             reportedMessage: evidence?.message,
-            reportedConversation: evidence?.conversation
+            reportedConversation: evidence?.conversation,
+            reportedStory: storyEvidence || undefined
         });
+        await markStoryReported();
 
         // إرسال إشعار للأدمن عند إنشاء بلاغ جديد
         try {

@@ -26,6 +26,11 @@ const reportSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Conversation'
     },
+    // 📸 قصة مُبلَّغ عنها — ملفها يُؤرشف عند انتهائها (Story.reportCount > 0)
+    reportedStory: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Story'
+    },
     category: {
         type: String,
         enum: [
