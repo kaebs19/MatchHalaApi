@@ -914,5 +914,10 @@ server.listen(PORT, () => {
         } catch (e) {
             console.error('تعذّر بدء كنس الفيديو المؤقت:', e.message);
         }
+        try {
+            require('./utils/storySweeper').startStorySweeper();
+        } catch (e) {
+            console.error('تعذّر بدء كنس القصص:', e.message);
+        }
     }
 });
