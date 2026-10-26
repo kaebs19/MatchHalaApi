@@ -920,5 +920,11 @@ server.listen(PORT, () => {
         } catch (e) {
             console.error('تعذّر بدء كنس القصص:', e.message);
         }
+        try {
+            // 🧹 حذف أرشيف الوسائط المؤقتة بعد 30 يوماً (إلا ما يخصّ بلاغاً مفتوحاً)
+            require('./utils/expiredArchiveCleaner').startExpiredArchiveCleaner();
+        } catch (e) {
+            console.error('تعذّر بدء تنظيف أرشيف الوسائط:', e.message);
+        }
     }
 });
