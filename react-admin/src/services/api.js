@@ -869,6 +869,12 @@ export const banUserStories = async (userId, { days, reason, removeActive }) => 
     return response.data;
 };
 
+// إظهار قصة حُجبت تلقائياً بالبلاغات (3 مبلِّغين)
+export const releaseStoryAdmin = async (storyId) => {
+    const response = await api.post(`/admin/stories/${storyId}/release`);
+    return response.data;
+};
+
 export const liftStoryBan = async (userId) => {
     const response = await api.delete(`/admin/stories/ban/${userId}`);
     return response.data;

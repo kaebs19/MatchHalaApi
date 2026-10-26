@@ -1,7 +1,7 @@
 // 📸 تبويب «القصص» في صفحة المستخدم: النشطة (مع حذف)، آخر المنتهية (والمؤرشف منها للمُبلَّغ عنها)،
 // ومنع النشر لفترة. الخلفيات تطابق ترتيب التطبيق (StoryTextBackgrounds) — 8 خلفيات.
 import React, { useEffect, useState, useCallback } from 'react';
-import { getUserStories, deleteStoryAdmin, banUserStories, liftStoryBan } from '../services/api';
+import { getUserStories, deleteStoryAdmin, releaseStoryAdmin, banUserStories, liftStoryBan } from '../services/api';
 import { getImageUrl } from '../config';
 import { formatDateTimeLong } from '../utils/formatters';
 import { useToast } from './Toast';
@@ -20,7 +20,7 @@ function archivedSrc(url) {
     return `${getImageUrl(url)}?token=${encodeURIComponent(token)}`;
 }
 
-function StoryCard({ story, onDelete, onOpen }) {
+function StoryCard({ story, onDelete, onRelease, onOpen }) {
     const isText = story.kind === 'text';
     const src = story.imageUrl ? getImageUrl(story.imageUrl) : archivedSrc(story.archivedUrl);
     const bg = TEXT_BACKGROUNDS[story.background % TEXT_BACKGROUNDS.length] || TEXT_BACKGROUNDS[0];
@@ -35,6 +35,7 @@ function StoryCard({ story, onDelete, onOpen }) {
                     : src ? <img src={src} alt="قصة" loading="lazy" />
                     : <span className="story-missing">الملف غير محفوظ</span>}
                 {story.reportCount > 0 && <span className="story-badge reported">🚩 {story.reportCount}</span>}
+                {story.heldAt && story.status === 'active' && <span className="story-badge held">⏸ محجوبة</span>}
             </div>
             <div className="story-meta">
                 <span>{STATUS_LABEL[story.status] || story.status}</span>
@@ -43,6 +44,9 @@ function StoryCard({ story, onDelete, onOpen }) {
             <div className="story-date">{formatDateTimeLong(story.createdAt)}</div>
             {story.status === 'active' && onDelete && (
                 <button className="story-delete" onClick={() => onDelete(story)}>🗑️ حذف</button>
+            )}
+            {story.status === 'active' && story.heldAt && onRelease && (
+                <button className="story-release" onClick={() => onRelease(story)}>👁 إظهار</button>
             )}
         </div>
     );
@@ -80,6 +84,18 @@ export default function UserStoriesTab({ userId, onChanged }) {
             await load();
         } catch (e) {
             showToast(e?.response?.data?.message || 'فشل الحذف', 'error');
+        } finally { setBusy(false); }
+    };
+
+    // محجوبة تلقائياً (3 بلاغات) — المشرف راجعها ولم يجد مخالفة
+    const handleRelease = async (story) => {
+        setBusy(true);
+        try {
+            await releaseStoryAdmin(story._id);
+            showToast('أُظهرت القصة', 'success');
+            await load();
+        } catch (e) {
+            showToast(e?.response?.data?.message || 'فشل الإظهار', 'error');
         } finally { setBusy(false); }
     };
 
@@ -144,7 +160,7 @@ export default function UserStoriesTab({ userId, onChanged }) {
                 <h3>القصص النشطة ({data.active.length})</h3>
                 {data.active.length === 0 ? <p className="stories-empty">لا قصص نشطة</p> : (
                     <div className="stories-grid">
-                        {data.active.map(s => <StoryCard key={s._id} story={s} onDelete={busy ? null : handleDelete} onOpen={setLightbox} />)}
+                        {data.active.map(s => <StoryCard key={s._id} story={s} onDelete={busy ? null : handleDelete} onRelease={busy ? null : handleRelease} onOpen={setLightbox} />)}
                     </div>
                 )}
             </section>
