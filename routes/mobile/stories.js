@@ -254,9 +254,10 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
             viewedSet = new Set(seen.map(v => String(v.story)));
         }
 
+        const muted = !isOwner && (req.user.storyMutedUsers || []).some(id => String(id) === String(userId));
         res.json({
             success: true,
-            data: { stories: stories.map(s => serialize(s, { owner: isOwner, viewed: viewedSet.has(String(s._id)) })) }
+            data: { stories: stories.map(s => serialize(s, { owner: isOwner, viewed: viewedSet.has(String(s._id)) })), muted }
         });
     } catch (error) {
         console.error('خطأ في جلب قصص المستخدم:', error);
@@ -286,11 +287,13 @@ router.post('/stories/status', protect, async (req, res) => {
 
         const ownerIds = grouped.map(g => g._id);
         const myBlocked = new Set((req.user.blockedUsers || []).map(String));
+        const myMuted = new Set((req.user.storyMutedUsers || []).map(String));
         const owners = await User.find({ _id: { $in: ownerIds } })
             .select('isActive bannedWords suspension blockedUsers').lean();
         const allowed = new Set(owners
             .filter(u => !isUserFullyBanned(u))
             .filter(u => !myBlocked.has(String(u._id)))
+            .filter(u => !myMuted.has(String(u._id)))
             .filter(u => !(u.blockedUsers || []).some(b => String(b) === me))
             .map(u => String(u._id)));
 
@@ -407,6 +410,38 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
     } catch (error) {
         console.error('خطأ في تسجيل لقطة شاشة القصة:', error);
         res.status(500).json({ success: false, message: 'فشل التسجيل' });
+    }
+});
+
+// @route   POST /api/mobile/stories/mute/:userId    — إخفاء قصص مستخدم (كتم)
+// @route   DELETE /api/mobile/stories/mute/:userId  — إظهارها
+// @desc    لا حلقة له في القوائم/شريط الأصدقاء (/stories/status). قصصه تبقى من بروفايله ولا يُعلَم بالكتم.
+// @access  Private
+router.post('/stories/mute/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!mongoose.isValidObjectId(userId) || String(userId) === String(req.user._id)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        await User.updateOne({ _id: req.user._id }, { $addToSet: { storyMutedUsers: userId } });
+        res.json({ success: true, data: { muted: true } });
+    } catch (error) {
+        console.error('خطأ في إخفاء القصص:', error);
+        res.status(500).json({ success: false, message: 'فشل إخفاء القصص' });
+    }
+});
+
+router.delete('/stories/mute/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!mongoose.isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        await User.updateOne({ _id: req.user._id }, { $pull: { storyMutedUsers: userId } });
+        res.json({ success: true, data: { muted: false } });
+    } catch (error) {
+        console.error('خطأ في إظهار القصص:', error);
+        res.status(500).json({ success: false, message: 'فشل إظهار القصص' });
     }
 });
 

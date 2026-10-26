@@ -369,6 +369,9 @@ const userSchema = new mongoose.Schema({
         at: { type: Date, default: null }
     },
 
+    // 📸 مستخدمون أخفيتُ قصصهم (كتم): لا حلقة لهم في القوائم وشريط الأصدقاء. قصصهم تبقى من بروفايلهم
+    storyMutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
     // ✅ تعليق العضوية (إيقاف مؤقت) — نظام تدريجي
     // المستويات: 0=لا تعليق, 1=24h, 2=48h, 3=3d, 4=7d, 5=دائم
     suspension: {
