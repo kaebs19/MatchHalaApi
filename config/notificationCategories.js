@@ -51,6 +51,10 @@ const NOTIFICATION_TYPES = {
     'message_deleted':      { category: 'personal', groupable: false, adminOnly: false },
     'maintenance_start':    { category: 'personal', groupable: false, adminOnly: false },
     'maintenance_end':      { category: 'personal', groupable: false, adminOnly: false },
+    // 📸 القصص — إجراءات المشرف والحجب التلقائي (بلا مفتاح تفضيل: تصل دائماً مثل التحذيرات)
+    'story_removed':        { category: 'personal', groupable: false, adminOnly: false },
+    'story_banned':         { category: 'personal', groupable: false, adminOnly: false },
+    'story_held':           { category: 'personal', groupable: false, adminOnly: false },
 
     // ===== Social — Engagement (groupable) =====
     'new_match':            { category: 'social', groupable: true, adminOnly: false },

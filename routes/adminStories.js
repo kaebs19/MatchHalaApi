@@ -17,6 +17,12 @@ const User = require('../models/User');
 const Story = require('../models/Story');
 const { endStory } = require('../utils/storySweeper');
 const { EXPIRED_DIR } = require('../utils/disappearingMedia');
+const pushService = require('../services/pushNotificationService');
+
+// إبلاغ صاحب القصة بإجراء المشرف — إشعار محفوظ + push. لا يُفشل الإجراء نفسه إن تعذّر.
+const notifyStoryOwner = (userId, title, body, type) =>
+    pushService.sendNotificationToUser(userId, { title, body }, { type })
+        .catch(e => console.error('⚠️ إشعار القصة:', e.message));
 
 const baseUrl = () => process.env.BASE_URL || 'https://matchhala.chathala.com';
 
@@ -126,6 +132,12 @@ router.delete('/:id', async (req, res) => {
         if (!story) return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت' });
         await endStory(story, 'removed');
         // البلاغات المرتبطة بها: لا تُغلق تلقائياً — يقرّر المشرف من صفحة البلاغات
+        notifyStoryOwner(
+            story.user,
+            '🗑️ حُذفت قصتك',
+            'حذف فريق هلا إحدى قصصك لمخالفتها سياسة المحتوى. تكرار المخالفة قد يؤدي إلى منعك من نشر القصص.',
+            'story_removed'
+        );
         res.json({ success: true, message: 'تم حذف القصة' });
     } catch (error) {
         console.error('خطأ في حذف قصة (أدمن):', error);
@@ -154,6 +166,15 @@ router.post('/ban/:userId', async (req, res) => {
             const active = await Story.find({ user: userId, status: 'active' });
             for (const s of active) { await endStory(s, 'removed'); removed++; }
         }
+        const day = until.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long' });
+        notifyStoryOwner(
+            userId,
+            '🚫 مُنعت من نشر القصص',
+            `لا يمكنك نشر قصص حتى ${day} لمخالفة سياسة المحتوى`
+                + (reason ? ` — السبب: ${reason}` : '')
+                + (removed ? `. حُذفت قصصك النشطة (${removed}).` : '.'),
+            'story_banned'
+        );
         res.json({ success: true, message: `مُنع من نشر القصص ${days} يوماً`, data: { until, removed } });
     } catch (error) {
         console.error('خطأ في منع القصص (أدمن):', error);
