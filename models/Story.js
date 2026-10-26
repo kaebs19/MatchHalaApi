@@ -30,6 +30,9 @@ const storySchema = new mongoose.Schema({
     screenshotCount: { type: Number, default: 0 },
     // بلاغات عليها — المُبلَّغ عنها تُؤرشف عند الانتهاء بدل الحذف (دليل للمشرف)
     reportCount: { type: Number, default: 0 },
+    // حُجبت تلقائياً عند STORY_HOLD_REPORTS بلاغاً (routes/mobile/reports.js) — لا يراها غير صاحبها حتى
+    // يُظهرها المشرف (POST /api/admin/stories/:id/release) أو يحذفها أو تنتهي
+    heldAt: { type: Date, default: null },
     archivedPath: { type: String, default: null },
     endedAt: { type: Date, default: null }
 }, { timestamps: true });

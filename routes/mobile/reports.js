@@ -82,9 +82,29 @@ router.post('/reports', protect, uploadReportScreenshot.single('screenshot'), as
             const st = await Story.findById(storyId).select('user status').lean();
             if (st && st.status === 'active' && String(st.user) === String(reportedUser)) storyEvidence = st._id;
         }
+        // البلاغ واحد لكل (مُبلِّغ، مُبلَّغ عنه) قائم — فـ reportCount ≈ عدد المبلِّغين المختلفين.
+        // عند STORY_HOLD_REPORTS تُحجب القصة عن غير صاحبها حتى يراجعها المشرف، ويُبلَّغ صاحبها.
+        const STORY_HOLD_REPORTS = 3;
         const markStoryReported = async () => {
             if (!storyEvidence) return;
-            await require('../../models/Story').updateOne({ _id: storyEvidence }, { $inc: { reportCount: 1 } });
+            const Story = require('../../models/Story');
+            const updated = await Story.findOneAndUpdate(
+                { _id: storyEvidence },
+                { $inc: { reportCount: 1 } },
+                { returnDocument: 'after', projection: { reportCount: 1, heldAt: 1, status: 1, user: 1 } }
+            ).lean();
+            if (!updated || updated.status !== 'active' || updated.heldAt || updated.reportCount < STORY_HOLD_REPORTS) return;
+            const held = await Story.updateOne({ _id: storyEvidence, heldAt: null }, { $set: { heldAt: new Date() } });
+            if (held.modifiedCount > 0) {
+                pushNotificationService.sendNotificationToUser(
+                    updated.user,
+                    {
+                        title: '⏸ قصتك قيد المراجعة',
+                        body: 'تلقّت إحدى قصصك عدة بلاغات فأُخفيت مؤقتاً عن الآخرين حتى يراجعها فريق هلا.'
+                    },
+                    { type: 'story_held' }
+                ).catch(e => console.error('⚠️ إشعار حجب القصة:', e.message));
+            }
         };
 
         // ✅ منع التكرار — لا تسمح ببلاغين pending/reviewing من نفس المُبلّغ ضد نفس المستخدم

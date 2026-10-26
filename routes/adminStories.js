@@ -3,6 +3,7 @@
 //   GET    /api/admin/stories/user/:userId    قصص مستخدم (النشطة + آخر 30 منتهية) + حالة المنع
 //   GET    /api/admin/stories/:id/archived    صورة قصة مؤرشفة (مُبلَّغ عنها) — ?token= لأن <img> بلا هيدر
 //   DELETE /api/admin/stories/:id             حذف قصة نشطة (removed) — المُبلَّغ عنها تُؤرشف
+//   POST   /api/admin/stories/:id/release     إظهار قصة حُجبت تلقائياً بالبلاغات (heldAt ← null)
 //   POST   /api/admin/stories/ban/:userId     منع النشر { days 1…365, reason, removeActive }
 //   DELETE /api/admin/stories/ban/:userId     رفع المنع
 const express = require('express');
@@ -36,6 +37,7 @@ const shape = (s) => ({
     status: s.status,
     viewCount: s.viewCount || 0,
     reportCount: s.reportCount || 0,
+    heldAt: s.heldAt || null,
     createdAt: s.createdAt,
     expiresAt: s.expiresAt,
     endedAt: s.endedAt,
@@ -84,6 +86,7 @@ router.get('/', async (req, res) => {
         if (req.query.status === 'active') Object.assign(filter, { status: 'active', expiresAt: { $gt: now } });
         else if (req.query.status === 'ended') filter.status = { $ne: 'active' };
         if (req.query.reported === '1') filter.reportCount = { $gt: 0 };
+        if (req.query.held === '1') filter.heldAt = { $ne: null };
         if (req.query.userId && mongoose.isValidObjectId(req.query.userId)) filter.user = req.query.userId;
 
         const [items, total] = await Promise.all([
@@ -141,6 +144,21 @@ router.delete('/:id', async (req, res) => {
         res.json({ success: true, message: 'تم حذف القصة' });
     } catch (error) {
         console.error('خطأ في حذف قصة (أدمن):', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+router.post('/:id/release', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        const result = await Story.updateOne(
+            { _id: req.params.id, status: 'active', heldAt: { $ne: null } },
+            { $set: { heldAt: null } }
+        );
+        if (!result.matchedCount) return res.status(404).json({ success: false, message: 'القصة ليست محجوبة أو انتهت' });
+        res.json({ success: true, message: 'أُظهرت القصة' });
+    } catch (error) {
+        console.error('خطأ في إظهار قصة (أدمن):', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

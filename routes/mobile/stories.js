@@ -57,6 +57,8 @@ const maxStoriesFor = (user) => (isPremiumActive(user) ? STORY_MAX_ACTIVE.premiu
 
 // القصص النشطة فعلاً — الكنس كل 5 دقائق، فالوقت يُفحص هنا أيضاً
 const activeFilter = (extra = {}) => ({ status: 'active', expiresAt: { $gt: new Date() }, ...extra });
+// ما يراه غير صاحبها: النشطة غير المحجوبة (heldAt: null يطابق الحقل الغائب أيضاً)
+const visibleFilter = (extra = {}) => activeFilter({ heldAt: null, ...extra });
 
 const serialize = (story, { owner = false, viewed = false } = {}) => ({
     _id: story._id,
@@ -68,7 +70,7 @@ const serialize = (story, { owner = false, viewed = false } = {}) => ({
     height: story.height,
     createdAt: story.createdAt,
     expiresAt: story.expiresAt,
-    ...(owner ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0 } : { viewed })
+    ...(owner ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, held: !!story.heldAt } : { viewed })
 });
 
 const unlinkQuiet = (p) => { if (p) { try { fs.unlinkSync(p); } catch (e) { /* ignore */ } } };
@@ -243,7 +245,8 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
             }
         }
 
-        const stories = await Story.find(activeFilter({ user: userId })).sort({ createdAt: 1 }).lean();
+        // صاحبها يرى المحجوبة (مع held)، وغيره لا
+        const stories = await Story.find((isOwner ? activeFilter : visibleFilter)({ user: userId })).sort({ createdAt: 1 }).lean();
         let viewedSet = new Set();
         if (!isOwner && stories.length) {
             const seen = await StoryView.find({ viewer: req.user._id, story: { $in: stories.map(s => s._id) } })
@@ -276,7 +279,7 @@ router.post('/stories/status', protect, async (req, res) => {
 
         const objectIds = ids.map(id => new mongoose.Types.ObjectId(id));
         const grouped = await Story.aggregate([
-            { $match: activeFilter({ user: { $in: objectIds } }) },
+            { $match: visibleFilter({ user: { $in: objectIds } }) },
             { $group: { _id: '$user', storyIds: { $push: '$_id' } } }
         ]);
         if (!grouped.length) return res.json({ success: true, data: { statuses: {} } });
@@ -321,7 +324,7 @@ router.post('/stories/:storyId/view', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(activeFilter({ _id: storyId })).select('user').lean();
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
         if (!story) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
@@ -369,7 +372,7 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(activeFilter({ _id: storyId })).select('user').lean();
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
         if (!story) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
