@@ -26,6 +26,8 @@ const storySchema = new mongoose.Schema({
     expiresAt: { type: Date, required: true },
     // المشاهدات الظاهرة فقط (المخفية بوضع التخفي/المشرف لا تُعدّ)
     viewCount: { type: Number, default: 0 },
+    // لقطات الشاشة: مرة لكل مشاهد (StoryView.screenshotAt) — الظاهرة فقط، مثل viewCount
+    screenshotCount: { type: Number, default: 0 },
     // بلاغات عليها — المُبلَّغ عنها تُؤرشف عند الانتهاء بدل الحذف (دليل للمشرف)
     reportCount: { type: Number, default: 0 },
     archivedPath: { type: String, default: null },

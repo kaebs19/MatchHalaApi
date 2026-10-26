@@ -9,7 +9,9 @@ const storyViewSchema = new mongoose.Schema({
     viewer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     // وضع التخفي أو مشرف — لا تظهر لصاحب القصة ولا تُعدّ
     isHidden: { type: Boolean, default: false },
-    viewedAt: { type: Date, default: Date.now }
+    viewedAt: { type: Date, default: Date.now },
+    // أول لقطة شاشة لهذا المشاهد — تُعدّ مرة واحدة (لا تكرار بلقطات متتالية)
+    screenshotAt: { type: Date, default: null }
 }, { timestamps: false });
 
 storyViewSchema.index({ story: 1, viewer: 1 }, { unique: true });

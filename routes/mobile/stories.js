@@ -68,7 +68,7 @@ const serialize = (story, { owner = false, viewed = false } = {}) => ({
     height: story.height,
     createdAt: story.createdAt,
     expiresAt: story.expiresAt,
-    ...(owner ? { viewCount: story.viewCount || 0 } : { viewed })
+    ...(owner ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0 } : { viewed })
 });
 
 const unlinkQuiet = (p) => { if (p) { try { fs.unlinkSync(p); } catch (e) { /* ignore */ } } };
@@ -359,6 +359,54 @@ router.post('/stories/:storyId/view', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/stories/:storyId/screenshot
+// @desc    المشاهد التقط لقطة شاشة لقصة — تُعدّ مرة لكل مشاهد، وصاحبها يُبلَّغ لحظياً (story:screenshot)
+//          التخفي/المشرف لا يُعدّ (مثل المشاهدة). يتطلّب مشاهدة مسجّلة (التطبيق يسجّلها عند الفتح).
+// @access  Private
+router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
+    try {
+        const { storyId } = req.params;
+        if (!mongoose.isValidObjectId(storyId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const story = await Story.findOne(activeFilter({ _id: storyId })).select('user').lean();
+        if (!story) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+        const ownerId = String(story.user);
+        if (ownerId === String(req.user._id)) {
+            return res.json({ success: true, data: { recorded: false } });
+        }
+        const block = await getBlockState(req.user._id, ownerId);
+        if (block.blocked) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+
+        // screenshotAt: null في الشرط = مرة واحدة لكل مشاهد حتى مع طلبات متزامنة
+        const result = await StoryView.updateOne(
+            { story: story._id, viewer: req.user._id, screenshotAt: null },
+            { $set: { screenshotAt: new Date() } }
+        );
+        const isHidden = !!req.user.stealthMode || req.user.role === 'admin';
+        const recorded = result.modifiedCount > 0 && !isHidden;
+
+        if (recorded) {
+            const updated = await Story.findOneAndUpdate(
+                { _id: story._id },
+                { $inc: { screenshotCount: 1 } },
+                { returnDocument: 'after', projection: { screenshotCount: 1 } }
+            ).lean();
+            if (global.io && updated) {
+                global.io.to(`user:${ownerId}`).emit('story:screenshot', { storyId: String(story._id), screenshotCount: updated.screenshotCount });
+            }
+        }
+        res.json({ success: true, data: { recorded } });
+    } catch (error) {
+        console.error('خطأ في تسجيل لقطة شاشة القصة:', error);
+        res.status(500).json({ success: false, message: 'فشل التسجيل' });
+    }
+});
+
 // @route   GET /api/mobile/stories/:storyId/viewers
 // @desc    من شاهد قصتي — العدد للجميع، الأسماء لمشترك هلا+
 // @access  Private (صاحب القصة فقط)
@@ -376,7 +424,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
         if (!isPremiumActive(req.user)) {
             return res.json({
                 success: true,
-                data: { viewCount: story.viewCount || 0, viewers: [], isPremiumRequired: true }
+                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, viewers: [], isPremiumRequired: true }
             });
         }
 
@@ -393,6 +441,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
             success: true,
             data: {
                 viewCount: story.viewCount || 0,
+                screenshotCount: story.screenshotCount || 0,
                 viewers: views
                     .filter(v => v.viewer && !isUserFullyBanned(v.viewer))
                     .map(v => ({
@@ -403,7 +452,9 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
                             country: v.viewer.country,
                             isVerified: v.viewer.verification?.isVerified || false
                         },
-                        viewedAt: v.viewedAt
+                        viewedAt: v.viewedAt,
+                        // 📸 التقط لقطة شاشة — اسمه لمشترك هلا+ فقط مثل المشاهدة
+                        screenshotAt: v.screenshotAt || null
                     })),
                 isPremiumRequired: false
             }
