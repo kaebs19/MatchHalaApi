@@ -28,6 +28,8 @@ const storySchema = new mongoose.Schema({
     viewCount: { type: Number, default: 0 },
     // لقطات الشاشة: مرة لكل مشاهد (StoryView.screenshotAt) — الظاهرة فقط، مثل viewCount
     screenshotCount: { type: Number, default: 0 },
+    // عدد المشاهدين المتفاعلين (لا عدد التبديلات)
+    reactionCount: { type: Number, default: 0 },
     // بلاغات عليها — المُبلَّغ عنها تُؤرشف عند الانتهاء بدل الحذف (دليل للمشرف)
     reportCount: { type: Number, default: 0 },
     // حُجبت تلقائياً عند STORY_HOLD_REPORTS بلاغاً (routes/mobile/reports.js) — لا يراها غير صاحبها حتى

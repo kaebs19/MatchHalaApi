@@ -24,6 +24,8 @@ const STORY_MAX_EDGE = 1920;
 const STATUS_MAX_USERS = 200;
 const STORY_TEXT_MAX = 250;
 const STORY_BACKGROUNDS = 8;   // عدد خلفيات القصة النصّية في التطبيق (0…7)
+// تفاعلات القصة المسموحة — قائمة ثابتة (لا نصّ حرّ يصل لصاحب القصة)
+const STORY_REACTIONS = ['❤️', '😍', '😂', '😮', '😢', '🔥', '👏'];
 
 // ⚠️ uploads/ephemeral لا uploads/stories: Nginx يقدّمه بـ private, no-store فلا يبقى في
 //    Cloudflare بعد انتهاء القصة. مجلد جديد تحت /uploads/ كان سيُخزَّن 30 يوماً (immutable).
@@ -60,7 +62,7 @@ const activeFilter = (extra = {}) => ({ status: 'active', expiresAt: { $gt: new 
 // ما يراه غير صاحبها: النشطة غير المحجوبة (heldAt: null يطابق الحقل الغائب أيضاً)
 const visibleFilter = (extra = {}) => activeFilter({ heldAt: null, ...extra });
 
-const serialize = (story, { owner = false, viewed = false } = {}) => ({
+const serialize = (story, { owner = false, viewed = false, myReaction = null } = {}) => ({
     _id: story._id,
     kind: story.kind || 'image',
     text: story.kind === 'text' ? story.text : undefined,
@@ -70,7 +72,9 @@ const serialize = (story, { owner = false, viewed = false } = {}) => ({
     height: story.height,
     createdAt: story.createdAt,
     expiresAt: story.expiresAt,
-    ...(owner ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, held: !!story.heldAt } : { viewed })
+    ...(owner
+        ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, held: !!story.heldAt }
+        : { viewed, myReaction })
 });
 
 const unlinkQuiet = (p) => { if (p) { try { fs.unlinkSync(p); } catch (e) { /* ignore */ } } };
@@ -248,16 +252,25 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
         // صاحبها يرى المحجوبة (مع held)، وغيره لا
         const stories = await Story.find((isOwner ? activeFilter : visibleFilter)({ user: userId })).sort({ createdAt: 1 }).lean();
         let viewedSet = new Set();
+        const reactionMap = new Map();
         if (!isOwner && stories.length) {
             const seen = await StoryView.find({ viewer: req.user._id, story: { $in: stories.map(s => s._id) } })
-                .select('story').lean();
+                .select('story reaction').lean();
             viewedSet = new Set(seen.map(v => String(v.story)));
+            seen.forEach(v => { if (v.reaction) reactionMap.set(String(v.story), v.reaction); });
         }
 
         const muted = !isOwner && (req.user.storyMutedUsers || []).some(id => String(id) === String(userId));
         res.json({
             success: true,
-            data: { stories: stories.map(s => serialize(s, { owner: isOwner, viewed: viewedSet.has(String(s._id)) })), muted }
+            data: {
+                stories: stories.map(s => serialize(s, {
+                    owner: isOwner,
+                    viewed: viewedSet.has(String(s._id)),
+                    myReaction: reactionMap.get(String(s._id)) || null
+                })),
+                muted
+            }
         });
     } catch (error) {
         console.error('خطأ في جلب قصص المستخدم:', error);
@@ -413,6 +426,117 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/stories/:storyId/react
+// @desc    تفاعل المشاهد مع قصة: { emoji } من STORY_REACTIONS، أو emoji فارغ/null لإزالته.
+//          واحد لكل مشاهد (يُستبدل). يظهر بجانب اسمه في قائمة المشاهدين (لهلا+)، وصاحبها
+//          يُبلَّغ لحظياً (story:reaction) وبإشعار عند أول تفاعل فقط (لا إشعار مع كل تبديل).
+//          التخفي/المشرف: يُحفظ ولا يُعدّ ولا يُبلَّغ — مثل المشاهدة.
+// @access  Private
+router.post('/stories/:storyId/react', protect, async (req, res) => {
+    try {
+        const { storyId } = req.params;
+        if (!mongoose.isValidObjectId(storyId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        const raw = req.body?.emoji;
+        const emoji = raw ? String(raw) : null;
+        if (emoji && !STORY_REACTIONS.includes(emoji)) {
+            return res.status(400).json({ success: false, message: 'تفاعل غير مدعوم', code: 'STORY_INVALID' });
+        }
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
+        if (!story) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+        const ownerId = String(story.user);
+        if (ownerId === String(req.user._id)) {
+            return res.status(400).json({ success: false, message: 'لا يمكنك التفاعل مع قصتك', code: 'STORY_INVALID' });
+        }
+        const block = await getBlockState(req.user._id, ownerId);
+        if (block.blocked) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+
+        const isHidden = !!req.user.stealthMode || req.user.role === 'admin';
+        // المشاهدة شرط للتفاعل — نُنشئها إن سبق الطلبُ طلبَ المشاهدة (يُرسلان معاً من التطبيق)
+        const upsert = await StoryView.updateOne(
+            { story: story._id, viewer: req.user._id },
+            { $setOnInsert: { owner: story.user, isHidden, viewedAt: new Date() } },
+            { upsert: true }
+        );
+        if (upsert.upsertedCount > 0 && !isHidden) {
+            const viewed = await Story.findOneAndUpdate(
+                { _id: story._id }, { $inc: { viewCount: 1 } },
+                { returnDocument: 'after', projection: { viewCount: 1 } }
+            ).lean();
+            if (global.io && viewed) {
+                global.io.to(`user:${ownerId}`).emit('story:viewed', { storyId: String(story._id), viewCount: viewed.viewCount });
+            }
+        }
+
+        const before = await StoryView.findOneAndUpdate(
+            { story: story._id, viewer: req.user._id },
+            { $set: { reaction: emoji, reactedAt: emoji ? new Date() : null } },
+            { returnDocument: 'before', projection: { reaction: 1 } }
+        ).lean();
+        const hadReaction = !!before?.reaction;
+
+        let reactionCount = null;
+        if (!isHidden && hadReaction !== !!emoji) {
+            const updated = await Story.findOneAndUpdate(
+                { _id: story._id }, { $inc: { reactionCount: emoji ? 1 : -1 } },
+                { returnDocument: 'after', projection: { reactionCount: 1 } }
+            ).lean();
+            reactionCount = Math.max(0, updated?.reactionCount || 0);
+        }
+
+        if (!isHidden && global.io) {
+            global.io.to(`user:${ownerId}`).emit('story:reaction', {
+                storyId: String(story._id),
+                reactionCount,
+                viewerId: String(req.user._id),
+                emoji
+            });
+        }
+
+        // إشعار عند أول تفاعل فقط
+        if (!isHidden && emoji && !hadReaction) {
+            try {
+                const Notification = require('../../models/Notification');
+                const pushService = require('../../services/pushNotificationService');
+                const name = req.user.name || 'مستخدم';
+                const verb = req.user.gender === 'female' ? 'تفاعلت' : 'تفاعل';
+                const image = getFullUrl(req.user.profileImage) || '';
+                const title = `${emoji} تفاعل مع قصتك`;
+                const body = `${name} ${verb} مع قصتك ${emoji}`;
+                await Notification.create({
+                    title, body,
+                    type: 'story_reaction',
+                    sender: req.user._id,
+                    recipients: 'specific',
+                    targetUsers: [ownerId],
+                    data: { storyId: String(story._id), senderId: String(req.user._id), senderName: name, senderAvatar: image, emoji },
+                    status: 'sent',
+                    sentAt: new Date()
+                });
+                pushService.sendNotificationToUser(ownerId, { title, body }, {
+                    type: 'story_reaction',
+                    storyId: String(story._id),
+                    senderId: String(req.user._id),
+                    senderName: name,
+                    senderImage: image
+                }, false).catch(() => {});
+            } catch (notifErr) {
+                console.error('story-reaction notify error:', notifErr.message);
+            }
+        }
+
+        res.json({ success: true, data: { reaction: emoji } });
+    } catch (error) {
+        console.error('خطأ في تفاعل القصة:', error);
+        res.status(500).json({ success: false, message: 'فشل التفاعل' });
+    }
+});
+
 // @route   POST /api/mobile/stories/mute/:userId    — إخفاء قصص مستخدم (كتم)
 // @route   DELETE /api/mobile/stories/mute/:userId  — إظهارها
 // @desc    لا حلقة له في القوائم/شريط الأصدقاء (/stories/status). قصصه تبقى من بروفايله ولا يُعلَم بالكتم.
@@ -462,7 +586,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
         if (!isPremiumActive(req.user)) {
             return res.json({
                 success: true,
-                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, viewers: [], isPremiumRequired: true }
+                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, viewers: [], isPremiumRequired: true }
             });
         }
 
@@ -480,6 +604,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
             data: {
                 viewCount: story.viewCount || 0,
                 screenshotCount: story.screenshotCount || 0,
+                reactionCount: story.reactionCount || 0,
                 viewers: views
                     .filter(v => v.viewer && !isUserFullyBanned(v.viewer))
                     .map(v => ({
@@ -492,7 +617,10 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
                         },
                         viewedAt: v.viewedAt,
                         // 📸 التقط لقطة شاشة — اسمه لمشترك هلا+ فقط مثل المشاهدة
-                        screenshotAt: v.screenshotAt || null
+                        screenshotAt: v.screenshotAt || null,
+                        // ❤️ تفاعل المشاهد — اسمه لهلا+ فقط مثل المشاهدة
+                        reaction: v.reaction || null,
+                        reactedAt: v.reactedAt || null
                     })),
                 isPremiumRequired: false
             }

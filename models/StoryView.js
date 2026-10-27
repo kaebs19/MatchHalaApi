@@ -11,7 +11,10 @@ const storyViewSchema = new mongoose.Schema({
     isHidden: { type: Boolean, default: false },
     viewedAt: { type: Date, default: Date.now },
     // أول لقطة شاشة لهذا المشاهد — تُعدّ مرة واحدة (لا تكرار بلقطات متتالية)
-    screenshotAt: { type: Date, default: null }
+    screenshotAt: { type: Date, default: null },
+    // تفاعل المشاهد (إيموجي من قائمة ثابتة) — واحد لكل مشاهد، يُستبدل أو يُزال
+    reaction: { type: String, default: null },
+    reactedAt: { type: Date, default: null }
 }, { timestamps: false });
 
 storyViewSchema.index({ story: 1, viewer: 1 }, { unique: true });
