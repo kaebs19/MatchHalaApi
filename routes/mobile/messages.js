@@ -18,6 +18,7 @@ const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/mul
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, uploadMessageVideo, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected, markMessageDelivered } = require('./helpers');
 const { clientSupports } = require('../../utils/versionCompare');
 const Settings = require('../../models/Settings');
+const { buildStoryRef, STORY_UNAVAILABLE } = require('../../utils/storyReply');
 
 // ==========================================
 // نظام الرسائل
@@ -187,7 +188,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
     // 🔬 DEBUG: log every entry to this route
     console.log(`[ROUTE-SEND] user=${String(req.user?._id).slice(-6)} content="${req.body?.content}" type=${req.body?.type || 'text'} convId=${String(req.body?.conversationId).slice(-6)}`);
     try {
-        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo } = req.body;
+        const { conversationId, content, type = 'text', mediaUrl, mediaMetadata, replyTo, storyId } = req.body;
 
         // ✅ فحص تقييد المراسلة
         if (req.user.restrictions?.messagingRestricted) {
@@ -306,6 +307,15 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         // ✅ بوابة الإرسال الموحَّدة: منتهية / غير نشطة / معلّقة (رسالة واحدة للمنشئ)
         const sendGate = await checkConversationSendGate(conversation, req.user);
         if (sendGate) return res.status(sendGate.status).json(sendGate.body);
+
+        // ↩️ ردّ على قصة الطرف الآخر — نصّ فقط، والقصة يجب أن تكون له وما زالت ظاهرة.
+        //    النصّ يمرّ بعدها على كل فلاتر الرسالة العادية (الترويج، الكلمات المحظورة…).
+        let storyRef = null;
+        if (storyId) {
+            const other = conversation.participants.find(p => p._id.toString() !== req.user._id.toString());
+            storyRef = type === 'text' ? await buildStoryRef(storyId, other?._id) : null;
+            if (!storyRef) return res.status(410).json(STORY_UNAVAILABLE);
+        }
 
         // ✅ Phase 2: لو messaging مقفول بسبب external promo violations → أبلغ المرسل بـ dialog (201)
         if (isMessagingLockedByPromo(req.user)) {
@@ -466,6 +476,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             isExternalPromoBlocked: false,   // يُحدَّث لاحقاً لو اكتُشف
             externalPromoCategories: []
         };
+        if (storyRef) messageData.storyRef = storyRef;
         // التطبيق قد يرسل معرّفاً مؤقتاً (temp-…) حين يردّ على رسالة لم
         // تُثبَّت بعد على الخادم — كان ذلك يُسقط الرسالة كلها بـ CastError
         // فتضيع على المستخدم. نتجاهل الرد ونرسل النص.
@@ -763,14 +774,17 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
             if (!isOnline) {
                 // إرسال Push Notification عبر Firebase للـ offline users فقط
+                const preview = type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`;
                 await pushNotificationService.sendNewMessageNotification(
                     recipient._id,
                     req.user.name,
-                    type === 'text' ? (content.length > 100 ? content.substring(0, 100) + '...' : content) : `أرسل ${type === 'image' ? 'صورة' : type === 'audio' ? 'رسالة صوتية' : type === 'video' ? 'فيديو' : 'ملف'}`,
+                    // ↩️ الردّ على القصة يُعرَّف في الإشعار — وstoryReply للتطبيق (شكل البانر)
+                    storyRef ? `↩️ ردّ على قصتك: ${preview}` : preview,
                     conversationId,
                     getBestUserImage(req.user),
                     req.user._id,
-                    message._id
+                    message._id,
+                    storyRef ? { data: { storyReply: '1' } } : {}
                 );
             } else {
                 // ✅ المستلم متصل بالسوكِت → الرسالة وصلت جهازه عبر user:room فوراً.
