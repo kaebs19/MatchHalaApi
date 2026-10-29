@@ -29,7 +29,7 @@ const OFFICIAL_SENDER_NAME = 'هلا شات';
 //
 // Query params:
 //   page=1, limit=20
-//   filter=all|unread|social|system
+//   filter=all|unread|social|stories|system
 //   group=true (default) | false
 //   markRead=true (default) | false  — تحديد كل المعروض كمقروء عند الـ fetch
 router.get('/notifications', protect, async (req, res) => {

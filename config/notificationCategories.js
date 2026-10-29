@@ -159,6 +159,9 @@ function getPreferenceKey(type) {
     return PREFERENCE_KEY_BY_TYPE[type] || null;
 }
 
+/** 📸 أنواع تبويب «القصص» في الإشعارات (مع طلبات ردّ القصة — data.storyReply) */
+const STORY_NOTIFICATION_TYPES = ['story_reaction', 'story_screenshot', 'friend_story', 'story_expiring'];
+
 /**
  * أنواع تُستخدم للـ filter tabs في iOS
  * يجب أن تطابق NotificationCategory.swift
@@ -167,7 +170,8 @@ const FILTER_CATEGORIES = {
     all: 'الكل',
     unread: 'غير المقروءة',
     social: 'تفاعلات',
-    system: 'تنبيهات النظام'
+    system: 'تنبيهات النظام',
+    stories: 'القصص'
 };
 
 /**
@@ -177,7 +181,7 @@ const FILTER_CATEGORIES = {
  * @param {object} params
  * @param {string} params.userId
  * @param {string} [params.role='user']
- * @param {string} [params.filter='all']  // all | unread | social | system
+ * @param {string} [params.filter='all']  // all | unread | social | stories | system
  * @returns {object} mongo filter
  */
 function buildUserNotificationsFilter({ userId, role = 'user', filter = 'all' }) {
@@ -202,6 +206,16 @@ function buildUserNotificationsFilter({ userId, role = 'user', filter = 'all' })
             .filter(([, meta]) => meta.category === 'social' && !meta.adminOnly)
             .map(([type]) => type);
         baseFilter.type = { $in: socialTypes };
+    } else if (filter === 'stories') {
+        // 📸 القصص: التفاعلات/اللقطات/قصص الأصدقاء/الانتهاء + طلبات المحادثة التي بدأت بردّ على قصة
+        // ($and لأن $or في الأساس محجوز لشرط المستلم)
+        delete baseFilter.type;
+        baseFilter.$and = [{
+            $or: [
+                { type: { $in: STORY_NOTIFICATION_TYPES } },
+                { type: 'conversation_request', 'data.storyReply': '1' }
+            ]
+        }];
     } else if (filter === 'system') {
         const systemTypes = Object.entries(NOTIFICATION_TYPES)
             .filter(([, meta]) => meta.category === 'personal' && !meta.adminOnly)
