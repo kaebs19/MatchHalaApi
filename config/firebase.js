@@ -40,7 +40,21 @@ const APNS_CATEGORY_MAP = {
     'match': 'MATCH_CATEGORY',
 
     // 🛡️ تنبيه رسمي → I Understand (acknowledge من شاشة القفل)
-    'official_warning': 'WARNING_CATEGORY'
+    'official_warning': 'WARNING_CATEGORY',
+
+    // ❤️ إعجاب / سوبر لايك → أعجبني أيضاً + شاهد ملفه
+    'new_like': 'LIKE_CATEGORY',
+    'like': 'LIKE_CATEGORY',
+    'super_like': 'LIKE_CATEGORY',
+
+    // 👀 زيارة → شاهد ملفه
+    'profile_view': 'VISIT_CATEGORY',
+
+    // 📸 تفاعل/لقطة على قصتي → شاهد قصتك · قصة صديق → شاهد القصة
+    'story_reaction': 'STORY_ACTIVITY_CATEGORY',
+    'story_screenshot': 'STORY_ACTIVITY_CATEGORY',
+    'story_expiring': 'STORY_ACTIVITY_CATEGORY',
+    'friend_story': 'FRIEND_STORY_CATEGORY'
 };
 
 /**
@@ -90,7 +104,12 @@ function isDeadTokenError(error) {
     return false;
 }
 
-const sendToDevice = async (token, notification, data = {}) => {
+/**
+ * @param {object} [options]
+ * @param {string|null} [options.interruptionLevel] - 'passive' | 'time-sensitive' (iOS 15+)
+ * @param {boolean} [options.silent] - بلا صوت (نمط «بهدوء»)
+ */
+const sendToDevice = async (token, notification, data = {}, options = {}) => {
     try {
         const collapseId = data.conversationId || data.type || 'general';
         const hasImage = Boolean(data.senderImage && String(data.senderImage).trim());
@@ -113,7 +132,15 @@ const sendToDevice = async (token, notification, data = {}) => {
             sound: 'default',
             'thread-id': collapseId
         };
-        if (hasImage) {
+        if (options.interruptionLevel) {
+            apsPayload['interruption-level'] = options.interruptionLevel;
+        }
+        if (options.silent) {
+            delete apsPayload.sound;
+        }
+        // 📸 مصغّرة القصة يُرفقها امتداد الإشعارات أيضاً
+        const hasStoryImage = Boolean(data.storyImage && String(data.storyImage).trim());
+        if (hasImage || hasStoryImage) {
             apsPayload['mutable-content'] = 1;
         }
 

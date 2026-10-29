@@ -10,7 +10,8 @@ const {
 } = require('../config/firebase');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const { getTypeMeta, isChannelType, isAdminOnlyType, getPreferenceKey } = require('../config/notificationCategories');
+const { getTypeMeta, isChannelType, isAdminOnlyType } = require('../config/notificationCategories');
+const { resolveDelivery } = require('../config/notificationPreferences');
 
 /**
  * تحديث pushHealth للمستخدم — fire-and-forget لتجنب تعطيل الـ flow الرئيسي
@@ -95,27 +96,30 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
             return { success: true, saved: true, pushed: false, reason: 'admin_only_no_push' };
         }
 
-        // ✅ تفضيلات الإشعارات الخاصة بالمستخدم
-        // الأنواع الحرجة (تحذيرات/أمان) تُعيد prefKey = null فتمرّ دائماً
-        const prefs = user.notificationPreferences;
-        if (prefs) {
-            // المفتاح الرئيسي — يكتم كل الـ push (عدا الأنواع الحرجة)
-            const prefKey = getPreferenceKey(notifType);
-            if (prefKey) {
-                if (prefs.pushEnabled === false) {
-                    console.log(`🔕 Push muted (master off) for ${user.name} (type: ${notifType})`);
-                    return { success: true, saved: true, pushed: false, reason: 'push_disabled' };
-                }
-                if (prefs[prefKey] === false) {
-                    console.log(`🔕 Push skipped (pref "${prefKey}" off) for ${user.name}`);
-                    return { success: true, saved: true, pushed: false, reason: 'pref_disabled' };
-                }
+        // ✅ تفضيلات الإشعارات الخاصة بالمستخدم (config/notificationPreferences.js)
+        // الأنواع الحرجة (تحذيرات/أمان) غير خاضعة للتحكّم فتمرّ دائماً
+        const policy = resolveDelivery(notifType, data, user.notificationPreferences || {});
+        if (!policy.allowed) {
+            if (policy.reason === 'digest') {
+                // «ملخّص» — لا push الآن؛ يُعدّ ويصل في الملخّص الدوري (utils/notificationDigest.js)
+                const now = new Date();
+                const update = {
+                    $inc: { [`notificationDigest.${policy.digest}`]: 1 },
+                    $min: { 'notificationDigest.pendingSince': now }
+                };
+                if (!policy.quiet) update.$set = { 'notificationDigest.loud': true };
+                User.updateOne({ _id: user._id }, update).exec().catch(err => {
+                    console.error('⚠️ digest count failed:', err.message);
+                });
+                return { success: true, saved: true, pushed: false, reason: 'digest' };
             }
+            console.log(`🔕 Push skipped (${policy.reason}) for ${user.name} (type: ${notifType})`);
+            return { success: true, saved: true, pushed: false, reason: policy.reason };
         }
 
-        // ✅ ساعات الهدوء (عدم الإزعاج) — للأنواع غير الحرجة فقط (التي لها مفتاح تفضيل)
-        // التحذيرات/الأمان (prefKey = null) تتجاوز ساعات الهدوء
-        if (getPreferenceKey(notifType) && isInQuietHours(user)) {
+        // ✅ ساعات الهدوء (عدم الإزعاج) — للأنواع غير الحرجة فقط
+        // التحذيرات/الأمان تتجاوز ساعات الهدوء
+        if (policy.controlled && isInQuietHours(user)) {
             console.log(`🌙 Quiet hours — push skipped for ${user.name} (type: ${notifType})`);
             return { success: true, saved: true, pushed: false, reason: 'quiet_hours' };
         }
@@ -134,9 +138,13 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         }
 
         // إرسال Push Notification
+        // بهدوء = مركز الإشعارات بلا صوت · التطابق/قبول الطلب = Time Sensitive
         const result = await sendToDevice(pushToken, notification, {
             ...data,
             userId: userId.toString()
+        }, {
+            interruptionLevel: policy.quiet ? 'passive' : (policy.timeSensitive ? 'time-sensitive' : null),
+            silent: policy.quiet
         });
 
         if (!result.success) {
@@ -508,6 +516,7 @@ const manageTopicSubscription = async (userId, topic, subscribe = true) => {
 
 module.exports = {
     sendNotificationToUser,
+    isInQuietHours,
     sendNotificationToUsers,
     broadcastNotification,
     sendNewMessageNotification,

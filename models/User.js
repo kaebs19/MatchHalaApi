@@ -228,7 +228,35 @@ const userSchema = new mongoose.Schema({
         // زيارة جديدة للملف الشخصي
         profileVisits: { type: Boolean, default: true },
         // تنبيهات التطبيق (إعلانات + بث + نظام)
-        appAlerts: { type: Boolean, default: true }
+        appAlerts: { type: Boolean, default: true },
+        // 📸 القصص — القيم الافتراضية ومنطق القرار في config/notificationPreferences.js
+        storyReplies: { type: Boolean, default: true },
+        storyReactions: { type: String, enum: ['all', 'digest', 'off'], default: 'all' },
+        storyScreenshots: { type: Boolean, default: true },
+        friendStories: { type: Boolean, default: false },
+        storyExpiryReminder: { type: Boolean, default: true },
+        // ❤️ الإعجابات والتطابق
+        matches: { type: Boolean, default: true },
+        superLikes: { type: Boolean, default: true },
+        likes: { type: String, enum: ['all', 'digest', 'off'], default: 'digest' },
+        // 👀 الزيارات (profileVisits القديم يبقى متّسقاً معه)
+        visits: { type: String, enum: ['all', 'digest', 'off'], default: 'digest' },
+        // نمط الوصول لكل قسم: بصوت / بهدوء (interruption-level: passive) / إيقاف
+        delivery: {
+            stories: { type: String, enum: ['sound', 'quiet', 'off'], default: 'sound' },
+            likes: { type: String, enum: ['sound', 'quiet', 'off'], default: 'sound' },
+            visits: { type: String, enum: ['sound', 'quiet', 'off'], default: 'sound' }
+        }
+    },
+    // 🧾 عدّادات الملخّص الدوري — ما أُجِّل لمن اختار «ملخّص» (utils/notificationDigest.js)
+    // pendingSince يُحذف ($unset) بعد الإرسال لا يُصفَّر: $min يتجاهل الحقل إن كان null
+    notificationDigest: {
+        reactions: { type: Number },
+        likes: { type: Number },
+        visits: { type: Number },
+        loud: { type: Boolean }, // أيّ حدث مؤجَّل من قسم «بصوت» ← الملخّص بصوت، وإلا بهدوء
+        pendingSince: { type: Date },
+        lastSentAt: { type: Date }
     },
     // قائمة المستخدمين المحظورين
     blockedUsers: [{
@@ -647,6 +675,11 @@ userSchema.index({ isOnline: -1, lastLogin: -1 });
 // ✅ email index handled automatically by 'unique: true' on field
 userSchema.index({ location: '2dsphere' });
 userSchema.index({ isPremium: 1 });
+// 🧾 الملخّص الدوري — جزئي: فقط من عنده حدث معلّق (أُنشئ يدوياً بنفس الاسم/الخيارات)
+userSchema.index(
+    { 'notificationDigest.pendingSince': 1 },
+    { name: 'notificationDigest.pendingSince_1', partialFilterExpression: { 'notificationDigest.pendingSince': { $exists: true } } }
+);
 userSchema.index({ 'verification.status': 1 });
 // ✅ indexes للـ discover/swipes (slow query optimization)
 userSchema.index({ isActive: 1, 'privacySettings.profileVisibility': 1, lastLogin: -1 }, { name: 'discover_active_visibility_lastLogin' });

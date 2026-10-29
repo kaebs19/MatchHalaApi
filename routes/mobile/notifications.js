@@ -301,16 +301,8 @@ router.delete('/notifications', protect, async (req, res) => {
 // تفضيلات الإشعارات (Push Preferences)
 // ==========================================
 
-// المفاتيح المسموح بها فقط — حماية من حقن مفاتيح عشوائية
-const PREF_KEYS = ['pushEnabled', 'invitations', 'messages', 'profileVisits', 'appAlerts'];
-
-const PREF_DEFAULTS = {
-    pushEnabled: true,
-    invitations: true,
-    messages: true,
-    profileVisits: true,
-    appAlerts: true
-};
+// المفاتيح وقيمها وفحصها في config/notificationPreferences.js — حماية من حقن مفاتيح عشوائية
+const notificationPrefs = require('../../config/notificationPreferences');
 
 // @route   GET /api/mobile/notifications/preferences
 // @desc    جلب تفضيلات إشعارات المستخدم
@@ -324,13 +316,7 @@ router.get('/notifications/preferences', protect, async (req, res) => {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         }
 
-        const prefs = user.notificationPreferences || {};
-        const data = {};
-        for (const key of PREF_KEYS) {
-            data[key] = prefs[key] ?? PREF_DEFAULTS[key];
-        }
-
-        res.json({ success: true, data });
+        res.json({ success: true, data: notificationPrefs.withDefaults(user.notificationPreferences || {}) });
     } catch (error) {
         console.error('خطأ في جلب تفضيلات الإشعارات:', error);
         res.status(500).json({ success: false, message: 'خطأ في الخادم' });
@@ -342,12 +328,7 @@ router.get('/notifications/preferences', protect, async (req, res) => {
 // @access  Private
 router.patch('/notifications/preferences', protect, async (req, res) => {
     try {
-        const updates = {};
-        for (const key of PREF_KEYS) {
-            if (typeof req.body[key] === 'boolean') {
-                updates[`notificationPreferences.${key}`] = req.body[key];
-            }
-        }
+        const updates = notificationPrefs.buildUpdate(req.body);
 
         if (Object.keys(updates).length === 0) {
             return res.status(400).json({ success: false, message: 'لا توجد قيم صالحة للتحديث' });
@@ -357,13 +338,7 @@ router.patch('/notifications/preferences', protect, async (req, res) => {
 
         const user = await User.findById(req.user._id)
             .select('notificationPreferences').lean();
-        const prefs = user.notificationPreferences || {};
-        const data = {};
-        for (const key of PREF_KEYS) {
-            data[key] = prefs[key] ?? PREF_DEFAULTS[key];
-        }
-
-        res.json({ success: true, message: 'تم تحديث إعدادات الإشعارات', data });
+        res.json({ success: true, message: 'تم تحديث إعدادات الإشعارات', data: notificationPrefs.withDefaults(user.notificationPreferences || {}) });
     } catch (error) {
         console.error('خطأ في تحديث تفضيلات الإشعارات:', error);
         res.status(500).json({ success: false, message: 'فشل في تحديث الإعدادات' });

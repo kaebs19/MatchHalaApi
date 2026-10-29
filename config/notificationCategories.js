@@ -71,6 +71,13 @@ const NOTIFICATION_TYPES = {
     'conversation_accepted':{ category: 'social', groupable: false, adminOnly: false },
     'conversation_reminder':{ category: 'social', groupable: false, adminOnly: false },
     'conversation_expired': { category: 'personal', groupable: false, adminOnly: false },
+    // 📸 القصص — تفضيلاتها في config/notificationPreferences.js (لا في PREFERENCE_KEY_BY_TYPE)
+    'story_reaction':       { category: 'social', groupable: true, adminOnly: false },
+    'story_screenshot':     { category: 'social', groupable: true, adminOnly: false },
+    'friend_story':         { category: 'social', groupable: true, adminOnly: false },
+    'story_expiring':       { category: 'personal', groupable: false, adminOnly: false },
+    // 🧾 الملخّص الدوري — push فقط (لا يُحفظ: كل حدث فيه له صفّه أصلاً)
+    'notification_digest':  { category: 'channel', groupable: false, adminOnly: false },
 
     // ===== Admin — لا تظهر في تطبيق المستخدم العادي ولا الأدمن =====
     'flagged_message':      { category: 'admin', groupable: false, adminOnly: true },
