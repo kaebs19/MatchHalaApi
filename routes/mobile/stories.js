@@ -278,6 +278,101 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/mobile/stories/feed?limit=30
+// @desc    «القصص» من الاكتشاف: أصحاب القصص مرتّبين — غير المُشاهَد أولاً، ثم بنقاط:
+//          التفاعل (تفاعلات ×4 + مشاهدات، لوغاريتمي) + المشترك/الموثّق + الحداثة + عشوائية مقصودة
+//          (لا يتكرّر الترتيب نفسه)، مع خفض قوي للمُبلَّغ عنها والحسابات المخفية (خفض لا استبعاد).
+//          يُستبعد: أنا، الحظر بأي اتجاه، المكتومون، المحظورون كلياً وغير النشطين. المحجوبة بالبلاغات
+//          لا تظهر أصلاً (visibleFilter). العميل يجلب قصص كل صاحب حين يحين دوره في العارض.
+// @access  Private
+const FEED_MAX = 50;
+const FEED_CANDIDATES = 400;
+router.get('/stories/feed', protect, async (req, res) => {
+    try {
+        const limit = Math.min(FEED_MAX, Math.max(1, parseInt(req.query.limit, 10) || 30));
+        const me = String(req.user._id);
+
+        const groups = await Story.aggregate([
+            { $match: visibleFilter() },
+            { $group: {
+                _id: '$user',
+                storyIds: { $push: '$_id' },
+                latest: { $max: '$createdAt' },
+                views: { $sum: '$viewCount' },
+                reactions: { $sum: '$reactionCount' },
+                reports: { $sum: '$reportCount' }
+            } },
+            { $sort: { latest: -1 } },
+            { $limit: FEED_CANDIDATES }
+        ]);
+        if (!groups.length) return res.json({ success: true, data: { owners: [] } });
+
+        const myBlocked = new Set((req.user.blockedUsers || []).map(String));
+        const myMuted = new Set((req.user.storyMutedUsers || []).map(String));
+        const owners = await User.find({ _id: { $in: groups.map(g => g._id) } })
+            .select('name profileImage photos isActive bannedWords suspension blockedUsers isPremium premiumExpiresAt verification.isVerified hidden')
+            .lean();
+        const ownerById = new Map(owners.map(u => [String(u._id), u]));
+
+        const now = Date.now();
+        const visible = groups.filter(g => {
+            const id = String(g._id);
+            const u = ownerById.get(id);
+            return u && id !== me
+                && u.isActive !== false
+                && !isUserFullyBanned(u)
+                && !myBlocked.has(id) && !myMuted.has(id)
+                && !(u.blockedUsers || []).some(b => String(b) === me);
+        });
+
+        const allStoryIds = visible.flatMap(g => g.storyIds);
+        const seen = allStoryIds.length
+            ? await StoryView.find({ viewer: req.user._id, story: { $in: allStoryIds } }).select('story').lean()
+            : [];
+        const seenSet = new Set(seen.map(v => String(v.story)));
+
+        const ranked = visible.map(g => {
+            const u = ownerById.get(String(g._id));
+            const ageHours = (now - new Date(g.latest).getTime()) / 3600000;
+            const hidden = !!(u.hidden?.isHidden && (!u.hidden.hiddenUntil || new Date(u.hidden.hiddenUntil) > new Date()));
+            const score =
+                2.0 * Math.log1p((g.reactions || 0) * 4 + (g.views || 0))
+                + (isPremiumActive(u) ? 1.5 : 0)
+                + (u.verification?.isVerified ? 0.5 : 0)
+                + 1.5 * Math.exp(-ageHours / 8)
+                + Math.random() * 1.5
+                - 2.5 * Math.min(3, g.reports || 0)
+                - (hidden ? 4 : 0);
+            return {
+                u,
+                count: g.storyIds.length,
+                hasUnseen: g.storyIds.some(id => !seenSet.has(String(id))),
+                score
+            };
+        })
+            .sort((a, b) => (b.hasUnseen - a.hasUnseen) || (b.score - a.score))
+            .slice(0, limit);
+
+        res.json({
+            success: true,
+            data: {
+                owners: ranked.map(r => ({
+                    _id: r.u._id,
+                    name: r.u.name,
+                    profileImage: getFullUrl(r.u.profileImage),
+                    isPremium: isPremiumActive(r.u),
+                    isVerified: !!r.u.verification?.isVerified,
+                    count: r.count,
+                    hasUnseen: r.hasUnseen
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في خلاصة القصص:', error);
+        res.status(500).json({ success: false, message: 'فشل جلب القصص' });
+    }
+});
+
 // @route   POST /api/mobile/stories/status
 // @desc    حالة القصص لعدة مستخدمين دفعة واحدة (شريط الأصدقاء، قائمة المحادثات، الاكتشاف)
 //          body: { userIds: [...] } ← { statuses: { <userId>: { count, hasUnseen } } } — من لا قصة له لا يظهر
