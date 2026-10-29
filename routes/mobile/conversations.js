@@ -11,6 +11,49 @@ const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { buildStoryRef, STORY_UNAVAILABLE } = require('../../utils/storyReply');
 const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned, getBlockState } = require('./helpers');
+const { checkBannedWords } = require('../bannedWords');
+const { detectExternalPromotion, recordExternalPromoViolation, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
+
+/**
+ * الرسالة الأولى في طلب المحادثة — نفس فلاتر /messages/send: الترويج الخارجي يُطمس
+ * ويُسجَّل مخالفة، والكلمات المحظورة تُطمس (وما يشبه حساباً خارجياً منها يُسجَّل أيضاً).
+ * ⚠️ كانت تُحفظ كما هي: أول ما يراه المستلم كان أسهل مكان لنشر سناب/واتساب.
+ * @returns {Promise<string|null>} النصّ الآمن للحفظ، أو null إن لم يكن نصّاً
+ */
+async function filterInitialMessage(user, text, conversationId) {
+    if (typeof text !== 'string') return null;
+    const content = text.trim();
+    if (!content) return null;
+
+    const promo = detectExternalPromotion(content);
+    if (promo.detected) {
+        await recordExternalPromoViolation(user, {
+            source: 'message',
+            categories: promo.categories,
+            patterns: promo.patterns,
+            conversationId,
+            originalText: content
+        });
+        return promo.redacted;
+    }
+
+    const banned = await checkBannedWords(content);
+    if (!banned.hasBannedWords) return content;
+
+    const externalCats = (banned.categories || []).filter(c => c === 'contact' || c === 'promotion');
+    const handleLikeWords = (banned.matchedWords || []).filter(looksLikeExternalHandle);
+    if (externalCats.length > 0 || handleLikeWords.length > 0) {
+        await recordExternalPromoViolation(user, {
+            source: 'message',
+            categories: externalCats.length > 0 ? externalCats : ['handle_pattern'],
+            patterns: banned.matchedWords,
+            conversationId,
+            originalText: content,
+            tactic: externalCats.length > 0 ? 'banned_word_contact' : 'handle_heuristic'
+        });
+    }
+    return banned.censoredText;
+}
 const {
     conversationLimitMiddleware,
     outstandingFilter,
@@ -216,11 +259,12 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                 // ✅ رسالة نظام في المسار: تم إرسال دعوة جديدة
                 await createSystemMessage(existingConversation._id, req.user._id, 'conversation_reinvited', 'تم إرسال دعوة جديدة', 'New invite sent');
 
-                if (initialMessage) {
+                const safeInitial = await filterInitialMessage(req.user, initialMessage, existingConversation._id);
+                if (safeInitial) {
                     await Message.create({
                         conversation: existingConversation._id,
                         sender: req.user._id,
-                        content: initialMessage,
+                        content: safeInitial,
                         type: 'text',
                         status: 'sent'
                     });
@@ -325,11 +369,12 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }
 
         // إرسال الرسالة الأولى إذا وجدت
-        if (initialMessage) {
+        const safeInitial = await filterInitialMessage(req.user, initialMessage, conversation._id);
+        if (safeInitial) {
             await Message.create({
                 conversation: conversation._id,
                 sender: req.user._id,
-                content: initialMessage,
+                content: safeInitial,
                 type: 'text',
                 status: 'sent'
             });
