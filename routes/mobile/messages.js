@@ -784,7 +784,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     getBestUserImage(req.user),
                     req.user._id,
                     message._id,
-                    storyRef ? { data: { storyReply: '1' } } : {}
+                    storyRef ? { data: { storyReply: '1', ...(storyRef.imageUrl ? { storyImage: storyRef.imageUrl } : {}) } } : {}
                 );
             } else {
                 // ✅ المستلم متصل بالسوكِت → الرسالة وصلت جهازه عبر user:room فوراً.

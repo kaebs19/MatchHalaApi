@@ -38,9 +38,14 @@ async function sweepExpiredStories() {
 }
 
 function startStorySweeper() {
-    const run = () => sweepExpiredStories()
-        .then(n => { if (n > 0) console.log(`📸 كنس القصص المنتهية: ${n}`); })
-        .catch(e => console.error('⚠️ كنس القصص:', e.message));
+    const run = () => {
+        sweepExpiredStories()
+            .then(n => { if (n > 0) console.log(`📸 كنس القصص المنتهية: ${n}`); })
+            .catch(e => console.error('⚠️ كنس القصص:', e.message));
+        // ⏳ تذكير «قصتك تنتهي خلال ساعة» — نفس الدورة (5د، instance 0)
+        require('./storyNotifications').remindExpiringStories()
+            .catch(e => console.error('⚠️ تذكير انتهاء القصص:', e.message));
+    };
     setTimeout(run, 90 * 1000);
     setInterval(run, SWEEP_INTERVAL_MS);
 }

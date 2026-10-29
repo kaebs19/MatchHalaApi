@@ -16,6 +16,7 @@ const { protect } = require('../../middleware/auth');
 const { getFullUrl, getBlockState, isUserFullyBanned } = require('./helpers');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
+const { notifyStoryScreenshot, notifyFriendsOfStory } = require('../../utils/storyNotifications');
 
 // القصص النشطة: 3 مجاناً، 10 لمشترك هلا+ (مثل حدّ الفيديو اليومي)
 const STORY_MAX_ACTIVE = { free: 3, premium: 10 };
@@ -120,6 +121,7 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
             height: info.height,
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
         });
+        notifyFriendsOfStory(story, req.user).catch(e => console.error('friend-story notify:', e.message));
 
         res.status(201).json({
             success: true,
@@ -203,6 +205,7 @@ router.post('/stories/text', protect, async (req, res) => {
             background: bg,
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
         });
+        notifyFriendsOfStory(story, req.user).catch(e => console.error('friend-story notify:', e.message));
         const active = await Story.countDocuments(activeFilter({ user: req.user._id }));
         res.status(201).json({ success: true, data: { story: serialize(story, { owner: true }), active, max: maxStoriesFor(req.user), freeMax: STORY_MAX_ACTIVE.free, premiumMax: STORY_MAX_ACTIVE.premium } });
     } catch (error) {
@@ -435,7 +438,7 @@ router.post('/stories/:storyId/view', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
         if (!story) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
@@ -483,7 +486,7 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
         if (!story) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
@@ -513,6 +516,7 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
             if (global.io && updated) {
                 global.io.to(`user:${ownerId}`).emit('story:screenshot', { storyId: String(story._id), screenshotCount: updated.screenshotCount });
             }
+            notifyStoryScreenshot(story, req.user).catch(e => console.error('story-screenshot notify:', e.message));
         }
         res.json({ success: true, data: { recorded } });
     } catch (error) {
@@ -538,7 +542,7 @@ router.post('/stories/:storyId/react', protect, async (req, res) => {
         if (emoji && !STORY_REACTIONS.includes(emoji)) {
             return res.status(400).json({ success: false, message: 'تفاعل غير مدعوم', code: 'STORY_INVALID' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user').lean();
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
         if (!story) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
@@ -618,7 +622,8 @@ router.post('/stories/:storyId/react', protect, async (req, res) => {
                     storyId: String(story._id),
                     senderId: String(req.user._id),
                     senderName: name,
-                    senderImage: image
+                    senderImage: image,
+                    storyImage: story.kind === 'text' || !story.imageUrl ? '' : (getFullUrl(story.imageUrl) || '')
                 }, false).catch(() => {});
             } catch (notifErr) {
                 console.error('story-reaction notify error:', notifErr.message);

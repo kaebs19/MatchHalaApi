@@ -36,7 +36,9 @@ const storySchema = new mongoose.Schema({
     // يُظهرها المشرف (POST /api/admin/stories/:id/release) أو يحذفها أو تنتهي
     heldAt: { type: Date, default: null },
     archivedPath: { type: String, default: null },
-    endedAt: { type: Date, default: null }
+    endedAt: { type: Date, default: null },
+    // ⏳ أُرسل تذكير «تنتهي خلال ساعة» لصاحبها (utils/storyNotifications.js)
+    expiryReminded: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // القصص النشطة لمستخدم (البروفايل، الحدّ)، والكنس
