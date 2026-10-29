@@ -911,6 +911,11 @@ server.listen(PORT, () => {
             console.error('تعذّر بدء مذكّر الألعاب:', e.message);
         }
         try {
+            require('./utils/notificationDigest').startNotificationDigest();
+        } catch (e) {
+            console.error('تعذّر بدء الملخّص الدوري:', e.message);
+        }
+        try {
             require('./utils/disappearingMedia').startEphemeralSweeper();
         } catch (e) {
             console.error('تعذّر بدء كنس الفيديو المؤقت:', e.message);
