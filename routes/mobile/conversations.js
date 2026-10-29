@@ -9,6 +9,7 @@ const SuperLike = require('../../models/SuperLike');
 const { protect } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
+const { buildStoryRef, STORY_UNAVAILABLE } = require('../../utils/storyReply');
 const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned, getBlockState } = require('./helpers');
 const {
     conversationLimitMiddleware,
@@ -80,7 +81,7 @@ async function createSystemMessage(conversationId, senderId, action, textAr, tex
 // @access  Private
 router.post('/conversations/request', protect, spamCheckMiddleware, conversationLimitMiddleware, async (req, res) => {
     try {
-        const { targetUserId, initialMessage, isSuperLike } = req.body;
+        const { targetUserId, initialMessage, isSuperLike, storyId } = req.body;
 
         // ✅ فحص تقييد المراسلة — محادثات جديدة محظورة لـ new_only و all
         if (req.user.restrictions?.messagingRestricted) {
@@ -158,6 +159,13 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             });
         }
 
+        // ↩️ طلب يبدأ بردّ على قصة الطرف الآخر — القصة يجب أن تكون له وما زالت ظاهرة.
+        //    النصّ نفسه يُرسَل بعدها عبر /messages/send مع storyId (يمرّ على الفلاتر).
+        const isStoryReply = !!storyId;
+        if (isStoryReply && !(await buildStoryRef(storyId, targetUserId))) {
+            return res.status(410).json(STORY_UNAVAILABLE);
+        }
+
         // التحقق من عدم وجود محادثة سابقة
         const existingConversation = await Conversation.findOne({
             type: 'private',
@@ -197,6 +205,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         requestedAt: now,             // بداية نافذة "رسالة واحدة فقط"
                         reminderSent: false,          // تذكير الـ 24 ساعة يخصّ هذه الدعوة لا سابقتها
                         withdrawn: false,             // دعوة جديدة تمسح أثر سحب سابق
+                        origin: isStoryReply ? 'story_reply' : null,
                         // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
                         hiddenFor: []
                     },
@@ -221,6 +230,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                     global.io.to(`user:${targetUserId}`).emit('conversation:request', {
                         conversationId: existingConversation._id,
                         isSuperLike: false,
+                        origin: isStoryReply ? 'story_reply' : null,
                         from: {
                             _id: req.user._id,
                             name: req.user.name,
@@ -305,6 +315,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             status: 'pending',
             isActive: true,
             requestedAt: new Date(),
+            origin: isStoryReply ? 'story_reply' : null,
             title: `محادثة بين ${req.user.name} و ${targetUser.name}`
         });
         // مسح كاش شركاء المحادثات
@@ -329,6 +340,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             global.io.to(`user:${targetUserId}`).emit('conversation:request', {
                 conversationId: conversation._id,
                 isSuperLike: superLikeCreated,
+                origin: isStoryReply ? 'story_reply' : null,
                 from: {
                     _id: req.user._id,
                     name: req.user.name,
@@ -338,10 +350,12 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }
 
         // ٢. Push Notification عبر FCM
-        const notifTitle = superLikeCreated ? '💎 إعجاب مميز!' : 'طلب محادثة جديد';
+        // ↩️ الردّ على القصة: نصّ الردّ يصل بعده في إشعار الرسالة (نفس apns-collapse-id
+        //    = المحادثة، فيستبدل هذا ولا يتكرّر)
+        const notifTitle = superLikeCreated ? '💎 إعجاب مميز!' : (isStoryReply ? '↩️ ردّ على قصتك' : 'طلب محادثة جديد');
         const notifBody = superLikeCreated
             ? `${req.user.name} أرسل لك Super Like ويريد التحدث معك`
-            : `${req.user.name} يريد التحدث معك`;
+            : (isStoryReply ? `${req.user.name} ردّ على قصتك` : `${req.user.name} يريد التحدث معك`);
 
         try {
             await pushNotificationService.sendNotificationToUser(
@@ -363,7 +377,8 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         const baseUrl = process.env.BASE_URL || 'https://matchhala.chathala.com';
                         return baseUrl + img;
                     })(),
-                    isSuperLike: superLikeCreated ? 'true' : 'false'
+                    isSuperLike: superLikeCreated ? 'true' : 'false',
+                    ...(isStoryReply ? { storyReply: '1' } : {})
                 }
             );
         } catch (notifError) {
@@ -902,6 +917,8 @@ router.get('/conversations/pending', protect, async (req, res) => {
                 content: m.content || '',
                 type: m.type || 'text',
                 mediaUrl: m.mediaUrl || null,
+                // ↩️ بطاقة الطلب تعرض القصة التي رُدّ عليها
+                ...(m.storyRef ? { storyRef: m.storyRef } : {}),
                 createdAt: m.createdAt
             }));
             messagesMap.set(convId, {
@@ -1572,6 +1589,7 @@ router.get('/conversations', protect, async (req, res) => {
                         _id: '$conversation',
                         content: { $first: '$content' },
                         sender: { $first: '$sender' },
+                        storyRef: { $first: '$storyRef' },
                         createdAt: { $first: '$createdAt' }
                     }
                 }
@@ -1581,6 +1599,7 @@ router.get('/conversations', protect, async (req, res) => {
                 if (conv && conv.creator && m.sender.toString() === conv.creator.toString()) {
                     initialMessageMap.set(m._id.toString(), {
                         content: m.content,
+                        ...(m.storyRef ? { storyRef: m.storyRef } : {}),
                         createdAt: m.createdAt
                     });
                 }
