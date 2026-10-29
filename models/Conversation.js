@@ -64,6 +64,9 @@ const conversationSchema = new mongoose.Schema({
     reinviteAllowedAt: { type: Date, default: null },
     // ✅ وقت آخر طلب/دعوة (بداية حالة pending) — يُستخدم لحصر المنشئ برسالة واحدة
     requestedAt: { type: Date, default: null },
+    // ↩️ مصدر الطلب: 'story_reply' = بدأ بردّ على قصة (قسم «ردود القصص» في الطلبات،
+    //    وسقف معلّقات مستقل عن طلبات المحادثة). null = طلب عادي.
+    origin: { type: String, default: null },
     // ✅ عدد محاولات الاستئناف المتتالية بلا قبول — تصعيد مدة التهدئة
     reinviteCount: { type: Number, default: 0 },
     // ✅ وضع المحادثة (keep = الافتراضي — الرسائل تبقى للمستخدم)

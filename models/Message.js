@@ -48,6 +48,21 @@ const messageSchema = new mongoose.Schema({
         ref: 'Message'
     },
 
+    // ↩️ ردّ على قصة — لقطة مرجعية بلا نسخة من الصورة (utils/storyReply.js).
+    //    العملاء القدامى يتجاهلونه ويعرضون النصّ وحده.
+    storyRef: {
+        type: new mongoose.Schema({
+            story: { type: mongoose.Schema.Types.ObjectId, ref: 'Story' },
+            owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            kind: { type: String, enum: ['image', 'text'] },
+            text: { type: String, default: null },
+            background: { type: Number, default: null },
+            imageUrl: { type: String, default: null },
+            expiresAt: { type: Date }
+        }, { _id: false }),
+        default: undefined
+    },
+
     // مشاركة موقع مباشر — الفقاعة تعرض الموقع الحيّ بدل نص ثابت.
     // العملاء القدامى يتجاهلون الحقل ويعرضون content كموقع عادي (نقطة البداية).
     liveLocation: {
