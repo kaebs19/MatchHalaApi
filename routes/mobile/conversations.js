@@ -563,7 +563,10 @@ router.put('/conversations/:id/accept', protect, async (req, res) => {
                 {
                     type: 'conversation_request',
                     conversationId: conversation._id.toString(),
-                    action: 'accepted'
+                    action: 'accepted',
+                    senderId: req.user._id.toString(),
+                    senderName: req.user.name,
+                    senderImage: getFullUrl(getBestUserImage(req.user)) || ''
                 }
             );
         }
@@ -798,7 +801,10 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
                 {
                     type: 'conversation_request',
                     conversationId: conversation._id.toString(),
-                    action: 'cancelled'
+                    action: 'cancelled',
+                    senderId: req.user._id.toString(),
+                    senderName: req.user.name,
+                    senderImage: getFullUrl(getBestUserImage(req.user)) || ''
                 }
             ).catch(() => {});
         }

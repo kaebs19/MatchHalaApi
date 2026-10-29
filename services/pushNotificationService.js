@@ -77,7 +77,9 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                     type: notifType,
                     recipients: 'specific',
                     targetUsers: [userId],
-                    sender: data.senderId || data.fromUserId || userId,
+                    // ⚠️ بلا مرسل = null لا المستلم نفسه: كان الاحتياط userId فتظهر صورة
+                    //    المستخدم نفسه على «انتهت المحادثة» و«قُبل طلبك» والتطابق والتذكير
+                    sender: data.senderId || data.fromUserId || null,
                     status: 'sent',
                     sentAt: new Date(),
                     sentCount: 1,

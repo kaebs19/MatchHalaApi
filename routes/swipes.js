@@ -191,7 +191,7 @@ router.post('/', protect, async (req, res) => {
                     await sendNotificationToUser(
                         userId,
                         { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
-                        { type: 'new_match', matchId: match._id.toString() }
+                        { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
                     );
                 } catch (pushErr) {
                     console.error('خطأ في إرسال إشعار التطابق:', pushErr);
@@ -473,7 +473,7 @@ router.post('/batch', protect, async (req, res) => {
                             await sendNotificationToUser(
                                 targetUserId,
                                 { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
-                                { type: 'new_match', matchId: match._id.toString() }
+                                { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
                             );
                         } catch (pushErr) {
                             console.error('خطأ في إشعار التطابق:', pushErr);
