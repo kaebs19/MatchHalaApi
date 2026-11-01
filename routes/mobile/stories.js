@@ -683,10 +683,18 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة', code: 'STORY_NOT_FOUND' });
         }
 
+        // ❤️ التفاعلات لكل إيموجي — أعداد بلا أسماء، فهي للجميع مثل عدد المشاهدات
+        const reactionTally = await StoryView.aggregate([
+            { $match: { story: story._id, isHidden: false, reaction: { $ne: null } } },
+            { $group: { _id: '$reaction', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+        const reactions = reactionTally.map(r => ({ emoji: r._id, count: r.count }));
+
         if (!isPremiumActive(req.user)) {
             return res.json({
                 success: true,
-                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, viewers: [], isPremiumRequired: true }
+                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, reactions, viewers: [], isPremiumRequired: true }
             });
         }
 
@@ -705,6 +713,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
                 viewCount: story.viewCount || 0,
                 screenshotCount: story.screenshotCount || 0,
                 reactionCount: story.reactionCount || 0,
+                reactions,
                 viewers: views
                     .filter(v => v.viewer && !isUserFullyBanned(v.viewer))
                     .map(v => ({
