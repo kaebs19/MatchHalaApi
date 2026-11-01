@@ -36,6 +36,36 @@ const getFullUrl = (imgPath) => {
     return `${baseUrl}${imgPath}`;
 };
 
+// Helper: التطابق عند إعجاب متبادل. إلغاء الإعجاب يُبطل التطابق ويُبقي محادثته، فإعادة
+// الإعجاب تُحييه بمحادثته نفسها (revived) بلا محادثة مكرّرة ولا «تطابق جديد» في كل ضغطة.
+// ⚠️ unmatchedBy = إلغاء تطابق صريح أغلق المحادثة — لا يُحيا.
+const findOrCreateMatch = async (swiperId, targetId) => {
+    const previous = await Match.findOne({
+        users: { $all: [swiperId, targetId] },
+        unmatchedBy: null,
+        conversation: { $ne: null }
+    }).sort({ createdAt: -1 });
+
+    if (previous && await Conversation.exists({ _id: previous.conversation })) {
+        if (!previous.isActive) {
+            previous.isActive = true;
+            await previous.save();
+        }
+        return { match: previous, conversationId: previous.conversation, revived: true };
+    }
+
+    const conversation = await Conversation.create({
+        type: 'private',
+        participants: [swiperId, targetId],
+        status: 'accepted'
+    });
+    const match = await Match.create({
+        users: [swiperId, targetId],
+        conversation: conversation._id
+    });
+    return { match, conversationId: conversation._id, revived: false };
+};
+
 // @route   POST /api/swipes
 // @desc    إنشاء سوايب (like/dislike/superlike)
 // @access  Protected
@@ -143,20 +173,11 @@ router.post('/', protect, async (req, res) => {
 
             if (reverseSwipe) {
                 // تطابق! إنشاء Match + Conversation
-                const conversation = await Conversation.create({
-                    type: 'private',
-                    participants: [swiperId, userId],
-                    status: 'accepted'
-                });
-
-                const match = await Match.create({
-                    users: [swiperId, userId],
-                    conversation: conversation._id
-                });
+                const { match, conversationId, revived } = await findOrCreateMatch(swiperId, userId);
 
                 matchData = {
                     matchId: match._id,
-                    conversationId: conversation._id,
+                    conversationId,
                     user: {
                         _id: targetUser._id,
                         name: targetUser.name,
@@ -165,7 +186,7 @@ router.post('/', protect, async (req, res) => {
                 };
 
                 // إشعار Socket.IO لكلا المستخدمين
-                if (global.io) {
+                if (global.io && !revived) {
                     // إشعار للمستخدم الحالي
                     global.io.to(`user:${swiperId}`).emit('new-match', {
                         match: matchData
@@ -176,7 +197,7 @@ router.post('/', protect, async (req, res) => {
                     global.io.to(`user:${userId}`).emit('new-match', {
                         match: {
                             matchId: match._id,
-                            conversationId: conversation._id,
+                            conversationId,
                             user: {
                                 _id: currentUser._id,
                                 name: currentUser.name,
@@ -187,14 +208,16 @@ router.post('/', protect, async (req, res) => {
                 }
 
                 // إشعار Push للمستخدم الآخر
-                try {
-                    await sendNotificationToUser(
-                        userId,
-                        { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
-                        { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
-                    );
-                } catch (pushErr) {
-                    console.error('خطأ في إرسال إشعار التطابق:', pushErr);
+                if (!revived) {
+                    try {
+                        await sendNotificationToUser(
+                            userId,
+                            { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
+                            { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
+                        );
+                    } catch (pushErr) {
+                        console.error('خطأ في إرسال إشعار التطابق:', pushErr);
+                    }
                 }
             }
         }
@@ -431,20 +454,11 @@ router.post('/batch', protect, async (req, res) => {
                     });
 
                     if (reverseSwipe) {
-                        const conversation = await Conversation.create({
-                            type: 'private',
-                            participants: [swiperId, targetUserId],
-                            status: 'accepted'
-                        });
-
-                        const match = await Match.create({
-                            users: [swiperId, targetUserId],
-                            conversation: conversation._id
-                        });
+                        const { match, conversationId, revived } = await findOrCreateMatch(swiperId, targetUserId);
 
                         matchData = {
                             matchId: match._id,
-                            conversationId: conversation._id,
+                            conversationId,
                             user: {
                                 _id: targetUser._id,
                                 name: targetUser.name,
@@ -453,12 +467,12 @@ router.post('/batch', protect, async (req, res) => {
                         };
 
                         // إشعار Socket.IO
-                        if (global.io) {
+                        if (global.io && !revived) {
                             global.io.to(`user:${swiperId}`).emit('new-match', { match: matchData });
                             global.io.to(`user:${targetUserId}`).emit('new-match', {
                                 match: {
                                     matchId: match._id,
-                                    conversationId: conversation._id,
+                                    conversationId,
                                     user: {
                                         _id: swiperId,
                                         name: req.user.name,
@@ -469,14 +483,16 @@ router.post('/batch', protect, async (req, res) => {
                         }
 
                         // Push notification
-                        try {
-                            await sendNotificationToUser(
-                                targetUserId,
-                                { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
-                                { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
-                            );
-                        } catch (pushErr) {
-                            console.error('خطأ في إشعار التطابق:', pushErr);
+                        if (!revived) {
+                            try {
+                                await sendNotificationToUser(
+                                    targetUserId,
+                                    { title: 'تطابق جديد! 🎉', body: `لديك تطابق مع ${req.user.name}` },
+                                    { type: 'new_match', matchId: match._id.toString(), senderId: req.user._id.toString(), senderName: req.user.name, senderImage: getFullUrl(req.user.profileImage) || '' }
+                                );
+                            } catch (pushErr) {
+                                console.error('خطأ في إشعار التطابق:', pushErr);
+                            }
                         }
                     }
                 }
