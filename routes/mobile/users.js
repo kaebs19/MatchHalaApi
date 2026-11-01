@@ -678,6 +678,19 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             likedYou = !!theirLike;
         }
 
+        // ✅ هل أعجبتُ أنا به؟ — بدونها يبدأ القلب فارغاً فيُرسل التطبيق إعجاباً
+        //    مكرّراً (400) بدل الإلغاء.
+        let isLiked = false;
+        if (!isOwn) {
+            const Swipe = require('../../models/Swipe');
+            const myLike = await Swipe.findOne({
+                swiper: req.user._id,
+                swiped: user._id,
+                type: { $in: ['like', 'superlike'] }
+            }).select('_id').lean();
+            isLiked = !!myLike;
+        }
+
         const profileData = {
             _id: user._id,
             name: user.name,
@@ -717,6 +730,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
             acceptingRequests: user.acceptingRequests !== false, // افتراضي true
             premiumOnlyRequests: user.premiumOnlyRequests === true,
             likedYou,
+            isLiked,
             // شارة الحساب الرسمي: role يُرسَل للمشرفين وحدهم (كالبحث والاكتشاف)
             ...((user.role === 'admin' || user.role === 'superadmin') ? { role: user.role } : {})
         };
