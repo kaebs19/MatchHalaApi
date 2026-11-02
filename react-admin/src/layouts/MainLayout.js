@@ -13,6 +13,7 @@ const ConversationMessages = lazy(() => import('../pages/ConversationMessages'))
 const Stats = lazy(() => import('../pages/Stats'));
 const Settings = lazy(() => import('../pages/Settings'));
 const GamesManagement = lazy(() => import('../pages/GamesManagement'));
+const StickersManagement = lazy(() => import('../pages/StickersManagement'));
 const Profile = lazy(() => import('../pages/Profile'));
 const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
 const SuperLikes = lazy(() => import('../pages/SuperLikes'));
@@ -456,6 +457,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <SensitiveContent onViewUserDetail={handleViewUserDetail} />;
             case 'games':
                 return <GamesManagement />;
+            case 'stickers':
+                return <StickersManagement />;
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':

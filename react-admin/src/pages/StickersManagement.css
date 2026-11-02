@@ -1,0 +1,18 @@
+.stickers-page { padding: 16px; }
+.stickers-hint { opacity: 0.75; font-size: 13px; margin-bottom: 14px; }
+.stickers-categories { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.stickers-chip { border: 1px solid rgba(128, 128, 128, 0.35); background: transparent; color: inherit; border-radius: 18px; padding: 6px 12px; cursor: pointer; }
+.stickers-chip.selected { background: #e91e63; border-color: #e91e63; color: #fff; }
+.stickers-chip.off { opacity: 0.5; }
+.stickers-new { display: inline-flex; gap: 6px; }
+.stickers-new input { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, 0.35); background: transparent; color: inherit; }
+.stickers-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+.stickers-page button:disabled { opacity: 0.5; cursor: default; }
+.stickers-toolbar button, .sticker-actions button, .stickers-new button { border: none; border-radius: 8px; padding: 6px 10px; background: rgba(128, 128, 128, 0.2); color: inherit; cursor: pointer; }
+.stickers-page button.danger { background: #d32f2f; color: #fff; }
+.stickers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.sticker-card { border: 1px solid rgba(128, 128, 128, 0.25); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.sticker-card.off img { opacity: 0.3; }
+.sticker-card img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.sticker-actions { display: flex; gap: 6px; }
+.sticker-actions button { flex: 1; font-size: 12px; }
