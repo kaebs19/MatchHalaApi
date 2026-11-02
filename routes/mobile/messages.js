@@ -2684,6 +2684,7 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
                 duration: message.disappearing.duration,
                 mode: message.disappearing.mode || null,
                 expiresAt: message.disappearing.expiresAt,
+                replayUntil: message.disappearing.replayUntil || null,
                 mediaUrl: message.mediaUrl
             }
         });
