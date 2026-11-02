@@ -820,6 +820,36 @@ router.put('/conversations/:id/cancel', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/mobile/conversations/receipts
+// @desc    حالة آخر رسائلي { messageIds } — القراءة لا تغيّر updatedAt فلا تصل بالمزامنة التفاضلية،
+//          فمن قُرئت رسالته والتطبيق مغلق كان يرى ✓ قديمة في القائمة
+// @access  Private
+router.post('/conversations/receipts', protect, async (req, res) => {
+    try {
+        const ids = (Array.isArray(req.body?.messageIds) ? req.body.messageIds : [])
+            .filter(id => mongoose.isValidObjectId(id))
+            .slice(0, 60);
+        if (!ids.length) return res.json({ success: true, data: { receipts: [] } });
+
+        const messages = await Message.find({ _id: { $in: ids }, sender: req.user._id })
+            .select('conversation status').lean();
+        res.json({
+            success: true,
+            data: {
+                receipts: messages.map(m => ({
+                    messageId: m._id,
+                    conversationId: m.conversation,
+                    isRead: m.status === 'read',
+                    isDelivered: m.status === 'read' || m.status === 'delivered'
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في جلب حالة الرسائل:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   PUT /api/mobile/conversations/:id/read
 // @desc    تحديث الرسائل كمقروءة في المحادثة
 // @access  Private
