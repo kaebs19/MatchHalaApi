@@ -11,9 +11,13 @@
 const fs = require('fs');
 const path = require('path');
 const Message = require('../models/Message');
+const DisappearingHold = require('../models/DisappearingHold');
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 const EXPIRED_DIR = path.join(UPLOADS_DIR, '_expired');
+
+// ↩️ مهلة إعادة الفتح لمشترك هلا+ بعد انتهاء المشاهدة الأولى
+const REPLAY_WINDOW_SECONDS = 10 * 60;
 
 // ✅ نقل ملف وسيط مؤقت منتهٍ إلى أرشيف الأدمن.
 //    يُرجع المسار النسبي داخل الأرشيف، أو null لو تعذّر.
@@ -46,7 +50,10 @@ function archiveDisappearingFile(mediaUrl) {
 async function destroyDisappearingIfDue(message) {
     const d = message?.disappearing;
     if (!d?.enabled || d.destroyed) return false;
-    if (!d.expiresAt || new Date(d.expiresAt) > new Date()) return false;
+    if (!d.expiresAt) return false;
+    // ↩️ المحجوز لإعادة الفتح يبقى حتى انقضاء مهلتها
+    const dueAt = d.replayUntil && new Date(d.replayUntil) > new Date(d.expiresAt) ? d.replayUntil : d.expiresAt;
+    if (new Date(dueAt) > new Date()) return false;
 
     const archived = archiveDisappearingFile(message.mediaUrl);
     d.destroyed = true;
@@ -91,11 +98,32 @@ async function sweepExpiredVideos() {
     return destroyed;
 }
 
+// ↩️ كنس الوسائط المحجوزة لإعادة الفتح — الصورة لا يشملها كنس الفيديو
+async function sweepReplayHolds() {
+    const holds = await DisappearingHold.find({ dueAt: { $lte: new Date() } }).limit(SWEEP_BATCH).lean();
+    let destroyed = 0;
+    for (const hold of holds) {
+        try {
+            const message = await Message.findById(hold.message);
+            const done = !message || message.disappearing?.destroyed;
+            if (!done && await destroyDisappearingIfDue(message)) destroyed++;
+            if (done || message.disappearing?.destroyed) {
+                await DisappearingHold.deleteOne({ _id: hold._id });
+            }
+        } catch (e) {
+            console.error('⚠️ كنس حجز إعادة الفتح فشل:', String(hold.message), e.message);
+        }
+    }
+    return destroyed;
+}
+
 // على instance 0 فقط (server.js) — كل 5 دقائق
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 function startEphemeralSweeper() {
     const run = () => sweepExpiredVideos()
         .then(n => { if (n > 0) console.log(`🎥 كنس الفيديو المؤقت: ${n}`); })
+        .then(sweepReplayHolds)
+        .then(n => { if (n > 0) console.log(`↩️ كنس حجز إعادة الفتح: ${n}`); })
         .catch(e => console.error('⚠️ كنس الفيديو المؤقت:', e.message));
     setTimeout(run, 60 * 1000);
     setInterval(run, SWEEP_INTERVAL_MS);
@@ -103,8 +131,10 @@ function startEphemeralSweeper() {
 
 module.exports = {
     EXPIRED_DIR,
+    REPLAY_WINDOW_SECONDS,
     archiveDisappearingFile,
     destroyDisappearingIfDue,
     sweepExpiredVideos,
+    sweepReplayHolds,
     startEphemeralSweeper
 };

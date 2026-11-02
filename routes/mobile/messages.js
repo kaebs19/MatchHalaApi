@@ -72,7 +72,8 @@ function checkMessagingRestriction(req, mediaType = 'text') {
     return null;
 }
 
-const { EXPIRED_DIR, archiveDisappearingFile, destroyDisappearingIfDue } = require('../../utils/disappearingMedia');
+const { EXPIRED_DIR, REPLAY_WINDOW_SECONDS, archiveDisappearingFile, destroyDisappearingIfDue } = require('../../utils/disappearingMedia');
+const DisappearingHold = require('../../models/DisappearingHold');
 
 // ✅ رسالة جديدة تُعيد إظهار المحادثة لمن حذفها.
 //    من يحذف محادثة يُضاف إلى hiddenFor، وقوائم المحادثات تستبعده منها.
@@ -1071,7 +1072,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
                 enabled: true,
                 duration: disappearingDuration,
                 expiresAt: null, // يتم تعيينه عند المشاهدة
-                viewedBy: []
+                viewedBy: [],
+                ...(req.body.allowReplay === '1' ? { replayable: true } : {})
             };
         }
 
@@ -1439,7 +1441,8 @@ router.post('/messages/send-video', protect, receiveVideo, async (req, res) => {
                 mode: videoMode,
                 duration: Math.ceil(videoDuration),
                 expiresAt: new Date(Date.now() + VIDEO_TTL_MS),
-                viewedBy: []
+                viewedBy: [],
+                ...(videoMode === 'once' && req.body.allowReplay === '1' ? { replayable: true } : {})
             }
         };
         if (w > 0 && h > 0) {
@@ -2580,6 +2583,57 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
             });
         }
 
+        // ↩️ انتهت المشاهدة الأولى والوسيط محجوز — إعادة فتح واحدة لهلا+ ويُعلَم المرسل
+        const firstViewOver = existingView && message.disappearing.replayable && !existingView.replayedAt
+            && (existingView.closedAt || new Date(message.disappearing.expiresAt) <= new Date());
+        if (firstViewOver) {
+            const premium = req.user.isPremium && req.user.premiumExpiresAt && new Date(req.user.premiumExpiresAt) > new Date();
+            if (!premium) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'إعادة الفتح ميزة لمشتركي هلا+',
+                    code: 'REPLAY_PREMIUM_REQUIRED'
+                });
+            }
+            const replayDuration = message.disappearing.duration || 10;
+            const seconds = message.disappearing.mode === 'once' ? replayDuration + VIDEO_ONCE_GRACE_SECONDS : replayDuration;
+            existingView.replayedAt = new Date();
+            existingView.closedAt = null;
+            message.disappearing.expiresAt = new Date(Date.now() + seconds * 1000);
+            message.disappearing.replayUntil = null;
+            await message.save();
+            await DisappearingHold.updateOne({ message: message._id }, { $set: { dueAt: message.disappearing.expiresAt } });
+
+            const isVideo = message.type === 'video';
+            if (global.io) {
+                global.io.to(`user:${message.sender}`).emit('media-replayed', {
+                    messageId: String(message._id),
+                    conversationId: String(message.conversation),
+                    replayedBy: req.user.name,
+                    replayedAt: existingView.replayedAt
+                });
+            }
+            pushNotificationService.sendNotificationToUser(
+                message.sender,
+                {
+                    title: isVideo ? 'أُعيد فتح الفيديو' : 'أُعيد فتح الصورة',
+                    body: `${req.user.name} أعاد فتح ${isVideo ? 'الفيديو المؤقت' : 'الصورة المؤقتة'} مرة واحدة`
+                },
+                { type: 'media_replayed', conversationId: String(message.conversation), senderId: String(userId) },
+                false
+            ).catch(e => console.error('إشعار إعادة الفتح:', e.message));
+
+            return res.json({
+                success: true,
+                data: {
+                    duration: message.disappearing.duration,
+                    mode: message.disappearing.mode || null,
+                    expiresAt: message.disappearing.expiresAt,
+                    mediaUrl: message.mediaUrl
+                }
+            });
+        }
+
         // تسجيل المشاهدة لأول مرة
         if (!existingView) {
             message.disappearing.viewedBy.push({
@@ -2599,8 +2653,18 @@ router.post('/messages/:messageId/view-photo', protect, async (req, res) => {
                 if (!current || viewDeadline < new Date(current)) {
                     message.disappearing.expiresAt = viewDeadline;
                 }
+                if (message.disappearing.replayable) {
+                    message.disappearing.replayUntil = new Date(Date.now() + (windowSeconds + REPLAY_WINDOW_SECONDS) * 1000);
+                }
             }
             await message.save();
+            if (message.disappearing.replayUntil) {
+                await DisappearingHold.updateOne(
+                    { message: message._id },
+                    { $set: { dueAt: message.disappearing.replayUntil } },
+                    { upsert: true }
+                );
+            }
 
             // إشعار المرسل بأن الصورة شوهدت
             if (global.io) {
@@ -2683,6 +2747,23 @@ router.post('/messages/:messageId/expire-photo', protect, async (req, res) => {
         const viewEntry = message.disappearing.viewedBy.find(
             v => v.user.toString() === userId.toString()
         );
+
+        // ↩️ مشاهدة أولى قابلة للإعادة — يبقى محجوزاً حتى replayUntil (الكنس يتولّاه)
+        const replayUntil = message.disappearing.replayUntil;
+        if (viewEntry && !viewEntry.replayedAt && replayUntil && new Date(replayUntil) > new Date()) {
+            viewEntry.closedAt = new Date();
+            await message.save();
+            if (global.io) {
+                global.io.to(`user:${message.sender}`).emit('photo-expired', {
+                    messageId: message._id,
+                    conversationId: message.conversation,
+                    expiredFor: req.user.name,
+                    destroyed: false
+                });
+            }
+            return res.json({ success: true, data: { destroyed: false, replayUntil } });
+        }
+
         if (viewEntry) {
             viewEntry.expired = true;
         }

@@ -137,8 +137,16 @@ const messageSchema = new mongoose.Schema({
         viewedBy: [{
             user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
             viewedAt: { type: Date, default: Date.now },
-            expired: { type: Boolean, default: false }
+            expired: { type: Boolean, default: false },
+            // ↩️ أغلق المشاهدة الأولى والوسيط محجوز لإعادة الفتح
+            closedAt: { type: Date, default: null },
+            // ↩️ استعمل إعادة الفتح الوحيدة (هلا+) — يراها المرسل
+            replayedAt: { type: Date, default: null }
         }],
+        // ↩️ أرسله تطبيق يُعلم المرسل بإعادة الفتح — الأقدم أُرسل بوعد المرة الواحدة
+        replayable: { type: Boolean },
+        // ↩️ حتى متى يبقى الوسيط بعد أول مشاهدة — المدة تُحسب من expiresAt بعد إعادة الفتح
+        replayUntil: { type: Date, default: null },
         // ✅ أُبطل الرابط ونُقل الملف لأرشيف الأدمن (لا يُخدَم عبر الويب)
         destroyed: { type: Boolean, default: false },
         destroyedAt: { type: Date, default: null },
