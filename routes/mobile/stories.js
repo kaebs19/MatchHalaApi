@@ -96,6 +96,23 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         }
         const activeCount = await Story.countDocuments(activeFilter({ user: req.user._id }));
 
+        // ✍️ نصّ على الصورة (هلا+) — التطبيق يرسمه في الصورة ويرسله هنا: البكسلات لا تُفحص،
+        //    فالنصّ يمرّ على الفلاتر نفسها ويُحفظ في text للإشراف
+        const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim() : '';
+        if (caption) {
+            const refusal = !isPremiumActive(req.user)
+                ? { status: 403, message: 'النص على القصة ميزة لمشتركي هلا+', code: 'STORY_PREMIUM_REQUIRED' }
+                : caption.length > STORY_TEXT_MAX
+                    ? { status: 400, message: `النصّ حتى ${STORY_TEXT_MAX} حرفاً`, code: 'STORY_INVALID' }
+                    : (detectExternalPromotion(caption).detected || (await checkBannedWords(caption)).hasBannedWords)
+                        ? { status: 422, message: 'النص يحتوي محتوى غير مسموح (حسابات خارجية أو كلمات محظورة) — عدّله وأعد المحاولة', code: 'STORY_TEXT_BLOCKED' }
+                        : null;
+            if (refusal) {
+                unlinkQuiet(uploaded);
+                return res.status(refusal.status).json({ success: false, message: refusal.message, code: refusal.code });
+            }
+        }
+
         // إعادة ترميز: تطبيق اتجاه EXIF، تصغير، وإسقاط كل البيانات الوصفية (الموقع GPS)
         const sharp = require('sharp');
         const fileName = `story-${Date.now()}-${crypto.randomBytes(12).toString('hex')}.jpg`;
@@ -117,6 +134,7 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         const story = await Story.create({
             user: req.user._id,
             imageUrl: `/uploads/ephemeral/${fileName}`,
+            text: caption || null,
             width: info.width,
             height: info.height,
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
