@@ -100,7 +100,8 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         //    فالنصّ يمرّ على الفلاتر نفسها ويُحفظ في text للإشراف
         const caption = typeof req.body?.caption === 'string' ? req.body.caption.trim() : '';
         if (caption) {
-            const refusal = !isPremiumActive(req.user)
+            // القصة النصّية بملصقات تُرسم صورة في التطبيق — نصّها للجميع كالقصة النصّية
+            const refusal = !isPremiumActive(req.user) && req.body.textStory !== '1'
                 ? { status: 403, message: 'النص على القصة ميزة لمشتركي هلا+', code: 'STORY_PREMIUM_REQUIRED' }
                 : caption.length > STORY_TEXT_MAX
                     ? { status: 400, message: `النصّ حتى ${STORY_TEXT_MAX} حرفاً`, code: 'STORY_INVALID' }

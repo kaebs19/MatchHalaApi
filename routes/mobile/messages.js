@@ -74,6 +74,8 @@ function checkMessagingRestriction(req, mediaType = 'text') {
 
 const { EXPIRED_DIR, REPLAY_WINDOW_SECONDS, archiveDisappearingFile, destroyDisappearingIfDue } = require('../../utils/disappearingMedia');
 const DisappearingHold = require('../../models/DisappearingHold');
+const Sticker = require('../../models/Sticker');
+const StickerCategory = require('../../models/StickerCategory');
 
 // ✅ رسالة جديدة تُعيد إظهار المحادثة لمن حذفها.
 //    من يحذف محادثة يُضاف إلى hiddenFor، وقوائم المحادثات تستبعده منها.
@@ -999,6 +1001,7 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             const imageCount = await Message.countDocuments({
                 sender: senderId,
                 type: 'image',
+                imageSource: { $ne: 'sticker' },
                 createdAt: { $gte: today }
             });
             if (imageCount >= 6) {
@@ -1152,6 +1155,106 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
             message: 'حدث خطأ في إرسال الصورة',
             error: error.message
         });
+    }
+});
+
+// @route   POST /api/mobile/messages/send-sticker
+// @desc    إرسال ملصق من لوحة التحكم — رسالة صورة بـ imageSource: 'sticker' فتراها النسخ القديمة
+// @access  Private
+router.post('/messages/send-sticker', protect, async (req, res) => {
+    try {
+        const { conversationId, stickerId } = req.body;
+        const senderId = req.user._id;
+        if (!mongoose.isValidObjectId(conversationId) || !mongoose.isValidObjectId(stickerId)) {
+            return res.status(400).json({ success: false, message: 'بيانات غير صالحة' });
+        }
+
+        const restriction = checkMessagingRestriction(req, 'image');
+        if (restriction) return res.status(403).json(restriction);
+
+        // المعطَّل أو المحذوف من اللوحة لا يُرسل ولو بقي في كاش التطبيق
+        const sticker = await Sticker.findOne({ _id: stickerId, active: true }).lean();
+        const category = sticker && await StickerCategory.findOne({ _id: sticker.category, active: true }).lean();
+        if (!category) {
+            return res.status(404).json({ success: false, message: 'هذا الملصق لم يعد متاحاً', code: 'STICKER_UNAVAILABLE' });
+        }
+        const premium = req.user.isPremium && req.user.premiumExpiresAt && new Date(req.user.premiumExpiresAt) > new Date();
+        if (category.premium && !premium) {
+            return res.status(403).json({ success: false, message: 'هذه الفئة لمشتركي هلا+', code: 'STICKER_PREMIUM_REQUIRED' });
+        }
+
+        const conversation = await Conversation.findById(conversationId)
+            .populate('participants', 'name email deviceToken');
+        if (!conversation) {
+            return res.status(404).json({ success: false, message: 'المحادثة غير موجودة' });
+        }
+        if (!conversation.participants.some(p => p._id.toString() === senderId.toString())) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
+        }
+        const gate = await checkConversationSendGate(conversation, req.user);
+        if (gate) return res.status(gate.status).json(gate.body);
+
+        const message = await Message.create({
+            conversation: conversationId,
+            sender: senderId,
+            type: 'image',
+            mediaUrl: getFullUrl(sticker.imageUrl),
+            content: '',
+            status: 'sent',
+            imageSource: 'sticker',
+            mediaWidth: 512,
+            mediaHeight: 512
+        });
+
+        await unhideConversationForRecipients(conversation._id, req.user._id);
+        conversation.lastMessage = message._id;
+        await conversation.save();
+
+        const populatedMessage = await Message.findById(message._id)
+            .populate('sender', 'name profileImage isPremium verification.isVerified').lean();
+
+        if (global.io) {
+            global.io.to(`conversation-${conversationId}`).emit('new-message', { message: populatedMessage });
+        }
+
+        let deliveredNow = false;
+        for (const recipient of conversation.participants) {
+            if (recipient._id.toString() === senderId.toString()) continue;
+            const isOnline = await isUserSocketConnected(recipient._id.toString());
+            if (!isOnline && recipient.deviceToken) {
+                pushNotificationService.sendNewMessageNotification(
+                    recipient._id, req.user.name || req.user, '🏷️ ملصق', conversationId,
+                    getBestUserImage(req.user), req.user._id, message._id
+                ).catch(e => console.error('Push error:', e.message));
+            } else if (isOnline) {
+                deliveredNow = await markMessageDelivered(message._id, conversationId, req.user._id) || deliveredNow;
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                message: {
+                    _id: populatedMessage._id,
+                    conversationId,
+                    sender: populatedMessage.sender?._id || senderId,
+                    senderUser: populatedMessage.sender,
+                    content: populatedMessage.content,
+                    type: populatedMessage.type,
+                    mediaUrl: populatedMessage.mediaUrl,
+                    mediaWidth: populatedMessage.mediaWidth,
+                    mediaHeight: populatedMessage.mediaHeight,
+                    imageSource: populatedMessage.imageSource,
+                    isDelivered: deliveredNow,
+                    isRead: false,
+                    createdAt: populatedMessage.createdAt,
+                    updatedAt: populatedMessage.updatedAt
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Send sticker error:', error);
+        res.status(500).json({ success: false, message: 'تعذّر إرسال الملصق' });
     }
 });
 
@@ -1558,6 +1661,7 @@ router.post('/conversations/:conversationId/messages/image', protect, uploadMess
             const imageCount = await Message.countDocuments({
                 sender: senderId,
                 type: 'image',
+                imageSource: { $ne: 'sticker' },
                 createdAt: { $gte: today }
             });
             if (imageCount >= 6) {

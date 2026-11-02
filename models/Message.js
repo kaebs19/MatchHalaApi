@@ -111,10 +111,10 @@ const messageSchema = new mongoose.Schema({
         ref: 'User',
         default: null
     },
-    // ✅ مصدر الصورة (كاميرا أو معرض)
+    // ✅ مصدر الصورة (كاميرا أو معرض أو ملصق — الملصق صورة لتراه النسخ القديمة)
     imageSource: {
         type: String,
-        enum: ['camera', 'gallery', null],
+        enum: ['camera', 'gallery', 'sticker', null],
         default: null
     },
     // ✅ أبعاد الصورة — يحجز التطبيق مساحتها قبل التحميل فلا تقفز المحادثة
