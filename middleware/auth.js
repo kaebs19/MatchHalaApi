@@ -148,6 +148,10 @@ const protect = async (req, res, next) => {
                     // لا يزال مقيّد — نضيف headers (لا نوقف الطلب)
                     res.set('X-Restriction-Level', req.user.restrictions.messagingRestrictedLevel || 'none');
                     res.set('X-Restriction-Until', req.user.restrictions.messagingRestrictedUntil?.toISOString() || '');
+                    // السبب (ASCII) — بدونه يعرض التطبيق «تقييد جزئي» عامّاً لإيقاف الحسابات الخارجية
+                    if (req.user.restrictions.restrictionReason) {
+                        res.set('X-Restriction-Reason', String(req.user.restrictions.restrictionReason));
+                    }
                 }
             }
 

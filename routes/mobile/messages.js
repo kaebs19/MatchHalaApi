@@ -12,7 +12,7 @@ const { protect, adminOnly } = require('../../middleware/auth');
 const { spamCheckMiddleware } = require('../../middleware/spamDetection');
 const pushNotificationService = require('../../services/pushNotificationService');
 const { checkBannedWords } = require('../bannedWords');
-const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
+const { detectExternalPromotion, recordExternalPromoViolation, isMessagingLockedByPromo, looksLikeExternalHandle, formatDurationArabic } = require('../../utils/externalPromotionDetector');
 const { checkMultiMessageNumbers } = require('../../utils/multiMessageNumberDetector');
 const { checkMultiMessageLetters, clearLetterBuffer } = require('../../utils/multiMessageLetterDetector');
 const { getFullUrl, getBestUserImage, getUserImage, uploadMessageImage, uploadMessageAudio, uploadMessageVideo, isUserFullyBanned, blockGuardForConversation, isOtherParticipantDeleted, isUserSocketConnected, markMessageDelivered } = require('./helpers');
@@ -886,12 +886,23 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
             response.externalPromoBlocked = {
                 // عنوان الـ sheet
-                title: externalPromoViolation?.lockApplied ? 'أُوقف بدء محادثات جديدة مؤقتاً' :
-                       'تنبيه: مشاركة حسابات خارجية',
+                title: externalPromoViolation?.lockApplied
+                    ? `أُوقف بدء محادثات جديدة لمدة ${formatDurationArabic(externalPromoViolation.durationMinutes || 0)}`
+                    : externalPromoViolation?.pausedMinutesLeft > 0 ? 'الإيقاف ما زال قائماً'
+                    : 'تنبيه: مشاركة حسابات خارجية',
                 // الرسالة الأساسية — حماية لا عقوبة (قرار المالك ٥ نوفمبر)
                 message: 'لحماية مستخدمي هلا من النصب والاحتيال، تُحجب الحسابات وأرقام الهاتف تلقائياً، ولم تصل للطرف الآخر. أي تواصل خارج التطبيق يكون على مسؤوليتك.',
                 // رسالة السيرفر التفصيلية (مع المدة ورقم التقييد)
-                serverMessage: externalPromoViolation?.message || null,
+                serverMessage: (() => {
+                    const ev = externalPromoViolation;
+                    if (!ev) return null;
+                    const next = formatDurationArabic(ev.nextDurationMinutes || 0);
+                    if (ev.lockApplied) return `${ev.message} المرة القادمة: ${next}.`;
+                    if (ev.pausedMinutesLeft > 0) {
+                        return `بدء المحادثات الجديدة موقوف، يتبقّى ${formatDurationArabic(ev.pausedMinutesLeft)}. المحاولة ${ev.violations} من ${ev.threshold} نحو إيقاف أطول (${next}).`;
+                    }
+                    return ev.message || null;
+                })(),
                 categories: externalPromoCategories,
                 violations: v,
                 threshold: t,
@@ -904,6 +915,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 // severity للـ iOS
                 severity: externalPromoViolation?.suspended ? 'suspended' :
                           externalPromoViolation?.lockApplied ? 'locked' :
+                          externalPromoViolation?.pausedMinutesLeft > 0 ? 'paused' :
                           v >= t - 1 ? 'last_warning' :
                           v > 1 ? 'repeated' : 'first',
                 lockApplied: externalPromoViolation?.lockApplied || false,

@@ -507,6 +507,12 @@ async function recordExternalPromoViolation(user, logContext = null) {
     user.externalPromo.violations += violationWeight;
     user.externalPromo.lastViolationAt = now;
 
+    // إيقاف قائم من قبل هذه المحاولة؟ (للنافذة: «الإيقاف ما زال قائماً، يتبقّى …»)
+    const rr = user.restrictions || {};
+    const pausedUntil = rr.messagingRestricted && rr.restrictionReason === 'external_promotion'
+        && rr.messagingRestrictedUntil && new Date(rr.messagingRestrictedUntil) > now
+        ? new Date(rr.messagingRestrictedUntil) : null;
+
     let lockApplied = false;
     const suspended = false;   // ⚠️ لا تعليق حساب آلياً بعد الآن — المراجعة في اللوحة
     let message = null;
@@ -590,6 +596,10 @@ async function recordExternalPromoViolation(user, logContext = null) {
         durationMinutes,
         // يبقى للتوافق مع أي مستدعٍ قديم — مُقرَّب لأعلى كي لا يكون 0 لقفل بالدقائق
         durationHours: Math.ceil(durationMinutes / 60),
+        // مدة الإيقاف التالي إن تكرّر (للنافذة: «المرة القادمة: 30 دقيقة»)
+        nextDurationMinutes: calculateLockMinutes(user.externalPromo.lockCount + 1),
+        // إيقاف قائم قبل هذه المحاولة (وما زال) — دقائقه المتبقية
+        pausedMinutesLeft: !lockApplied && pausedUntil ? Math.max(1, Math.ceil((pausedUntil - now) / 60000)) : 0,
         lockApplied,
         suspended,
         message
