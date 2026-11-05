@@ -188,11 +188,8 @@ function multiPassDetect(combined) {
 async function checkMultiMessageLetters(userId, conversationId, content, messageId = null) {
     const result = { detected: false, tactic: 'split_letters' };
 
-    // 🔬 DEBUG: log every call entry
-    console.log(`[MML] called: content="${content}" length=${content?.length} user=${String(userId).slice(-6)} conv=${String(conversationId).slice(-6)} msg=${messageId?.slice(-6)}`);
 
     if (!isEligible(content)) {
-        console.log(`[MML] not eligible: "${content}"`);
         return result;
     }
 
@@ -200,7 +197,6 @@ async function checkMultiMessageLetters(userId, conversationId, content, message
 
     // stop-word → لا تُضاف لكن لا تمسح الـ buffer
     if (isStopWord(trimmed)) {
-        console.log(`[MML] stop-word skipped: "${trimmed}"`);
         return result;
     }
 
@@ -227,7 +223,6 @@ async function checkMultiMessageLetters(userId, conversationId, content, message
 
     // شرط التفعيل
     const combined = buf.fragments.join('');
-    console.log(`[MML] buffer for ${key}: fragments=${JSON.stringify(buf.fragments)}, combined="${combined}"`);
 
     const shouldCheck = buf.fragments.length >= MIN_FRAGMENTS || combined.length >= MIN_COMBINED_LENGTH;
     if (!shouldCheck) {
@@ -243,11 +238,9 @@ async function checkMultiMessageLetters(userId, conversationId, content, message
         if (sub !== combined) candidates.push(sub);
     }
 
-    console.log(`[MML] candidates: ${JSON.stringify(candidates)}`);
 
     for (const candidate of candidates) {
         const detection = multiPassDetect(candidate);
-        console.log(`[MML]   "${candidate}" → detected=${detection.detected}, pass=${detection.pass || '-'}`);
         if (detection.detected) {
             // حدد أي fragments شاركت في المخالفة (للـ retroactive blocking)
             const matchedCount = countFragmentsForString(buf.fragments, candidate);
