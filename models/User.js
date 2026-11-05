@@ -557,10 +557,12 @@ const userSchema = new mongoose.Schema({
         bioLockedUntil: { type: Date, default: null },
         suspendedAt: { type: Date, default: null },
         // ✅ عداد التقييدات السابقة بسبب external promo — يحدد مدة التقييد التالي
-        //    1 → 24h | 2 → 48h | 3 → 72h | 4+ → suspension 7d
-        //    لا يتصفّر إلا بعد فترة طويلة (90 يوم) من حسن السلوك
+        //    إيقاف بدء محادثات جديدة: 1 → 5د | 2 → 30د | 3 → ساعتان | 4+ → يوم (لا تعليق)
+        //    يتصفّر بعد 7 أيام بلا إيقاف
         lockCount: { type: Number, default: 0 },
-        lastLockAt: { type: Date, default: null }
+        lastLockAt: { type: Date, default: null },
+        // المحادثات التي سُجّلت فيها مخالفة خلال الساعة الأخيرة — تكرارها فيها لا يُحسب مرة أخرى
+        recentConversations: { type: [{ conversation: String, at: Date, _id: false }], default: undefined }
     },
 
     // ✅ مراجعة المستخدم الجديد (newcomer review)

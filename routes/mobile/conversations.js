@@ -131,9 +131,14 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             const now = new Date();
             const until = req.user.restrictions.messagingRestrictedUntil;
             if (!until || now < until) {
+                const isPromo = req.user.restrictions.restrictionReason === 'external_promotion';
+                const minutesLeft = until ? Math.max(1, Math.ceil((until - now) / 60000)) : null;
+                const left = minutesLeft == null ? '' : minutesLeft < 60 ? ` (يتبقّى ${minutesLeft} دقيقة)` : ` (يتبقّى ${Math.ceil(minutesLeft / 60)} ساعة)`;
                 return res.status(403).json({
                     success: false,
-                    message: 'حسابك مقيّد من بدء محادثات جديدة مؤقتاً',
+                    message: isPromo
+                        ? `بدء المحادثات الجديدة موقوف مؤقتاً بسبب تكرار مشاركة حسابات خارجية${left}. محادثاتك الحالية تعمل كالمعتاد.`
+                        : 'حسابك مقيّد من بدء محادثات جديدة مؤقتاً',
                     code: 'MESSAGING_RESTRICTED',
                     data: {
                         level: req.user.restrictions.messagingRestrictedLevel,

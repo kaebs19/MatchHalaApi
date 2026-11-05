@@ -349,34 +349,29 @@ function detectExternalPromotion(text) {
 // Violation Tracker — نظام تدريجي للمكررين
 // ═══════════════════════════════════════════════════════════════
 
-const SOFT_THRESHOLD = 5;     // 5 violations → تقييد تدريجي
-const HARD_THRESHOLD = 10;    // 10 violations في دورة واحدة → suspension 7 أيام (نادر)
+const SOFT_THRESHOLD = 5;     // 5 مخالفات → إيقاف بدء محادثات جديدة (تدريجي)
+const HARD_THRESHOLD = 10;    // ⚠️ لم يعد يعلّق الحساب (٥ نوفمبر ٢٠٢٦) — يبقى للتوافق مع التصدير
 const DECAY_WINDOW_DAYS = 7;  // counter violations يتصفّر بعد 7 أيام بدون مخالفات
-const LOCK_DECAY_DAYS = 90;   // lockCount يتصفّر بعد 90 يوم من حسن السلوك
+const LOCK_DECAY_DAYS = 7;    // lockCount يتصفّر بعد 7 أيام بلا إيقاف (كان 90)
 const SUSPENSION_DURATION_DAYS = 7;
+const SAME_CONVERSATION_WINDOW_MS = 60 * 60 * 1000; // المحادثة الواحدة = مخالفة واحدة في الساعة
+const REVIEW_LOCK_COUNT = 4;  // بلوغ أقصى درجة → يُعلَّم للمراجعة في اللوحة (لا تعليق آلي)
 
 /**
- * ✅ سُلّم التصعيد التدريجي — مدة التقييد بالدقائق حسب عدد التقييدات السابقة.
- *
- * الفلسفة: أول مخالفة تنبيه عملي لا عقوبة (10 دقائق)، فمن أخطأ عن جهل يتعلّم
- * دون أن يهجر التطبيق. التصعيد يشتدّ بسرعة على المصرّ.
- *
- *    1 → 10 دقائق      4 → 12 ساعة
- *    2 → 30 دقيقة      5 → يوم
- *    3 → ساعة          6 → أسبوع
- *    7 فأكثر → 30 يوماً
- *
- * أي مدة تبلغ 7 أيام أو أكثر تتحوّل إلى تعليق حساب لا مجرّد قفل مراسلة.
+ * ✅ الآلية (قرار المالك ٥ نوفمبر ٢٠٢٦): لا تعليق حساب ولا قفل المراسلة كلها.
+ * الرسالة محجوبة عن المستلم أصلاً، فالعقوبة تستهدف نمط المحتال (مراسلة أشخاص جدد كثيرين):
+ * عند 5 مخالفات يُوقف **بدء المحادثات الجديدة** فقط (`messagingRestrictedLevel: 'new_only'`)،
+ * والمحادثات القائمة تعمل. السُلّم: 5 دقائق ← 30 دقيقة ← ساعتان ← يوم (سقف)،
+ * ويتصفّر بعد 7 أيام بلا إيقاف. العدّ بالمحادثات: تكرار المشاركة في محادثة واحدة
+ * خلال ساعة مخالفة واحدة (المعجب المتحمّس ليس محتالاً يراسل الجميع).
  */
 const LOCK_LADDER_MINUTES = [
-    10,          // 1: عشر دقائق
+    5,           // 1: خمس دقائق
     30,          // 2: نصف ساعة
-    60,          // 3: ساعة
-    12 * 60,     // 4: 12 ساعة
-    24 * 60,     // 5: يوم
-    7 * 24 * 60  // 6: أسبوع
+    2 * 60,      // 3: ساعتان
+    24 * 60      // 4: يوم
 ];
-const LOCK_BEYOND_LADDER_MINUTES = 30 * 24 * 60; // 7 فأكثر: شهر
+const LOCK_BEYOND_LADDER_MINUTES = 24 * 60; // 5 فأكثر: يوم (سقف) + مراجعة في اللوحة
 
 function calculateLockMinutes(lockCount) {
     if (lockCount <= 0) return LOCK_LADDER_MINUTES[0];
@@ -505,81 +500,77 @@ async function recordExternalPromoViolation(user, logContext = null) {
         }
     }
 
+    // ✅ العدّ بالمحادثات: تكرار المشاركة في المحادثة نفسها خلال ساعة لا يُحسب مرة أخرى
+    //    (الدليل يُسجَّل أعلاه في كل مرة — هذا للعدّاد وحده)
+    const convId = logContext?.source === 'message' && logContext?.conversationId
+        ? String(logContext.conversationId) : null;
+    const recent = (Array.isArray(user.externalPromo.recentConversations) ? user.externalPromo.recentConversations : [])
+        .filter(h => h && h.at && now - new Date(h.at) < SAME_CONVERSATION_WINDOW_MS);
+    const repeatInSameConversation = !!convId && recent.some(h => String(h.conversation) === convId);
+    if (convId && !repeatInSameConversation) recent.push({ conversation: convId, at: now });
+    user.externalPromo.recentConversations = recent.slice(-30);
+
     // ✅ Weight — للتحايل المتعمد (split letters) العقوبة مضاعفة
-    const violationWeight = Math.max(1, parseInt(logContext?.weight || 1, 10));
+    const violationWeight = repeatInSameConversation ? 0 : Math.max(1, parseInt(logContext?.weight || 1, 10));
     user.externalPromo.violations += violationWeight;
     user.externalPromo.lastViolationAt = now;
 
     let lockApplied = false;
-    let suspended = false;
+    const suspended = false;   // ⚠️ لا تعليق حساب آلياً بعد الآن — المراجعة في اللوحة
     let message = null;
     let durationMinutes = 0;
 
-    // HARD threshold (نفس الدورة 10 مخالفات): suspension طارئ 7 أيام
-    if (user.externalPromo.violations >= HARD_THRESHOLD) {
-        const suspensionUntil = new Date(now.getTime() + SUSPENSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-        user.suspension = user.suspension || {};
-        user.suspension.isSuspended = true;
-        user.suspension.suspendedAt = now;
-        user.suspension.suspendedUntil = suspensionUntil;
-        user.suspension.reason = 'external_promotion_repeat';
-        user.suspension.adminMessage = 'تم تعليق الحساب بسبب نشر حسابات خارجية';
-        user.externalPromo.suspendedAt = now;
-        // كاش العدّاد لكنه يبقى في صفّ التصعيد التالي
-        user.externalPromo.lockCount += 1;
-        user.externalPromo.lastLockAt = now;
-        user.externalPromo.violations = 0;  // reset للدورة التالية
-        suspended = true;
-        durationMinutes = SUSPENSION_DURATION_DAYS * 24 * 60;
-        message = `تم تعليق حسابك أسبوعاً بسبب التكرار في نشر حسابات خارجية. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
-    }
-    // SOFT threshold: lock تدريجي حسب lockCount
-    else if (user.externalPromo.violations >= SOFT_THRESHOLD) {
+    if (user.externalPromo.violations >= SOFT_THRESHOLD) {
         user.externalPromo.lockCount += 1;
         const newLockCount = user.externalPromo.lockCount;
         durationMinutes = calculateLockMinutes(newLockCount);
+        const lockUntil = new Date(now.getTime() + durationMinutes * 60 * 1000);
 
-        // المدة التي تبلغ أسبوعاً فأكثر → تعليق حساب بدل قفل المراسلة
-        if (durationMinutes >= SUSPENSION_DURATION_DAYS * 24 * 60) {
-            const suspensionUntil = new Date(now.getTime() + durationMinutes * 60 * 1000);
-            user.suspension = user.suspension || {};
-            user.suspension.isSuspended = true;
-            user.suspension.suspendedAt = now;
-            user.suspension.suspendedUntil = suspensionUntil;
-            user.suspension.reason = 'external_promotion_repeat';
-            user.suspension.adminMessage = `تم تعليق الحساب (تقييد رقم ${newLockCount}) بسبب تكرار نشر حسابات خارجية`;
-            user.externalPromo.suspendedAt = now;
-            suspended = true;
-            message = `تم تعليق حسابك ${formatDurationArabic(durationMinutes)} — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
-        } else {
-            // قفل مراسلة عادي (10 دقائق … يوم)
-            const lockUntil = new Date(now.getTime() + durationMinutes * 60 * 1000);
-            user.externalPromo.bioLockedUntil = lockUntil;
-            if (!user.restrictions) user.restrictions = {};
-            user.restrictions.messagingRestricted = true;
-            user.restrictions.messagingRestrictedUntil = lockUntil;
-            user.restrictions.messagingRestrictedLevel = 'all';
-            user.restrictions.restrictionReason = 'external_promotion';
-            lockApplied = true;
-            message = `تم تقييد حسابك ${formatDurationArabic(durationMinutes)} بسبب تكرار نشر حسابات خارجية — هذا التقييد رقم ${newLockCount}. الالتزام بسياسة المنصة يحمي حسابك من الحظر الدائم.`;
+        // إيقاف بدء المحادثات الجديدة فقط — /conversations/request والسوبر لايك يرفضانها،
+        // والمحادثات القائمة تعمل (isMessagingLockedByPromo يخصّ مستوى 'all' وحده).
+        // ⚠️ لا نغلب تقييداً أشدّ وضعه المشرف (مستوى all أو مدة أطول).
+        const r = user.restrictions || (user.restrictions = {});
+        const adminStronger = r.messagingRestricted && r.restrictionReason !== 'external_promotion'
+            && (!r.messagingRestrictedUntil || r.messagingRestrictedUntil > lockUntil || r.messagingRestrictedLevel === 'all');
+        if (!adminStronger) {
+            r.messagingRestricted = true;
+            r.messagingRestrictedUntil = lockUntil;
+            r.messagingRestrictedLevel = 'new_only';
+            r.restrictionReason = 'external_promotion';
+        }
+        lockApplied = true;
+        message = `أُوقف بدء محادثات جديدة لمدة ${formatDurationArabic(durationMinutes)} بسبب تكرار مشاركة حسابات خارجية. محادثاتك الحالية تعمل كالمعتاد.`;
+
+        // 🚩 أقصى درجة مرة بعد مرة → للمراجعة في اللوحة بدل تعليق آلي
+        if (newLockCount >= REVIEW_LOCK_COUNT) {
+            try {
+                require('../models/Violation').create({
+                    user: user._id,
+                    type: 'external_promo',
+                    reason: `🚩 يحتاج مراجعة: بلغ أقصى إيقاف للمحادثات الجديدة (المرة ${newLockCount}) بسبب تكرار مشاركة حسابات خارجية`,
+                    action: 'restricted',
+                    source: 'external_promo_filter',
+                    evidence: { kind: 'text', text: `lockCount=${newLockCount}` }
+                }).catch(() => {});
+            } catch (_) { /* غير حرج */ }
         }
 
         user.externalPromo.lastLockAt = now;
         user.externalPromo.violations = 0;  // reset للدورة التالية
     }
-    // قبل الوصول للعتبة: تحذير وقائي
+    // قبل الوصول للعتبة: تنبيه وقائي
     else {
-        message = 'تم التعرف تلقائياً على مشاركة حساب خارجي. سياسة المنصة تمنع نشر أو طلب الحسابات والأرقام، وتكرار ذلك يقيّد حسابك تلقائياً — رسائلك أمانة، حافظ على التواصل داخل التطبيق.';
+        message = 'لحماية مستخدمي هلا من حسابات النصب والاحتيال، لا تسمح المنصة بمشاركة حسابات التواصل أو أرقام الهاتف، ولم تصل هذه المعلومات للطرف الآخر. نحرص على حمايتك وحماية الآخرين، وأي تواصل خارج التطبيق يكون على مسؤوليتك. تكرار ذلك يوقف بدء محادثات جديدة مؤقتاً.';
 
         // ✅ تنبيه استباقي: عند بلوغ مخالفة واحدة قبل العتبة (4/5) أرسل push تحذيري
-        if (user.externalPromo.violations === SOFT_THRESHOLD - 1) {
+        if (violationWeight > 0 && user.externalPromo.violations === SOFT_THRESHOLD - 1) {
             try {
                 const remaining = SOFT_THRESHOLD - user.externalPromo.violations; // = 1
                 require('../services/pushNotificationService').sendNotificationToUser(
                     user._id,
                     {
-                        title: '⚠️ تبقّت مخالفة واحدة قبل التقييد',
-                        body: `لديك ${user.externalPromo.violations} من ${SOFT_THRESHOLD} مخالفات. مشاركة حساب خارجي إضافية ستقيّد مراسلتك تلقائياً — التزم بسياسة المنصة.`
+                        title: '⚠️ تنبيه: مشاركة حسابات خارجية',
+                        body: `مشاركة حساب خارجي مرة أخرى توقف بدء محادثات جديدة مؤقتاً. محادثاتك الحالية لن تتأثر.`
                     },
                     { type: 'promo_warning', remaining: String(remaining) }
                 ).catch(() => {});
@@ -626,10 +617,13 @@ function isBioLocked(user) {
  */
 function isMessagingLockedByPromo(user) {
     const now = new Date();
+    // ⚠️ مستوى 'all' وحده (قيود قديمة قبل ٥ نوفمبر). الآلية الحالية 'new_only' لا تمسّ
+    //    المحادثات القائمة — يمنعها /conversations/request والسوبر لايك.
     return !!(
         user.restrictions?.messagingRestricted &&
         user.restrictions?.messagingRestrictedUntil > now &&
-        user.restrictions?.restrictionReason === 'external_promotion'
+        user.restrictions?.restrictionReason === 'external_promotion' &&
+        user.restrictions?.messagingRestrictedLevel !== 'new_only'
     );
 }
 

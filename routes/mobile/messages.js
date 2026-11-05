@@ -890,11 +890,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
 
             response.externalPromoBlocked = {
                 // عنوان الـ sheet
-                title: externalPromoViolation?.suspended ? 'تم تعليق حسابك' :
-                       externalPromoViolation?.lockApplied ? `تم تقييد حسابك (التقييد رقم ${lockCount})` :
-                       'تم حجب رسالتك',
-                // الرسالة الأساسية (احترافية + شاملة)
-                message: 'تم التعرف تلقائياً على مشاركة حساب خارجي. سياسة المنصة تمنع ذلك، وتكرار مشاركة حسابات أو أرقام يقيّد حسابك آلياً.',
+                title: externalPromoViolation?.lockApplied ? 'أُوقف بدء محادثات جديدة مؤقتاً' :
+                       'تنبيه: مشاركة حسابات خارجية',
+                // الرسالة الأساسية — حماية لا عقوبة (قرار المالك ٥ نوفمبر)
+                message: 'لحماية مستخدمي هلا من حسابات النصب والاحتيال، لا تسمح المنصة بمشاركة حسابات التواصل أو أرقام الهاتف، ولم تصل هذه المعلومات للطرف الآخر. نحرص على حمايتك وحماية الآخرين، وأي تواصل خارج التطبيق يكون على مسؤوليتك.',
                 // رسالة السيرفر التفصيلية (مع المدة ورقم التقييد)
                 serverMessage: externalPromoViolation?.message || null,
                 categories: externalPromoCategories,
@@ -902,7 +901,10 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 threshold: t,
                 // ✅ معلومات التصعيد التدريجي
                 lockCount,
-                durationHours,
+                // ⚠️ 0 عمداً: النسخ ≤ 11.5 تعرض أي مدة < 48 ساعة «24 ساعة» (والإيقاف الآن 5 دقائق)،
+                //    والصفر يخفي بطاقتها؛ المدة الصحيحة في serverMessage وdurationMinutes
+                durationHours: 0,
+                durationMinutes: externalPromoViolation?.durationMinutes || 0,
                 // severity للـ iOS
                 severity: externalPromoViolation?.suspended ? 'suspended' :
                           externalPromoViolation?.lockApplied ? 'locked' :
