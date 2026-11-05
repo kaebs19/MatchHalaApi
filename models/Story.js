@@ -16,6 +16,15 @@ const storySchema = new mongoose.Schema({
     imageUrl: { type: String, default: null },
     text: { type: String, default: null, maxlength: 250 },
     background: { type: Number, default: 0 },
+    // 📍 ملصق المدينة المرسوم في الصورة — موضعه نسبياً (0…1) ليصير قابلاً للضغط في العارض.
+    //    اسم المدينة فقط (لا إحداثيات — خصوصية)؛ يمرّ على فلتر الترويج والكلمات المحظورة
+    locationTag: {
+        type: new mongoose.Schema({
+            place: { type: String, maxlength: 60 },
+            x: Number, y: Number, size: Number
+        }, { _id: false }),
+        default: undefined
+    },
     width: { type: Number, default: null },
     height: { type: Number, default: null },
     status: {

@@ -73,6 +73,7 @@ const serialize = (story, { owner = false, viewed = false, myReaction = null } =
     height: story.height,
     createdAt: story.createdAt,
     expiresAt: story.expiresAt,
+    locationTag: story.locationTag?.place ? story.locationTag : undefined,
     ...(owner
         ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, held: !!story.heldAt }
         : { viewed, myReaction })
@@ -114,6 +115,9 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
             }
         }
 
+        // 📍 ملصق المدينة (اختياري): اسم + موضع نسبي. خطأ فيه يُسقطه ولا يرفض القصة
+        const locationTag = await parseLocationTag(req.body?.locationTag);
+
         // إعادة ترميز: تطبيق اتجاه EXIF، تصغير، وإسقاط كل البيانات الوصفية (الموقع GPS)
         const sharp = require('sharp');
         const fileName = `story-${Date.now()}-${crypto.randomBytes(12).toString('hex')}.jpg`;
@@ -136,6 +140,7 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
             user: req.user._id,
             imageUrl: `/uploads/ephemeral/${fileName}`,
             text: caption || null,
+            ...(locationTag ? { locationTag } : {}),
             width: info.width,
             height: info.height,
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
@@ -152,6 +157,20 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         res.status(500).json({ success: false, message: 'فشل نشر القصة' });
     }
 });
+
+/** ملصق المدينة من التطبيق (JSON نصّي في multipart) — null إن لم يكن صالحاً.
+ *  الاسم نصّ من العميل فيمرّ على الفلاتر: لا يصير مدخلاً لحساب خارجي يُضغط عليه */
+async function parseLocationTag(raw) {
+    if (typeof raw !== 'string' || !raw) return null;
+    let tag;
+    try { tag = JSON.parse(raw); } catch { return null; }
+    const place = typeof tag?.place === 'string' ? tag.place.trim() : '';
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null);
+    const x = num(tag?.x), y = num(tag?.y), size = num(tag?.size);
+    if (!place || place.length > 60 || x == null || y == null || size == null) return null;
+    if (detectExternalPromotion(place).detected || (await checkBannedWords(place)).hasBannedWords) return null;
+    return { place, x, y, size };
+}
 
 // قبل أي نشر: ممنوع/محظور + الحدّ. يُرجع ردّ الرفض أو null
 async function publishGate(req) {
