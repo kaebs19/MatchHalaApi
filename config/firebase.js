@@ -55,7 +55,11 @@ const APNS_CATEGORY_MAP = {
     'story_reaction': 'STORY_ACTIVITY_CATEGORY',
     'story_screenshot': 'STORY_ACTIVITY_CATEGORY',
     'story_expiring': 'STORY_ACTIVITY_CATEGORY',
-    'friend_story': 'FRIEND_STORY_CATEGORY'
+    'friend_story': 'FRIEND_STORY_CATEGORY',
+
+    // 👥 طلب صداقة → قبول / رفض من الإشعار · قُبل طلبي → راسله
+    'friend_request': 'FRIEND_REQUEST_CATEGORY',
+    'friend_accepted': 'FRIEND_ACCEPTED_CATEGORY',
 };
 
 /**
