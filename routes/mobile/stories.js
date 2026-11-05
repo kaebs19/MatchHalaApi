@@ -729,16 +729,35 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
         ]);
         const reactions = reactionTally.map(r => ({ emoji: r._id, count: r.count }));
 
-        if (!isPremiumActive(req.user)) {
-            return res.json({
-                success: true,
-                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, reactions, viewers: [], isPremiumRequired: true }
-            });
-        }
-
         // 🚫 المحظورون بالاتجاهين لا يظهرون — مثل قائمة الزوار
         const blockedMeIds = await User.distinct('_id', { blockedUsers: req.user._id });
         const excluded = [...(req.user.blockedUsers || []), ...blockedMeIds];
+        const VIEWER_FIELDS = 'name profileImage country isActive bannedWords suspension verification.isVerified';
+        const person = (u) => ({
+            _id: u._id,
+            name: u.name,
+            profileImage: getFullUrl(u.profileImage),
+            country: u.country,
+            isVerified: u.verification?.isVerified || false
+        });
+
+        // 📸 من التقط لقطة شاشة — للجميع لا لهلا+ وحده (قرار المالك ٥ نوفمبر): حماية لصاحب القصة
+        const shotViews = await StoryView.find({ story: story._id, isHidden: false, screenshotAt: { $ne: null }, viewer: { $nin: excluded } })
+            .sort({ screenshotAt: -1 })
+            .limit(200)
+            .populate('viewer', VIEWER_FIELDS)
+            .lean();
+        const screenshotters = shotViews
+            .filter(v => v.viewer && !isUserFullyBanned(v.viewer))
+            .map(v => ({ viewer: person(v.viewer), viewedAt: v.viewedAt, screenshotAt: v.screenshotAt, reaction: null }));
+
+        if (!isPremiumActive(req.user)) {
+            return res.json({
+                success: true,
+                data: { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, reactions, screenshotters, viewers: [], isPremiumRequired: true }
+            });
+        }
+
         const views = await StoryView.find({ story: story._id, isHidden: false, viewer: { $nin: excluded } })
             .sort({ viewedAt: -1 })
             .limit(500)
@@ -752,6 +771,7 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
                 screenshotCount: story.screenshotCount || 0,
                 reactionCount: story.reactionCount || 0,
                 reactions,
+                screenshotters,
                 viewers: views
                     .filter(v => v.viewer && !isUserFullyBanned(v.viewer))
                     .map(v => ({

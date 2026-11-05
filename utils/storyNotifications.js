@@ -17,25 +17,20 @@ const EXPIRY_NOTICE_MS = 60 * 60 * 1000;                // التذكير قبل
 const isPremiumActive = (user) => !!(user?.isPremium && user.premiumExpiresAt && new Date(user.premiumExpiresAt) > new Date());
 const storyImageOf = (story) => (story?.kind === 'text' || !story?.imageUrl ? '' : getFullUrl(story.imageUrl) || '');
 
-/** 📸 لقطة شاشة لقصتي — الاسم والصورة لهلا+ فقط (كقائمة المشاهدين) */
+/** 📸 لقطة شاشة لقصتي — الاسم والصورة للجميع (قرار المالك ٥ نوفمبر؛ كانت لهلا+ وحده) */
 async function notifyStoryScreenshot(story, viewer) {
-    const owner = await User.findById(story.user).select('isPremium premiumExpiresAt').lean();
-    if (!owner) return;
-    const premium = isPremiumActive(owner);
     const name = viewer.name || 'مستخدم';
     const verb = viewer.gender === 'female' ? 'التقطت' : 'التقط';
     await pushNotificationService.sendNotificationToUser(String(story.user), {
         title: '📸 لقطة شاشة لقصتك',
-        body: premium ? `${name} ${verb} لقطة شاشة لقصتك` : 'التقط أحدهم لقطة شاشة لقصتك'
+        body: `${name} ${verb} لقطة شاشة لقصتك`
     }, {
         type: 'story_screenshot',
         storyId: String(story._id),
         storyImage: storyImageOf(story),
-        ...(premium ? {
-            senderId: String(viewer._id),
-            senderName: name,
-            senderImage: getFullUrl(viewer.profileImage) || ''
-        } : {})
+        senderId: String(viewer._id),
+        senderName: name,
+        senderImage: getFullUrl(viewer.profileImage) || ''
     }, false);
 }
 
