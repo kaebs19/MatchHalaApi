@@ -692,6 +692,44 @@ userSchema.index({ 'newcomer.status': 1, createdAt: -1 });
 userSchema.index({ 'suspension.isSuspended': 1, 'suspension.suspendedUntil': 1 });
 userSchema.index({ 'hidden.isHidden': 1, 'hidden.hiddenUntil': 1 });
 
+// 📡 حالة الحساب لأطراف المحادثات فوراً (utils/accountStateBroadcast.js)
+userSchema.pre('save', function() {
+    if (!this.isNew && (this.isModified('isActive') || this.isModified('suspension.isSuspended')
+        || this.isModified('suspension.level') || this.isModified('bannedWords.isBanned'))) {
+        this.$locals.accountStateChanged = true;
+    }
+});
+userSchema.post('save', function(doc) {
+    if (doc.$locals?.accountStateChanged) {
+        doc.$locals.accountStateChanged = false;
+        require('../utils/accountStateBroadcast').broadcastAccountState(doc._id);
+    }
+});
+for (const op of ['findOneAndUpdate', 'updateOne']) {
+    userSchema.pre(op, function() {
+        const { touchesAccountState } = require('../utils/accountStateBroadcast');
+        if (touchesAccountState(this.getUpdate())) this._accountStateFilter = this.getFilter();
+    });
+    userSchema.post(op, async function(res) {
+        if (!this._accountStateFilter) return;
+        const { broadcastAccountState } = require('../utils/accountStateBroadcast');
+        const id = res?._id || this._accountStateFilter._id;
+        if (id) broadcastAccountState(id);
+    });
+}
+// updateMany (فكّ تعليق جماعي…): المعرّفات تُجمع قبل التحديث — الفلتر قد لا يطابقها بعده
+userSchema.pre('updateMany', async function() {
+    const { touchesAccountState } = require('../utils/accountStateBroadcast');
+    if (!touchesAccountState(this.getUpdate())) return;
+    const docs = await this.model.find(this.getFilter()).select('_id').limit(500).lean();
+    this._accountStateIds = docs.map(d => d._id);
+});
+userSchema.post('updateMany', function() {
+    if (!this._accountStateIds?.length) return;
+    const { broadcastAccountState } = require('../utils/accountStateBroadcast');
+    for (const id of this._accountStateIds) broadcastAccountState(id);
+});
+
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;
