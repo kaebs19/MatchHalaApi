@@ -884,25 +884,35 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
             });
             const detectedPatterns = [...new Set(maskedPatterns)].filter(Boolean).slice(0, 5);
 
+            // ✅ رسائل متدرّجة 1…5 (قرار المالك ٥ نوفمبر): توعية ← بديل ← سبب ← تحذير ← إيقاف.
+            //    النصّ الثابت يُتجاهل بعد المرة الثانية. «v» بعد هذه المحاولة (التقطيع قد يقفز بها).
+            const ev = externalPromoViolation;
+            const nextLock = formatDurationArabic(ev?.nextDurationMinutes || 0);
+            const PROTECT = 'لحماية مستخدمي هلا من النصب والاحتيال، تُحجب الحسابات وأرقام الهاتف تلقائياً، ولم تصل للطرف الآخر. أي تواصل خارج التطبيق يكون على مسؤوليتك.';
+            const steps = [
+                null,
+                { title: 'تنبيه: مشاركة حسابات خارجية', message: PROTECT },
+                { title: 'لم تصل هذه أيضاً', message: 'الحسابات والأرقام تُحجب في كل مرة. تعرّفا أكثر داخل هلا: الصوت والصور والقصص كلها متاحة لكما هنا.' },
+                { title: 'انتبه للمحاولات', message: 'هذه المحاولة الثالثة. حسابات النصب تبدأ دائماً بطلب الانتقال خارج التطبيق، لذلك نوقف بدء المحادثات الجديدة عند التكرار.' },
+                { title: 'تبقّت محاولة واحدة', message: `المحاولة القادمة توقف بدء محادثات جديدة لمدة ${nextLock}. محادثاتك الحالية لن تتأثر.` }
+            ];
+            const step = steps[Math.min(Math.max(v, 1), 4)];
+
             response.externalPromoBlocked = {
-                // عنوان الـ sheet
-                title: externalPromoViolation?.lockApplied
-                    ? `أُوقف بدء محادثات جديدة لمدة ${formatDurationArabic(externalPromoViolation.durationMinutes || 0)}`
-                    : externalPromoViolation?.pausedMinutesLeft > 0 ? 'الإيقاف ما زال قائماً'
-                    : 'تنبيه: مشاركة حسابات خارجية',
-                // الرسالة الأساسية — حماية لا عقوبة (قرار المالك ٥ نوفمبر)
-                message: 'لحماية مستخدمي هلا من النصب والاحتيال، تُحجب الحسابات وأرقام الهاتف تلقائياً، ولم تصل للطرف الآخر. أي تواصل خارج التطبيق يكون على مسؤوليتك.',
-                // رسالة السيرفر التفصيلية (مع المدة ورقم التقييد)
+                title: ev?.lockApplied
+                    ? `أُوقف بدء محادثات جديدة لمدة ${formatDurationArabic(ev.durationMinutes || 0)}`
+                    : ev?.pausedMinutesLeft > 0 ? 'الإيقاف ما زال قائماً'
+                    : step.title,
+                message: ev?.lockApplied || ev?.pausedMinutesLeft > 0 ? PROTECT : step.message,
+                // تفاصيل الإيقاف (النسخ ≤ 11.5 تعرضها في مربّع ملوّن دائماً)
                 serverMessage: (() => {
-                    const ev = externalPromoViolation;
                     if (!ev) return null;
-                    const next = formatDurationArabic(ev.nextDurationMinutes || 0);
                     // العنوان يذكر الإيقاف ومدته — هنا ما لا يذكره فقط
-                    if (ev.lockApplied) return `محادثاتك الحالية تعمل كالمعتاد. إن تكرّر: إيقاف ${next}.`;
+                    if (ev.lockApplied) return `محادثاتك الحالية تعمل كالمعتاد. إن تكرّر: إيقاف ${nextLock}.`;
                     if (ev.pausedMinutesLeft > 0) {
-                        return `بدء المحادثات الجديدة موقوف، يتبقّى ${formatDurationArabic(ev.pausedMinutesLeft)}. المحاولة ${ev.violations} من ${ev.threshold} نحو إيقاف أطول (${next}).`;
+                        return `بدء المحادثات الجديدة موقوف، يتبقّى ${formatDurationArabic(ev.pausedMinutesLeft)}. المحاولة ${ev.violations} من ${ev.threshold} نحو إيقاف أطول (${nextLock}).`;
                     }
-                    return ev.message || null;
+                    return null;   // التنبيه المتدرّج يكفي — لا مربّع إضافي
                 })(),
                 categories: externalPromoCategories,
                 violations: v,
@@ -917,8 +927,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                 severity: externalPromoViolation?.suspended ? 'suspended' :
                           externalPromoViolation?.lockApplied ? 'locked' :
                           externalPromoViolation?.pausedMinutesLeft > 0 ? 'paused' :
-                          v >= t - 1 ? 'last_warning' :
-                          v > 1 ? 'repeated' : 'first',
+                          v >= t - 1 ? 'last_warning' :     // 4: برتقالي + مثلث
+                          v >= 3 ? 'repeated' : 'first',     // 3: برتقالي · 1–2: أصفر
                 lockApplied: externalPromoViolation?.lockApplied || false,
                 suspended: externalPromoViolation?.suspended || false,
                 // ✅ الكلمات المكتشفة مع إخفاء جزئي
