@@ -52,6 +52,35 @@ const isInQuietHours = (user) => {
 };
 
 /**
+ * 🪪 بطاقة الملف للعرض الموسّع على iOS (امتداد NotificationContent): الإعجاب والزيارة والتطابق.
+ * تُضاف حقول card* فقط — لا تغيّر senderImage (مصغّرة الامتداد الآخر).
+ * الإعجاب لغير المشترك: cardLocked=1 فتُموَّه الصورة («من أعجب بي» لهلا+).
+ */
+const CARD_TYPES = new Set(['new_like', 'like', 'super_like', 'superlike', 'profile_view', 'new_match', 'match']);
+const LOCKABLE_CARD_TYPES = new Set(['new_like', 'like', 'super_like', 'superlike']);
+const buildProfileCard = async (recipient, data) => {
+    const type = data.type;
+    if (!CARD_TYPES.has(type)) return null;
+    const cardUserId = data.fromUserId || data.senderId || data.viewerId;
+    if (!cardUserId) return null;
+    const u = await User.findById(cardUserId).select('name profileImage photos birthDate country verification.isVerified').lean();
+    if (!u) return null;
+    const { getBestUserImage } = require('../routes/mobile/helpers');
+    const card = { cardUserId: String(u._id), cardName: u.name || '' };
+    const image = getBestUserImage(u);
+    if (image) card.cardImage = image;
+    if (u.birthDate) {
+        const age = Math.floor((Date.now() - new Date(u.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000));
+        if (age >= 18 && age < 100) card.cardAge = String(age);
+    }
+    if (u.country) card.cardCountry = u.country;
+    if (u.verification?.isVerified) card.cardVerified = '1';
+    const premium = !!(recipient.isPremium && recipient.premiumExpiresAt && new Date(recipient.premiumExpiresAt) > new Date());
+    if (LOCKABLE_CARD_TYPES.has(type) && !premium) card.cardLocked = '1';
+    return card;
+};
+
+/**
  * إرسال إشعار لمستخدم واحد
  * @param {string} userId - معرف المستخدم
  * @param {object} notification - بيانات الإشعار
@@ -141,8 +170,13 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
 
         // إرسال Push Notification
         // بهدوء = مركز الإشعارات بلا صوت · التطابق/قبول الطلب = Time Sensitive
+        let card = null;
+        try { card = await buildProfileCard(user, data); } catch (cardErr) {
+            console.error('⚠️ profile card failed:', cardErr.message);
+        }
         const result = await sendToDevice(pushToken, notification, {
             ...data,
+            ...(card || {}),
             userId: userId.toString()
         }, {
             interruptionLevel: policy.quiet ? 'passive' : (policy.timeSensitive ? 'time-sensitive' : null),

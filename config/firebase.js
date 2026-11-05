@@ -46,6 +46,7 @@ const APNS_CATEGORY_MAP = {
     'new_like': 'LIKE_CATEGORY',
     'like': 'LIKE_CATEGORY',
     'super_like': 'LIKE_CATEGORY',
+    'superlike': 'LIKE_CATEGORY',   // swipes.js يرسل superlike (بلا شرطة)
 
     // 👀 زيارة → شاهد ملفه
     'profile_view': 'VISIT_CATEGORY',
