@@ -897,7 +897,8 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
                     const ev = externalPromoViolation;
                     if (!ev) return null;
                     const next = formatDurationArabic(ev.nextDurationMinutes || 0);
-                    if (ev.lockApplied) return `${ev.message} المرة القادمة: ${next}.`;
+                    // العنوان يذكر الإيقاف ومدته — هنا ما لا يذكره فقط
+                    if (ev.lockApplied) return `محادثاتك الحالية تعمل كالمعتاد. إن تكرّر: إيقاف ${next}.`;
                     if (ev.pausedMinutesLeft > 0) {
                         return `بدء المحادثات الجديدة موقوف، يتبقّى ${formatDurationArabic(ev.pausedMinutesLeft)}. المحاولة ${ev.violations} من ${ev.threshold} نحو إيقاف أطول (${next}).`;
                     }
