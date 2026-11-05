@@ -354,7 +354,6 @@ const HARD_THRESHOLD = 10;    // ⚠️ لم يعد يعلّق الحساب (٥ 
 const DECAY_WINDOW_DAYS = 7;  // counter violations يتصفّر بعد 7 أيام بدون مخالفات
 const LOCK_DECAY_DAYS = 7;    // lockCount يتصفّر بعد 7 أيام بلا إيقاف (كان 90)
 const SUSPENSION_DURATION_DAYS = 7;
-const SAME_CONVERSATION_WINDOW_MS = 60 * 60 * 1000; // المحادثة الواحدة = مخالفة واحدة في الساعة
 const REVIEW_LOCK_COUNT = 4;  // بلوغ أقصى درجة → يُعلَّم للمراجعة في اللوحة (لا تعليق آلي)
 
 /**
@@ -362,8 +361,7 @@ const REVIEW_LOCK_COUNT = 4;  // بلوغ أقصى درجة → يُعلَّم �
  * الرسالة محجوبة عن المستلم أصلاً، فالعقوبة تستهدف نمط المحتال (مراسلة أشخاص جدد كثيرين):
  * عند 5 مخالفات يُوقف **بدء المحادثات الجديدة** فقط (`messagingRestrictedLevel: 'new_only'`)،
  * والمحادثات القائمة تعمل. السُلّم: 5 دقائق ← 30 دقيقة ← ساعتان ← يوم (سقف)،
- * ويتصفّر بعد 7 أيام بلا إيقاف. العدّ بالمحادثات: تكرار المشاركة في محادثة واحدة
- * خلال ساعة مخالفة واحدة (المعجب المتحمّس ليس محتالاً يراسل الجميع).
+ * ويتصفّر بعد 7 أيام بلا إيقاف. كل محاولة تُحسب حتى للشخص نفسه، والتقطيع مضاعف.
  */
 const LOCK_LADDER_MINUTES = [
     5,           // 1: خمس دقائق
@@ -500,18 +498,12 @@ async function recordExternalPromoViolation(user, logContext = null) {
         }
     }
 
-    // ✅ العدّ بالمحادثات: تكرار المشاركة في المحادثة نفسها خلال ساعة لا يُحسب مرة أخرى
-    //    (الدليل يُسجَّل أعلاه في كل مرة — هذا للعدّاد وحده)
-    const convId = logContext?.source === 'message' && logContext?.conversationId
-        ? String(logContext.conversationId) : null;
-    const recent = (Array.isArray(user.externalPromo.recentConversations) ? user.externalPromo.recentConversations : [])
-        .filter(h => h && h.at && now - new Date(h.at) < SAME_CONVERSATION_WINDOW_MS);
-    const repeatInSameConversation = !!convId && recent.some(h => String(h.conversation) === convId);
-    if (convId && !repeatInSameConversation) recent.push({ conversation: convId, at: now });
-    user.externalPromo.recentConversations = recent.slice(-30);
+    // ✅ كل محاولة تُحسب، حتى للشخص نفسه (قرار المالك ٥ نوفمبر): العدّ بالمحادثات كان يترك
+    //    من يكرّر لشخص واحد بلا إيقاف أبداً — يحاول بصيغ مختلفة حتى تفلت واحدة.
+    if (user.externalPromo.recentConversations) user.externalPromo.recentConversations = undefined;
 
     // ✅ Weight — للتحايل المتعمد (split letters) العقوبة مضاعفة
-    const violationWeight = repeatInSameConversation ? 0 : Math.max(1, parseInt(logContext?.weight || 1, 10));
+    const violationWeight = Math.max(1, parseInt(logContext?.weight || 1, 10));
     user.externalPromo.violations += violationWeight;
     user.externalPromo.lastViolationAt = now;
 
@@ -563,7 +555,7 @@ async function recordExternalPromoViolation(user, logContext = null) {
         message = 'بعد 5 محاولات يتوقف بدء محادثات جديدة مؤقتاً، ومحادثاتك الحالية تعمل. وتكرار المشاركة يُحيل الحساب لمراجعة فريق الإشراف.';
 
         // ✅ تنبيه استباقي: عند بلوغ مخالفة واحدة قبل العتبة (4/5) أرسل push تحذيري
-        if (violationWeight > 0 && user.externalPromo.violations === SOFT_THRESHOLD - 1) {
+        if (user.externalPromo.violations === SOFT_THRESHOLD - 1) {
             try {
                 const remaining = SOFT_THRESHOLD - user.externalPromo.violations; // = 1
                 require('../services/pushNotificationService').sendNotificationToUser(
