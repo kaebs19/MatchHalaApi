@@ -120,7 +120,9 @@ router.post('/', protect, async (req, res) => {
 
         // التحقق من عدم وجود سوايب سابق
         const existingSwipe = await Swipe.findOne({ swiper: swiperId, swiped: userId });
-        if (existingSwipe) {
+        // تخطٍّ سابق ثم إعجاب (من الملف الشخصي مثلاً) — يتحوّل التخطي إعجاباً بدل الرفض بـ 400
+        const upgradesDislike = !!existingSwipe && existingSwipe.type === 'dislike' && type !== 'dislike';
+        if (existingSwipe && !upgradesDislike) {
             return res.status(400).json({
                 success: false,
                 message: 'لقد قمت بالسوايب على هذا المستخدم مسبقاً'
@@ -154,12 +156,29 @@ router.post('/', protect, async (req, res) => {
             });
         }
 
-        // إنشاء السوايب
-        const swipe = await Swipe.create({
-            swiper: swiperId,
-            swiped: userId,
-            type
-        });
+        // إنشاء السوايب (أو ترقية التخطي السابق — createdAt يُجدَّد ليظهر في «المعجبون» كإعجاب جديد)
+        let swipe;
+        if (upgradesDislike) {
+            const now = new Date();
+            // عبر المجموعة مباشرة: createdAt غير قابل للتعديل في Mongoose
+            const upgraded = await Swipe.collection.updateOne(
+                { _id: existingSwipe._id, type: 'dislike' },
+                { $set: { type, createdAt: now, updatedAt: now } }
+            );
+            if (upgraded.modifiedCount !== 1) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'لقد قمت بالسوايب على هذا المستخدم مسبقاً'
+                });
+            }
+            swipe = { _id: existingSwipe._id, type };
+        } else {
+            swipe = await Swipe.create({
+                swiper: swiperId,
+                swiped: userId,
+                type
+            });
+        }
 
         let matchData = null;
 
