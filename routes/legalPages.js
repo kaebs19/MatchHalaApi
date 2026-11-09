@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 
 // قالب صفحة مستقل بـ CSS داخلي بسيط (عربي RTL)
-function renderPage(title, bodyHtml) {
+function renderPage(title, bodyHtml, contactEmail = 'kaebs19@gmail.com') {
     return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -38,7 +38,7 @@ function renderPage(title, bodyHtml) {
 <body>
     <div class="card">
 ${bodyHtml}
-        <p class="muted">Hala (ChatHala) — Contact / جهة التواصل: <!--email_off--><a href="mailto:kaebs19@gmail.com">kaebs19@gmail.com</a><!--/email_off--></p>
+        <p class="muted">Hala (ChatHala) — Contact / جهة التواصل: <!--email_off--><a href="mailto:${contactEmail}">${contactEmail}</a><!--/email_off--></p>
     </div>
 </body>
 </html>`;
@@ -47,7 +47,8 @@ ${bodyHtml}
 // ============ /child-safety — معايير سلامة الأطفال (CSAE) ============
 // ⚠️ جهة التواصل يجب أن تطابق بريد حساب المطوّر في Play Console وإقرار سلامة الأطفال
 //    (رُفض التطبيق ٨ نوفمبر ٢٠٢٦: «Invalid Child Safety point of contact email»).
-const CHILD_SAFETY_EMAIL = 'kaebs19@gmail.com';
+// = بريد التواصل في حساب المطوّر (Play Console) — الإقرار يستعمله تلقائياً
+const CHILD_SAFETY_EMAIL = 'abdulazizs19888@gmail.com';
 // <!--email_off--> يمنع Cloudflare من استبدال البريد بـ «[email protected]» — كان مراجع Google لا يراه.
 const csMail = (subject) =>
     `<!--email_off--><a href="mailto:${CHILD_SAFETY_EMAIL}?subject=${encodeURIComponent(subject)}">${CHILD_SAFETY_EMAIL}</a><!--/email_off-->`;
@@ -211,7 +212,7 @@ const deleteAccountBody = `
 
 router.get('/child-safety', (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderPage('Child Safety Standards — Hala (ChatHala) | معايير سلامة الأطفال', childSafetyBody));
+    res.send(renderPage('Child Safety Standards — Hala (ChatHala) | معايير سلامة الأطفال', childSafetyBody, CHILD_SAFETY_EMAIL));
 });
 
 router.get('/delete-account', (req, res) => {
