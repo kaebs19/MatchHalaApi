@@ -38,58 +38,122 @@ function renderPage(title, bodyHtml) {
 <body>
     <div class="card">
 ${bodyHtml}
-        <p class="muted">تطبيق هلا (ChatHala) — جهة التواصل: <a href="mailto:kaebs19@gmail.com">kaebs19@gmail.com</a></p>
+        <p class="muted">Hala (ChatHala) — Contact / جهة التواصل: <!--email_off--><a href="mailto:kaebs19@gmail.com">kaebs19@gmail.com</a><!--/email_off--></p>
     </div>
 </body>
 </html>`;
 }
 
 // ============ /child-safety — معايير سلامة الأطفال (CSAE) ============
+// ⚠️ جهة التواصل يجب أن تطابق بريد حساب المطوّر في Play Console وإقرار سلامة الأطفال
+//    (رُفض التطبيق ٨ نوفمبر ٢٠٢٦: «Invalid Child Safety point of contact email»).
+const CHILD_SAFETY_EMAIL = 'kaebs19@gmail.com';
+// <!--email_off--> يمنع Cloudflare من استبدال البريد بـ «[email protected]» — كان مراجع Google لا يراه.
+const csMail = (subject) =>
+    `<!--email_off--><a href="mailto:${CHILD_SAFETY_EMAIL}?subject=${encodeURIComponent(subject)}">${CHILD_SAFETY_EMAIL}</a><!--/email_off-->`;
+const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.chathala.hala';
+
 const childSafetyBody = `
+    <div dir="ltr" lang="en" style="text-align:left">
+        <h1>Child Safety Standards — Hala (ChatHala)</h1>
+        <p class="sub">
+            App: <strong>Hala – ChatHala</strong> · Package: <code>com.chathala.hala</code> ·
+            <a href="${PLAY_URL}">Google Play listing</a><br>
+            Developer: Abdulaziz Ahmed · Last updated: November 10, 2026
+        </p>
+
+        <h2>Zero tolerance for CSAE and CSAM</h2>
+        <p>
+            Hala <strong>strictly prohibits child sexual abuse and exploitation (CSAE)</strong> in any form,
+            including child sexual abuse material (CSAM), grooming, sextortion, trafficking, and any
+            sexualization of minors. Such content and behavior are not allowed anywhere in the app —
+            profiles, photos, stories, messages, voice notes or videos. Any account involved is
+            <strong>removed immediately and permanently banned</strong>, together with its device.
+        </p>
+
+        <h2>Adults only (18+)</h2>
+        <p>
+            Hala is a social and dating app for adults aged <strong>18 and over</strong>. Minors are not allowed
+            to use the app. Users confirm their date of birth at sign-up, and any account found to belong
+            to a minor is deleted immediately and blocked from returning.
+        </p>
+
+        <h2>Prevention and moderation</h2>
+        <ul>
+            <li>Automatic filtering of prohibited words, explicit images and external contact sharing.</li>
+            <li>A human moderation team reviews every user report; child-safety reports get the highest priority.</li>
+            <li>Permanent bans of violating accounts and their devices to prevent re-registration.</li>
+            <li>In-app <strong>Block</strong> and <strong>Report</strong> on every user, message, photo and story.</li>
+        </ul>
+
+        <h2>How to report</h2>
+        <div class="box">
+            Use <strong>Report</strong> inside the app on any profile, message, photo or story, or email our
+            child-safety point of contact: <strong>${csMail('Child Safety Report')}</strong>.
+            If a child is in immediate danger, contact your local law enforcement right away.
+        </div>
+
+        <h2>What we do when we find a violation</h2>
+        <ul>
+            <li>Remove the content immediately and preserve evidence as required by law.</li>
+            <li>Permanently ban the account and its device.</li>
+            <li>Report confirmed CSAM to the <strong>National Center for Missing &amp; Exploited Children (NCMEC)</strong>
+                and to the relevant regional and national authorities, in compliance with applicable child-safety laws.</li>
+        </ul>
+
+        <h2>Child Safety point of contact</h2>
+        <p>
+            Our designated child-safety point of contact can discuss our CSAM prevention practices and
+            compliance at any time: <strong>${csMail('Child Safety')}</strong>
+        </p>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:32px 0">
+
+    <div dir="rtl" lang="ar">
         <h1>معايير سلامة الأطفال — تطبيق هلا (ChatHala)</h1>
-        <p class="sub">التزامنا بحماية الأطفال ومكافحة الاستغلال والاعتداء الجنسي عليهم.</p>
+        <p class="sub">التطبيق: <strong>هلا – ChatHala</strong> · الحزمة <code>com.chathala.hala</code> ·
+            <a href="${PLAY_URL}">صفحة التطبيق على Google Play</a></p>
 
         <h2>عدم تسامح مطلق</h2>
         <p>
-            نلتزم في تطبيق هلا (ChatHala) بسياسة <strong>عدم تسامح مطلق</strong> تجاه أي شكل من أشكال
-            الاستغلال والإساءة الجنسية للأطفال (CSAE)، وتجاه مواد الاعتداء الجنسي على الأطفال (CSAM).
-            هذا المحتوى أو السلوك ممنوع منعاً باتاً، وأي حساب يرتبط به يُزال فوراً ويُحظر نهائياً.
+            يمنع تطبيق هلا منعاً باتاً <strong>أي شكل من أشكال الاستغلال والإساءة الجنسية للأطفال (CSAE)</strong>،
+            بما فيها مواد الاعتداء الجنسي على الأطفال (CSAM) والاستدراج والابتزاز الجنسي والاتجار وأي إضفاء
+            للطابع الجنسي على القاصرين — في الملفات والصور والقصص والرسائل والصوت والفيديو. أي حساب يرتبط بذلك
+            يُزال فوراً ويُحظر نهائياً مع جهازه.
         </p>
 
         <h2>التطبيق للبالغين 18+ فقط</h2>
         <p>
-            تطبيق هلا مخصّص للبالغين ممّن بلغوا <strong>18 عاماً فأكثر</strong> فقط. يُمنع استخدام التطبيق
-            من قِبل القاصرين، وعند اكتشاف أي حساب لقاصر يتم <strong>حذفه فوراً</strong> ومنعه من العودة.
+            هلا مخصّص لمن بلغوا <strong>18 عاماً فأكثر</strong>. يُمنع استخدامه من القاصرين، ويؤكد المستخدم تاريخ
+            ميلاده عند التسجيل، وأي حساب يتبيّن أنه لقاصر يُحذف فوراً ويُمنع من العودة.
         </p>
 
-        <h2>إجراءات الوقاية</h2>
+        <h2>إجراءات الوقاية والإشراف</h2>
         <ul>
-            <li>مراجعة جميع البلاغات الواردة من المستخدمين والتعامل معها بجدّية.</li>
-            <li>فلترة وحجب المحتوى المسيء والكلمات والصور المخالفة.</li>
-            <li>حظر دائم للحسابات المخالفة وللأجهزة المرتبطة بها لمنع إعادة التسجيل.</li>
-            <li>إتاحة خيارَي <strong>الحظر</strong> و<strong>الإبلاغ</strong> داخل التطبيق على كل مستخدم ومحتوى.</li>
+            <li>فلترة تلقائية للكلمات المحظورة والصور الصريحة ومشاركة الحسابات الخارجية.</li>
+            <li>فريق إشراف بشري يراجع كل البلاغات، وبلاغات سلامة الأطفال لها الأولوية القصوى.</li>
+            <li>حظر دائم للحسابات المخالفة وأجهزتها لمنع إعادة التسجيل.</li>
+            <li>خيارا <strong>الحظر</strong> و<strong>الإبلاغ</strong> داخل التطبيق على كل مستخدم ورسالة وصورة وقصة.</li>
         </ul>
 
-        <h2>كيف تُبلّغ عن إساءة</h2>
+        <h2>كيف تُبلّغ</h2>
         <div class="box">
-            استخدم خيار <strong>«إبلاغ»</strong> المتاح داخل التطبيق على أي مستخدم أو رسالة أو محتوى،
-            أو راسلنا مباشرة على <strong><a href="mailto:kaebs19@gmail.com?subject=بلاغ%20سلامة%20أطفال">kaebs19@gmail.com</a></strong>.
-            تُعامَل كل البلاغات المتعلقة بسلامة الأطفال بأعلى أولوية.
+            استخدم <strong>«إبلاغ»</strong> داخل التطبيق، أو راسل جهة التواصل لسلامة الأطفال:
+            <strong>${csMail('بلاغ سلامة أطفال')}</strong>. وإن كان طفل في خطر داهم فتواصل مع الجهات الأمنية فوراً.
         </div>
 
         <h2>إجراؤنا عند المخالفة</h2>
         <ul>
-            <li>إزالة فورية للمحتوى المخالف.</li>
-            <li>حظر دائم للحساب والجهاز المرتبط به.</li>
-            <li>الإبلاغ إلى <strong>المركز الوطني للأطفال المفقودين والمستغَلّين (NCMEC)</strong>
-                وإلى السلطات الإقليمية والوطنية المختصة وفق ما يقتضيه القانون.</li>
+            <li>إزالة فورية للمحتوى مع حفظ الأدلة وفق القانون.</li>
+            <li>حظر دائم للحساب والجهاز.</li>
+            <li>إبلاغ <strong>المركز الوطني للأطفال المفقودين والمستغَلّين (NCMEC)</strong> والسلطات الإقليمية
+                والوطنية المختصة وفق قوانين حماية الأطفال.</li>
         </ul>
 
         <h2>جهة التواصل لسلامة الأطفال</h2>
-        <p>
-            لأي بلاغ أو استفسار يخص سلامة الأطفال، تواصل معنا على:
-            <strong><a href="mailto:kaebs19@gmail.com?subject=سلامة%20الأطفال">kaebs19@gmail.com</a></strong>
-        </p>
+        <p>جهة تواصل مخصّصة مستعدة لمناقشة ممارساتنا في منع CSAM والامتثال: <strong>${csMail('سلامة الأطفال')}</strong></p>
+    </div>
 `;
 
 // ============ /delete-account — حذف الحساب والبيانات ============
@@ -147,7 +211,7 @@ const deleteAccountBody = `
 
 router.get('/child-safety', (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderPage('معايير سلامة الأطفال — تطبيق هلا (ChatHala)', childSafetyBody));
+    res.send(renderPage('Child Safety Standards — Hala (ChatHala) | معايير سلامة الأطفال', childSafetyBody));
 });
 
 router.get('/delete-account', (req, res) => {
