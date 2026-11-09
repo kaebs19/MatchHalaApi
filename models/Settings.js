@@ -29,6 +29,11 @@ const settingsSchema = new mongoose.Schema({
         type: String,
         default: '# حول التطبيق\n\nHalaChat هو تطبيق محادثة فوري...'
     },
+    // معايير سلامة الأطفال (/child-safety) — HTML؛ الفارغ = النصّ الافتراضي في routes/legalPages.js
+    childSafety: {
+        type: String,
+        default: ''
+    },
     contactUs: {
         type: String,
         default: '# اتصل بنا\n\nنحن سعداء بتواصلك معنا! يمكنك التواصل عبر:\n\n- البريد الإلكتروني: support@halachat.com\n- الهاتف: +966xxxxxxxxx'

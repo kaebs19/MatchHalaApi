@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    getSettings, updateSettings, updatePageContent, changePassword, updateProfile, uploadProfileImage,
+    getSettings, updateSettings, updatePageContent, getChildSafety, updateChildSafety, changePassword, updateProfile, uploadProfileImage,
     getVersionControl, updateVersionControl, getBannedNames, addBannedNames, deleteBannedName, updateMaxViolations, seedBannedNames
 } from '../services/api';
 import { useToast } from '../components/Toast';
@@ -243,6 +243,43 @@ function Settings() {
         } catch (error) {
             console.error('خطأ في تغيير كلمة المرور:', error);
             showToast(error.response?.data?.message || 'فشل تغيير كلمة المرور', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ═══ معايير سلامة الأطفال (Google Play) ═══
+    const [childSafety, setChildSafety] = useState({ content: '', isDefault: true, contactEmail: '', loaded: false });
+
+    const fetchChildSafety = async () => {
+        try {
+            const response = await getChildSafety();
+            if (response.success) {
+                setChildSafety({ ...response.data, loaded: true });
+            }
+        } catch (error) {
+            showToast('تعذّر جلب معايير سلامة الأطفال', 'error');
+        }
+    };
+
+    const handleSaveChildSafety = async (reset = false) => {
+        if (reset && !window.confirm('إعادة النصّ الافتراضي؟ يُحذف النصّ المخصّص.')) return;
+        const content = reset ? '' : childSafety.content;
+        if (!reset && !content.trim()) {
+            showToast('المحتوى فارغ — استعمل «إعادة النصّ الافتراضي»', 'error');
+            return;
+        }
+        try {
+            setSaving(true);
+            const response = await updateChildSafety(content);
+            if (response.success) {
+                setChildSafety({ ...response.data, loaded: true });
+                showToast(response.message || 'تم الحفظ ✅', 'success');
+            } else {
+                showToast(response.message || 'فشل الحفظ', 'error');
+            }
+        } catch (error) {
+            showToast(error.response?.data?.message || 'فشل الحفظ', 'error');
         } finally {
             setSaving(false);
         }
@@ -494,7 +531,7 @@ function Settings() {
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'pages' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('pages')}
+                    onClick={() => { setActiveTab('pages'); if (!childSafety.loaded) fetchChildSafety(); }}
                 >
                     📄 صفحات التطبيق
                 </button>
@@ -691,6 +728,50 @@ function Settings() {
                             >
                                 {saving ? '⏳ جاري الحفظ...' : '💾 حفظ اتصل بنا'}
                             </button>
+                        </div>
+
+                        {/* معايير سلامة الأطفال — Google Play */}
+                        <div className="page-editor">
+                            <h3>🛡️ معايير سلامة الأطفال (Google Play)</h3>
+                            <p className="page-editor-hint">
+                                تظهر في{' '}
+                                <a href="https://matchhala.chathala.com/child-safety" target="_blank" rel="noopener noreferrer">matchhala.chathala.com/child-safety</a>
+                                {' '}و{' '}
+                                <a href="https://chathala.com/child-safety" target="_blank" rel="noopener noreferrer">chathala.com/child-safety</a>
+                                {' '}(الموقع يتحدّث خلال 5 دقائق). النصّ HTML —
+                                {childSafety.isDefault ? ' المعروض الآن هو النصّ الافتراضي.' : ' المعروض الآن نصّ مخصّص.'}
+                                <br />
+                                ⚠️ يجب أن يبقى بريد جهة التواصل <strong dir="ltr">{childSafety.contactEmail || '…'}</strong> في النصّ
+                                — رُفض التطبيق في Google Play حين لم يظهر. أبقِ البريد بين{' '}
+                                <code dir="ltr">&lt;!--email_off--&gt;</code> و<code dir="ltr">&lt;!--/email_off--&gt;</code> كي لا يخفيه Cloudflare.
+                            </p>
+                            <textarea
+                                rows="16"
+                                dir="ltr"
+                                style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13 }}
+                                value={childSafety.loaded ? childSafety.content : 'جاري التحميل…'}
+                                disabled={!childSafety.loaded}
+                                onChange={(e) => setChildSafety({ ...childSafety, content: e.target.value })}
+                            />
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <button
+                                    className="btn-save-page"
+                                    onClick={() => handleSaveChildSafety(false)}
+                                    disabled={saving || !childSafety.loaded}
+                                >
+                                    {saving ? '⏳ جاري الحفظ...' : '💾 حفظ معايير سلامة الأطفال'}
+                                </button>
+                                {!childSafety.isDefault && (
+                                    <button
+                                        className="btn-save-page"
+                                        style={{ background: '#6b7280' }}
+                                        onClick={() => handleSaveChildSafety(true)}
+                                        disabled={saving}
+                                    >
+                                        ↺ إعادة النصّ الافتراضي
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

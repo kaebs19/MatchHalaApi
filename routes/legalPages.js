@@ -1,5 +1,6 @@
 // routes/legalPages.js
-// صفحات قانونية عامة مطلوبة من Google Play (HTML خام، عام عالمياً، غير قابل للتعديل).
+// صفحات قانونية عامة مطلوبة من Google Play (HTML خام، عام عالمياً).
+// /child-safety قابل للتعديل من لوحة التحكم (الإعدادات ← الصفحات)؛ /delete-account ثابت.
 // تُخدّم على المسارات الجذرية /child-safety و /delete-account (بلا بادئة /api)
 // لأن nginx يوجّه هذين المسارين تحديداً إلى المنفذ 3000.
 
@@ -210,9 +211,53 @@ const deleteAccountBody = `
         </ul>
 `;
 
-router.get('/child-safety', (req, res) => {
+// ============ النصّ القابل للتعديل من لوحة التحكم (Settings.childSafety) ============
+// الفارغ = النصّ الافتراضي أعلاه. الموقع (chathala.com/child-safety) يقرأ النصّ نفسه من
+// GET /api/settings/child-safety — مصدر واحد للصفحتين.
+// كاش 60ث لكل نسخة PM2 (الحفظ يُبطله في النسخة التي استقبلته، والباقي خلال دقيقة).
+let childSafetyCache = null; // { html, isDefault, updatedAt, at }
+const CHILD_SAFETY_TTL_MS = 60 * 1000;
+
+// اللوحة للمشرفين فقط، لكن الصفحة عامة: لا سكربتات ولا معالجات أحداث ولا javascript:
+function sanitizeLegalHtml(html) {
+    return String(html || '')
+        .replace(/<\s*(script|iframe|object|embed|style|form)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+        .replace(/<\s*\/?\s*(script|iframe|object|embed|style|link|meta|base|form)\b[^>]*>/gi, '')
+        .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+        .replace(/(href|src)\s*=\s*(["']?)\s*javascript:/gi, '$1=$2#');
+}
+
+async function getChildSafetyContent() {
+    if (childSafetyCache && Date.now() - childSafetyCache.at < CHILD_SAFETY_TTL_MS) {
+        return childSafetyCache;
+    }
+    let custom = '';
+    let updatedAt = null;
+    try {
+        const Settings = require('../models/Settings');
+        const doc = await Settings.findOne().select('childSafety updatedAt').lean();
+        custom = (doc && doc.childSafety ? doc.childSafety : '').trim();
+        updatedAt = doc ? doc.updatedAt : null;
+    } catch (err) {
+        console.error('[child-safety] تعذّر جلب النصّ من الإعدادات، يُعرض الافتراضي:', err.message);
+    }
+    childSafetyCache = {
+        html: custom ? sanitizeLegalHtml(custom) : childSafetyBody,
+        isDefault: !custom,
+        updatedAt,
+        at: Date.now()
+    };
+    return childSafetyCache;
+}
+
+function invalidateChildSafety() {
+    childSafetyCache = null;
+}
+
+router.get('/child-safety', async (req, res) => {
+    const { html } = await getChildSafetyContent();
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderPage('Child Safety Standards — Hala (ChatHala) | معايير سلامة الأطفال', childSafetyBody, CHILD_SAFETY_EMAIL));
+    res.send(renderPage('Child Safety Standards — Hala (ChatHala) | معايير سلامة الأطفال', html, CHILD_SAFETY_EMAIL));
 });
 
 router.get('/delete-account', (req, res) => {
@@ -221,3 +266,8 @@ router.get('/delete-account', (req, res) => {
 });
 
 module.exports = router;
+module.exports.getChildSafetyContent = getChildSafetyContent;
+module.exports.invalidateChildSafety = invalidateChildSafety;
+module.exports.sanitizeLegalHtml = sanitizeLegalHtml;
+module.exports.DEFAULT_CHILD_SAFETY_HTML = childSafetyBody;
+module.exports.CHILD_SAFETY_EMAIL = CHILD_SAFETY_EMAIL;

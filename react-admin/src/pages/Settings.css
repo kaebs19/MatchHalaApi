@@ -148,6 +148,24 @@
     transition: all 0.3s;
 }
 
+.page-editor-hint {
+    font-size: 0.9rem;
+    line-height: 1.9;
+    color: var(--text-secondary, #6b7280);
+    margin: 0 0 12px;
+}
+
+.page-editor-hint a {
+    color: #7c3aed;
+}
+
+.page-editor-hint code {
+    font-size: 0.8rem;
+    background: var(--bg-card);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
 .page-editor textarea:focus {
     outline: none;
     border-color: #7c3aed;

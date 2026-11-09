@@ -398,6 +398,17 @@ export const updatePageContent = async (type, content) => {
     return response.data;
 };
 
+// معايير سلامة الأطفال (/child-safety + chathala.com/child-safety) — HTML، الفارغ = الافتراضي
+export const getChildSafety = async () => {
+    const response = await api.get('/settings/child-safety');
+    return response.data;
+};
+
+export const updateChildSafety = async (content) => {
+    const response = await api.put('/settings/child-safety', { content });
+    return response.data;
+};
+
 // الحصول على سياسة الخصوصية
 export const getPrivacyPolicy = async () => {
     const response = await api.get('/settings/privacy-policy');

@@ -227,6 +227,65 @@ router.get('/contact-us', async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// معايير سلامة الأطفال — صفحة /child-safety (Google Play) وصفحة الموقع chathala.com/child-safety
+// ═══════════════════════════════════════════════════════════════════
+const legalPages = require('./legalPages');
+
+// @route   GET /api/settings/child-safety
+// @desc    النصّ الفعلي للصفحة (المخصّص أو الافتراضي) — يقرؤه الموقع واللوحة
+// @access  Public
+router.get('/child-safety', async (req, res) => {
+    try {
+        const { html, isDefault, updatedAt } = await legalPages.getChildSafetyContent();
+        res.json({
+            success: true,
+            data: {
+                content: html,
+                isDefault,
+                contactEmail: legalPages.CHILD_SAFETY_EMAIL,
+                lastUpdated: updatedAt
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في جلب معايير سلامة الأطفال' });
+    }
+});
+
+// @route   PUT /api/settings/child-safety
+// @desc    حفظ نصّ الصفحة (HTML). content فارغ = العودة للنصّ الافتراضي
+// @access  Admin
+router.put('/child-safety', protect, adminOnly, async (req, res) => {
+    try {
+        const raw = typeof req.body.content === 'string' ? req.body.content : '';
+        if (raw.length > 100000) {
+            return res.status(400).json({ success: false, message: 'النصّ أطول من الحدّ (100 ألف حرف)' });
+        }
+        const content = legalPages.sanitizeLegalHtml(raw).trim();
+        // ⚠️ Google Play رفض التطبيق حين لم يظهر بريد جهة التواصل — لا يُحفظ نصّ بلا البريد
+        if (content && !content.includes(legalPages.CHILD_SAFETY_EMAIL)) {
+            return res.status(400).json({
+                success: false,
+                message: `يجب أن يتضمّن النصّ بريد جهة التواصل ${legalPages.CHILD_SAFETY_EMAIL} (شرط Google Play)`
+            });
+        }
+        await Settings.updateOne({}, {
+            $set: { childSafety: content, lastUpdated: Date.now(), updatedBy: req.user._id }
+        }, { upsert: true });
+        legalPages.invalidateChildSafety();
+        invalidateSettings();
+        const result = await legalPages.getChildSafetyContent();
+        res.json({
+            success: true,
+            message: content ? 'تم حفظ معايير سلامة الأطفال' : 'أُعيد النصّ الافتراضي',
+            data: { content: result.html, isDefault: result.isDefault, contactEmail: legalPages.CHILD_SAFETY_EMAIL }
+        });
+    } catch (error) {
+        console.error('خطأ في حفظ معايير سلامة الأطفال:', error);
+        res.status(500).json({ success: false, message: 'خطأ في حفظ معايير سلامة الأطفال' });
+    }
+});
+
 // @route   PUT /api/settings/content/:type
 // @desc    تحديث محتوى صفحة محددة (privacy/terms/about)
 // @access  Admin
