@@ -915,7 +915,7 @@ router.get('/likes-me', protect, requirePremium, async (req, res) => {
         };
 
         const likes = await Swipe.find(likesFilter)
-            .populate('swiper', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
+            .populate('swiper', 'name profileImage birthDate showAge gender country bio isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
             .sort({ createdAt: -1 })
             .limit(limitNum)
             .skip((pageNum - 1) * limitNum);
@@ -947,6 +947,9 @@ router.get('/likes-me', protect, requirePremium, async (req, res) => {
                 name: like.swiper.name,
                 profileImage: getFullUrl(like.swiper.profileImage),
                 birthDate: like.swiper.birthDate,
+                age: like.swiper.birthDate && like.swiper.showAge !== false
+                    ? Math.floor((Date.now() - new Date(like.swiper.birthDate).getTime()) / (365.25 * 24 * 3600 * 1000))
+                    : null,
                 gender: like.swiper.gender,
                 country: like.swiper.country,
                 bio: like.swiper.bio,
