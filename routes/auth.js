@@ -1849,9 +1849,28 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
             }
         } catch (error) {
             console.error('خطأ في التحقق من Google Token:', error);
-            // ✅ Web flow: إذا فيه googleUserInfo مباشرة (من access_token)
-            if (googleUserInfo && googleUserInfo.sub && googleUserInfo.email) {
-                payload = googleUserInfo;
+            // ✅ Web flow (access_token لا ID token): ⚠️ لا نثق بـ googleUserInfo من العميل —
+            //    كان يُقبل كما هو، فيكفي إرسال { sub, email } لأي بريد لدخول حسابه.
+            //    الهوية تُؤخذ من Google نفسه (tokeninfo)، والتوكن يجب أن يكون صادراً لعميل الويب.
+            let verified = null;
+            if (googleUserInfo && idToken && process.env.GOOGLE_WEB_CLIENT_ID) {
+                try {
+                    const info = await googleWebClient.getTokenInfo(idToken);
+                    if (info && info.aud === process.env.GOOGLE_WEB_CLIENT_ID && info.sub && info.email && info.email_verified !== false) {
+                        verified = {
+                            sub: info.sub,
+                            email: info.email,
+                            // الاسم والصورة ليسا في tokeninfo — عرض فقط، لا هوية
+                            name: typeof googleUserInfo.name === 'string' ? googleUserInfo.name : undefined,
+                            picture: typeof googleUserInfo.picture === 'string' ? googleUserInfo.picture : undefined
+                        };
+                    }
+                } catch (infoErr) {
+                    console.error('خطأ في التحقق من Google access token:', infoErr.message);
+                }
+            }
+            if (verified) {
+                payload = verified;
             } else {
                 return res.status(401).json({
                     success: false,
