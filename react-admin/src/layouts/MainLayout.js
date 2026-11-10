@@ -14,6 +14,7 @@ const Stats = lazy(() => import('../pages/Stats'));
 const Settings = lazy(() => import('../pages/Settings'));
 const GamesManagement = lazy(() => import('../pages/GamesManagement'));
 const StickersManagement = lazy(() => import('../pages/StickersManagement'));
+const RemovalRequests = lazy(() => import('../pages/RemovalRequests'));
 const Profile = lazy(() => import('../pages/Profile'));
 const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
 const SuperLikes = lazy(() => import('../pages/SuperLikes'));
@@ -26,7 +27,7 @@ const PermanentBans = lazy(() => import('../pages/PermanentBans'));
 const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
 const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
 
-import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats } from '../services/api';
+import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats, getRemovalRequestsStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -46,6 +47,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [pendingReportsCount, setPendingReportsCount] = useState(0);
     const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
     const [newcomersCount, setNewcomersCount] = useState(0);
+    const [removalCount, setRemovalCount] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     // بحث الجوال: مطويّ خلف 🔍 حتى لا يشغل صفاً كاملاً من رأسٍ لاصق
@@ -135,12 +137,14 @@ function MainLayout({ onLogout, user: initialUser }) {
             fetchReportsCount();
             fetchAppealsCount();
             fetchNewcomersCount();
+            fetchRemovalCount();
             // لا فائدة من استطلاع أربعة مسارات كل دقيقة والتبويب مخفي —
             // نوقفه عند الإخفاء ونحدّث مرة واحدة عند العودة.
             const refreshAll = () => {
                 fetchReportsCount();
                 fetchAppealsCount();
                     fetchNewcomersCount();
+                fetchRemovalCount();
             };
             let interval = setInterval(refreshAll, 60000);
             const onVisibility = () => {
@@ -389,6 +393,16 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
+    // طلبات الإزالة الجديدة (لم يفتحها مشرف بعد)
+    const fetchRemovalCount = async () => {
+        try {
+            const response = await getRemovalRequestsStats();
+            if (response.success) setRemovalCount(response.data.new || 0);
+        } catch (error) {
+            console.error('خطأ في جلب عدد طلبات الإزالة:', error);
+        }
+    };
+
     const fetchNewcomersCount = async () => {
         try {
             const response = await getNewcomersStats();
@@ -459,6 +473,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <GamesManagement />;
             case 'stickers':
                 return <StickersManagement />;
+            case 'removal-requests':
+                return <RemovalRequests onViewUserDetail={handleViewUserDetail} onCountChange={fetchRemovalCount} />;
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':
@@ -482,7 +498,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 badges={{
                     reports: pendingReportsCount,
                     appeals: appealsStats.total + appealsStats.awaitingReply,
-                    newcomers: newcomersCount
+                    newcomers: newcomersCount,
+                    'removal-requests': removalCount
                 }}
             />
 

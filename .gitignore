@@ -1,5 +1,7 @@
 node_modules/
 uploads/
+# أدلة طلبات الإزالة — خارج /uploads فلا يخدمها Nginx للعموم
+private/
 config/serviceAccount.json
 config/AuthKey_43J3HP6K23.p8
 .env

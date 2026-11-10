@@ -388,6 +388,9 @@ app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/admin/games', require('./routes/adminGames'));
 app.use('/api/admin/stories', require('./routes/adminStories'));
 app.use('/api/admin/stickers', require('./routes/adminStickers'));
+app.use('/api/admin/removal-requests', require('./routes/adminRemovalRequests'));
+// نموذج «طلب إزالة محتوى» العام في chathala.com/report-content (بلا تسجيل دخول)
+app.use('/api/public/removal-requests', require('./routes/removalRequests'));
 app.use('/api/interests', require('./routes/interests'));
 app.use('/api/appeals', require('./routes/appeals'));
 app.use('/api/newcomers', require('./routes/newcomers'));

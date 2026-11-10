@@ -10,6 +10,7 @@ export const PAGES = {
     reports: { title: 'البلاغات', icon: '⚠️', nav: true, adminOnly: true, badge: 'reports' },
     appeals: { title: 'المراجعات', icon: '📋', nav: true, adminOnly: true, badge: 'appeals' },
     newcomers: { title: 'الحسابات الجديدة', icon: '🆕', nav: true, adminOnly: true, badge: 'newcomers' },
+    'removal-requests': { title: 'طلبات الإزالة', icon: '🧹', nav: true, adminOnly: true, badge: 'removal-requests' },
     'banned-devices': { title: 'الأجهزة المحظورة', icon: '📵', nav: true, adminOnly: true },
     'permanent-bans': { title: 'الحسابات المحظورة دائماً', icon: '⛔', nav: true, adminOnly: true },
     analytics: { title: 'التحليلات', icon: '🔍', nav: true, adminOnly: true },

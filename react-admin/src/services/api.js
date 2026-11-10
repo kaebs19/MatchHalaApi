@@ -890,3 +890,36 @@ export const liftStoryBan = async (userId) => {
     const response = await api.delete(`/admin/stories/ban/${userId}`);
     return response.data;
 };
+
+// ═══ طلبات إزالة المحتوى (chathala.com/report-content) ═══
+export const getRemovalRequests = async (params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
+    const response = await api.get(`/admin/removal-requests${query ? `?${query}` : ''}`);
+    return response.data;
+};
+
+export const getRemovalRequestsStats = async () => {
+    const response = await api.get('/admin/removal-requests/stats');
+    return response.data;
+};
+
+export const getRemovalRequest = async (id) => {
+    const response = await api.get(`/admin/removal-requests/${id}`);
+    return response.data;
+};
+
+export const updateRemovalRequest = async (id, body) => {
+    const response = await api.patch(`/admin/removal-requests/${id}`, body);
+    return response.data;
+};
+
+export const deleteRemovalRequest = async (id) => {
+    const response = await api.delete(`/admin/removal-requests/${id}`);
+    return response.data;
+};
+
+// الأدلة خارج /uploads وتحتاج التوكن — تُجلب Blob وتُعرض بـ objectURL
+export const getRemovalEvidenceBlob = async (id, index) => {
+    const response = await api.get(`/admin/removal-requests/${id}/evidence/${index}`, { responseType: 'blob' });
+    return response.data;
+};
