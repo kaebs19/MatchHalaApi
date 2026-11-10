@@ -210,7 +210,7 @@ router.put('/last-seen', [
 router.get('/blocked', auth, async (req, res) => {
     try {
         const user = await User.findById(req.user.id)
-            .populate('blockedUsers', 'name email profileImage isOnline');
+            .populate('blockedUsers', 'name profileImage isOnline');
 
         res.json({
             success: true,

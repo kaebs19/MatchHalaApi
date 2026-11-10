@@ -151,7 +151,7 @@ router.post('/users/unblock/:userId', protect, async (req, res) => {
 router.get('/users/blocked', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .populate('blockedUsers', 'name email profileImage isPremium isActive verification.isVerified').lean();
+            .populate('blockedUsers', 'name profileImage isPremium isActive verification.isVerified').lean();
 
         res.json({
             success: true,
