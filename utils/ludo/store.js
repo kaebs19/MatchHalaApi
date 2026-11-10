@@ -1,0 +1,215 @@
+// MatchHala - تخزين مباريات هلا لودو في Redis
+//
+// ⚠️ لا شيء في ذاكرة العملية: 4 نسخ PM2، ولاعبو المباراة الواحدة قد يتصلون بنسخ مختلفة.
+// كل تعديل على مباراة يمرّ بقفل withLock (SET NX PX + حذف مشروط بالرمز) فلا تُطبَّق
+// حركتان معاً ولا يسبق المؤقّت حركةَ لاعب.
+//
+// المفاتيح:
+//   ludo:game:<id>        سجلّ المباراة { id, state, meta, deadlineAt }        TTL 3س (يتجدّد)
+//   ludo:user:<userId>    معرّف مباراته الجارية                                  TTL 3س
+//   ludo:deadlines        ZSET: id → موعد انتهاء الدور (ms)
+//   ludo:queue:<key>      ZSET: userId → وقت الانضمام  +  ludo:qentry:<userId> بياناته
+//   ludo:room:<code>      غرفة خاصة بانتظار اللاعبين                            TTL 15د
+//   ludo:lock:<name>      أقفال
+
+const crypto = require('crypto');
+const { getClient } = require('../redisClient');
+
+const GAME_TTL_S = 3 * 60 * 60;
+const ROOM_TTL_S = 15 * 60;
+const LOCK_TTL_MS = 4000;
+const DEADLINES = 'ludo:deadlines';
+
+class StoreUnavailable extends Error {
+    constructor() {
+        super('خدمة الألعاب غير متاحة مؤقتاً');
+        this.code = 'GAMES_UNAVAILABLE';
+        this.status = 503;
+    }
+}
+
+async function redis() {
+    const c = await getClient();
+    if (!c) throw new StoreUnavailable();
+    return c;
+}
+
+const k = {
+    game: (id) => `ludo:game:${id}`,
+    user: (userId) => `ludo:user:${userId}`,
+    queue: (key) => `ludo:queue:${key}`,
+    qentry: (userId) => `ludo:qentry:${userId}`,
+    room: (code) => `ludo:room:${code}`,
+    userRoom: (userId) => `ludo:userroom:${userId}`,
+    lock: (name) => `ludo:lock:${name}`
+};
+
+// ───────────── القفل ─────────────
+
+const RELEASE = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+// ينتظر القفل حتى waitMs ثم يرمي LOCK_BUSY
+async function withLock(name, fn, { waitMs = 2500 } = {}) {
+    const c = await redis();
+    const key = k.lock(name);
+    const token = crypto.randomBytes(8).toString('hex');
+    const until = Date.now() + waitMs;
+    while (!(await c.set(key, token, { NX: true, PX: LOCK_TTL_MS }))) {
+        if (Date.now() > until) {
+            const err = new Error('الطلب مزدحم — حاول مجدداً');
+            err.code = 'LOCK_BUSY';
+            err.status = 409;
+            throw err;
+        }
+        await new Promise(r => setTimeout(r, 25 + Math.random() * 25));
+    }
+    try {
+        return await fn();
+    } finally {
+        await c.eval(RELEASE, { keys: [key], arguments: [token] }).catch(() => {});
+    }
+}
+
+// ───────────── المباريات ─────────────
+
+async function getGame(id) {
+    const raw = await (await redis()).get(k.game(id));
+    return raw ? JSON.parse(raw) : null;
+}
+
+async function saveGame(record) {
+    const c = await redis();
+    const multi = c.multi().set(k.game(record.id), JSON.stringify(record), { EX: GAME_TTL_S });
+    if (record.state.phase === 'ended' || !record.deadlineAt) {
+        multi.zRem(DEADLINES, record.id);
+    } else {
+        multi.zAdd(DEADLINES, { score: record.deadlineAt, value: record.id });
+    }
+    await multi.exec();
+}
+
+async function deleteGame(id) {
+    const c = await redis();
+    await c.multi().del(k.game(id)).zRem(DEADLINES, id).exec();
+}
+
+async function dueGames(now, limit = 50) {
+    return (await redis()).zRangeByScore(DEADLINES, '-inf', now, { LIMIT: { offset: 0, count: limit } });
+}
+
+async function setUserGame(userIds, gameId) {
+    const c = await redis();
+    const multi = c.multi();
+    userIds.forEach(u => multi.set(k.user(u), gameId, { EX: GAME_TTL_S }));
+    await multi.exec();
+}
+
+async function getUserGame(userId) {
+    return (await redis()).get(k.user(userId));
+}
+
+// يمسح الربط فقط إن كان ما زال يشير لهذه المباراة (قد يكون بدأ غيرها)
+const CLEAR_IF = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+async function clearUserGame(userIds, gameId) {
+    const c = await redis();
+    await Promise.all(userIds.map(u => c.eval(CLEAR_IF, { keys: [k.user(u)], arguments: [gameId] })));
+}
+
+// ───────────── طابور المطابقة ─────────────
+
+async function enqueue(queueKey, entry) {
+    const c = await redis();
+    await c.multi()
+        .zAdd(k.queue(queueKey), { score: entry.joinedAt, value: entry.userId })
+        .set(k.qentry(entry.userId), JSON.stringify({ ...entry, queueKey }), { EX: 10 * 60 })
+        .exec();
+}
+
+async function dequeue(userIds) {
+    const c = await redis();
+    for (const u of userIds) {
+        const raw = await c.get(k.qentry(u));
+        if (!raw) continue;
+        const { queueKey } = JSON.parse(raw);
+        await c.multi().zRem(k.queue(queueKey), u).del(k.qentry(u)).exec();
+    }
+}
+
+async function getQueueEntry(userId) {
+    const raw = await (await redis()).get(k.qentry(userId));
+    return raw ? JSON.parse(raw) : null;
+}
+
+// المنتظرون بترتيب الانضمام مع بياناتهم — يُنظَّف من انتهت بياناته
+async function queueEntries(queueKey, limit = 200) {
+    const c = await redis();
+    const ids = await c.zRange(k.queue(queueKey), 0, limit - 1);
+    if (ids.length === 0) return [];
+    const raws = await c.mGet(ids.map(k.qentry));
+    const entries = [];
+    const stale = [];
+    ids.forEach((id, i) => (raws[i] ? entries.push(JSON.parse(raws[i])) : stale.push(id)));
+    if (stale.length) await c.zRem(k.queue(queueKey), stale);
+    return entries;
+}
+
+async function activeQueueKeys() {
+    const c = await redis();
+    const keys = [];
+    for await (const batch of c.scanIterator({ MATCH: 'ludo:queue:*', COUNT: 100 })) {
+        (Array.isArray(batch) ? batch : [batch]).forEach(key => keys.push(key.slice('ludo:queue:'.length)));
+    }
+    return keys;
+}
+
+// ───────────── الغرف الخاصة ─────────────
+
+async function createRoom(room) {
+    const c = await redis();
+    // رمز من 4 أرقام غير مستعمل
+    for (let i = 0; i < 20; i++) {
+        const code = String(crypto.randomInt(1000, 10000));
+        const ok = await c.set(k.room(code), JSON.stringify({ ...room, code }), { NX: true, EX: ROOM_TTL_S });
+        if (ok) {
+            await c.set(k.userRoom(room.hostId), code, { EX: ROOM_TTL_S });
+            return { ...room, code };
+        }
+    }
+    throw new StoreUnavailable();
+}
+
+async function getRoom(code) {
+    const raw = await (await redis()).get(k.room(code));
+    return raw ? JSON.parse(raw) : null;
+}
+
+async function saveRoom(room) {
+    const c = await redis();
+    const multi = c.multi().set(k.room(room.code), JSON.stringify(room), { EX: ROOM_TTL_S });
+    room.players.forEach(u => multi.set(k.userRoom(u), room.code, { EX: ROOM_TTL_S }));
+    await multi.exec();
+}
+
+async function deleteRoom(room) {
+    const c = await redis();
+    const multi = c.multi().del(k.room(room.code));
+    room.players.forEach(u => multi.del(k.userRoom(u)));
+    await multi.exec();
+}
+
+async function getUserRoom(userId) {
+    return (await redis()).get(k.userRoom(userId));
+}
+
+async function clearUserRoom(userId) {
+    await (await redis()).del(k.userRoom(userId));
+}
+
+module.exports = {
+    withLock,
+    getGame, saveGame, deleteGame, dueGames,
+    setUserGame, getUserGame, clearUserGame,
+    enqueue, dequeue, getQueueEntry, queueEntries, activeQueueKeys,
+    createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom,
+    StoreUnavailable
+};

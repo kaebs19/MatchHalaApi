@@ -773,6 +773,9 @@ io.on('connection', async (socket) => {
     // 👁 «داخل المحادثة الآن» — حدث مستقل عن الغرف (انظر utils/conversationViewing.js)
     registerViewingHandlers(io, socket);
 
+    // 🎲 هلا لودو — المباريات والطابور والغرف (utils/ludo/، خلف مفتاح الألعاب)
+    require('./utils/ludo/socketHandlers').registerLudoHandlers(io, socket);
+
     // عند مغادرة محادثة
     socket.on('leave-conversation', (rawPayload) => {
         const conversationId = readConversationId(rawPayload);
@@ -936,6 +939,13 @@ server.listen(PORT, () => {
             require('./utils/expiredArchiveCleaner').startExpiredArchiveCleaner();
         } catch (e) {
             console.error('تعذّر بدء تنظيف أرشيف الوسائط:', e.message);
+        }
+        try {
+            // 🎲 هلا لودو: مهلة الأدوار وأدوار البوت، وإكمال الطابور ببوتات
+            require('./utils/ludo/service').startLudoTicker();
+            require('./utils/ludo/lobby').startLudoLobbySweeper();
+        } catch (e) {
+            console.error('تعذّر بدء مؤقّت هلا لودو:', e.message);
         }
     }
 });
