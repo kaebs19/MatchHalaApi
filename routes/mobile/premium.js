@@ -409,7 +409,7 @@ router.post('/subscription/verify-google', protect, async (req, res) => {
 router.get('/subscription/status', protect, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('isPremium premiumPlan premiumExpiresAt').lean();
+            .select('isPremium premiumPlan premiumExpiresAt premiumGrant.active premiumGrant.at premiumGrant.until').lean();
 
         const isPremium = user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt > new Date();
 
@@ -418,7 +418,8 @@ router.get('/subscription/status', protect, async (req, res) => {
             data: {
                 isPremium: isPremium || false,
                 plan: isPremium ? user.premiumPlan : null,
-                expiresAt: isPremium ? user.premiumExpiresAt.toISOString() : null
+                expiresAt: isPremium ? user.premiumExpiresAt.toISOString() : null,
+                grant: grantInfo(user, isPremium)
             }
         });
     } catch (error) {
@@ -431,10 +432,20 @@ router.get('/subscription/status', protect, async (req, res) => {
 // @desc    إعادة فحص انتهاء الاشتراك فوراً (بدل انتظار الـ cron الساعي)
 //         iOS يستدعيه عند فتح التطبيق + بعد restore purchases
 // @access  Protected
+// 🎁 هلا+ ممنوح من لوحة التحكم — التطبيق يعرض «هدية هلا+» مرة لكل منح (مفتاحه grantedAt)
+function grantInfo(user, isPremium) {
+    const g = user && user.premiumGrant;
+    if (!isPremium || !g || !g.active || !g.at) return null;
+    return {
+        grantedAt: new Date(g.at).toISOString(),
+        until: g.until ? new Date(g.until).toISOString() : null
+    };
+}
+
 const verifySubscriptionExpiration = async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
-            .select('isPremium premiumPlan premiumExpiresAt stealthMode customNameColor privacySettings');
+            .select('isPremium premiumPlan premiumExpiresAt stealthMode customNameColor privacySettings premiumGrant');
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
@@ -453,6 +464,7 @@ const verifySubscriptionExpiration = async (req, res) => {
             if (user.privacySettings) {
                 user.privacySettings.invisibleRead = false;
             }
+            if (user.premiumGrant && user.premiumGrant.active) user.premiumGrant.active = false;
             await user.save();
 
             return res.json({
@@ -472,7 +484,8 @@ const verifySubscriptionExpiration = async (req, res) => {
                 isPremium: !!user.isPremium && !!expiresAt && expiresAt > now,
                 expired: false,
                 plan: user.premiumPlan,
-                expiresAt: expiresAt ? expiresAt.toISOString() : null
+                expiresAt: expiresAt ? expiresAt.toISOString() : null,
+                grant: grantInfo(user, !!user.isPremium && !!expiresAt && expiresAt > now)
             }
         });
     } catch (error) {
