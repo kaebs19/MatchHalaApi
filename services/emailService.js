@@ -11,8 +11,8 @@ let transporter = null;
 const BRAND_NAME   = process.env.EMAIL_FROM_NAME || 'MatchHala';
 const BRAND_COLOR  = process.env.EMAIL_BRAND_COLOR || '#1E7696';  // سماوي داكن — تباين كافٍ مع الأبيض
 const BRAND_LIGHT  = process.env.EMAIL_BRAND_LIGHT || '#33CEEC';
-const SITE_URL     = process.env.EMAIL_SITE_URL || 'https://www.chathala.com';
-const LOGO_URL     = process.env.EMAIL_LOGO_URL || 'https://www.chathala.com/images/logo-192.png';
+const SITE_URL     = process.env.EMAIL_SITE_URL || 'https://chathala.com';
+const LOGO_URL     = process.env.EMAIL_LOGO_URL || 'https://chathala.com/images/logo-192.png';
 const SUPPORT_EMAIL = process.env.EMAIL_REPLY_TO || '';
 
 function getTransporter() {
