@@ -233,6 +233,21 @@ const saveLoginRecord = async (user, req) => {
     }
 };
 
+// 🙈 حساب أخفاه صاحبه (بديل الحذف) يعود كما كان بتسجيل الدخول — لا إن كان معلّقاً أو محظوراً
+// (التعليق/الحظر يضبطان isActive=false أيضاً، وفحصهما يسبق هذا في كل مسارات الدخول).
+async function reactivateSelfHidden(user) {
+    if (!user || user.isActive !== false || !(user.selfHidden && user.selfHidden.active)) return false;
+    if ((user.suspension && user.suspension.isSuspended) || (user.bannedWords && user.bannedWords.isBanned)) return false;
+    const now = new Date();
+    await User.updateOne({ _id: user._id }, {
+        $set: { isActive: true, 'selfHidden.active': false, 'selfHidden.reactivatedAt': now }
+    });
+    user.isActive = true;
+    user.selfHidden.active = false;
+    user.selfHidden.reactivatedAt = now;
+    return true;
+}
+
 // ⚠️ كان هنا مُسجِّلٌ يحظر جهازَ الموقوف تلقائياً حين يحاول الدخولَ إلى
 //    حسابه الموقوف. هذا ما جعل «بعض» الموقوفين لا يستطيعون إنشاء حساب جديد
 //    و«بعضهم» يستطيع — حسب من جرّب حسابه القديم أولاً. التعليق يعلّق الحساب
@@ -521,6 +536,9 @@ router.post('/login', loginValidation, validate, async (req, res) => {
                 });
             }
         }
+
+        // 🙈 أخفاه صاحبه؟ يعود بالدخول
+        await reactivateSelfHidden(user);
 
         // التحقق من أن الحساب مفعل
         if (!user.isActive) {
@@ -1743,6 +1761,40 @@ router.post('/reset-account', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/auth/hide-account
+// @desc    إخفاء الحساب بالكامل (بديل الحذف): لا يظهر في أي مكان، لا إشعارات، والطرف الآخر يرى «حساب غير متاح».
+//          يعود كما كان (المحادثات والتطابقات والاشتراك) بتسجيل الدخول. التقييدات السارية تبقى عليه.
+// @access  Private
+router.post('/hide-account', protect, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('isActive suspension bannedWords selfHidden');
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        if ((user.suspension && user.suspension.isSuspended) || (user.bannedWords && user.bannedWords.isBanned)) {
+            return res.status(400).json({ success: false, code: 'ACCOUNT_RESTRICTED', message: 'لا يمكن إخفاء حساب موقوف' });
+        }
+
+        // updateOne يمرّ على hooks حالة الحساب ← سوكت partner:account-state لكل من يحادثه
+        await User.updateOne({ _id: user._id }, {
+            $set: {
+                isActive: false,
+                isOnline: false,
+                'selfHidden.active': true,
+                'selfHidden.at': new Date(),
+                deviceToken: null,
+                fcmToken: null
+            }
+        });
+
+        res.json({
+            success: true,
+            message: 'أُخفي حسابك. سجّل الدخول في أي وقت ليعود كما كان.'
+        });
+    } catch (error) {
+        console.error('خطأ في إخفاء الحساب:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   GET /api/auth/delete-account/carryover
 // @desc    التقييدات السارية التي ستنتقل لأي حساب جديد إن حذف حسابه — لتنبيه شاشة الحذف
 // @access  Private
@@ -1758,7 +1810,7 @@ router.get('/delete-account/carryover', protect, async (req, res) => {
                 willCarry: items.length > 0,
                 items,
                 message: items.length > 0
-                    ? 'على حسابك تقييدات سارية. حذف الحساب لا يلغيها: إن أنشأت حساباً جديداً ستنتقل إليه حتى موعد انتهائها.'
+                    ? 'على حسابك تقييدات سارية مرتبطة بحسابك وجهازك. حذف الحساب أو إخفاؤه لا يلغيها: إن أنشأت حساباً جديداً من هذا الجهاز أو بنفس البريد أو حساب أبل/جوجل ستنتقل إليه حتى موعد انتهائها.'
                     : ''
             }
         });
@@ -1984,6 +2036,7 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
+        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,
@@ -2174,6 +2227,7 @@ router.post('/facebook', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
+        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,
@@ -2342,6 +2396,7 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
+        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,

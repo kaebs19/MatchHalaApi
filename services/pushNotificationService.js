@@ -94,6 +94,10 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
         if (!user) {
             return { success: false, error: 'المستخدم غير موجود' };
         }
+        // 🙈 أخفى حسابه — لا إشعارات حتى يعود بتسجيل الدخول
+        if (user.selfHidden && user.selfHidden.active && user.isActive === false) {
+            return { success: false, skipped: true, error: 'الحساب مخفي بطلب صاحبه' };
+        }
 
         // حفظ الإشعار في قاعدة البيانات
         // ✅ تخطي تلقائياً إذا كان channel type (الرسائل) — يكفي tab المحادثات + push

@@ -34,6 +34,13 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // 🙈 إخفاء الحساب بطلب صاحبه (بديل الحذف): isActive=false فيختفي من كل مكان، والطرف الآخر يرى
+    //    «حساب غير متاح» لا «محظور». يعود كما كان بتسجيل الدخول (reactivateSelfHidden في routes/auth.js).
+    selfHidden: {
+        active: { type: Boolean, default: false },
+        at: { type: Date, default: null },
+        reactivatedAt: { type: Date, default: null }
+    },
     lastLogin: {
         type: Date
     },

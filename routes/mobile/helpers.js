@@ -158,7 +158,11 @@ const maskBannedUser = (user) => {
     const userObj = user.toObject ? user.toObject() : { ...user };
     if (!isUserFullyBanned(userObj)) return userObj;
 
-    userObj.name = 'مستخدم محظور';
+    // أخفاه صاحبه ← اسم محايد (ليس عقوبة)
+    const selfHidden = userObj.selfHidden?.active === true;
+    userObj.name = selfHidden ? 'حساب غير متاح' : 'مستخدم محظور';
+    if (selfHidden) userObj.isDeactivatedAccount = true;
+    delete userObj.selfHidden;
     userObj.profileImage = null;
     userObj.photos = [];
     userObj.bio = '';

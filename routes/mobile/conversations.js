@@ -1200,7 +1200,7 @@ router.get('/conversations/sent-requests', protect, async (req, res) => {
             creator: userId,
             status: 'pending'
         })
-            .populate('participants', 'name profileImage isPremium isOnline lastLogin isActive suspension bannedWords verification.isVerified')
+            .populate('participants', 'name profileImage isPremium isOnline lastLogin isActive suspension bannedWords verification.isVerified selfHidden.active')
             .select('participants requestedAt createdAt reminderSent')
             .lean();
 
@@ -1592,7 +1592,7 @@ router.get('/conversations', protect, async (req, res) => {
         const skip = (all === 'true' || all === '1') ? 0 : (page - 1) * limit;
 
         const conversations = await Conversation.find(convFilter)
-            .populate('participants', 'name profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
+            .populate('participants', 'name profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension selfHidden.active')
             .populate('lastMessage')
             .select('+creator')
             .sort({ updatedAt: -1 })
@@ -1848,7 +1848,7 @@ router.get('/conversations/:id', protect, async (req, res) => {
             participants: userId,
             'hiddenFor.user': { $ne: userId }
         })
-            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension')
+            .populate('participants', 'name email profileImage photos lastLogin isOnline isPremium verification.isVerified isActive bannedWords suspension selfHidden.active')
             .populate('lastMessage')
             .select('+creator')
             .lean();

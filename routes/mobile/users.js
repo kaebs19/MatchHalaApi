@@ -578,7 +578,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
         }
 
         const user = await User.findById(id).select(
-            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry role'
+            'name profileImage photos birthDate gender country bio interests isOnline lastLogin isPremium premiumExpiresAt verification vipBadge location blockedUsers isActive selfHidden.active bannedWords suspension hidden createdAt stats showDistance acceptingRequests premiumOnlyRequests privacySettings stealthMode showAge showCountry role'
         ).lean();
 
         if (!user) {
@@ -604,7 +604,8 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                 data: {
                     user: {
                         _id: user._id,
-                        name: 'مستخدم محظور',
+                        name: user.selfHidden?.active ? 'حساب غير متاح' : 'مستخدم محظور',
+                        ...(user.selfHidden?.active ? { isDeactivatedAccount: true } : {}),
                         profileImage: null,
                         photos: [],
                         bio: '',
