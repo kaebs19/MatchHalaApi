@@ -212,6 +212,11 @@ const saveLoginRecord = async (user, req) => {
 
     await User.findByIdAndUpdate(user._id, updateData);
 
+    // 🔁 دخول حساب حديث (≤ 90 يوماً) — هل هو بديل لحساب مقيَّد حُذف؟ (يشمل أبل/جوجل الجديد وبصمة وصلت متأخرة)
+    if (!user.createdAt || Date.now() - new Date(user.createdAt).getTime() < 90 * 24 * 60 * 60 * 1000) {
+        await require('../utils/restrictionCarryover').applyToUser(user._id, { deviceFingerprint, deviceToken, vendorId });
+    }
+
     // ✅ ربط pending bans على هذا المستخدم بالـ fingerprint الجديد
     // (حالة: حُظر الجهاز قبل ما يكون له fingerprint، الآن وصلت بصمة)
     if ((deviceFingerprint || deviceToken || vendorId)) {
@@ -346,6 +351,9 @@ router.post('/register', registerValidation, validate, async (req, res) => {
             if (deviceInfo) user.deviceDetails = deviceInfo;
             await user.save();
         }
+
+        // 🔁 حساب جديد لصاحب حساب مقيَّد محذوف ← تقييداته المتبقية
+        await require('../utils/restrictionCarryover').applyToUser(user._id, { deviceFingerprint, deviceToken, vendorId });
 
         // إرجاع البيانات مع Token
         res.status(201).json({
@@ -1735,6 +1743,30 @@ router.post('/reset-account', protect, async (req, res) => {
     }
 });
 
+// @route   GET /api/auth/delete-account/carryover
+// @desc    التقييدات السارية التي ستنتقل لأي حساب جديد إن حذف حسابه — لتنبيه شاشة الحذف
+// @access  Private
+router.get('/delete-account/carryover', protect, async (req, res) => {
+    try {
+        const u = await User.findById(req.user.id)
+            .select('restrictions hidden suspension storyBan bannedWords warnings externalPromo')
+            .lean();
+        const items = require('../utils/restrictionCarryover').pendingCarryoverSummary(u);
+        res.json({
+            success: true,
+            data: {
+                willCarry: items.length > 0,
+                items,
+                message: items.length > 0
+                    ? 'على حسابك تقييدات سارية. حذف الحساب لا يلغيها: إن أنشأت حساباً جديداً ستنتقل إليه حتى موعد انتهائها.'
+                    : ''
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   DELETE /api/auth/delete-account
 // @desc    حذف حساب المستخدم
 // @access  Private
@@ -1769,6 +1801,9 @@ router.delete('/delete-account', protect, async (req, res) => {
                 });
             }
         }
+        // 🔁 التقييدات السارية تنتقل لحسابه الجديد إن أعاد التسجيل (الحذف كان يمحو العقوبة)
+        await require('../utils/restrictionCarryover').captureOnDelete(user._id);
+
         // ✅ إخفاء المحادثات عند المستخدم فقط — الطرف الآخر يحتفظ بسجله
         // (الرسائل والمحادثات تبقى للطرف الآخر، المستخدم نفسه يُحذف)
         await Conversation.updateMany(
