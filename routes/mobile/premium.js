@@ -247,56 +247,84 @@ router.get('/super-like/remaining', protect, async (req, res) => {
 // @access  Protected
 router.post('/subscription/verify', protect, async (req, res) => {
     try {
-        const { receipt, transactionId, originalTransactionId, plan } = req.body;
+        const { receipt, transactionId, originalTransactionId, plan, signedTransaction } = req.body;
+        const apple = require('../../utils/appleTransactions');
 
-        // يجب إرسال إما receipt (StoreKit 1) أو transactionId (StoreKit 2)
-        if (!receipt && !transactionId) {
+        if (!signedTransaction && !receipt && !transactionId) {
             return res.status(400).json({
                 success: false,
-                message: 'بيانات الإيصال مطلوبة (receipt أو transactionId)'
+                message: 'بيانات الإيصال مطلوبة'
             });
         }
 
-        if (!plan) {
-            return res.status(400).json({ success: false, message: 'الخطة مطلوبة' });
+        // ── 1) التحقق من أبل ─────────────────────────────────────────
+        let verified = null;          // حمولة معاملة موثّقة
+        let method = 'legacy';
+        try {
+            if (signedTransaction) {
+                verified = await apple.verifySignedTransaction(signedTransaction);
+                method = 'jws';
+            } else if (transactionId && apple.isApiConfigured()) {
+                verified = await apple.verifyTransactionId(transactionId);
+                method = 'api';
+            }
+        } catch (err) {
+            console.warn(`[iap] رُفض تحقق أبل للمستخدم ${req.user._id}: ${err.message || err}`);
+            return res.status(400).json({ success: false, code: 'IAP_VERIFICATION_FAILED', message: 'تعذّر التحقق من عملية الشراء' });
         }
 
-        if (!['weekly', 'monthly', 'quarterly'].includes(plan)) {
+        if (!verified) {
+            // نسخ قديمة ترسل transactionId فقط ولا مفتاح App Store Server API بعد.
+            // رفضها يعني مستخدماً دفع لأبل ولم يُفعَّل — لذا تُقبل وتُعلَّم legacy حتى يُضبط المفتاح أو APPLE_IAP_ENFORCE=1.
+            if (process.env.APPLE_IAP_ENFORCE === '1') {
+                return res.status(426).json({ success: false, code: 'UPDATE_REQUIRED', message: 'حدّث التطبيق لإتمام تفعيل الاشتراك' });
+            }
+            console.warn(`[iap] تفعيل legacy بلا تحقق للمستخدم ${req.user._id} (transactionId=${transactionId || '-'})`);
+        }
+
+        if (verified) {
+            if (verified.revoked) {
+                return res.status(400).json({ success: false, code: 'IAP_REVOKED', message: 'هذه العملية مستردّة أو ملغاة' });
+            }
+            if (!verified.plan) {
+                return res.status(400).json({ success: false, code: 'IAP_UNKNOWN_PRODUCT', message: 'منتج غير معروف' });
+            }
+            if (verified.expiresDate && verified.expiresDate <= new Date()) {
+                return res.status(400).json({ success: false, code: 'IAP_EXPIRED', message: 'انتهت صلاحية هذا الاشتراك' });
+            }
+            // 🔒 اشتراك أبل واحد لحساب هلا واحد — لا تفعيل حسابات متعددة بالشراء نفسه
+            const owner = await User.findOne({
+                subscriptionOriginalTransactionId: verified.originalTransactionId,
+                _id: { $ne: req.user._id }
+            }).select('_id').lean();
+            if (owner) {
+                return res.status(409).json({ success: false, code: 'IAP_IN_USE', message: 'هذا الاشتراك مفعّل على حساب آخر' });
+            }
+        }
+
+        // ── 2) الخطة وتاريخ الانتهاء ─────────────────────────────────
+        const effectivePlan = verified ? verified.plan : plan;
+        if (!['weekly', 'monthly', 'quarterly'].includes(effectivePlan)) {
             return res.status(400).json({ success: false, message: 'خطة غير صالحة' });
         }
-
-        // TODO: التحقق الفعلي من Apple في بيئة الإنتاج
-        // StoreKit 1: التحقق من receipt عبر Apple verifyReceipt API
-        // StoreKit 2: التحقق من transactionId عبر App Store Server API v2
-
-        // حساب تاريخ الانتهاء
         const now = new Date();
-        let expiresAt;
-        switch (plan) {
-            case 'weekly':
-                expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-                break;
-            case 'monthly':
-                expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-                break;
-            case 'quarterly':
-                expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-                break;
-        }
+        const days = { weekly: 7, monthly: 30, quarterly: 90 }[effectivePlan];
+        // الموثّق: تاريخ أبل الحقيقي (يشمل التجديد). legacy: تقدير من الخطة كما كان.
+        const expiresAt = verified && verified.expiresDate
+            ? verified.expiresDate
+            : new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
         const updateData = {
             isPremium: true,
-            premiumPlan: plan,
-            premiumExpiresAt: expiresAt
+            premiumPlan: effectivePlan,
+            premiumExpiresAt: expiresAt,
+            subscriptionProvider: 'apple',
+            subscriptionVerification: method
         };
-
-        // حفظ بيانات المعاملة لو StoreKit 2
-        if (transactionId) {
-            updateData.subscriptionTransactionId = transactionId;
-            if (originalTransactionId) {
-                updateData.subscriptionOriginalTransactionId = originalTransactionId;
-            }
-        }
+        const txId = verified ? verified.transactionId : transactionId;
+        const origId = verified ? verified.originalTransactionId : originalTransactionId;
+        if (txId) updateData.subscriptionTransactionId = String(txId);
+        if (origId) updateData.subscriptionOriginalTransactionId = String(origId);
 
         await User.findByIdAndUpdate(req.user._id, updateData);
 
@@ -305,8 +333,9 @@ router.post('/subscription/verify', protect, async (req, res) => {
             message: 'تم تفعيل الاشتراك بنجاح',
             data: {
                 isPremium: true,
-                plan,
-                expiresAt: expiresAt.toISOString()
+                plan: effectivePlan,
+                expiresAt: expiresAt.toISOString(),
+                verified: method !== 'legacy'
             }
         });
     } catch (error) {

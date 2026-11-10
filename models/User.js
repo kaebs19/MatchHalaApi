@@ -320,6 +320,8 @@ const userSchema = new mongoose.Schema({
     // بيانات StoreKit 2 (Apple)
     subscriptionTransactionId: { type: String, default: null },
     subscriptionOriginalTransactionId: { type: String, default: null },
+    // كيف تحقّق السيرفر من آخر شراء أبل: jws (توقيع StoreKit 2) | api (App Store Server API) | legacy (بلا تحقق — نسخ قديمة)
+    subscriptionVerification: { type: String, enum: ['jws', 'api', 'legacy', null], default: null },
 
     // مزوّد الاشتراك ('apple' | 'google')
     subscriptionProvider: {
