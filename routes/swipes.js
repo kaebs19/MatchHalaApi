@@ -915,14 +915,30 @@ router.get('/likes-me', protect, requirePremium, async (req, res) => {
         };
 
         const likes = await Swipe.find(likesFilter)
-            .populate('swiper', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified')
+            .populate('swiper', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
             .sort({ createdAt: -1 })
             .limit(limitNum)
             .skip((pageNum - 1) * limitNum);
 
         const total = await Swipe.countDocuments(likesFilter);
 
-        const formattedLikes = likes.map(like => ({
+        const { isUserFullyBanned } = require('./mobile/helpers');
+        const formattedLikes = likes.filter(like => like.swiper).map(like => isUserFullyBanned(like.swiper) ? ({
+            // مخفي/محظور ← «مستخدم غير متاح» بلا صورة ولا تفاصيل
+            _id: like._id,
+            type: like.type,
+            createdAt: like.createdAt,
+            user: {
+                _id: like.swiper._id,
+                name: like.swiper.selfHidden?.active ? 'مستخدم غير متاح' : 'مستخدم محظور',
+                profileImage: null,
+                isOnline: false,
+                isPremium: false,
+                isVerified: false,
+                isSuspendedAccount: true,
+                ...(like.swiper.selfHidden?.active ? { isDeactivatedAccount: true } : {})
+            }
+        }) : ({
             _id: like._id,
             type: like.type,
             createdAt: like.createdAt,
@@ -976,14 +992,30 @@ router.get('/my-likes', protect, async (req, res) => {
         };
 
         const likes = await Swipe.find(likesFilter)
-            .populate('swiped', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified')
+            .populate('swiped', 'name profileImage birthDate gender country bio isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
             .sort({ createdAt: -1 })
             .limit(limitNum)
             .skip((pageNum - 1) * limitNum);
 
         const total = await Swipe.countDocuments(likesFilter);
 
-        const formattedLikes = likes.map(like => ({
+        const { isUserFullyBanned } = require('./mobile/helpers');
+        const formattedLikes = likes.filter(like => like.swiped).map(like => isUserFullyBanned(like.swiped) ? ({
+            // مخفي/محظور ← «مستخدم غير متاح» بلا صورة ولا تفاصيل
+            _id: like._id,
+            type: like.type,
+            createdAt: like.createdAt,
+            user: {
+                _id: like.swiped._id,
+                name: like.swiped.selfHidden?.active ? 'مستخدم غير متاح' : 'مستخدم محظور',
+                profileImage: null,
+                isOnline: false,
+                isPremium: false,
+                isVerified: false,
+                isSuspendedAccount: true,
+                ...(like.swiped.selfHidden?.active ? { isDeactivatedAccount: true } : {})
+            }
+        }) : ({
             _id: like._id,
             type: like.type,
             createdAt: like.createdAt,

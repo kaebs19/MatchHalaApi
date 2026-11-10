@@ -604,7 +604,7 @@ router.get('/users/:id/profile', protect, async (req, res) => {
                 data: {
                     user: {
                         _id: user._id,
-                        name: user.selfHidden?.active ? 'حساب غير متاح' : 'مستخدم محظور',
+                        name: user.selfHidden?.active ? 'مستخدم غير متاح' : 'مستخدم محظور',
                         ...(user.selfHidden?.active ? { isDeactivatedAccount: true } : {}),
                         profileImage: null,
                         photos: [],
@@ -910,7 +910,7 @@ router.get('/profile-views', protect, async (req, res) => {
         if (isPremium) {
             // المشترك: يشوف التفاصيل
             const views = await ProfileView.find(viewsBaseFilter)
-                .populate('viewer', 'name profileImage country isOnline isPremium verification.isVerified')
+                .populate('viewer', 'name profileImage country isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
                 .sort({ createdAt: -1 })
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)
@@ -924,16 +924,34 @@ router.get('/profile-views', protect, async (req, res) => {
                     // وإلا كان v.viewer._id يرمي خطأ → 500 → القائمة تظهر فارغة للمشترك
                     views: views
                         .filter(v => v.viewer)
-                        .map(v => ({
-                            viewer: {
-                                _id: v.viewer._id,
-                                name: v.viewer.name,
-                                profileImage: getFullUrl(v.viewer.profileImage),
-                                country: v.viewer.country,
-                                isVerified: v.viewer.verification?.isVerified || false
-                            },
-                            createdAt: v.createdAt
-                        })),
+                        .map(v => {
+                            // مخفي/محظور ← «مستخدم غير متاح» بلا صورة
+                            if (isUserFullyBanned(v.viewer)) {
+                                const hidden = v.viewer.selfHidden?.active === true;
+                                return {
+                                    viewer: {
+                                        _id: v.viewer._id,
+                                        name: hidden ? 'مستخدم غير متاح' : 'مستخدم محظور',
+                                        profileImage: null,
+                                        country: null,
+                                        isVerified: false,
+                                        isSuspendedAccount: true,
+                                        ...(hidden ? { isDeactivatedAccount: true } : {})
+                                    },
+                                    createdAt: v.createdAt
+                                };
+                            }
+                            return {
+                                viewer: {
+                                    _id: v.viewer._id,
+                                    name: v.viewer.name,
+                                    profileImage: getFullUrl(v.viewer.profileImage),
+                                    country: v.viewer.country,
+                                    isVerified: v.viewer.verification?.isVerified || false
+                                },
+                                createdAt: v.createdAt
+                            };
+                        }),
                     page: pageNum,
                     totalPages: Math.ceil(totalViews / limitNum),
                     isPremiumRequired: false

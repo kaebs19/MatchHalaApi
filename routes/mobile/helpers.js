@@ -160,7 +160,7 @@ const maskBannedUser = (user) => {
 
     // أخفاه صاحبه ← اسم محايد (ليس عقوبة)
     const selfHidden = userObj.selfHidden?.active === true;
-    userObj.name = selfHidden ? 'حساب غير متاح' : 'مستخدم محظور';
+    userObj.name = selfHidden ? 'مستخدم غير متاح' : 'مستخدم محظور';
     if (selfHidden) userObj.isDeactivatedAccount = true;
     delete userObj.selfHidden;
     userObj.profileImage = null;
