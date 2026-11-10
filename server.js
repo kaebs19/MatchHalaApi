@@ -391,6 +391,8 @@ app.use('/api/admin/stickers', require('./routes/adminStickers'));
 app.use('/api/admin/removal-requests', require('./routes/adminRemovalRequests'));
 // نموذج «طلب إزالة محتوى» العام في chathala.com/report-content (بلا تسجيل دخول)
 app.use('/api/public/removal-requests', require('./routes/removalRequests'));
+// نموذج «اتصل بنا» في chathala.com/contact — بريد لفريق الدعم
+app.use('/api/public/contact', require('./routes/contact'));
 app.use('/api/interests', require('./routes/interests'));
 app.use('/api/appeals', require('./routes/appeals'));
 app.use('/api/newcomers', require('./routes/newcomers'));

@@ -44,9 +44,10 @@ function getTransporter() {
  * @param {string} opts.subject
  * @param {string} opts.html
  * @param {string} [opts.text] نسخة نصية (تحسّن تقييم مرشّحات السبام)
+ * @param {string} [opts.replyTo] يتجاوز EMAIL_REPLY_TO (رسائل «اتصل بنا»: الردّ يذهب للمرسل)
  * @returns {Promise<{messageId:string}>}
  */
-async function deliver({ to, subject, html, text }) {
+async function deliver({ to, subject, html, text, replyTo }) {
     const t = getTransporter();
     if (!t) throw new Error('إعدادات البريد غير مكتملة (EMAIL_HOST / EMAIL_USER / EMAIL_PASSWORD)');
 
@@ -62,7 +63,7 @@ async function deliver({ to, subject, html, text }) {
         headers: { 'X-Entity-Ref-ID': `${Date.now()}-${Math.random().toString(36).slice(2, 10)}` }
     };
     if (text) message.text = text;
-    if (SUPPORT_EMAIL) message.replyTo = SUPPORT_EMAIL;
+    if (replyTo || SUPPORT_EMAIL) message.replyTo = replyTo || SUPPORT_EMAIL;
 
     return t.sendMail(message);
 }
