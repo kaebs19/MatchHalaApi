@@ -22,12 +22,15 @@ router.get('/app/bootstrap', protect, async (req, res) => {
         const { verifySubscriptionExpiration } = require('./premium');
         const { getHideStatus } = require('../users');
 
-        const [unreadRes, pendingRes, warningRes, subscriptionRes, hideRes] = await Promise.all([
+        const { getFeaturesForUser } = require('../../utils/featureFlags');
+
+        const [unreadRes, pendingRes, warningRes, subscriptionRes, hideRes, features] = await Promise.all([
             captureHandler(getUnreadNotificationsCount, req),
             captureHandler(getPendingRequestsCount, req),
             captureHandler(getActiveWarning, req),
             captureHandler(verifySubscriptionExpiration, req),
-            captureHandler(getHideStatus, req)
+            captureHandler(getHideStatus, req),
+            getFeaturesForUser(req.user)
         ]);
 
         res.set('Cache-Control', 'no-store');
@@ -38,7 +41,9 @@ router.get('/app/bootstrap', protect, async (req, res) => {
                 pendingRequests: pendingRes?.data || null,
                 activeWarning: warningRes?.data || null,
                 subscription: subscriptionRes?.data || null,
-                hideStatus: hideRes?.data || null
+                hideStatus: hideRes?.data || null,
+                // مفاتيح الميزات (تبويب الألعاب…) — utils/featureFlags.js
+                features
             }
         });
     } catch (error) {

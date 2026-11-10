@@ -227,6 +227,14 @@ const settingsSchema = new mongoose.Schema({
         }
     },
 
+    // 🎮 ظهور تبويب الألعاب في التطبيق (features.games في /app/bootstrap)
+    // off = مخفي للجميع · admins = المشرفون فقط (تجربة على الإنتاج) · all = الجميع
+    gamesTab: {
+        type: String,
+        enum: ['off', 'admins', 'all'],
+        default: 'admins'
+    },
+
     // ✅ وضع الصيانة (Maintenance Mode)
     maintenanceMode: {
         enabled: { type: Boolean, default: false },
