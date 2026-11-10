@@ -1842,7 +1842,7 @@ router.post('/reactivate', async (req, res) => {
 // @access  Private
 router.post('/hide-account', protect, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('isActive suspension bannedWords selfHidden');
+        const user = await User.findById(req.user.id).select('name email profileImage isActive suspension bannedWords selfHidden');
         if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
         if ((user.suspension && user.suspension.isSuspended) || (user.bannedWords && user.bannedWords.isBanned)) {
             return res.status(400).json({ success: false, code: 'ACCOUNT_RESTRICTED', message: 'لا يمكن إخفاء حساب موقوف' });
@@ -1860,9 +1860,23 @@ router.post('/hide-account', protect, async (req, res) => {
             }
         });
 
+        // نفس بيانات ACCOUNT_HIDDEN ← التطبيق يعرض «حسابك مخفي» مباشرة بدل صفحة الدخول
+        const jwt = require('jsonwebtoken');
+        const hiddenAt = new Date();
         res.json({
             success: true,
-            message: 'أُخفي حسابك. سجّل الدخول في أي وقت ليعود كما كان.'
+            message: 'أُخفي حسابك. سجّل الدخول في أي وقت ليعود كما كان.',
+            data: {
+                reactivationToken: jwt.sign({ id: user._id, type: 'reactivate' }, process.env.JWT_SECRET, { expiresIn: '15m' }),
+                hiddenAt,
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    halaId: String(user._id),
+                    profileImage: getFullUrl(user.profileImage)
+                }
+            }
         });
     } catch (error) {
         console.error('خطأ في إخفاء الحساب:', error);
