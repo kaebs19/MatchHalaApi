@@ -106,7 +106,10 @@ function buildSnapshot(u, now = new Date()) {
             violations: ep.violations || 0, lastViolationAt: ep.lastViolationAt || null,
             lockCount: ep.lockCount || 0, lastLockAt: ep.lastLockAt || null
         };
-        summary.push(`مخالفات حسابات خارجية (${ep.violations || 0}، إيقافات ${ep.lockCount || 0})`);
+        const parts = [];
+        if (ep.violations > 0) parts.push(`${ep.violations} مخالفات`);
+        if (ep.lockCount > 0) parts.push(`${ep.lockCount} إيقافات`);
+        summary.push(`سجلّ مشاركة حسابات خارجية: ${parts.join(' و')}`);
     }
 
     if (summary.length === 0) return null;
