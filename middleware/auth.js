@@ -35,6 +35,10 @@ const protect = async (req, res, next) => {
 
             // التحقق من Token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            // رمز إعادة التنشيط (حساب مخفي) لا يصلح للدخول — لمسار /auth/reactivate وحده
+            if (decoded.type === 'reactivate') {
+                return res.status(401).json({ success: false, message: 'غير مصرح' });
+            }
 
             // الحصول على بيانات المستخدم (بدون كلمة المرور)
             // ⚠️ بلا المصفوفات التاريخية: كل عنصر فيها يُبنى مستنداً فرعياً كاملاً مع كل طلب

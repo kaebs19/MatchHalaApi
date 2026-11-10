@@ -248,6 +248,34 @@ async function reactivateSelfHidden(user) {
     return true;
 }
 
+// 🙈 النسخ الجديدة (header X-Supports-Hidden-Account: 1) ترى شاشة «حسابك مخفي» بدل الاستعادة التلقائية:
+//    403 ACCOUNT_HIDDEN + رمز إعادة تنشيط (15 دقيقة) لـ POST /auth/reactivate. القديمة والويب ← تعود تلقائياً.
+async function respondIfSelfHidden(req, res, user) {
+    if (!user || user.isActive !== false || !(user.selfHidden && user.selfHidden.active)) return false;
+    if ((user.suspension && user.suspension.isSuspended) || (user.bannedWords && user.bannedWords.isBanned)) return false;
+    const supports = req.get('x-supports-hidden-account') === '1' || req.body?.supportsHiddenAccount === true;
+    if (!supports) return false;
+    const jwt = require('jsonwebtoken');
+    const reactivationToken = jwt.sign({ id: user._id, type: 'reactivate' }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_HIDDEN',
+        message: 'حسابك مخفي',
+        data: {
+            reactivationToken,
+            hiddenAt: user.selfHidden.at || null,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                halaId: String(user._id),   // Hala ID في التطبيق = معرّف الحساب (لا حقل halaId في النموذج)
+                profileImage: getFullUrl(user.profileImage)
+            }
+        }
+    });
+    return true;
+}
+
 // ⚠️ كان هنا مُسجِّلٌ يحظر جهازَ الموقوف تلقائياً حين يحاول الدخولَ إلى
 //    حسابه الموقوف. هذا ما جعل «بعض» الموقوفين لا يستطيعون إنشاء حساب جديد
 //    و«بعضهم» يستطيع — حسب من جرّب حسابه القديم أولاً. التعليق يعلّق الحساب
@@ -537,7 +565,8 @@ router.post('/login', loginValidation, validate, async (req, res) => {
             }
         }
 
-        // 🙈 أخفاه صاحبه؟ يعود بالدخول
+        // 🙈 أخفاه صاحبه؟ النسخ الجديدة ← شاشة «حسابك مخفي»، غيرها يعود بالدخول
+        if (await respondIfSelfHidden(req, res, user)) return;
         await reactivateSelfHidden(user);
 
         // التحقق من أن الحساب مفعل
@@ -1761,6 +1790,52 @@ router.post('/reset-account', protect, async (req, res) => {
     }
 });
 
+// @route   POST /api/auth/reactivate
+// @desc    إعادة تنشيط حساب مخفي من شاشة «حسابك مخفي» — { reactivationToken } ← ردّ دخول عادي
+// @access  Public (الرمز من ردّ ACCOUNT_HIDDEN بعد التحقق من الهوية)
+router.post('/reactivate', async (req, res) => {
+    try {
+        const jwt = require('jsonwebtoken');
+        let decoded;
+        try {
+            decoded = jwt.verify(String(req.body.reactivationToken || ''), process.env.JWT_SECRET);
+        } catch (_) {
+            return res.status(401).json({ success: false, code: 'REACTIVATION_EXPIRED', message: 'انتهت صلاحية الطلب، سجّل الدخول من جديد' });
+        }
+        if (decoded.type !== 'reactivate') {
+            return res.status(401).json({ success: false, message: 'غير مصرح' });
+        }
+        const user = await User.findById(decoded.id);
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        await reactivateSelfHidden(user);
+        if (!user.isActive) {
+            return res.status(403).json({ success: false, message: 'لا يمكن تنشيط هذا الحساب، تواصل مع الدعم' });
+        }
+        await saveLoginRecord(user, req);
+
+        res.json({
+            success: true,
+            message: 'عاد حسابك كما كان',
+            data: {
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    profileImage: getFullUrl(user.profileImage),
+                    lastLogin: user.lastLogin
+                },
+                token: generateToken(user._id),
+                refreshToken: generateRefreshToken(user._id)
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في إعادة التنشيط:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // @route   POST /api/auth/hide-account
 // @desc    إخفاء الحساب بالكامل (بديل الحذف): لا يظهر في أي مكان، لا إشعارات، والطرف الآخر يرى «حساب غير متاح».
 //          يعود كما كان (المحادثات والتطابقات والاشتراك) بتسجيل الدخول. التقييدات السارية تبقى عليه.
@@ -2036,7 +2111,10 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
-        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
+        if (!isNewUser) {   // 🙈 أخفاه صاحبه؟ النسخ الجديدة ← شاشة «حسابك مخفي»، غيرها يعود بالدخول
+            if (await respondIfSelfHidden(req, res, user)) return;
+            await reactivateSelfHidden(user);
+        }
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,
@@ -2227,7 +2305,10 @@ router.post('/facebook', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
-        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
+        if (!isNewUser) {   // 🙈 أخفاه صاحبه؟ النسخ الجديدة ← شاشة «حسابك مخفي»، غيرها يعود بالدخول
+            if (await respondIfSelfHidden(req, res, user)) return;
+            await reactivateSelfHidden(user);
+        }
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,
@@ -2396,7 +2477,10 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
                 });
             }
         }
-        if (!isNewUser) await reactivateSelfHidden(user);   // 🙈 أخفاه صاحبه؟ يعود بالدخول
+        if (!isNewUser) {   // 🙈 أخفاه صاحبه؟ النسخ الجديدة ← شاشة «حسابك مخفي»، غيرها يعود بالدخول
+            if (await respondIfSelfHidden(req, res, user)) return;
+            await reactivateSelfHidden(user);
+        }
         if (!isNewUser && user.isActive === false) {
             return res.status(401).json({
                 success: false,
