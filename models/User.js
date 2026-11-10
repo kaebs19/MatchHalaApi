@@ -298,6 +298,24 @@ const userSchema = new mongoose.Schema({
     // ✅ Premium: لون اسم مخصص (hex)
     customNameColor: { type: String, default: null },
     premiumExpiresAt: { type: Date, default: null },
+    // 🎁 هلا+ ممنوح من لوحة التحكم (لا من المتجر) — آخر منح + السجلّ
+    premiumGrant: {
+        active: { type: Boolean, default: false },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+        byName: { type: String, default: null },
+        at: { type: Date, default: null },
+        until: { type: Date, default: null },
+        reason: { type: String, default: null },
+        history: [{
+            _id: false,
+            action: { type: String, enum: ['grant', 'extend', 'revoke'] },
+            by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            byName: String,
+            at: Date,
+            until: Date,
+            reason: String
+        }]
+    },
 
     // بيانات StoreKit 2 (Apple)
     subscriptionTransactionId: { type: String, default: null },

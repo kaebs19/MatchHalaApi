@@ -40,6 +40,7 @@ import {
 import ConversationDetail from './ConversationDetail';
 import ConversationMessages from './ConversationMessages';
 import UserStoriesTab, { UserStoriesViewer } from '../components/UserStoriesTab';
+import PremiumGrantModal from '../components/PremiumGrantModal';
 import './UserDetail.css';
 
 const PHOTO_HISTORY_REASONS = {
@@ -187,6 +188,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
 
     // Admin Actions State
     const [actionLoading, setActionLoading] = useState(false);
+    const [showPremiumGrant, setShowPremiumGrant] = useState(false);
     const [showSuspendModal, setShowSuspendModal] = useState(false);
     const [showNameModal, setShowNameModal] = useState(false);
     const [showNotifyModal, setShowNotifyModal] = useState(false);
@@ -3069,6 +3071,26 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                             >
                                 🔒 تقييد جزائي
                             </button>
+
+                            {/* 🎁 منح/تمديد هلا+ */}
+                            <button
+                                className="admin-action-btn"
+                                style={{ background: "linear-gradient(135deg,#fbbf24,#f59e0b)", color: "#1a1a1a", border: "none", fontWeight: 700 }}
+                                onClick={() => setShowPremiumGrant(true)}
+                                disabled={actionLoading}
+                            >
+                                {user.isPremium && user.premiumExpiresAt && new Date(user.premiumExpiresAt) > new Date()
+                                    ? "⭐ تمديد / سحب هلا+"
+                                    : "⭐ منح هلا+"}
+                            </button>
+                            {showPremiumGrant && (
+                                <PremiumGrantModal
+                                    user={user}
+                                    showToast={showToast}
+                                    onClose={() => setShowPremiumGrant(false)}
+                                    onDone={() => { setShowPremiumGrant(false); fetchUserActivity(); }}
+                                />
+                            )}
 
                             {/* ✅ شارة VIP (X) */}
                             <button

@@ -243,6 +243,121 @@ router.get('/premium', protect, adminOnly, async (req, res) => {
 // @route   PUT /api/users/:id/premium
 // @desc    تعديل اشتراك مستخدم يدوياً
 // @access  Private/Admin
+// ═══════════════════════════════════════════════════════════
+// 🎁 منح هلا+ من لوحة التحكم — POST يمنح/يمدّد، DELETE يسحب
+//    { days } أو { until } (ISO)، و reason اختياري. التطبيق يقرأ الحالة من
+//    /subscription/status عند الفتح فيتفعّل بلا شراء. الانتهاء يمرّ بالمسار العادي.
+// ═══════════════════════════════════════════════════════════
+const GRANT_MAX_DAYS = 366;
+const planForDays = (days) => (days <= 7 ? 'weekly' : days <= 31 ? 'monthly' : 'quarterly');
+
+router.post('/:id/premium-grant', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('name isPremium premiumPlan premiumExpiresAt premiumGrant subscriptionProvider subscriptionOriginalTransactionId');
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+
+        const now = new Date();
+        const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 200) : '';
+        const currentlyActive = user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt > now;
+
+        let until;
+        if (req.body.until) {
+            until = new Date(req.body.until);
+            if (isNaN(until.getTime()) || until <= now) {
+                return res.status(400).json({ success: false, message: 'تاريخ الانتهاء يجب أن يكون في المستقبل' });
+            }
+        } else {
+            const days = parseInt(req.body.days, 10);
+            if (!days || days < 1 || days > GRANT_MAX_DAYS) {
+                return res.status(400).json({ success: false, message: `المدة من 1 إلى ${GRANT_MAX_DAYS} يوماً` });
+            }
+            // التمديد يبدأ من نهاية الاشتراك الحالي إن كان سارياً
+            const base = currentlyActive ? user.premiumExpiresAt : now;
+            until = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+        }
+        if (until.getTime() - now.getTime() > GRANT_MAX_DAYS * 24 * 60 * 60 * 1000) {
+            return res.status(400).json({ success: false, message: `لا يتجاوز المنح ${GRANT_MAX_DAYS} يوماً من اليوم` });
+        }
+
+        const action = currentlyActive ? 'extend' : 'grant';
+        const days = Math.max(1, Math.round((until - now) / 86400000));
+        user.isPremium = true;
+        user.premiumExpiresAt = until;
+        // خطة المتجر تبقى كما هي؛ الممنوح يتبع المدة المتبقية
+        if (!(user.subscriptionProvider || user.subscriptionOriginalTransactionId) || !user.premiumPlan) user.premiumPlan = planForDays(days);
+        user.premiumGrant = user.premiumGrant || {};
+        user.premiumGrant.active = true;
+        user.premiumGrant.by = req.user._id;
+        user.premiumGrant.byName = req.user.name || null;
+        user.premiumGrant.at = now;
+        user.premiumGrant.until = until;
+        user.premiumGrant.reason = reason || null;
+        user.premiumGrant.history = [
+            ...(user.premiumGrant.history || []),
+            { action, by: req.user._id, byName: req.user.name || null, at: now, until, reason: reason || null }
+        ].slice(-30);
+        await user.save();
+
+        try {
+            const pushNotificationService = require('../services/pushNotificationService');
+            const untilAr = until.toLocaleDateString('ar-SA-u-ca-gregory', { day: 'numeric', month: 'long', year: 'numeric' });
+            await pushNotificationService.sendNotificationToUser(user._id, {
+                title: action === 'extend' ? '🎁 تم تمديد اشتراكك في هلا+' : '🎁 حصلت على هلا+',
+                body: `استمتع بكل مزايا هلا+ حتى ${untilAr}. افتح التطبيق لتفعيلها.`
+            }, { type: 'system' });
+        } catch (e) {
+            console.error('Premium grant notification error:', e.message);
+        }
+
+        res.json({
+            success: true,
+            message: action === 'extend' ? 'تم تمديد هلا+' : 'تم منح هلا+',
+            data: {
+                isPremium: true,
+                premiumPlan: user.premiumPlan,
+                premiumExpiresAt: user.premiumExpiresAt,
+                premiumGrant: user.premiumGrant,
+                // اشتراك المتجر قد يعيد كتابة تاريخ الانتهاء عند تجديده
+                hasStoreSubscription: Boolean(user.subscriptionProvider || user.subscriptionOriginalTransactionId)
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في منح هلا+:', error);
+        res.status(500).json({ success: false, message: 'فشل منح هلا+' });
+    }
+});
+
+router.delete('/:id/premium-grant', protect, adminOnly, async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('name isPremium premiumPlan premiumExpiresAt premiumGrant stealthMode customNameColor privacySettings');
+        if (!user) return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+        const now = new Date();
+        user.isPremium = false;
+        user.premiumPlan = null;
+        user.premiumExpiresAt = null;
+        user.stealthMode = false;
+        user.customNameColor = null;
+        if (user.privacySettings) {
+            user.privacySettings.invisibleRead = false;
+            user.privacySettings.stealthMode = false;
+            user.privacySettings.premiumOnlyRequests = false;
+        }
+        user.premiumGrant = user.premiumGrant || {};
+        user.premiumGrant.active = false;
+        user.premiumGrant.history = [
+            ...(user.premiumGrant.history || []),
+            { action: 'revoke', by: req.user._id, byName: req.user.name || null, at: now, until: null, reason: null }
+        ].slice(-30);
+        await user.save();
+        if (global.io) global.io.to(`user:${user._id}`).emit('premium-expired');
+        res.json({ success: true, message: 'تم سحب هلا+', data: { isPremium: false, premiumGrant: user.premiumGrant } });
+    } catch (error) {
+        console.error('خطأ في سحب هلا+:', error);
+        res.status(500).json({ success: false, message: 'فشل سحب هلا+' });
+    }
+});
+
 router.put('/:id/premium', protect, adminOnly, async (req, res) => {
     try {
         const { isPremium, premiumPlan, premiumExpiresAt } = req.body;

@@ -923,3 +923,14 @@ export const getRemovalEvidenceBlob = async (id, index) => {
     const response = await api.get(`/admin/removal-requests/${id}/evidence/${index}`, { responseType: 'blob' });
     return response.data;
 };
+
+// 🎁 منح/تمديد هلا+ من لوحة التحكم ({ days } أو { until }, reason) — وسحبه
+export const grantPremium = async (userId, body) => {
+    const response = await api.post(`/users/${userId}/premium-grant`, body);
+    return response.data;
+};
+
+export const revokePremiumGrant = async (userId) => {
+    const response = await api.delete(`/users/${userId}/premium-grant`);
+    return response.data;
+};
