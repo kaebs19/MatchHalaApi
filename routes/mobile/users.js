@@ -910,7 +910,7 @@ router.get('/profile-views', protect, async (req, res) => {
         if (isPremium) {
             // المشترك: يشوف التفاصيل
             const views = await ProfileView.find(viewsBaseFilter)
-                .populate('viewer', 'name profileImage country isOnline isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
+                .populate('viewer', 'name profileImage country birthDate showAge isOnline lastLogin isPremium verification.isVerified isActive selfHidden.active bannedWords.isBanned suspension.isSuspended suspension.level')
                 .sort({ createdAt: -1 })
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)
@@ -941,12 +941,21 @@ router.get('/profile-views', protect, async (req, res) => {
                                     createdAt: v.createdAt
                                 };
                             }
+                            const img = getFullUrl(v.viewer.profileImage);
+                            const bd = v.viewer.birthDate ? new Date(v.viewer.birthDate) : null;
+                            const age = bd && v.viewer.showAge !== false
+                                ? Math.floor((Date.now() - bd.getTime()) / (365.25 * 24 * 3600 * 1000))
+                                : null;
                             return {
                                 viewer: {
                                     _id: v.viewer._id,
                                     name: v.viewer.name,
-                                    profileImage: getFullUrl(v.viewer.profileImage),
+                                    profileImage: img,
+                                    avatar: img,   // ⚠️ التطبيق يقرأ avatar (ExploreCard) — بدونه لا تظهر الصور
                                     country: v.viewer.country,
+                                    age,
+                                    isOnline: !!v.viewer.isOnline,
+                                    isPremium: !!v.viewer.isPremium,
                                     isVerified: v.viewer.verification?.isVerified || false
                                 },
                                 createdAt: v.createdAt
