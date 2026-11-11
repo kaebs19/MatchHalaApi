@@ -16,11 +16,25 @@ const store = require('./store');
 const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
 const BOT_DELAY_MS = 1200;
 const AUTO_MOVE_MS = 700;
+// قرار إعادة الرمي: لا حركة ممكنة ← مهلة قصيرة ثم تخطٍّ تلقائي (لا يُحسب دوراً فائتاً)
+const REROLL_DECIDE_MS = 6000;
 const TICK_MS = 400;
 
 const BOT_NAMES = ['سهم', 'نجمة', 'برق', 'موج', 'غيمة', 'صقر'];
 
-const rollDie = () => crypto.randomInt(1, 7);
+// ⚙️ احتمال الـ 6 أعلى من النرد العادي (طلب المالك) — للجميع بالتساوي، ويرتفع أكثر حين تكون
+//    كل قطع صاحب الدور في القاعدة (أكثر لحظة مملّة: لا شيء يُفعل بلا 6).
+//    الوزن 1 = نرد عادي (16.7%). 1.6 ≈ 24%، 2.5 ≈ 33%.
+const SIX_WEIGHT = Number(process.env.LUDO_SIX_WEIGHT) || 1.6;
+const SIX_WEIGHT_ALL_BASE = Number(process.env.LUDO_SIX_WEIGHT_BASE) || 2.5;
+
+function rollDie(state) {
+    const seat = state?.seats?.[state.turn];
+    const allBase = !!seat && seat.tokens.some(p => p === -1) && seat.tokens.every(p => p === -1 || p === 56);
+    const weight = allBase ? SIX_WEIGHT_ALL_BASE : SIX_WEIGHT;
+    const r = (crypto.randomInt(0, 1_000_000) / 1_000_000) * (5 + weight);
+    return r < 5 ? 1 + Math.floor(r) : 6;
+}
 const newGameId = () => crypto.randomBytes(9).toString('base64url');
 
 let ioRef = null;
@@ -54,7 +68,11 @@ function scheduleNext(record, now = Date.now()) {
     if (s.phase === 'ended') { record.deadlineAt = null; return; }
     const seat = s.seats[s.turn];
     if (seat.isBot) record.deadlineAt = now + BOT_DELAY_MS;
-    else if (s.phase === 'move' && s.legalMoves.length === 1) record.deadlineAt = now + AUTO_MOVE_MS;
+    else if (s.phase === 'move' && s.legalMoves.length === 0) record.deadlineAt = now + REROLL_DECIDE_MS;
+    // حركة وحيدة: تلقائية سريعاً — إلا إن كان يستطيع إعادة الرمي (نعطيه وقتاً ليقرّر)
+    else if (s.phase === 'move' && s.legalMoves.length === 1) {
+        record.deadlineAt = now + (s.canReroll ? REROLL_DECIDE_MS : AUTO_MOVE_MS);
+    }
     else record.deadlineAt = now + TURN_MS;
 }
 
@@ -166,6 +184,22 @@ async function playerMove(userId, gameId, token, version) {
     return view(r);
 }
 
+async function playerReroll(userId, gameId, version) {
+    const r = await mutate(gameId, (record) => {
+        assertPlayer(record, userId);
+        return engine.reroll(record.state, { playerId: userId, rollDie, expectVersion: version });
+    });
+    return view(r);
+}
+
+async function playerPass(userId, gameId, version) {
+    const r = await mutate(gameId, (record) => {
+        assertPlayer(record, userId);
+        return engine.pass(record.state, { playerId: userId, expectVersion: version });
+    });
+    return view(r);
+}
+
 async function playerLeave(userId, gameId) {
     const r = await mutate(gameId, (record) => {
         assertPlayer(record, userId);
@@ -194,7 +228,11 @@ async function processDue(gameId, now = Date.now()) {
         if (!record.deadlineAt || record.deadlineAt > now || record.state.phase === 'ended') return null;
         const s = record.state;
         const seat = s.seats[s.turn];
-        // حركة وحيدة للاعب: scheduleNext أعطاها مهلة AUTO_MOVE_MS — تُنفَّذ بلا احتساب دور فائت
+        // لا حركة ممكنة (كان يقرّر إعادة الرمي) ← تخطٍّ بلا احتساب دور فائت
+        if (!seat.isBot && s.phase === 'move' && s.legalMoves.length === 0) {
+            return engine.pass(s, { playerId: seat.id });
+        }
+        // حركة وحيدة للاعب: تُنفَّذ بلا احتساب دور فائت
         if (!seat.isBot && s.phase === 'move' && s.legalMoves.length === 1) {
             return engine.move(s, { playerId: seat.id, token: s.legalMoves[0].token });
         }
@@ -249,6 +287,8 @@ module.exports = {
     createMatch,
     playerRoll,
     playerMove,
+    playerReroll,
+    playerPass,
     playerLeave,
     currentGame,
     processDue,
@@ -256,5 +296,6 @@ module.exports = {
     startLudoTicker,
     stopLudoTicker,
     view,
-    constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS }
+    rollDie,
+    constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE }
 };

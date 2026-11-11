@@ -48,11 +48,49 @@ test('الإنشاء: لاعبان بلونين متقابلين وكل القط
     assert.equal(L.createGame({ players: [{ id: 'a' }, { id: 'b' }], mode: 'quick' }).seats[0].tokens.length, 2);
 });
 
-test('بلا 6 لا خروج من القاعدة والدور ينتقل', () => {
-    const { state, events } = L.roll(two(), { playerId: 'a', rollDie: dice(3) });
+test('بلا 6 لا خروج من القاعدة: مع رصيد إعادة ينتظر القرار، وبدونه ينتقل الدور', () => {
+    let { state, events } = L.roll(two(), { playerId: 'a', rollDie: dice(3) });
     assert.equal(events[0].noMoves, true);
+    assert.equal(state.seats[state.turn].id, 'a');
+    assert.equal(state.canReroll, true);
+    assert.deepEqual(state.legalMoves, []);
+    ({ state } = L.pass(state, { playerId: 'a' }));
     assert.equal(state.seats[state.turn].id, 'b');
     assert.equal(state.phase, 'roll');
+
+    const noRerolls = L.createGame({ players: [{ id: 'a' }, { id: 'b' }], options: { rerollsPerPlayer: 0 } });
+    ({ state } = L.roll(noRerolls, { playerId: 'a', rollDie: dice(3) }));
+    assert.equal(state.seats[state.turn].id, 'b');
+});
+
+test('إعادة الرمي: مرة واحدة، تستبدل النتيجة، ولا تُحسب الستة الملغاة', () => {
+    let { state } = L.roll(two(), { playerId: 'a', rollDie: dice(2) });
+    assert.equal(state.canReroll, true);
+    ({ state } = L.reroll(state, { playerId: 'a', rollDie: dice(6) }));
+    assert.equal(state.lastAction.reroll, true);
+    assert.equal(state.lastAction.previous, 2);
+    assert.equal(state.dice, 6);
+    assert.equal(state.seats[0].rerolls, 0);
+    assert.equal(state.canReroll, false);
+    assert.equal(state.legalMoves.length, 4);
+    assert.throws(() => L.reroll(state, { playerId: 'a', rollDie: dice(6) }), { code: 'CANNOT_REROLL' });
+    assert.throws(() => L.pass(state, { playerId: 'a' }), { code: 'CANNOT_PASS' });
+
+    // ستة ثم إعادة: لا تُحسب في الستات المتتالية
+    let g = withTokens(two(), { a: [0, BASE, BASE, BASE] });
+    ({ state: g } = L.roll(g, { playerId: 'a', rollDie: dice(6) }));
+    assert.equal(g.sixes, 1);
+    ({ state: g } = L.reroll(g, { playerId: 'a', rollDie: dice(6) }));
+    assert.equal(g.sixes, 1);
+});
+
+test('البوت لا يملك إعادة رمي، والمهلة تتخطّى بلا احتساب خطأ', () => {
+    const g = L.createGame({ players: [{ id: 'a' }, { id: 'bot', isBot: true }] });
+    assert.equal(g.seats[1].rerolls, 0);
+    let { state } = L.roll(g, { playerId: 'a', rollDie: dice(3) });
+    const r = L.autoStep(state, { rollDie: dice(1) });
+    assert.equal(r.events[0].type, 'pass');
+    assert.equal(r.state.seats[r.state.turn].id, 'bot');
 });
 
 test('ليس دورك + نسخة قديمة + مرحلة خاطئة', () => {

@@ -73,6 +73,8 @@ async function playToEnd(gameId, limit = 4000) {
             await service.processDue(gameId, Date.now() + 60_000);
         } else if (rec.state.phase === 'roll') {
             await service.playerRoll(seat.id, gameId, rec.state.version);
+        } else if (rec.state.legalMoves.length === 0) {
+            await service.playerPass(seat.id, gameId, rec.state.version);
         } else {
             await service.playerMove(seat.id, gameId, rec.state.legalMoves[0].token, rec.state.version);
         }
@@ -245,4 +247,26 @@ maybe('السوكت: ack موحّد، والعبارات من القائمة ف�
     const left = await sa.call('ludo:leave', { gameId: game.gameId });
     assert.equal(left.ok, true);
     assert.equal(left.game.phase, 'ended');
+});
+
+maybe('إعادة الرمي والتخطّي عبر الخدمة، والمهلة تتخطّى بلا احتساب خطأ', async () => {
+    const a = addUser();
+    const game = await lobby.startSolo(a, { mode: 'classic', size: 2 });
+    let rec = await store.getGame(game.gameId);
+    // نوصل الدور لـ a برمية بلا حركة (كل القطع في القاعدة)
+    for (let i = 0; i < 50; i++) {
+        rec = await store.getGame(game.gameId);
+        const seat = rec.state.seats[rec.state.turn];
+        if (seat.id !== a) { await service.processDue(game.gameId, Date.now() + 60_000); continue; }
+        if (rec.state.phase === 'roll') { await service.playerRoll(a, game.gameId, rec.state.version); continue; }
+        break;
+    }
+    rec = await store.getGame(game.gameId);
+    assert.equal(rec.state.phase, 'move');
+    assert.equal(rec.state.canReroll, true);
+    const v = await service.playerReroll(a, game.gameId, rec.state.version);
+    assert.equal(v.lastAction.reroll, true);
+    assert.equal(v.seats.find(s => s.id === a).rerolls, 0);
+    await assert.rejects(service.playerReroll(a, game.gameId, v.version), { code: 'CANNOT_REROLL' });
+    await service.playerLeave(a, game.gameId);
 });

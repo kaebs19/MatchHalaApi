@@ -65,6 +65,10 @@ function registerLudoHandlers(io, socket) {
         ({ game: await service.playerRoll(userId, gameId, version) }));
     on('ludo:move', async ({ gameId, token, version }) =>
         ({ game: await service.playerMove(userId, gameId, Number(token), version) }));
+    on('ludo:reroll', async ({ gameId, version }) =>
+        ({ game: await service.playerReroll(userId, gameId, version) }));
+    on('ludo:pass', async ({ gameId, version }) =>
+        ({ game: await service.playerPass(userId, gameId, version) }));
     on('ludo:leave', async ({ gameId }) => ({ game: await service.playerLeave(userId, gameId) }));
 
     // ── العبارات والملصقات ──

@@ -45,7 +45,9 @@ const DEFAULT_OPTIONS = {
     // فردي: تنتهي المباراة بأول من يُنهي (الجائزة للفائز وحده — لا انتظار لبقية المراكز)
     endOnFirstFinish: true,
     // أدوار متتالية بلا تفاعل قبل أن يتولّى البوت اللاعب نهائياً
-    maxMissedTurns: 3
+    maxMissedTurns: 3,
+    // أداة «إعادة الرمي»: مرات لكل لاعب بشري في المباراة (البوت لا يستعملها)
+    rerollsPerPlayer: 1
 };
 
 class LudoError extends Error {
@@ -82,18 +84,22 @@ function createGame({ players, mode = 'classic', options = {}, now = Date.now() 
         tokens: Array(def.tokens).fill(BASE),
         status: 'active',        // active | finished | left
         isBot: !!p.isBot,
-        missed: 0
+        missed: 0,
+        rerolls: 0               // يُضبط بعد دمج الخيارات
     }));
+    const opts = { ...DEFAULT_OPTIONS, ...options };
+    seats.forEach(s => { s.rerolls = s.isBot ? 0 : opts.rerollsPerPlayer; });
 
     return {
         mode,
-        options: { ...DEFAULT_OPTIONS, ...options },
+        options: opts,
         seats,
         turn: 0,                 // فهرس المقعد صاحب الدور
         phase: 'roll',           // roll | move | ended
         dice: null,
         sixes: 0,                // ستات متتالية في الدور الحالي
         legalMoves: [],
+        canReroll: false,
         finishOrder: [],         // معرّفات بترتيب الإنهاء
         winners: null,           // يُضبط عند الانتهاء
         version: 0,
@@ -163,6 +169,7 @@ function passTurn(state, now) {
     state.dice = null;
     state.sixes = 0;
     state.legalMoves = [];
+    state.canReroll = false;
     state.turnStartedAt = now;
 }
 
@@ -170,6 +177,7 @@ function keepTurn(state, now) {
     state.phase = 'roll';
     state.dice = null;
     state.legalMoves = [];
+    state.canReroll = false;
     state.turnStartedAt = now;
 }
 
@@ -233,41 +241,103 @@ function ranking(state) {
 
 // ───────────────────────── الأفعال ─────────────────────────
 
-// rollDie: () => 1..6
+// يُبقي الرمية مفتوحة للإعادة؟ (لاعب بشري بقي له رصيد إعادة)
+const canRerollNow = (state, seat) => !seat.isBot && (seat.rerolls || 0) > 0 && state.phase === 'move';
+
+function rollValue(rollDie, state) {
+    // النرد يرى الحالة (الخدمة ترفع احتمال الـ 6 حين تكون كل القطع في القاعدة)
+    const dice = rollDie(state);
+    if (!Number.isInteger(dice) || dice < 1 || dice > 6) throw new LudoError('BAD_DIE', 'نرد غير صالح', 500);
+    return dice;
+}
+
+// يطبّق نتيجة رمية على state (مشترك بين roll وreroll)
+function applyRoll(state, seat, dice, action, now) {
+    state.dice = dice;
+    state.sixes = dice === 6 ? state.sixes + 1 : 0;
+    state.canReroll = false;
+
+    if (state.sixes === 3 && state.options.threeSixesForfeit) {
+        action.forfeit = 'three_sixes';
+        passTurn(state, now);
+        return;
+    }
+    const moves = legalMovesFor(state, state.turn, dice);
+    if (moves.length === 0) {
+        action.noMoves = true;
+        if (!seat.isBot && (seat.rerolls || 0) > 0) {
+            // يبقى الدور: إعادة الرمي أو التخطّي (pass) — المهلة تتخطّى تلقائياً
+            state.phase = 'move';
+            state.legalMoves = [];
+            state.canReroll = true;
+            return;
+        }
+        // 6 بلا حركة ممكنة تبقى رمية إضافية
+        if (dice === 6) keepTurn(state, now); else passTurn(state, now);
+    } else {
+        state.phase = 'move';
+        state.legalMoves = moves;
+        state.canReroll = canRerollNow(state, seat);
+    }
+}
+
+// rollDie: (state) => 1..6
 function roll(input, { playerId, rollDie, expectVersion, now = Date.now() }) {
     assertTurn(input, playerId, expectVersion);
     if (input.phase !== 'roll') throw new LudoError('NOT_ROLL_PHASE', 'حرّك قطعة أولاً', 409);
 
     const state = clone(input);
     const seat = state.seats[state.turn];
-    const dice = rollDie();
-    if (!Number.isInteger(dice) || dice < 1 || dice > 6) throw new LudoError('BAD_DIE', 'نرد غير صالح', 500);
+    const dice = rollValue(rollDie, state);
 
     seat.missed = 0;
-    state.dice = dice;
     state.version++;
-    state.sixes = dice === 6 ? state.sixes + 1 : 0;
-
     const action = { type: 'roll', playerId: seat.id, dice };
-    const events = [action];
-
-    if (state.sixes === 3 && state.options.threeSixesForfeit) {
-        action.forfeit = 'three_sixes';
-        passTurn(state, now);
-    } else {
-        const moves = legalMovesFor(state, state.turn, dice);
-        if (moves.length === 0) {
-            action.noMoves = true;
-            // 6 بلا حركة ممكنة تبقى رمية إضافية
-            if (dice === 6) keepTurn(state, now); else passTurn(state, now);
-        } else {
-            state.phase = 'move';
-            state.legalMoves = moves;
-        }
-    }
+    applyRoll(state, seat, dice, action, now);
 
     state.lastAction = action;
-    return { state, events };
+    return { state, events: [action] };
+}
+
+// إعادة الرمي (أداة مساعدة): بعد الرمي وقبل التحريك، rerollsPerPlayer مرة لكل لاعب في المباراة.
+// الرمية الملغاة لا تُحسب في عدّ الستات المتتالية.
+function reroll(input, { playerId, rollDie, expectVersion, now = Date.now() }) {
+    assertTurn(input, playerId, expectVersion);
+    if (input.phase !== 'move' || !input.canReroll) {
+        throw new LudoError('CANNOT_REROLL', 'لا يمكن إعادة الرمي الآن', 409);
+    }
+    const state = clone(input);
+    const seat = state.seats[state.turn];
+    if ((seat.rerolls || 0) <= 0) throw new LudoError('NO_REROLLS', 'استعملت إعادة الرمي', 409);
+
+    seat.rerolls -= 1;
+    seat.missed = 0;
+    if (state.dice === 6) state.sixes = Math.max(0, state.sixes - 1);
+    const previous = state.dice;
+    const dice = rollValue(rollDie, state);
+    state.version++;
+    const action = { type: 'roll', playerId: seat.id, dice, reroll: true, previous };
+    applyRoll(state, seat, dice, action, now);
+
+    state.lastAction = action;
+    return { state, events: [action] };
+}
+
+// تخطّي الدور حين لا حركة ممكنة (بدل إعادة الرمي)
+function pass(input, { playerId, expectVersion, now = Date.now() }) {
+    assertTurn(input, playerId, expectVersion);
+    if (input.phase !== 'move' || input.legalMoves.length > 0) {
+        throw new LudoError('CANNOT_PASS', 'لا يمكن التخطّي الآن', 409);
+    }
+    const state = clone(input);
+    const seat = state.seats[state.turn];
+    seat.missed = 0;
+    state.version++;
+    state.canReroll = false;
+    const action = { type: 'pass', playerId: seat.id };
+    if (state.dice === 6) keepTurn(state, now); else passTurn(state, now);
+    state.lastAction = action;
+    return { state, events: [action] };
 }
 
 function move(input, { playerId, token, expectVersion, now = Date.now() }) {
@@ -279,6 +349,7 @@ function move(input, { playerId, token, expectVersion, now = Date.now() }) {
     const state = clone(input);
     const seat = state.seats[state.turn];
     seat.missed = 0;
+    state.canReroll = false;
     seat.tokens[token] = chosen.to;
     state.version++;
 
@@ -398,6 +469,8 @@ function chooseBotMove(state) {
 function autoStep(state, { rollDie, now }) {
     const playerId = state.seats[state.turn].id;
     if (state.phase === 'roll') return roll(state, { playerId, rollDie, now });
+    // لا حركة ممكنة وكان بانتظار قرار إعادة الرمي ← تخطٍّ
+    if (state.legalMoves.length === 0) return pass(state, { playerId, now });
     const m = chooseBotMove(state);
     return move(state, { playerId, token: m.token, now });
 }
@@ -441,13 +514,14 @@ function publicState(state) {
         mode: state.mode,
         seats: state.seats.map(s => ({
             id: s.id, color: s.color, team: s.team, tokens: s.tokens,
-            status: s.status, isBot: s.isBot
+            status: s.status, isBot: s.isBot, rerolls: s.rerolls || 0
         })),
         turn: state.turn,
         currentPlayerId: state.seats[state.turn]?.id || null,
         phase: state.phase,
         dice: state.dice,
         legalMoves: state.legalMoves,
+        canReroll: !!state.canReroll,
         winners: state.winners,
         ranking: state.phase === 'ended' ? ranking(state) : null,
         version: state.version,
@@ -459,6 +533,8 @@ function publicState(state) {
 module.exports = {
     createGame,
     roll,
+    reroll,
+    pass,
     move,
     leave,
     handleTimeout,
