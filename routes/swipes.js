@@ -608,6 +608,9 @@ function calculateRankScore(user, distanceKm) {
     return score;
 }
 
+// مدة إخفاء الحساب الجديد المرفوع للمراجعة من الاكتشاف (انظر الفلتر في /cards)
+const FLAGGED_HIDE_DAYS = 3;
+
 // @route   GET /api/swipes/cards
 // @desc    جلب بطاقات للسوايب مع خوارزمية ذكية (نشاط + عقوبات + مسافة + بروفايل)
 // @access  Protected
@@ -656,14 +659,21 @@ router.get('/cards', protect, async (req, res) => {
         const filter = {
             isActive: true,
             lastLogin: { $gte: ghostCutoff },
-            // ✅ استبعاد الجدد المخالفين (flagged) — لا يظهرون لأحد حتى مراجعة المشرف
-            'newcomer.status': { $ne: 'flagged' },
             _id: {
                 $ne: userId,
                 $nin: [...swipedIds, ...blockedIds]
             },
             // ✅ استبعاد المخفيين (مع احتساب انتهاء المدة)
             $and: [
+                // ✅ الجدد المخالفون (flagged) يُخفَون FLAGGED_HIDE_DAYS أيام من الرفع ثم يعودون (١٣ نوفمبر ٢٠٢٦):
+                //    كان إخفاءً بلا مدة حتى المراجعة — 6300 حساب، والمخالفة نفسها لها سلّمها (حجب الرسالة، إيقاف المحادثات).
+                //    العقوبات الفعلية (تعليق/إخفاء/حظر) تستبعدها الشروط الأخرى. flagged بلا تاريخ = قديم ← يظهر.
+                {
+                    $or: [
+                        { 'newcomer.status': { $ne: 'flagged' } },
+                        { 'newcomer.flaggedAt': { $not: { $gt: new Date(Date.now() - FLAGGED_HIDE_DAYS * 24 * 60 * 60 * 1000) } } }
+                    ]
+                },
                 {
                     $or: [
                         { 'hidden.isHidden': { $ne: true } },
