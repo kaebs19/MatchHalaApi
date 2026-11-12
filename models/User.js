@@ -169,6 +169,13 @@ const userSchema = new mongoose.Schema({
     // معلومات الشبكة والموقع التفصيلي
     city: { type: String, default: null },
     lastIP: { type: String, default: null, select: false },
+    // 🕵️ من أين أُنشئ الحساب (للربط بين حسابات المستغلّين — التسجيل بالبريد لم يكن يحفظ IP)
+    signupMeta: {
+        ip: { type: String, default: null },
+        userAgent: { type: String, default: null },
+        source: { type: String, default: null },   // ios | android | web | unknown
+        at: { type: Date, default: null }
+    },
 
     // سجل تسجيل الدخول (آخر 20 دخول)
     loginHistory: [{

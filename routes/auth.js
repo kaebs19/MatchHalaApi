@@ -285,9 +285,38 @@ async function respondIfSelfHidden(req, res, user) {
 // @route   POST /api/auth/register
 // @desc    تسجيل مستخدم جديد
 // @access  Public
+// 🕵️ مصدر الطلب: التطبيقات الأصلية لا ترسل Origin ولا UA متصفح
+function signupSourceOf(req) {
+    const ua = String(req.headers['user-agent'] || '');
+    const platform = String(req.headers['x-app-platform'] || '').toLowerCase();
+    if (req.headers.origin || /^Mozilla\//.test(ua)) return 'web';
+    if (platform === 'ios' || /^DatingHala\//.test(ua)) return 'ios';
+    if (platform === 'android' || /okhttp/i.test(ua)) return 'android';
+    return 'unknown';
+}
+
+function buildSignupMeta(req) {
+    return {
+        ip: req.headers['cf-connecting-ip'] || getClientIP(req),
+        userAgent: String(req.headers['user-agent'] || '').slice(0, 300) || null,
+        source: signupSourceOf(req),
+        at: new Date()
+    };
+}
+
 router.post('/register', registerValidation, validate, async (req, res) => {
     try {
         const { name, email, password } = req.body;
+
+        // 🚫 لا تسجيل بالبريد من المتصفح (١٢ نوفمبر ٢٠٢٦): المتصفح بلا معرّف جهاز يُحظر، فاستُغلّ
+        //    لإنشاء حسابات إباحية متتالية من chathala.com. الويب: جوجل/أبل فقط؛ البريد من التطبيق (البصمة إلزامية).
+        if (signupSourceOf(req) === 'web') {
+            return res.status(403).json({
+                success: false,
+                message: 'إنشاء حساب بالبريد متاح من تطبيق هلا فقط. على الموقع سجّل بحساب Google أو Apple.',
+                code: 'WEB_EMAIL_SIGNUP_DISABLED'
+            });
+        }
 
         // التحقق من البيانات
         if (!name || !email || !password) {
@@ -383,7 +412,8 @@ router.post('/register', registerValidation, validate, async (req, res) => {
         const user = await User.create({
             name,
             email,
-            password
+            password,
+            signupMeta: buildSignupMeta(req)
         });
 
         // ✅ حفظ بصمة الجهاز في سجل المستخدم
@@ -2092,6 +2122,7 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
                 email,
                 googleId,
                 authProvider: 'google',
+                signupMeta: buildSignupMeta(req),
                 profileImage: picture || null,
                 isActive: true
             });
@@ -2286,6 +2317,7 @@ router.post('/facebook', bannedDeviceCheck, async (req, res) => {
                 email,
                 facebookId,
                 authProvider: 'facebook',
+                signupMeta: buildSignupMeta(req),
                 profileImage: picture || null,
                 isActive: true
             });
@@ -2459,6 +2491,7 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
                 email: email || `apple_${appleId}@private.appleid.com`,
                 appleId,
                 authProvider: 'apple',
+                signupMeta: buildSignupMeta(req),
                 isActive: true
             });
         }
