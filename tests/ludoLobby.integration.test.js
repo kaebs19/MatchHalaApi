@@ -267,6 +267,8 @@ maybe('إعادة الرمي والتخطّي عبر الخدمة، والمهل
     const v = await service.playerReroll(a, game.gameId, rec.state.version);
     assert.equal(v.lastAction.reroll, true);
     assert.equal(v.seats.find(s => s.id === a).rerolls, 0);
-    await assert.rejects(service.playerReroll(a, game.gameId, v.version), { code: 'CANNOT_REROLL' });
+    // الإعادة نفسها عشوائية: 6 ← يبقى الدور له (CANNOT_REROLL)، وإلا ينتقل الدور (NOT_YOUR_TURN)
+    await assert.rejects(service.playerReroll(a, game.gameId, v.version),
+        (e) => ['CANNOT_REROLL', 'NOT_YOUR_TURN'].includes(e.code));
     await service.playerLeave(a, game.gameId);
 });
