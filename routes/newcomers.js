@@ -17,11 +17,12 @@ const FLAGGED_HIDE_DAYS = 3;
 const REASON_GROUPS = {
     promo: { label: 'ترويج خارجي', re: /^ترويج خارجي/ },
     words: { label: 'كلمات محظورة', re: /^كلمات محظورة/ },
-    carryover: { label: 'أعاد التسجيل بعد حذف', re: /^🔁/ }
+    carryover: { label: 'أعاد التسجيل بعد حذف', re: /^🔁/ },
+    webBannedIp: { label: 'ويب بعنوان جهاز محظور', re: /^🌐/ }
 };
 const reasonFilter = (key) => {
     if (REASON_GROUPS[key]) return { 'newcomer.flaggedReason': REASON_GROUPS[key].re };
-    if (key === 'other') return { 'newcomer.flaggedReason': { $not: /^(ترويج خارجي|كلمات محظورة|🔁)/ } };
+    if (key === 'other') return { 'newcomer.flaggedReason': { $not: /^(ترويج خارجي|كلمات محظورة|🔁|🌐)/ } };
     return {};
 };
 const recentFlagCutoff = () => new Date(Date.now() - FLAGGED_HIDE_DAYS * 24 * 60 * 60 * 1000);

@@ -304,6 +304,13 @@ function buildSignupMeta(req) {
     };
 }
 
+// 🔁 حساب جديد من المتصفح بعنوان IP جهاز محظور ← «الحسابات الجديدة» (utils/webSignupLink.js)
+async function flagWebSignup(user, req, isNewUser) {
+    if (!isNewUser || signupSourceOf(req) !== 'web') return;
+    const ip = req.headers['cf-connecting-ip'] || getClientIP(req);
+    await require('../utils/webSignupLink').flagIfBannedDeviceIp(user, ip);
+}
+
 router.post('/register', registerValidation, validate, async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -2178,6 +2185,7 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
 
         await user.save();
         await saveLoginRecord(user, req);
+        await flagWebSignup(user, req, isNewUser);
 
         res.status(200).json({
             success: true,
@@ -2373,6 +2381,7 @@ router.post('/facebook', bannedDeviceCheck, async (req, res) => {
 
         await user.save();
         await saveLoginRecord(user, req);
+        await flagWebSignup(user, req, isNewUser);
 
         res.status(200).json({
             success: true,
@@ -2542,6 +2551,7 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
 
         await user.save();
         await saveLoginRecord(user, req);
+        await flagWebSignup(user, req, isNewUser);
 
         // هل يحتاج إدخال اسم؟ (مستخدمي Apple اللي ما أدخلوا اسمهم)
         const needsName = !user.name || user.name === 'مستخدم Apple' || user.name.trim().length < 2;
