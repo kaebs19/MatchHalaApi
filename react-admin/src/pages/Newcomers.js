@@ -10,7 +10,10 @@ import {
     getNewcomersStats,
     approveNewcomer,
     rejectNewcomer,
+    getNewcomerGroups,
+    bulkApproveNewcomers,
 } from "../services/api";
+import ConfirmModal from "../components/ConfirmModal";
 import "./Newcomers.css";
 
 const STATUS_LABELS = {
@@ -24,7 +27,11 @@ const LIMIT = 20;
 
 function Newcomers({ onViewUserDetail }) {
     const [rows, setRows] = useState([]);
-    const [stats, setStats] = useState({ flagged: 0, pending: 0, needsReview: 0 });
+    const [stats, setStats] = useState({ flagged: 0, flaggedRecent: 0, pending: 0, needsReview: 0, hideDays: 3 });
+    const [groups, setGroups] = useState([]);
+    const [reason, setReason] = useState("");      // تصفية حسب سبب الرفع
+    const [bulkAsk, setBulkAsk] = useState(null);   // { key, label, count } قبل التأكيد
+    const [bulkBusy, setBulkBusy] = useState(false);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("review"); // review | pending | flagged | all
     const [page, setPage] = useState(1);
@@ -34,15 +41,41 @@ function Newcomers({ onViewUserDetail }) {
 
     const fetchStats = useCallback(async () => {
         try {
-            const res = await getNewcomersStats();
+            const [res, g] = await Promise.all([getNewcomersStats(), getNewcomerGroups()]);
             if (res.success) setStats(res.data);
+            if (g.success) setGroups(g.data || []);
         } catch (_) { /* غير حرج */ }
     }, []);
+
+    // اعتماد جماعي: عدد فعلي من السيرفر (dryRun) ثم تأكيد
+    const askBulk = async (group) => {
+        try {
+            const r = await bulkApproveNewcomers(group.key, true);
+            if (r.success) setBulkAsk({ key: group.key, label: group.label, count: r.data.wouldApprove });
+        } catch (_) { showToast("تعذّر حساب العدد", "error"); }
+    };
+    const runBulk = async () => {
+        if (!bulkAsk) return;
+        setBulkBusy(true);
+        try {
+            const r = await bulkApproveNewcomers(bulkAsk.key);
+            if (r.success) {
+                showToast(r.message || "تم الاعتماد", "success");
+                setBulkAsk(null);
+                fetchRows();
+                fetchStats();
+            }
+        } catch (_) {
+            showToast("فشل الاعتماد الجماعي", "error");
+        } finally {
+            setBulkBusy(false);
+        }
+    };
 
     const fetchRows = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await getNewcomers(filter, page, LIMIT);
+            const res = await getNewcomers(filter, page, LIMIT, reason);
             if (res.success) {
                 setRows(res.data || []);
                 setTotal(res.total || 0);
@@ -52,7 +85,7 @@ function Newcomers({ onViewUserDetail }) {
         } finally {
             setLoading(false);
         }
-    }, [filter, page, showToast]);
+    }, [filter, page, reason, showToast]);
 
     useEffect(() => { fetchRows(); }, [fetchRows]);
     useEffect(() => { fetchStats(); }, [fetchStats]);
@@ -176,7 +209,7 @@ function Newcomers({ onViewUserDetail }) {
 
     const FILTERS = [
         { id: "review", label: "بحاجة لمراجعة" },
-        { id: "flagged", label: "مخالفات مرصودة" },
+        { id: "flagged", label: "كل المرفوعين" },
         { id: "pending", label: "قيد المراجعة" },
         { id: "all", label: "الكل" },
     ];
@@ -185,9 +218,48 @@ function Newcomers({ onViewUserDetail }) {
         <div className="newcomers-page">
             <div className="nc-stats">
                 <StatCard icon="🆕" value={stats.needsReview} label="بحاجة لمراجعة" color="purple" />
-                <StatCard icon="🚩" value={stats.flagged} label="مخالفات مرصودة" color="red" />
+                <StatCard icon="🚩" value={stats.flaggedRecent ?? stats.flagged} label={`مخفي الآن (آخر ${stats.hideDays || 3} أيام)`} color="red" />
                 <StatCard icon="⏳" value={stats.pending} label="قيد المراجعة (24س)" color="orange" />
             </div>
+
+            <p className="nc-note">
+                الحساب المرفوع يُخفى من الاكتشاف {stats.hideDays || 3} أيام ثم يعود تلقائياً. العقوبات الفعلية (تعليق/حظر/إخفاء) لا تتأثر.
+            </p>
+
+            {groups.length > 0 && (
+                <div className="nc-groups">
+                    {groups.map((g) => (
+                        <div key={g.key} className={`nc-group ${reason === g.key ? "active" : ""}`}>
+                            <button
+                                className="nc-group-main"
+                                onClick={() => { setReason(reason === g.key ? "" : g.key); setFilter("flagged"); setPage(1); }}
+                                title="عرض هذه المجموعة فقط"
+                            >
+                                <span className="nc-group-label">{g.label}</span>
+                                <span className="nc-group-count">{g.total.toLocaleString("en-US")}</span>
+                                <span className="nc-group-sub">{g.recent} مخفي الآن · {g.older.toLocaleString("en-US")} أقدم</span>
+                            </button>
+                            {g.older > 0 && (
+                                <button className="nc-btn nc-btn--approve nc-group-bulk" onClick={() => askBulk(g)}>
+                                    ✅ اعتماد الأقدم
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {bulkAsk && (
+                <ConfirmModal
+                    isOpen
+                    title="اعتماد جماعي"
+                    message={`اعتماد ${bulkAsk.count.toLocaleString("en-US")} حساباً مرفوعاً بسبب «${bulkAsk.label}» منذ أكثر من ${stats.hideDays || 3} أيام؟ يُزالون من الطابور فقط — لا تتغيّر أي عقوبة عليهم.`}
+                    confirmText={bulkBusy ? "جارٍ…" : "اعتماد"}
+                    cancelText="إلغاء"
+                    onConfirm={runBulk}
+                    onClose={() => !bulkBusy && setBulkAsk(null)}
+                />
+            )}
 
             <div className="nc-filters">
                 {FILTERS.map((f) => (

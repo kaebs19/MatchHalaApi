@@ -200,14 +200,25 @@ export const getAppealsStats = async () => {
 };
 
 // ========== Newcomers (مراجعة الحسابات الجديدة) ==========
-export const getNewcomers = async (status = 'review', page = 1, limit = 20) => {
+export const getNewcomers = async (status = 'review', page = 1, limit = 20, reason = '') => {
     const params = new URLSearchParams({ status, page, limit });
+    if (reason) params.append('reason', reason);
     const response = await api.get(`/newcomers?${params}`);
     return response.data;
 };
 
 export const getNewcomersStats = async () => {
     const response = await api.get('/newcomers/stats');
+    return response.data;
+};
+
+export const getNewcomerGroups = async () => {
+    const response = await api.get('/newcomers/groups');
+    return response.data;
+};
+
+export const bulkApproveNewcomers = async (reason, dryRun = false) => {
+    const response = await api.post('/newcomers/bulk-approve', { reason, dryRun });
     return response.data;
 };
 

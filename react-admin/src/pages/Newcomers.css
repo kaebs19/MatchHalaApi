@@ -83,3 +83,21 @@
 .nc-btn--approve:hover:not(:disabled) { background: #bbf7d0; }
 .nc-btn--reject { background: #fee2e2; color: #b91c1c; }
 .nc-btn--reject:hover:not(:disabled) { background: #fecaca; }
+
+/* 🗂️ تجميع المرفوعين حسب السبب + اعتماد جماعي */
+.nc-note { margin: 0 0 14px; font-size: 13px; color: var(--text-secondary); }
+.nc-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.nc-group {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 14px; border-radius: 14px; background: var(--bg-card);
+    border: 2px solid transparent; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.nc-group.active { border-color: #2F9E85; }
+.nc-group-main {
+    display: grid; grid-template-columns: 1fr auto; row-gap: 4px; text-align: right;
+    background: none; border: none; padding: 0; color: inherit; font-family: inherit; cursor: pointer;
+}
+.nc-group-label { font-weight: 700; font-size: 15px; }
+.nc-group-count { font-weight: 800; font-size: 20px; color: var(--text-danger); }
+.nc-group-sub { grid-column: 1 / -1; font-size: 12px; color: var(--text-secondary); }
+.nc-group-bulk { align-self: flex-start; }
