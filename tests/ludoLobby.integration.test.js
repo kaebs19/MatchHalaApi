@@ -302,3 +302,23 @@ maybe('دعوة المحادثة: الألعاب مطفأة لغير المشر�
     const a = addUser(); const b = addUser({ role: 'user' });
     await assert.rejects(lobby.startInviteMatch(a, b, { messageId: oid() }), { code: 'GAMES_DISABLED' });
 });
+
+maybe('«دورك»: onTurn للبشر وحدهم، عند انتقال الدور لا الرمية الإضافية', async () => {
+    const a = addUser(); const b = addUser();
+    const turns = [];
+    service.onTurn((t) => { turns.push(t); });
+    const solo = await lobby.startSolo(a, { mode: 'quick', size: 2 });   // a ضدّ بوت
+    await playToEnd(solo.gameId, 800).catch(() => {});
+    await sleep(20);
+    const soloTurns = turns.filter(t => t.gameId === solo.gameId);
+    assert.ok(soloTurns.length > 0);
+    assert.ok(soloTurns.every(t => t.userId === a));   // لا إشعار للبوت
+
+    const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+    await playToEnd(rec.id);
+    await sleep(20);
+    const duo = turns.filter(t => t.gameId === rec.id);
+    assert.ok(duo.some(t => t.userId === a) && duo.some(t => t.userId === b));
+    // لا تكرار متتالٍ للاعب نفسه (الرمية الإضافية لا تُطلق إشعاراً)
+    for (let i = 1; i < duo.length; i++) assert.notEqual(duo[i].userId, duo[i - 1].userId);
+});

@@ -794,6 +794,24 @@ ludoService.onFinalize(async (record, ranking) => {
     }, { event: 'ludo_finished' });
 });
 
+// 🔔 «دورك» لمن ليس متصلاً (خرج من التطبيق أثناء المباراة) — مرة كل 90ث لكل لاعب في المباراة،
+// وإلا يصله إشعار مع كل دور. المتصل يرى الدور على الشاشة. بلا حفظ في قائمة الإشعارات.
+const LUDO_TURN_PUSH_GAP_MS = 90 * 1000;
+ludoService.onTurn(async ({ gameId, userId }) => {
+    if (!mongoose.isValidObjectId(userId)) return;
+    if (await isUserSocketConnected(userId)) return;
+    const { getClient } = require('../../utils/redisClient');
+    const redis = await getClient();
+    if (redis) {
+        const fresh = await redis.set(`ludo:turnpush:${gameId}:${userId}`, '1', { NX: true, PX: LUDO_TURN_PUSH_GAP_MS });
+        if (!fresh) return;
+    }
+    await pushNotificationService.sendNotificationToUser(userId, {
+        title: '🎲 هلا لودو',
+        body: 'دورك الآن! ارجع للمباراة قبل أن يلعب الكمبيوتر عنك'
+    }, { type: 'ludo_turn', gameId: String(gameId) }, false);
+});
+
 // ─────────────────────────────────────────────────────────────
 // POST /games/ludo/invite { conversationId, mode }
 // ─────────────────────────────────────────────────────────────

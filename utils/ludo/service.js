@@ -113,6 +113,10 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
 const finalizeHooks = [];
 function onFinalize(fn) { finalizeHooks.push(fn); }
 
+// انتقل الدور إلى لاعب بشري (رمية جديدة لا رمية إضافية) — مستمعو إشعار «دورك» (routes/mobile/games.js)
+const turnHooks = [];
+function onTurn(fn) { turnHooks.push(fn); }
+
 async function finalize(record) {
     if (record.meta.persisted) return;
     record.meta.persisted = true;
@@ -156,6 +160,7 @@ async function mutate(gameId, fn) {
     return store.withLock(`game:${gameId}`, async () => {
         const record = await store.getGame(gameId);
         if (!record) throw new engine.LudoError('GAME_NOT_FOUND', 'المباراة غير موجودة', 404);
+        const previousTurnId = record.state.seats[record.state.turn]?.id;
         const result = await fn(record);
         if (!result) return record;
         record.state = result.state;
@@ -163,6 +168,13 @@ async function mutate(gameId, fn) {
         scheduleNext(record);
         await store.saveGame(record);
         emitToPlayers(record, 'ludo:state', { ...view(record), events: result.events });
+        const seat = record.state.seats[record.state.turn];
+        if (seat && seat.id !== previousTurnId && !seat.isBot && seat.status !== 'left'
+            && record.state.phase === 'roll' && turnHooks.length) {
+            const snapshot = { gameId: record.id, userId: seat.id, deadlineAt: record.deadlineAt, players: record.meta.players };
+            // بلا انتظار: الإشعار لا يؤخّر القفل ولا الردّ
+            for (const fn of turnHooks) Promise.resolve().then(() => fn(snapshot)).catch(e => console.error('ludo turn hook:', e.message));
+        }
         if (record.state.phase === 'ended') await finalize(record);
         // finalize يعدّل meta — احفظه ليُعرض الحفظ مرة واحدة
         if (record.meta.persisted) await store.saveGame(record);
@@ -306,5 +318,6 @@ module.exports = {
     view,
     rollDie,
     onFinalize,
+    onTurn,
     constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE }
 };
