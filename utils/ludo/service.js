@@ -79,7 +79,8 @@ function scheduleNext(record, now = Date.now()) {
 // ───────────── الإنشاء ─────────────
 
 // players: [{ id, name, photo }] بشر فقط؛ bots: عدد البوتات المكمِّلة
-async function createMatch({ players, bots = 0, mode = 'classic', source }) {
+// link: ربط اختياري بمصدر خارجي (دعوة المحادثة: { messageId }) — يصل مستمعي onFinalize
+async function createMatch({ players, bots = 0, mode = 'classic', source, link = null }) {
     const used = new Set();
     const botPlayers = Array.from({ length: bots }, (_, i) => {
         let name;
@@ -96,7 +97,7 @@ async function createMatch({ players, bots = 0, mode = 'classic', source }) {
     const record = {
         id: newGameId(),
         state,
-        meta: { mode, source, players: all, startedAt: Date.now(), rolls: 0 },
+        meta: { mode, source, players: all, startedAt: Date.now(), rolls: 0, ...(link ? { link } : {}) },
         deadlineAt: null
     };
     scheduleNext(record);
@@ -107,6 +108,10 @@ async function createMatch({ players, bots = 0, mode = 'classic', source }) {
 }
 
 // ───────────── تطبيق فعل على مباراة ─────────────
+
+// مستمعو نهاية المباراة (بطاقة الدعوة في المحادثة) — بلا require دائري
+const finalizeHooks = [];
+function onFinalize(fn) { finalizeHooks.push(fn); }
 
 async function finalize(record) {
     if (record.meta.persisted) return;
@@ -141,6 +146,9 @@ async function finalize(record) {
     }
     await store.clearUserGame(humans(record), record.id);
     emitToPlayers(record, 'ludo:ended', { gameId: record.id, winners: record.state.winners, ranking });
+    for (const fn of finalizeHooks) {
+        try { await fn(record, ranking); } catch (e) { console.error('ludo finalize hook:', e.message); }
+    }
 }
 
 // fn(record) يُرجع { state, events } أو null (لا شيء يُفعل)
@@ -297,5 +305,6 @@ module.exports = {
     stopLudoTicker,
     view,
     rollDie,
+    onFinalize,
     constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE }
 };

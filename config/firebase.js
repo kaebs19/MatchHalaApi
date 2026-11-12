@@ -150,7 +150,7 @@ const sendToDevice = async (token, notification, data = {}, options = {}) => {
         }
 
         // ✅ Rich Notifications — تفعيل Action Buttons حسب نوع الإشعار
-        const apnsCategory = APNS_CATEGORY_MAP[data.type];
+        const apnsCategory = data.apnsCategory || APNS_CATEGORY_MAP[data.type];   // apnsCategory: فئة صريحة (دعوة لودو)
         if (apnsCategory) {
             apsPayload.category = apnsCategory;
         }
@@ -212,7 +212,7 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
         });
 
         // ✅ Rich Notifications — Action Buttons حسب type
-        const apnsCategory = APNS_CATEGORY_MAP[data.type];
+        const apnsCategory = data.apnsCategory || APNS_CATEGORY_MAP[data.type];   // apnsCategory: فئة صريحة (دعوة لودو)
         const hasImage = Boolean(data.image && String(data.image).trim());
         const apsPayload = {
             alert: { title: notification.title, body: notification.body },

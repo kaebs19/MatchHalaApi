@@ -272,3 +272,33 @@ maybe('إعادة الرمي والتخطّي عبر الخدمة، والمهل
         (e) => ['CANNOT_REROLL', 'NOT_YOUR_TURN'].includes(e.code));
     await service.playerLeave(a, game.gameId);
 });
+
+maybe('دعوة المحادثة: مباراة ثنائية مربوطة بالرسالة، والنهاية تصل مستمع onFinalize', async () => {
+    const a = addUser(); const b = addUser();
+    const finished = [];
+    service.onFinalize(async (record, ranking) => {
+        if (record.meta.link) finished.push({ link: record.meta.link, ranking });
+    });
+    const messageId = oid();
+    const record = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId });
+    assert.equal(record.meta.source, 'invite');
+    assert.deepEqual(record.meta.players.map(p => p.id), [a, b]);
+    assert.equal(record.meta.players.some(p => p.isBot), false);
+    assert.equal(eventsFor(a, 'ludo:match-found').some(p => p.gameId === record.id), true);
+    assert.equal(eventsFor(b, 'ludo:match-found').some(p => p.gameId === record.id), true);
+
+    // المدعو مشغول بمباراة ← IN_GAME، وصاحب الدعوة مشغول ← INVITER_BUSY
+    const c = addUser();
+    await assert.rejects(lobby.startInviteMatch(c, b, { messageId: oid() }), { code: 'IN_GAME' });
+    await assert.rejects(lobby.startInviteMatch(a, c, { messageId: oid() }), { code: 'INVITER_BUSY' });
+
+    await playToEnd(record.id);
+    const hit = finished.find(f => f.link.messageId === messageId);
+    assert.ok(hit);
+    assert.equal(hit.ranking.length, 2);
+});
+
+maybe('دعوة المحادثة: الألعاب مطفأة لغير المشرف ← GAMES_DISABLED', async () => {
+    const a = addUser(); const b = addUser({ role: 'user' });
+    await assert.rejects(lobby.startInviteMatch(a, b, { messageId: oid() }), { code: 'GAMES_DISABLED' });
+});

@@ -164,6 +164,29 @@ async function startSolo(userId, { mode = 'classic', size = 2 }) {
     return service.view(record);
 }
 
+// ───────────── دعوة من المحادثة (routes/mobile/games.js) ─────────────
+
+// مباراة ثنائية بين صاحب الدعوة والمدعو — الحارس (المحادثة، الحظر) عند المسار.
+// الأهلية والفراغ للطرفين هنا: المدعو يقبل الآن، وصاحب الدعوة قد يكون دخل مباراة أخرى منذ دعوته.
+async function startInviteMatch(inviterId, inviteeId, { mode = 'classic', messageId }) {
+    ({ mode } = validateSetup(mode, 2));
+    const [inviter, invitee] = await Promise.all([loadEligible(inviterId), loadEligible(inviteeId)]);
+    await assertFree(String(invitee._id));
+    try {
+        await assertFree(String(inviter._id));
+    } catch (e) {
+        throw new LudoError('INVITER_BUSY', 'صاحب الدعوة في مباراة أخرى الآن — جرّب بعد قليل', 409);
+    }
+    await store.dequeue([String(inviter._id), String(invitee._id)]);
+    const record = await service.createMatch({
+        players: [playerInfo(inviter), playerInfo(invitee)],
+        mode,
+        source: 'invite',
+        link: { messageId: String(messageId) }
+    });
+    return record;
+}
+
 // ───────────── الغرف الخاصة بالرمز ─────────────
 
 function roomView(room) {
@@ -288,6 +311,7 @@ module.exports = {
     leaveQueue,
     tryMatch,
     startSolo,
+    startInviteMatch,
     createRoom,
     joinRoom,
     startRoom,

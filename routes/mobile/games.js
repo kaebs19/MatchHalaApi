@@ -93,7 +93,7 @@ function gameCopy(event, game, actorName, kindTitle) {
     }
 }
 
-async function pushGame(recipientId, senderUser, conversationId, messageId, copy, event) {
+async function pushGame(recipientId, senderUser, conversationId, messageId, copy, event, extraData = {}) {
     try {
         if (!copy) return;
         if (await isUserSocketConnected(recipientId)) return;   // متصل: يصله تنبيه داخل التطبيق
@@ -105,7 +105,7 @@ async function pushGame(recipientId, senderUser, conversationId, messageId, copy
             getBestUserImage(senderUser),
             senderUser._id,
             messageId,
-            { title: copy.title, data: { gameEvent: event } }
+            { title: copy.title, data: { gameEvent: event, ...extraData } }
         );
     } catch (err) {
         console.error('🎮 push error:', err.message);
@@ -318,6 +318,9 @@ router.post('/games/:messageId/action', protect, async (req, res) => {
         if (!message || message.type !== 'game' || !message.game) {
             return res.status(404).json({ success: false, message: 'اللعبة غير موجودة' });
         }
+        if (message.game.kind === 'ludo') {
+            return res.status(400).json({ success: false, message: 'إجراء غير مدعوم', code: 'INVALID_ACTION' });
+        }
 
         // إنهاء لعبة ينبغي أن يبقى ممكناً حتى لو الحظر/التقييد قائم — لا نحبس أحداً في لعبة.
         const { conversation, error } = await guardConversation(message.conversation, req.user);
@@ -422,7 +425,7 @@ router.post('/games/:messageId/react', protect, async (req, res) => {
         }
 
         const message = await Message.findById(messageId).select('game conversation type');
-        if (!message || message.type !== 'game' || !message.game) {
+        if (!message || message.type !== 'game' || !message.game || message.game.kind === 'ludo') {
             return res.status(404).json({ success: false, message: 'اللعبة غير موجودة' });
         }
         const game = message.game;
@@ -475,7 +478,7 @@ router.get('/games/history/:conversationId', protect, async (req, res) => {
         if (!conversation || !conversation.participants.some(p => String(p) === String(req.user._id))) {
             return res.status(403).json({ success: false, message: 'ليس لديك صلاحية لهذه المحادثة' });
         }
-        const rows = await Message.find({ conversation: conversationId, type: 'game', isDeleted: { $ne: true } })
+        const rows = await Message.find({ conversation: conversationId, type: 'game', 'game.kind': { $ne: 'ludo' }, isDeleted: { $ne: true } })
             .sort({ createdAt: -1 }).limit(40).select('game createdAt').lean();
         const items = rows.map(r => ({
             id: String(r._id),
@@ -733,6 +736,238 @@ router.post('/games/report-question', protect, async (req, res) => {
     } catch (error) {
         console.error('❌ games/report-question:', error);
         res.status(500).json({ success: false, message: 'تعذّر الإبلاغ' });
+    }
+});
+
+// ═════════════════════════════════════════════════════════════
+// 🎲 دعوة هلا لودو من المحادثة
+//
+// رسالة type:'game' بـ game.kind = 'ludo' تتحدّث في مكانها مثل بقية الألعاب، لكن المباراة نفسها
+// في utils/ludo (Redis + السوكت). الحالات: pending ← playing ← finished، أو declined/cancelled/expired.
+// ⚠️ لا 'invited'/'active' عمداً: تذكير الألعاب وفحص «لعبة جارية» للألعاب الأخرى لا يلمسانها.
+// ⚠️ لا حقل round: النسخ القديمة يفشل عندها فكّ GameState فتعرض النصّ الاحتياطي (content).
+// ═════════════════════════════════════════════════════════════
+const ludoLobby = require('../../utils/ludo/lobby');
+const ludoService = require('../../utils/ludo/service');
+const { LudoError } = require('../../utils/ludoEngine');
+
+const LUDO_INVITE_TTL_MS = 10 * 60 * 1000;
+const LUDO_MODES = ['classic', 'quick'];
+const LUDO_FALLBACK = '🎲 دعوة للعب «هلا لودو»';
+
+const ludoExpired = (g, now = Date.now()) => g.status === 'pending' && g.expiresAt && new Date(g.expiresAt).getTime() <= now;
+
+function emitLudoCard(messageId, conversationId, game, extra = {}) {
+    emitToPlayers(game, 'game-updated', { messageId: String(messageId), conversationId: String(conversationId), game, ...extra });
+}
+
+// يحفظ حالة جديدة بشرط الحالة الحالية (ذرّي) ويبثّها — يُرجع الحالة أو null إن سُبق
+async function setLudoState(messageId, fromStatus, patch, extra) {
+    const now = new Date().toISOString();
+    const saved = await Message.findOneAndUpdate(
+        { _id: messageId, 'game.kind': 'ludo', 'game.status': fromStatus },
+        { $set: Object.fromEntries(Object.entries({ ...patch, updatedAt: now }).map(([k, v]) => [`game.${k}`, v])) },
+        { returnDocument: 'after' }
+    ).select('game conversation').lean();
+    if (saved) emitLudoCard(messageId, saved.conversation, saved.game, extra);
+    return saved?.game || null;
+}
+
+function ludoErrorResponse(res, err) {
+    if (err instanceof LudoError) {
+        return res.status(err.status || 400).json({ success: false, message: err.message, code: err.code });
+    }
+    throw err;
+}
+
+// نهاية المباراة ← النتيجة على البطاقة (يعمل على أي نسخة أنهت المباراة)
+ludoService.onFinalize(async (record, ranking) => {
+    const messageId = record.meta?.link?.messageId;
+    if (!messageId) return;
+    const left = record.state.seats.filter(s => s.status === 'left').map(s => s.id);
+    await setLudoState(messageId, 'playing', {
+        status: 'finished',
+        winner: (record.state.winners || []).find(id => !String(id).startsWith('bot:')) || null,
+        places: ranking.map(r => ({ id: r.id, place: r.place })),
+        left,
+        endedAt: new Date().toISOString()
+    }, { event: 'ludo_finished' });
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /games/ludo/invite { conversationId, mode }
+// ─────────────────────────────────────────────────────────────
+router.post('/games/ludo/invite', protect, async (req, res) => {
+    try {
+        const { conversationId } = req.body;
+        const mode = req.body.mode || 'classic';
+        if (!LUDO_MODES.includes(mode)) {
+            return res.status(400).json({ success: false, message: 'نمط غير معروف', code: 'BAD_MODE' });
+        }
+        if (isFullyMessagingRestricted(req.user)) {
+            return res.status(403).json({ success: false, message: 'حسابك مقيّد من المراسلة مؤقتاً', code: 'MESSAGING_RESTRICTED' });
+        }
+        const { conversation, error } = await guardConversation(conversationId, req.user);
+        if (error) return res.status(error.status).json(error.body);
+
+        const userId = String(req.user._id);
+        const opponent = conversation.participants.find(p => String(p._id) !== userId);
+
+        // الألعاب ظاهرة للطرفين؟ (مفتاح السيرفر) + لا تقييد يمنع اللعب
+        try {
+            await ludoLobby.loadEligible(userId);
+        } catch (err) { return ludoErrorResponse(res, err); }
+        try {
+            await ludoLobby.loadEligible(String(opponent._id));
+        } catch (err) {
+            return res.status(403).json({ success: false, message: 'الألعاب غير متاحة لهذا المستخدم حالياً', code: 'OPPONENT_UNAVAILABLE' });
+        }
+
+        // دعوة لودو حيّة واحدة في المحادثة
+        const live = await Message.findOne({
+            conversation: conversation._id, type: 'game', 'game.kind': 'ludo',
+            'game.status': { $in: ['pending', 'playing'] }
+        }).select('game').lean();
+        if (live) {
+            let stale = false;
+            if (ludoExpired(live.game)) {
+                stale = !!await setLudoState(live._id, 'pending', { status: 'expired' });
+            } else if (live.game.status === 'playing' && live.game.gameId) {
+                const rec = await require('../../utils/ludo/store').getGame(live.game.gameId);
+                if (!rec || rec.state.phase === 'ended') {
+                    stale = !!await setLudoState(live._id, 'playing', { status: 'finished', winner: null, endedAt: new Date().toISOString() });
+                }
+            }
+            if (!stale) {
+                return res.status(409).json({
+                    success: false, message: 'هناك دعوة لودو قائمة في هذه المحادثة', code: 'GAME_ALREADY_ACTIVE',
+                    data: { messageId: String(live._id) }
+                });
+            }
+        }
+
+        const recent = await Message.exists({
+            conversation: conversation._id, sender: req.user._id, type: 'game', 'game.kind': 'ludo',
+            createdAt: { $gte: new Date(Date.now() - START_COOLDOWN_MS) }
+        });
+        if (recent) {
+            return res.status(429).json({ success: false, message: 'انتظر قليلاً قبل دعوة جديدة', code: 'GAME_COOLDOWN' });
+        }
+
+        const now = new Date();
+        const game = {
+            kind: 'ludo',
+            status: 'pending',
+            players: [userId, String(opponent._id)],
+            mode,
+            gameId: null,
+            winner: null,
+            expiresAt: new Date(now.getTime() + LUDO_INVITE_TTL_MS).toISOString(),
+            updatedAt: now.toISOString()
+        };
+        const message = await Message.create({
+            conversation: conversation._id,
+            sender: req.user._id,
+            type: 'game',
+            content: LUDO_FALLBACK,
+            status: 'sent',
+            game
+        });
+        await Conversation.updateOne(
+            { _id: conversation._id },
+            {
+                $set: { lastMessage: message._id },
+                $inc: { 'metadata.totalMessages': 1 },
+                $pull: { hiddenFor: { user: { $ne: req.user._id }, reason: { $ne: 'block' } } }
+            }
+        );
+        const populated = await Message.findById(message._id)
+            .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
+            .lean();
+        if (global.io) {
+            global.io.to(conversation.participants.map(p => `user:${p._id}`)).emit('new-message', { message: populated });
+        }
+
+        pushGame(opponent._id, req.user, conversation._id, message._id, {
+            title: '🎲 دعوة للعب',
+            body: `${req.user.name || 'صديقك'} يدعوك للعب «هلا لودو» — اضغط للقبول`
+        }, 'ludo_invite', { apnsCategory: 'LUDO_INVITE_CATEGORY' });
+
+        res.status(201).json({ success: true, data: { message: populated } });
+    } catch (error) {
+        console.error('❌ games/ludo/invite:', error);
+        res.status(500).json({ success: false, message: 'تعذّر إرسال الدعوة' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /games/ludo/:messageId/respond { action: accept | decline | cancel }
+// accept يُرجع حالة المباراة (game) لتفتحها الشاشة فوراً، وsocket ludo:match-found يصل للطرفين.
+// ─────────────────────────────────────────────────────────────
+router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
+    try {
+        const { messageId } = req.params;
+        const { action } = req.body;
+        if (!mongoose.isValidObjectId(messageId) || !['accept', 'decline', 'cancel'].includes(action)) {
+            return res.status(400).json({ success: false, message: 'طلب غير صالح' });
+        }
+        const message = await Message.findById(messageId).select('game conversation type').lean();
+        if (!message || message.type !== 'game' || message.game?.kind !== 'ludo') {
+            return res.status(404).json({ success: false, message: 'الدعوة غير موجودة' });
+        }
+        const userId = String(req.user._id);
+        const g = message.game;
+        const [inviterId, inviteeId] = g.players;
+        if (!g.players.includes(userId)) {
+            return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+        }
+        const stale = (state) => res.status(409).json({
+            success: false, message: 'لم تعد الدعوة متاحة', code: 'INVITE_CLOSED', data: { game: state }
+        });
+
+        if (ludoExpired(g)) {
+            const saved = await setLudoState(messageId, 'pending', { status: 'expired' });
+            return stale(saved || g);
+        }
+        if (g.status !== 'pending') return stale(g);
+
+        if (action === 'cancel') {
+            if (userId !== inviterId) return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+            const saved = await setLudoState(messageId, 'pending', { status: 'cancelled' });
+            return saved ? res.json({ success: true, data: { messageId, game: saved } }) : stale(g);
+        }
+        if (userId !== inviteeId) return res.status(403).json({ success: false, message: 'ليس لديك صلاحية' });
+
+        if (action === 'decline') {
+            const saved = await setLudoState(messageId, 'pending', { status: 'declined' });
+            return saved ? res.json({ success: true, data: { messageId, game: saved } }) : stale(g);
+        }
+
+        // accept — الحارس كاملاً (حظر/محادثة غير نشطة منذ الدعوة)
+        const { error } = await guardConversation(message.conversation, req.user);
+        if (error) return res.status(error.status).json(error.body);
+
+        let record;
+        try {
+            record = await ludoLobby.startInviteMatch(inviterId, inviteeId, { mode: g.mode, messageId });
+        } catch (err) { return ludoErrorResponse(res, err); }
+
+        const copy = { title: '🎲 هلا لودو', body: `${req.user.name || 'صديقك'} قبل دعوتك — المباراة بدأت! ادخل الآن` };
+        const saved = await setLudoState(messageId, 'pending', { status: 'playing', gameId: record.id }, {
+            event: 'ludo_accept', actorId: userId,
+            notifyUser: inviterId, notifyTitle: copy.title, notifyBody: copy.body
+        });
+        if (!saved) {
+            // سُبقت (إلغاء في اللحظة نفسها): لا نترك مباراة يتيمة
+            await ludoService.playerLeave(inviteeId, record.id).catch(() => {});
+            await ludoService.playerLeave(inviterId, record.id).catch(() => {});
+            return stale(g);
+        }
+        pushGame(inviterId, req.user, message.conversation, messageId, copy, 'ludo_accept');
+        res.json({ success: true, data: { messageId, game: saved, ludo: ludoService.view(record) } });
+    } catch (error) {
+        console.error('❌ games/ludo/respond:', error);
+        res.status(500).json({ success: false, message: 'تعذّر تنفيذ الإجراء' });
     }
 });
 
