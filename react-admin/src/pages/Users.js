@@ -91,6 +91,12 @@ function Users({ onViewDetail }) {
             if (seq !== fetchSeq.current) return;
             if (response.success) {
                 setUsers(response.data.users);
+                // ‹ › في صفحة المستخدم: تنقّل بين نتائج هذه الصفحة بفلاترها (UserDetail يقرأها)
+                try {
+                    sessionStorage.setItem('admin.users.navIds', JSON.stringify(
+                        (response.data.users || []).map(u => ({ id: u._id, name: u.name }))
+                    ));
+                } catch { /* التخزين ممنوع */ }
                 setTotalServerPages(response.data.totalPages || 1);
                 setTotalServerCount(response.data.total || 0);
                 if (response.data.stats) setServerStats(response.data.stats);

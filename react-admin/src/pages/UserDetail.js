@@ -33,6 +33,7 @@ import { userBioAction,
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
+import { replace as replaceRoute } from '../router';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
 import {
     gpsCoords, ipCoords, mapsUrl, formatCoords, placeText, distanceKm, MISMATCH_KM
@@ -88,6 +89,36 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
         setActiveTabState(tab);
         if (onTabChange) onTabChange(tab);
     };
+    // ‹ › بين نتائج قائمة المستخدمين (Users.js يحفظ معرّفات صفحته). replace لا navigate: «رجوع» يعود للقائمة مباشرة
+    const listNav = React.useMemo(() => {
+        try {
+            const ids = JSON.parse(sessionStorage.getItem('admin.users.navIds') || '[]');
+            const index = ids.findIndex(x => x.id === userId);
+            if (index < 0 || ids.length < 2) return null;
+            return { index, total: ids.length, prev: ids[index - 1] || null, next: ids[index + 1] || null };
+        } catch { return null; }
+    }, [userId]);
+    const activeTabRef = React.useRef(activeTab);
+    activeTabRef.current = activeTab;
+    // التبويب نفسه يبقى عند الانتقال — مراجعة «الحسابات المرتبطة» لعشرين حساباً بلا تبديل كل مرة
+    const goSibling = React.useCallback((target) => {
+        if (!target) return;
+        replaceRoute('user-detail', target.id, activeTabRef.current && activeTabRef.current !== 'info' ? { tab: activeTabRef.current } : null);
+        window.scrollTo(0, 0);
+    }, []);
+    // اختصارا لوحة المفاتيح: [ السابق، ] التالي (خارج حقول الكتابة)
+    React.useEffect(() => {
+        if (!listNav) return undefined;
+        const onKey = (e) => {
+            const tag = (e.target && e.target.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable || e.altKey || e.metaKey || e.ctrlKey) return;
+            if (e.key === '[' && listNav.prev) { e.preventDefault(); goSibling(listNav.prev); }
+            if (e.key === ']' && listNav.next) { e.preventDefault(); goSibling(listNav.next); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [listNav, goSibling]);
+
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const { showToast } = useToast();
@@ -1013,6 +1044,15 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
                     → رجوع
                 </button>
                 <h2>{user.name}</h2>
+                {listNav && (
+                    <div className="detail-listnav" role="group" aria-label="التنقّل بين نتائج القائمة">
+                        <button className="detail-listnav-btn" disabled={!listNav.prev} onClick={() => goSibling(listNav.prev)}
+                            title={listNav.prev ? `السابق: ${listNav.prev.name} ( [ )` : 'أول النتائج'}>→ السابق</button>
+                        <span className="detail-listnav-pos">{listNav.index + 1} / {listNav.total}</span>
+                        <button className="detail-listnav-btn" disabled={!listNav.next} onClick={() => goSibling(listNav.next)}
+                            title={listNav.next ? `التالي: ${listNav.next.name} ( ] )` : 'آخر نتائج هذه الصفحة'}>التالي ←</button>
+                    </div>
+                )}
             </div>
 
             {/* User Info Card */}
