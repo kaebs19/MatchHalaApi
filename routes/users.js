@@ -18,6 +18,16 @@ const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 // 🔗 لكل صفّ في قائمة المستخدمين: هل جهازه محظور؟ كم حساباً على الجهاز نفسه؟ — ثم تُحذف المعرّفات من الردّ.
 //    الربط بـ keychainToken وحده: البصمة تتصادم بين أجهزة بنفس الموديل. Keychain لا «ضوضاء» فيه للعرض:
 //    كثرة الحسابات عليه = شخص يُنشئ حسابات متتالية (القياس: 93/51/49… بأسماء Momo/Mooo/«اسم مخالف»)، لا تصادم.
+// قائمة Keychain للأجهزة المحظورة النشطة (~1200) — كاش دقيقة لفلتر «على جهاز محظور»
+let bannedKcCache = { at: 0, list: [] };
+async function bannedKeychains() {
+    if (Date.now() - bannedKcCache.at < 60 * 1000) return bannedKcCache.list;
+    const BannedDevice = require('../models/BannedDevice');
+    const list = await BannedDevice.distinct('keychainToken', { isActive: true, keychainToken: { $type: 'string' } });
+    bannedKcCache = { at: Date.now(), list };
+    return list;
+}
+
 async function attachDeviceLinks(users) {
     const BannedDevice = require('../models/BannedDevice');
     const kcs = [...new Set(users.map(u => u.keychainToken).filter(Boolean))];
@@ -93,6 +103,13 @@ router.get('/', protect, adminOnly, async (req, res) => {
             queryFilter.keychainToken = null;
             queryFilter.deviceFingerprint = null;
             queryFilter.vendorId = null;
+        } else if (device === 'banned' || device === 'banned_open') {
+            // 📵 حسابات على جهاز محظور (Keychain) — banned_open: غير المعلّقة/المحظورة فقط (ما يحتاج إجراءً)
+            queryFilter.keychainToken = { $in: await bannedKeychains() };
+            if (device === 'banned_open') {
+                queryFilter['suspension.isSuspended'] = { $ne: true };
+                queryFilter['bannedWords.isBanned'] = { $ne: true };
+            }
         }
         if (role === 'admin' || role === 'user') queryFilter.role = role;
         if (auth === 'app') queryFilter.authProvider = { $in: ['app', null] };

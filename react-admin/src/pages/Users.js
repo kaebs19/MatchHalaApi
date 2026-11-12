@@ -320,6 +320,7 @@ function Users({ onViewDetail }) {
         && filterSource === 'all' && filterDevice === 'all';
     const quickKey = newToday ? 'today'
         : filterDevice === 'none' ? 'nodevice'
+        : filterDevice === 'banned_open' ? 'bannedDevice'
         : filterBanned === 'violations' ? 'violations'
         : filterBanned === 'banned' ? 'banned'
         : filterBanned === 'suspended' ? 'suspended'
@@ -335,6 +336,7 @@ function Users({ onViewDetail }) {
         { key: 'banned', label: 'محظورين', icon: '🚫', fn: () => { resetFilters(); setFilterBanned('banned'); } },
         { key: 'premium', label: 'بريميوم', icon: '⭐', fn: () => { resetFilters(); setFilterPremium('premium'); } },
         { key: 'nodevice', label: 'بلا جهاز', icon: '⚠️', fn: () => { resetFilters(); setFilterDevice('none'); } },
+        { key: 'bannedDevice', label: 'على جهاز محظور', icon: '📵', fn: () => { resetFilters(); setFilterDevice('banned_open'); } },
     ];
 
     const formatRelativeTime = (date) => {
@@ -448,6 +450,8 @@ function Users({ onViewDetail }) {
                         <select value={filterDevice} onChange={(e) => pick(setFilterDevice)(e.target.value)}>
                             <option value="all">معرّف الجهاز - الكل</option>
                             <option value="none">بلا معرّف جهاز</option>
+                            <option value="banned_open">📵 على جهاز محظور — غير معلّق</option>
+                            <option value="banned">📵 على جهاز محظور — الكل</option>
                         </select>
                         <select value={filterBanned} onChange={(e) => pick(setFilterBanned)(e.target.value)}>
                             <option value="all">جميع - محظور/معلّق</option>
