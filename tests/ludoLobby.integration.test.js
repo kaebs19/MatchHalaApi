@@ -30,6 +30,44 @@ const LudoMatch = require('../models/LudoMatch');
 const saved = [];
 LudoMatch.create = async (doc) => { saved.push(doc); return doc; };
 
+// ── محافظ وهمية (models/LudoWallet) — تنفّذ الاستعلامات الذرّية التي يستعملها economy.js ──
+const LudoWallet = require('../models/LudoWallet');
+const wallets = new Map();
+const walletMatches = (w, filter) => {
+    if (!w) return false;
+    if (filter.coins?.$gte !== undefined && !(w.coins >= filter.coins.$gte)) return false;
+    if (filter.$or) {
+        const ok = filter.$or.some(c => c.dailyClaimedAt === null
+            ? w.dailyClaimedAt === null
+            : w.dailyClaimedAt !== null && w.dailyClaimedAt <= c.dailyClaimedAt.$lte);
+        if (!ok) return false;
+    }
+    return true;
+};
+const walletApply = (w, update) => {
+    for (const [k, v] of Object.entries(update.$inc || {})) w[k] = (w[k] || 0) + v;
+    Object.assign(w, update.$set || {});
+};
+LudoWallet.findOneAndUpdate = (filter, update, opts = {}) => ({
+    lean: async () => {
+        const id = String(filter.user);
+        let w = wallets.get(id);
+        if (!w && opts.upsert) {
+            w = { user: id, coins: 0, played: 0, wins: 0, losses: 0, dailyClaimedAt: null, ...(update.$setOnInsert || {}) };
+            wallets.set(id, w);
+            return { ...w };
+        }
+        if (!walletMatches(w, filter)) return null;
+        walletApply(w, update);
+        return { ...w };
+    }
+});
+LudoWallet.updateOne = async (filter, update) => {
+    const w = wallets.get(String(filter.user));
+    if (w) walletApply(w, update);
+};
+const coinsOf = (id) => wallets.get(String(id))?.coins;
+
 // ── سوكت وهمي يلتقط البثّ ──
 const emitted = [];
 global.io = {
@@ -41,6 +79,7 @@ const eventsFor = (userId, event) =>
 const store = require('../utils/ludo/store');
 const service = require('../utils/ludo/service');
 const lobby = require('../utils/ludo/lobby');
+const economy = require('../utils/ludo/economy');
 const { getClient } = require('../utils/redisClient');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -321,4 +360,110 @@ maybe('«دورك»: onTurn للبشر وحدهم، عند انتقال الدو
     assert.ok(duo.some(t => t.userId === a) && duo.some(t => t.userId === b));
     // لا تكرار متتالٍ للاعب نفسه (الرمية الإضافية لا تُطلق إشعاراً)
     for (let i = 1; i < duo.length; i++) assert.notEqual(duo[i].userId, duo[i - 1].userId);
+});
+
+// ───────────── الاقتصاد: الدوريات، رسوم الدخول، الجوائز ─────────────
+
+maybe('الدوري: الرسوم تُخصم عند البدء، الفائز يأخذ الجائزة والخاسر يخسر رسومه — مرة واحدة', async () => {
+    const { START_COINS, LEAGUES } = economy.constants;
+    const fee = LEAGUES.silver.fee;
+    const a = addUser(); const b = addUser();
+
+    const info = await lobby.walletInfo(a);
+    assert.equal(info.wallet.coins, START_COINS);
+    assert.deepEqual(info.leagues.map(l => l.id), ['bronze', 'silver', 'gold']);
+    assert.equal(info.leagues[1].prize.two, fee * 2);
+
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'silver' });
+    assert.equal(coinsOf(a), START_COINS, 'لا خصم أثناء الانتظار');
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'silver' });
+
+    const gameId = await store.getUserGame(a);
+    assert.ok(gameId);
+    assert.equal(coinsOf(a), START_COINS - fee);
+    assert.equal(coinsOf(b), START_COINS - fee);
+    assert.deepEqual(service.view(await store.getGame(gameId)).stake, { league: 'silver', fee, prize: fee * 2 });
+
+    const end = await playToEnd(gameId);
+    const winner = end.state.winners[0];
+    const loser = winner === a ? b : a;
+    assert.equal(coinsOf(winner), START_COINS + fee);
+    assert.equal(coinsOf(loser), START_COINS - fee);
+    assert.equal(wallets.get(winner).wins, 1);
+    assert.equal(wallets.get(loser).losses, 1);
+
+    const ended = eventsFor(a, 'ludo:ended').find(e => e.gameId === gameId);
+    assert.equal(ended.stake.league, 'silver');
+    assert.deepEqual(ended.rewards.find(r => r.id === winner), { id: winner, won: true, prize: fee * 2, delta: fee });
+    assert.deepEqual(ended.rewards.find(r => r.id === loser), { id: loser, won: false, prize: 0, delta: -fee });
+    const doc = saved.find(s => s.gameId === gameId);
+    assert.equal(doc.league, 'silver');
+    assert.equal(doc.prize, fee * 2);
+});
+
+maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {
+    const poor = addUser();
+    await lobby.walletInfo(poor);
+    wallets.get(poor).coins = 100;
+    await assert.rejects(lobby.joinQueue(poor, { mode: 'quick', size: 2, league: 'bronze' }), { code: 'NOT_ENOUGH_COINS' });
+    await assert.rejects(lobby.joinQueue(poor, { mode: 'quick', size: 2, league: 'diamond' }), { code: 'BAD_LEAGUE' });
+    assert.equal(coinsOf(poor), 100);
+
+    const a = addUser(); const b = addUser();
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'bronze' });
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'silver' });
+    assert.equal(await store.getUserGame(a), null);
+    assert.equal(await store.getUserGame(b), null);
+    // الخروج من الطابور بلا خصم
+    await lobby.leaveQueue(a); await lobby.leaveQueue(b);
+    assert.equal(coinsOf(a), economy.constants.START_COINS);
+});
+
+maybe('الدوري مع بوت: مقعد البوت يدخل الجائزة، والودّية (غرفة/كمبيوتر/طابور بلا دوري) بلا رسوم', async () => {
+    const { START_COINS, LEAGUES } = economy.constants;
+    const fee = LEAGUES.bronze.fee;
+    const a = addUser();
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'bronze' });
+    await sleep(250);
+    const [gameId] = await lobby.tryMatch('quick:2:bronze', { fillBots: true });
+    assert.ok(gameId);
+    assert.equal(coinsOf(a), START_COINS - fee);
+    const end = await playToEnd(gameId);
+    assert.equal(coinsOf(a), end.state.winners.includes(a) ? START_COINS + fee : START_COINS - fee);
+
+    const before = coinsOf(a);
+    const solo = await lobby.startSolo(a, { mode: 'quick', size: 2 });
+    assert.equal(solo.stake, null);
+    await playToEnd(solo.gameId);
+    assert.equal(coinsOf(a), before);
+    assert.equal(wallets.get(a).played, 1, 'الودّية لا تُحسب في العدّادات');
+});
+
+maybe('الدوري: خصم يفشل عند البدء (الرصيد تغيّر) ← يُستبعد اللاعب ويُبلَّغ', async () => {
+    const a = addUser(); const b = addUser();
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'gold' }).catch(() => {});
+    // رصيد البداية أقل من رسوم الذهب؟ نضبطه صراحةً
+    await lobby.walletInfo(a); await lobby.walletInfo(b);
+    const fee = economy.constants.LEAGUES.gold.fee;
+    wallets.get(a).coins = fee; wallets.get(b).coins = fee;
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'gold' });
+    wallets.get(a).coins = 0;                      // صُرف في مكان آخر أثناء الانتظار
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'gold' });
+    assert.equal(await store.getUserGame(a), null);
+    assert.equal(eventsFor(a, 'ludo:queue-dropped').length, 1);
+    const gameId = await store.getUserGame(b);
+    assert.ok(gameId, 'الثاني يلعب مع بوت');
+    assert.equal(coinsOf(b), 0);
+    await service.playerLeave(b, gameId);
+});
+
+maybe('المكافأة اليومية: مرة كل 24 ساعة', async () => {
+    const a = addUser();
+    const { START_COINS, DAILY_BONUS } = economy.constants;
+    const first = await lobby.claimDaily(a);
+    assert.equal(first.wallet.coins, START_COINS + DAILY_BONUS);
+    assert.ok(first.wallet.dailyAvailableAt > Date.now());
+    await assert.rejects(lobby.claimDaily(a), { code: 'DAILY_NOT_READY' });
+    wallets.get(a).dailyClaimedAt = new Date(Date.now() - 25 * 3600 * 1000);
+    assert.equal((await lobby.claimDaily(a)).wallet.coins, START_COINS + 2 * DAILY_BONUS);
 });

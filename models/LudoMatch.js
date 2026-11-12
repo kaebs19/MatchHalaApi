@@ -16,6 +16,10 @@ const ludoMatchSchema = new mongoose.Schema({
     }],
     winners: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     rolls: { type: Number, default: 0 },
+    // مباراة دوري (utils/ludo/economy.js) — غائبة في الودّية
+    league: { type: String, enum: ['bronze', 'silver', 'gold'] },
+    fee: Number,
+    prize: Number,          // جائزة كل فائز
     startedAt: Date,
     endedAt: Date
 }, { timestamps: false });

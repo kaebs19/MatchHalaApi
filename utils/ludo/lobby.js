@@ -12,11 +12,13 @@ const { getFeaturesForUser } = require('../featureFlags');
 const { LudoError, constants: { MODES } } = require('../ludoEngine');
 const store = require('./store');
 const service = require('./service');
+const economy = require('./economy');
 
 const BOT_FILL_MS = Number(process.env.LUDO_BOT_FILL_MS) || 20000;
 const SWEEP_MS = 2000;
 
-const queueKeyOf = (mode, size) => `${mode}:${size}`;
+// الدوري جزء من مفتاح الطابور: لا يُجمع لاعبان برسوم مختلفة. بلا دوري = طابور ودّي (النسخ القديمة)
+const queueKeyOf = (mode, size, league) => league ? `${mode}:${size}:${league}` : `${mode}:${size}`;
 
 function validateSetup(mode, size) {
     if (!MODES[mode]) throw new LudoError('BAD_MODE', 'نمط غير معروف');
@@ -64,22 +66,56 @@ async function assertFree(userId) {
 
 // ───────────── اللعب السريع ─────────────
 
-async function joinQueue(userId, { mode, size }) {
+async function joinQueue(userId, { mode, size, league }) {
     ({ mode, size } = validateSetup(mode, size));
+    league = league ? String(league) : null;
+    if (league) economy.assertLeague(league);
     const user = await loadEligible(userId);
     const id = String(user._id);
     await store.dequeue([id]);          // تبديل الطابور مسموح
     await assertFree(id);
-    await store.enqueue(queueKeyOf(mode, size), {
+    // الرسوم تُخصم عند بدء المباراة — هنا نتحقق فقط أن الرصيد يكفي
+    if (league) await economy.assertCanAfford(id, league);
+    const key = queueKeyOf(mode, size, league);
+    await store.enqueue(key, {
         userId: id,
         joinedAt: Date.now(),
         mode,
         size,
+        league,
         blocked: blockedList(user),
         player: playerInfo(user)
     });
-    await tryMatch(queueKeyOf(mode, size));
-    return { queued: !(await store.getUserGame(id)), mode, size, botFillMs: BOT_FILL_MS };
+    await tryMatch(key);
+    return { queued: !(await store.getUserGame(id)), mode, size, league, botFillMs: BOT_FILL_MS };
+}
+
+// يخصم رسوم الدخول من كل لاعب — من لا يكفي رصيده (تغيّر منذ دخوله الطابور) يُستبعد
+async function chargeEntry(group, fee) {
+    const paid = [];
+    for (const g of group) {
+        if (await economy.charge(g.userId, fee)) paid.push(g);
+        else emitQueueDropped(g.userId);
+    }
+    return paid;
+}
+
+function emitQueueDropped(userId) {
+    global.io?.to(`user:${userId}`).emit('ludo:queue-dropped', {
+        code: 'NOT_ENOUGH_COINS', message: 'رصيدك لا يكفي لرسوم دخول هذا الدوري'
+    });
+}
+
+// الرصيد والدوريات (شاشة الألعاب) والمكافأة اليومية
+async function walletInfo(userId) {
+    const user = await loadEligible(userId);
+    const wallet = await economy.getWallet(String(user._id));
+    return { wallet: economy.walletView(wallet), leagues: economy.leaguesView() };
+}
+
+async function claimDaily(userId) {
+    const user = await loadEligible(userId);
+    return { wallet: economy.walletView(await economy.claimDaily(String(user._id))) };
 }
 
 async function leaveQueue(userId) {
@@ -90,8 +126,9 @@ async function leaveQueue(userId) {
 // يكوّن مجموعات متوافقة (بلا طرفَي حظر) بترتيب الانضمام.
 // fillBots: من انتظر BOT_FILL_MS تكتمل مجموعته ببوتات.
 async function tryMatch(queueKey, { fillBots = false, now = Date.now() } = {}) {
-    const [mode, sizeStr] = queueKey.split(':');
+    const [mode, sizeStr, league] = queueKey.split(':');
     const size = Number(sizeStr);
+    const stake = league ? economy.stakeFor(league, mode, size) : null;
     return store.withLock(`queue:${queueKey}`, async () => {
         let entries = await store.queueEntries(queueKey);
         const started = [];
@@ -111,16 +148,24 @@ async function tryMatch(queueKey, { fillBots = false, now = Date.now() } = {}) {
             const ids = group.map(g => g.userId);
             await store.dequeue(ids);
             // من دخل مباراة أخرى أثناء الانتظار يُستبعد
-            const free = [];
+            let free = [];
             for (const g of group) if (!(await store.getUserGame(g.userId))) free.push(g);
+            if (stake) free = await chargeEntry(free, stake.fee);
             if (free.length > 0) {
-                const record = await service.createMatch({
-                    players: free.map(g => g.player),
-                    bots: size - free.length,
-                    mode,
-                    source: 'queue'
-                });
-                started.push(record.id);
+                try {
+                    const record = await service.createMatch({
+                        players: free.map(g => g.player),
+                        bots: size - free.length,
+                        mode,
+                        source: 'queue',
+                        stake
+                    });
+                    started.push(record.id);
+                } catch (e) {
+                    // لم تبدأ المباراة ← تُردّ الرسوم
+                    if (stake) await Promise.all(free.map(g => economy.refund(g.userId, stake.fee).catch(() => {})));
+                    throw e;
+                }
             }
             entries = entries.filter(e => !ids.includes(e.userId));
         }
@@ -317,6 +362,8 @@ module.exports = {
     startRoom,
     leaveRoom,
     loadEligible,
+    walletInfo,
+    claimDaily,
     startLudoLobbySweeper,
     stopLudoLobbySweeper,
     constants: { BOT_FILL_MS }

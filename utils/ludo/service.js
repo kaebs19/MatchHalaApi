@@ -12,6 +12,7 @@
 const crypto = require('crypto');
 const engine = require('../ludoEngine');
 const store = require('./store');
+const economy = require('./economy');
 
 const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
 const BOT_DELAY_MS = 1200;
@@ -58,6 +59,8 @@ function view(record) {
         players: record.meta.players,           // { id, name, photo, isBot }
         turnMs: TURN_MS,
         deadlineAt: record.deadlineAt,
+        // مباراة دوري: { league, fee, prize } — null للودّية
+        stake: record.meta.stake || null,
         ...engine.publicState(record.state)
     };
 }
@@ -80,7 +83,8 @@ function scheduleNext(record, now = Date.now()) {
 
 // players: [{ id, name, photo }] بشر فقط؛ bots: عدد البوتات المكمِّلة
 // link: ربط اختياري بمصدر خارجي (دعوة المحادثة: { messageId }) — يصل مستمعي onFinalize
-async function createMatch({ players, bots = 0, mode = 'classic', source, link = null }) {
+// stake: مباراة دوري { league, fee, prize } — الرسوم خُصمت قبل النداء (lobby.tryMatch)
+async function createMatch({ players, bots = 0, mode = 'classic', source, link = null, stake = null }) {
     const used = new Set();
     const botPlayers = Array.from({ length: bots }, (_, i) => {
         let name;
@@ -97,7 +101,7 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
     const record = {
         id: newGameId(),
         state,
-        meta: { mode, source, players: all, startedAt: Date.now(), rolls: 0, ...(link ? { link } : {}) },
+        meta: { mode, source, players: all, startedAt: Date.now(), rolls: 0, ...(link ? { link } : {}), ...(stake ? { stake } : {}) },
         deadlineAt: null
     };
     scheduleNext(record);
@@ -122,6 +126,9 @@ async function finalize(record) {
     record.meta.persisted = true;
     const ranking = engine.ranking(record.state);
     const placeOf = new Map(ranking.map(r => [r.id, r]));
+    const stake = record.meta.stake || null;
+    // التسوية مرة واحدة: gameId فريد في LudoMatch — إن كانت النتيجة محفوظة من قبل فلا جائزة ثانية
+    let alreadySaved = false;
     try {
         const LudoMatch = require('../../models/LudoMatch');
         await LudoMatch.create({
@@ -142,17 +149,39 @@ async function finalize(record) {
             }),
             winners: (record.state.winners || []).filter(id => !id.startsWith('bot:')),
             rolls: record.meta.rolls,
+            ...(stake ? { league: stake.league, fee: stake.fee, prize: stake.prize } : {}),
             startedAt: new Date(record.meta.startedAt),
             endedAt: new Date()
         });
     } catch (e) {
+        if (e.code === 11000) alreadySaved = true;
         console.error('ludo finalize error:', e.message);
     }
+    const rewards = stake && !alreadySaved ? await settleStake(record, stake) : [];
     await store.clearUserGame(humans(record), record.id);
-    emitToPlayers(record, 'ludo:ended', { gameId: record.id, winners: record.state.winners, ranking });
+    emitToPlayers(record, 'ludo:ended', {
+        gameId: record.id, winners: record.state.winners, ranking,
+        ...(stake ? { stake, rewards } : {})
+    });
     for (const fn of finalizeHooks) {
         try { await fn(record, ranking); } catch (e) { console.error('ludo finalize hook:', e.message); }
     }
+}
+
+// الفائز يأخذ الجائزة، والخاسر خسر رسومه (خُصمت عند البدء). delta = صافي المباراة للّاعب.
+async function settleStake(record, stake) {
+    const winners = new Set(record.state.winners || []);
+    const rewards = [];
+    for (const id of humans(record)) {
+        const won = winners.has(id);
+        try {
+            await economy.settle(id, { won, prize: stake.prize });
+            rewards.push({ id, won, prize: won ? stake.prize : 0, delta: (won ? stake.prize : 0) - stake.fee });
+        } catch (e) {
+            console.error(`ludo settle ${record.id} ${id}:`, e.message);
+        }
+    }
+    return rewards;
 }
 
 // fn(record) يُرجع { state, events } أو null (لا شيء يُفعل)

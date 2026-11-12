@@ -7,6 +7,7 @@
 //   ludo:ended        النتيجة والترتيب
 //   ludo:room         تحديث غرفة الانتظار الخاصة (أو closed)
 //   ludo:emote        عبارة/ملصق جاهز من لاعب
+//   ludo:queue-dropped  أُخرج من الطابور (رصيده لم يعد يكفي رسوم الدوري)
 //
 // ⚠️ لا نصّ حرّ: العبارات والملصقات معرّفات من قائمة ثابتة، والنصّ نفسه في التطبيق.
 
@@ -51,13 +52,17 @@ function registerLudoHandlers(io, socket) {
     };
 
     // ── الدخول ──
-    on('ludo:queue:join', ({ mode, size }) => lobby.joinQueue(userId, { mode, size }));
+    on('ludo:queue:join', ({ mode, size, league }) => lobby.joinQueue(userId, { mode, size, league }));
     on('ludo:queue:leave', () => lobby.leaveQueue(userId));
     on('ludo:solo', async ({ mode, size }) => ({ game: await lobby.startSolo(userId, { mode, size }) }));
     on('ludo:room:create', async ({ mode, size }) => ({ room: await lobby.createRoom(userId, { mode, size }) }));
     on('ludo:room:join', ({ code }) => lobby.joinRoom(userId, code));
     on('ludo:room:start', ({ code }) => lobby.startRoom(userId, code));
     on('ludo:room:leave', () => lobby.leaveRoom(userId));
+
+    // ── الرصيد والدوريات ──
+    on('ludo:wallet', () => lobby.walletInfo(userId));
+    on('ludo:wallet:claim', () => lobby.claimDaily(userId));
 
     // ── المباراة ──
     on('ludo:resume', async () => ({ game: await service.currentGame(userId) }));
