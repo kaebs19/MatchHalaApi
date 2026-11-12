@@ -1,7 +1,8 @@
 .main-layout {
     display: flex;
     min-height: 100vh;
-    background: #f5f7fb;
+    /* كان #f5f7fb ثابتاً — شريط أبيض بين العناصر في الوضع الداكن */
+    background: var(--bg-page);
 }
 
 .main-content {
