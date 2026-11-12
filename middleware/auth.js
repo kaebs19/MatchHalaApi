@@ -292,6 +292,11 @@ const protect = async (req, res, next) => {
 // التحقق من صلاحيات الأدمن
 const adminOnly = (req, res, next) => {
     if (req.user && req.user.role === 'admin') {
+        // 📜 سجلّ إجراءات المشرفين — مرة واحدة لكل طلب (adminOnly قد يتكرّر على مستوى الراوتر والمسار)
+        if (!req._adminAudited) {
+            req._adminAudited = true;
+            require('../utils/adminAudit').auditAdminRequest(req, res);
+        }
         next();
     } else {
         res.status(403).json({

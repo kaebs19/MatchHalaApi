@@ -33,7 +33,7 @@ import { userBioAction,
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import { getImageUrl, getDefaultAvatar, getMessagePhotoUrl } from '../config';
-import { replace as replaceRoute } from '../router';
+import { replace as replaceRoute, navigate as navigateRoute } from '../router';
 import { formatDateTimeLong, formatDateLong } from '../utils/formatters';
 import {
     gpsCoords, ipCoords, mapsUrl, formatCoords, placeText, distanceKm, MISMATCH_KM
@@ -1044,6 +1044,9 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
                     → رجوع
                 </button>
                 <h2>{user.name}</h2>
+                <button className="detail-audit-btn" onClick={() => navigateRoute('audit-log', null, { target: userId })} title="كل إجراءات المشرفين على هذا الحساب">
+                    📜 سجلّ الإجراءات
+                </button>
                 {listNav && (
                     <div className="detail-listnav" role="group" aria-label="التنقّل بين نتائج القائمة">
                         <button className="detail-listnav-btn" disabled={!listNav.prev} onClick={() => goSibling(listNav.prev)}

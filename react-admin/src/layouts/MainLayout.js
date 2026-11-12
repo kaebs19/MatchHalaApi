@@ -26,6 +26,7 @@ const BannedDevices = lazy(() => import('../pages/BannedDevices'));
 const PermanentBans = lazy(() => import('../pages/PermanentBans'));
 const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
 const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
+const AuditLog = lazy(() => import('../pages/AuditLog'));
 
 import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats, getRemovalRequestsStats } from '../services/api';
 import { useToast } from '../components/Toast';
@@ -504,6 +505,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <UserDetail key={selectedUserId} userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} onViewConversation={handleViewConversation}
                     initialTab={routeQuery?.tab}
                     onTabChange={(tab) => replace('user-detail', selectedUserId, tab && tab !== 'info' ? { tab } : null, { silent: true })} />;
+            case 'audit-log':
+                return <AuditLog initialTarget={routeQuery?.target} />;
             default:
                 return <Dashboard user={user} onPageChange={setCurrentPage} />;
         }

@@ -20,6 +20,7 @@ export const PAGES = {
     stickers: { title: 'الملصقات', icon: '🏷️', nav: true, group: 'content', adminOnly: true },
     'sensitive-content': { title: 'المحتوى الحساس', icon: '🔞', nav: true, group: 'moderation', adminOnly: true },
     settings: { title: 'الإعدادات', icon: '⚙️', nav: true, group: 'system', adminOnly: true },
+    'audit-log': { title: 'سجلّ الإشراف', icon: '📜', nav: true, group: 'system', adminOnly: true },
 
     // صفحات خارج القائمة الجانبية
     profile: { title: 'الملف الشخصي', icon: '👤', adminOnly: false },
