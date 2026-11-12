@@ -77,7 +77,11 @@ async function checkSignals({ deviceFingerprint, keychainToken } = {}) {
     ]);
     return {
         deviceFingerprint: fpRes,
-        keychainToken: kcRes,
+        // 🔑 Keychain لا يكون «ضوضائياً» أبداً (١٣ نوفمبر ٢٠٢٦): التطبيق يولّده UUID عشوائياً لكل جهاز بلا قيمة احتياطية
+        //    ثابتة، فكثرة الحسابات عليه = شخص واحد يُنشئ حسابات متتالية لا تصادم (القياس: 93/51/49… بأسماء Momo/Mooo/
+        //    «اسم مخالف»). كان الحدّ يُسقط حظر الجهاز في الدخول وجوجل/أبل: 16 جهازاً محظوراً أنشأت 107 حسابات بعد حظرها،
+        //    وزرّ «فك الأجهزة الضوضائية» كان سيفكّها. العدد يبقى للعرض؛ الضوضاء للبصمة وحدها (تتصادم بين أجهزة بنفس الموديل).
+        keychainToken: { noisy: false, count: kcRes.count },
         threshold: NOISE_THRESHOLD
     };
 }
