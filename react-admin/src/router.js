@@ -70,15 +70,25 @@ export const goBack = (fallbackPage) => {
 
 const pathKey = (hash) => (hash || '').split('?')[0];
 
-// يعيد موضع التمرير بعد أن تحمّل الصفحة بياناتها — يحاول حتى يصبح ارتفاعها كافياً (≤ 2 ثانية)
+// يعيد موضع التمرير بعد أن تحمّل الصفحة بياناتها — يحاول حتى يصبح ارتفاعها كافياً (≤ 6 ثوانٍ؛
+// قائمة المستخدمين بفلتر قد تتجاوز ثانيتين). أي تمرير/لمس من الأدمن يلغي المحاولة فلا نسحبه.
+let cancelRestore = null;
 const restoreScroll = (y) => {
+    if (cancelRestore) cancelRestore();
     const started = Date.now();
+    let stopped = false;
+    const stop = () => {
+        stopped = true;
+        ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((ev) => window.removeEventListener(ev, stop));
+        cancelRestore = null;
+    };
+    ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach((ev) => window.addEventListener(ev, stop, { passive: true }));
+    cancelRestore = stop;
     const attempt = () => {
+        if (stopped) return;
         const maxY = document.documentElement.scrollHeight - window.innerHeight;
-        if (maxY >= y - 4 || Date.now() - started > 2000) {
-            window.scrollTo(0, Math.min(y, Math.max(0, maxY)));
-            return;
-        }
+        window.scrollTo(0, Math.min(y, Math.max(0, maxY)));
+        if (maxY >= y - 4 || Date.now() - started > 6000) { stop(); return; }
         requestAnimationFrame(attempt);
     };
     requestAnimationFrame(attempt);
@@ -96,6 +106,7 @@ export const useRoute = () => {
             if (oldPath && oldPath !== newPath) {
                 scrollPositions.set(oldPath, window.scrollY);
                 if (forwardNav) {
+                    if (cancelRestore) cancelRestore();
                     window.scrollTo(0, 0);
                 } else if (scrollPositions.has(newPath)) {
                     restoreScroll(scrollPositions.get(newPath));
