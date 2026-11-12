@@ -43,6 +43,8 @@ function buildSnapshot(u, now = new Date()) {
     const r = u.restrictions || {};
     const snap = {};
     const summary = [];
+    // سجلّ بلا عقوبة (عدّاد مخالفات/تحذيرات) — ينتقل بصمت ليكمل السلّم، ولا يُعرض «تقييداً»
+    const softSummary = [];
     let latestEnd = 0;
     let permanent = false;
     const track = (until) => {
@@ -97,7 +99,7 @@ function buildSnapshot(u, now = new Date()) {
     const w = u.warnings || {};
     if (w.level > 0 && w.lastWarningAt && now - new Date(w.lastWarningAt) < 30 * DAY) {
         snap.warningsLevel = w.level;
-        summary.push(`تحذيرات (المستوى ${w.level})`);
+        softSummary.push(`تحذيرات (المستوى ${w.level})`);
     }
     const ep = u.externalPromo || {};
     if ((ep.violations > 0 && ep.lastViolationAt && now - new Date(ep.lastViolationAt) < 7 * DAY)
@@ -109,15 +111,16 @@ function buildSnapshot(u, now = new Date()) {
         const parts = [];
         if (ep.violations > 0) parts.push(`${ep.violations} مخالفات`);
         if (ep.lockCount > 0) parts.push(`${ep.lockCount} إيقافات`);
-        summary.push(`سجلّ مشاركة حسابات خارجية: ${parts.join(' و')}`);
+        softSummary.push(`سجلّ مشاركة حسابات خارجية: ${parts.join(' و')}`);
     }
 
-    if (summary.length === 0) return null;
+    if (summary.length === 0 && softSummary.length === 0) return null;
 
     const minEnd = now.getTime() + MIN_RETENTION_DAYS * DAY;
     const maxEnd = now.getTime() + RETENTION_DAYS * DAY;
     const expiresAt = new Date(permanent ? maxEnd : Math.min(maxEnd, Math.max(minEnd, latestEnd)));
-    return { snapshot: snap, summary, expiresAt };
+    // summary = التقييدات الفعلية وحدها (شاشة الحذف)؛ allSummary للسجلّ والمشرف
+    return { snapshot: snap, summary, softSummary, allSummary: [...summary, ...softSummary], hasRestriction: summary.length > 0, expiresAt };
 }
 
 /** قبل حذف الحساب. لا يرمي أبداً — فشله لا يمنع الحذف. */
@@ -137,7 +140,7 @@ async function captureOnDelete(userId) {
             identityHashes: hashes,
             deletedAt: new Date(),
             snapshot: built.snapshot,
-            summary: built.summary,
+            summary: built.allSummary,
             expiresAt: built.expiresAt
         });
         return doc;
@@ -147,7 +150,7 @@ async function captureOnDelete(userId) {
     }
 }
 
-/** هل على هذا الحساب تقييدات سارية ستنتقل؟ — لنصّ شاشة الحذف */
+/** هل على هذا الحساب تقييدات سارية ستنتقل؟ — لنصّ شاشة الحذف. عدّاد المخالفات وحده ليس تقييداً فلا يُعرض. */
 function pendingCarryoverSummary(userDoc) {
     const built = buildSnapshot(userDoc || {});
     return built ? built.summary : [];
@@ -246,12 +249,13 @@ async function applyToUser(userOrId, extra = {}) {
             }
         }
 
-        // رفعه في «الحسابات الجديدة» للمراجعة — المشرف يقرّر بعدها
+        // 🔎 ملاحظة للمشرف لا إخفاء (١٣ نوفمبر ٢٠٢٦): كان يضبط newcomer.status='flagged'، والاكتشاف يستبعد flagged كلياً
+        //    حتى المراجعة — فحساب بمخالفة واحدة بلا عقوبة يختفي بلا مدة (طابور الجدد آلاف). التقييدات المنقولة أعلاه تفرض
+        //    نفسها؛ والحساب الجديد يظهر 24 ساعة في «الحسابات الجديدة» (pending) ومعه السبب. لا نغيّر الحالة.
         const summary = [...new Set(records.flatMap(x => x.summary || []))];
         const deletedAt = records[0].deletedAt;
-        set['newcomer.status'] = 'flagged';
         set['newcomer.flaggedAt'] = now;
-        set['newcomer.flaggedReason'] = `🔁 أعاد التسجيل بعد حذف حساب مقيَّد (${fmt(deletedAt)}): ${summary.join('، ')}`.slice(0, 500);
+        set['newcomer.flaggedReason'] = `🔁 أعاد التسجيل بعد حذف حساب (${fmt(deletedAt)}): ${summary.join('، ')}`.slice(0, 500);
 
         // updateOne يمرّ على hooks حالة الحساب (accountStateBroadcast) — مقصود عند التعليق
         await User.updateOne({ _id: u._id }, { $set: set });
