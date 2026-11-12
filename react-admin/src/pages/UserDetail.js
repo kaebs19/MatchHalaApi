@@ -2668,29 +2668,30 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                 const isInactive = !u.isActive;
 
                                                 // أولوية الألوان: بان > تعليق > جهاز محظور > غير مفعّل > عادي
-                                                let borderColor = '#e5e7eb';
-                                                let bgColor = '#fff';
-                                                let hoverBg = '#eef2ff';
+                                                // ألوان من رموز المظهر — الثابتة (#fff…) كانت تُخفي الأسماء في الوضع الداكن
+                                                let borderColor = 'var(--border-color)';
+                                                let bgColor = 'var(--bg-subtle)';
+                                                let hoverBg = 'var(--tint-info)';
                                                 let hoverBorder = '#6366f1';
 
                                                 if (isBanned) {
                                                     borderColor = '#ef4444';
-                                                    bgColor = '#fef2f2';
-                                                    hoverBg = '#fee2e2';
+                                                    bgColor = 'var(--tint-danger)';
+                                                    hoverBg = 'var(--tint-danger-strong)';
                                                     hoverBorder = '#dc2626';
                                                 } else if (isSuspended) {
                                                     borderColor = '#f59e0b';
-                                                    bgColor = '#fffbeb';
-                                                    hoverBg = '#fef3c7';
+                                                    bgColor = 'var(--tint-warning)';
+                                                    hoverBg = 'var(--tint-warning)';
                                                     hoverBorder = '#d97706';
                                                 } else if (isDeviceBanned) {
                                                     borderColor = '#a855f7';
-                                                    bgColor = '#faf5ff';
-                                                    hoverBg = '#f3e8ff';
+                                                    bgColor = 'var(--tint-purple)';
+                                                    hoverBg = 'var(--tint-purple)';
                                                     hoverBorder = '#9333ea';
                                                 } else if (isInactive) {
-                                                    borderColor = '#d1d5db';
-                                                    bgColor = '#f9fafb';
+                                                    borderColor = 'var(--border-color)';
+                                                    bgColor = 'var(--bg-subtle)';
                                                 }
 
                                                 return (
@@ -2704,7 +2705,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                                         <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt={u.name} style={{width:48,height:48,borderRadius:'50%',objectFit:'cover',opacity: isBanned || isInactive ? 0.7 : 1}} onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
                                                         <div style={{flex:1}}>
                                                             <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                                                                <span style={{textDecoration: isBanned ? 'line-through' : 'none', color: isBanned ? '#991b1b' : 'inherit'}}>{u.name}</span>
+                                                                <span style={{textDecoration: isBanned ? 'line-through' : 'none', color: isBanned ? 'var(--text-danger)' : 'var(--text-primary)'}}>{u.name}</span>
                                                                 {isBanned && (
                                                                     <span title={u.bannedWords?.banReason || ''} style={{background:'#dc2626',color: 'var(--text-on-brand)',padding:'3px 10px',borderRadius:10,fontSize:11,fontWeight:700}}>🚫 محظور</span>
                                                                 )}
