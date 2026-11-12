@@ -16,7 +16,8 @@ const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 // @desc    الحصول على جميع المستخدمين
 // @access  Private/Admin
 // 🔗 لكل صفّ في قائمة المستخدمين: هل جهازه محظور؟ كم حساباً على الجهاز نفسه؟ — ثم تُحذف المعرّفات من الردّ.
-//    الربط بـ keychainToken وحده: البصمة تتصادم بين أجهزة بنفس الموديل. القيم الضوضائية (≥ NOISE_THRESHOLD) تُهمل.
+//    الربط بـ keychainToken وحده: البصمة تتصادم بين أجهزة بنفس الموديل. Keychain لا «ضوضاء» فيه للعرض:
+//    كثرة الحسابات عليه = شخص يُنشئ حسابات متتالية (القياس: 93/51/49… بأسماء Momo/Mooo/«اسم مخالف»)، لا تصادم.
 async function attachDeviceLinks(users) {
     const BannedDevice = require('../models/BannedDevice');
     const kcs = [...new Set(users.map(u => u.keychainToken).filter(Boolean))];
@@ -32,11 +33,10 @@ async function attachDeviceLinks(users) {
     for (const u of users) {
         const kc = u.keychainToken;
         const n = kc ? (countBy.get(kc) || 1) : 0;
-        const noisy = n >= NOISE_THRESHOLD;
         u.deviceLink = {
             hasDevice: !!(u.keychainToken || u.deviceFingerprint || u.vendorId),
-            sameDevice: kc && !noisy ? n - 1 : 0,
-            deviceBanned: !!(kc && !noisy && bannedSet.has(kc))
+            sameDevice: kc ? n - 1 : 0,
+            deviceBanned: !!(kc && bannedSet.has(kc))
         };
         delete u.keychainToken;
         delete u.deviceFingerprint;
@@ -3658,7 +3658,8 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
             keychainToken: mainUser.keychainToken
         });
         const useFingerprint = mainUser.deviceFingerprint && !noise.deviceFingerprint.noisy;
-        const useKeychain = mainUser.keychainToken && !noise.keychainToken.noisy;
+        // Keychain يُعرض دائماً — كثرة الحسابات عليه دليل لا تصادم (انظر attachDeviceLinks)
+        const useKeychain = !!mainUser.keychainToken;
 
         // 🌐 كل عناوين IP المعروفة: آخر دخول + التسجيل (signupMeta، منذ ١٢ نوفمبر) + آخر 5 دخولات
         const ipList = [...new Set([
@@ -3678,7 +3679,7 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                 : Promise.resolve([]),
             useKeychain
                 ? User.find({ _id: { $ne: mainUser._id }, keychainToken: mainUser.keychainToken })
-                    .select(SELECT_FIELDS).limit(50).lean()
+                    .select(SELECT_FIELDS).sort({ createdAt: -1 }).limit(200).lean()
                 : Promise.resolve([]),
             ipList.length
                 ? User.find({ _id: { $ne: mainUser._id }, $or: [{ lastIP: { $in: ipList } }, { 'signupMeta.ip': { $in: ipList } }] })
@@ -3752,7 +3753,7 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                     threshold: NOISE_THRESHOLD,
                     fingerprintNoisy: !!(mainUser.deviceFingerprint && noise.deviceFingerprint.noisy),
                     fingerprintMatchCount: noise.deviceFingerprint.count,
-                    keychainNoisy: !!(mainUser.keychainToken && noise.keychainToken.noisy),
+                    keychainNoisy: false,   // لا يُخفى — انظر useKeychain
                     keychainMatchCount: noise.keychainToken.count
                 },
                 counts: {
