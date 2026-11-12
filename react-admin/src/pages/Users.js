@@ -230,6 +230,38 @@ function Users({ onViewDetail }) {
 
     const confirmDelete = (user) => { setUserToDelete(user); setShowDeleteModal(true); };
 
+    // ☑️ تحديد متعدد + تعليق جماعي — يمرّ على PUT /users/:id/suspend لكل حساب فتنطبق آثاره كلها (خروج، إشعار، سجلّ)
+    const [selected, setSelected] = useState(() => new Set());
+    const [bulkOpen, setBulkOpen] = useState(false);
+    const [bulkForm, setBulkForm] = useState({ duration: '3d', reason: '', notify: true });
+    const [bulkProgress, setBulkProgress] = useState(null); // { done, total, failed }
+    useEffect(() => { setSelected(new Set()); }, [users]);
+    const toggleSelect = (id) => setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+    });
+    const allOnPageSelected = paginatedUsers.length > 0 && paginatedUsers.every(u => selected.has(u._id));
+    const toggleSelectAll = () => setSelected(allOnPageSelected ? new Set() : new Set(paginatedUsers.map(u => u._id)));
+    const runBulkSuspend = async () => {
+        const ids = [...selected];
+        let done = 0, failed = 0;
+        setBulkProgress({ done, total: ids.length, failed });
+        for (const id of ids) {
+            try {
+                const r = await suspendUser(id, bulkForm.duration, bulkForm.reason || 'إجراء جماعي من قائمة المستخدمين', bulkForm.notify);
+                if (!r.success) failed++;
+            } catch { failed++; }
+            done++;
+            setBulkProgress({ done, total: ids.length, failed });
+        }
+        toast[failed ? 'warning' : 'success'](failed ? `عُلّق ${done - failed} وفشل ${failed}` : `تم تعليق ${done} حساباً`);
+        setBulkOpen(false);
+        setBulkProgress(null);
+        setSelected(new Set());
+        fetchUsers();
+    };
+
     const handleDelete = async () => {
         if (!userToDelete) return;
         try {
@@ -444,6 +476,48 @@ function Users({ onViewDetail }) {
                 )}
             </div>
 
+            {selected.size > 0 && (
+                <div className="bulk-bar" role="region" aria-label="إجراءات جماعية">
+                    <span className="bulk-count">{selected.size} محدّد</span>
+                    <button className="bulk-btn danger" onClick={() => setBulkOpen(true)}>⛔ تعليق المحدّدين</button>
+                    <button className="bulk-btn" onClick={() => setSelected(new Set())}>إلغاء التحديد</button>
+                </div>
+            )}
+            {bulkOpen && (
+                <div className="modal-overlay" onClick={() => !bulkProgress && setBulkOpen(false)}>
+                    <div className="bulk-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="تعليق جماعي">
+                        <h3>⛔ تعليق {selected.size} حساباً</h3>
+                        <label>المدة
+                            <select value={bulkForm.duration} disabled={!!bulkProgress} onChange={(e) => setBulkForm(f => ({ ...f, duration: e.target.value }))}>
+                                <option value="24h">24 ساعة</option>
+                                <option value="48h">48 ساعة</option>
+                                <option value="3d">3 أيام</option>
+                                <option value="7d">7 أيام</option>
+                                <option value="permanent">دائم</option>
+                            </select>
+                        </label>
+                        <label>السبب
+                            <input type="text" value={bulkForm.reason} disabled={!!bulkProgress} placeholder="مثال: حسابات بديلة لجهاز محظور"
+                                onChange={(e) => setBulkForm(f => ({ ...f, reason: e.target.value }))} />
+                        </label>
+                        <label className="bulk-check">
+                            <input type="checkbox" checked={bulkForm.notify} disabled={!!bulkProgress} onChange={(e) => setBulkForm(f => ({ ...f, notify: e.target.checked }))} />
+                            إرسال إشعار لكل حساب
+                        </label>
+                        {bulkProgress && (
+                            <div className="bulk-progress">
+                                <div className="bulk-progress-bar" style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }} />
+                                <span>{bulkProgress.done} / {bulkProgress.total}{bulkProgress.failed ? ` · فشل ${bulkProgress.failed}` : ''}</span>
+                            </div>
+                        )}
+                        <div className="bulk-actions">
+                            <button className="bulk-btn danger" disabled={!!bulkProgress} onClick={runBulkSuspend}>تعليق</button>
+                            <button className="bulk-btn" disabled={!!bulkProgress} onClick={() => setBulkOpen(false)}>إلغاء</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Table Controls */}
             <div className="table-controls">
                 <div className="results-info">
@@ -476,7 +550,10 @@ function Users({ onViewDetail }) {
                         ) : paginatedUsers.map((user) => {
                             const loc = bestLocation(user);
                             return (
-                                <div key={user._id} className={`users-card ${user.bannedWords?.isBanned ? 'row-banned' : ''}`}>
+                                <div key={user._id} className={`users-card ${user.bannedWords?.isBanned ? 'row-banned' : ''} ${selected.has(user._id) ? 'row-selected' : ''}`}>
+                                    <label className="users-card-select">
+                                        <input type="checkbox" checked={selected.has(user._id)} onChange={() => toggleSelect(user._id)} /> تحديد
+                                    </label>
                                     <div className="users-card-head" onClick={() => onViewDetail && onViewDetail(user._id)}>
                                         <div className="user-avatar-wrap">
                                             <img
@@ -533,6 +610,9 @@ function Users({ onViewDetail }) {
                         <table className="users-table">
                             <thead>
                                 <tr>
+                                    <th className="select-col">
+                                        <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAll} aria-label="تحديد كل الصفحة" />
+                                    </th>
                                     <th onClick={() => handleSort('name')} className="sortable">الاسم {getSortIcon('name')}</th>
                                     <th onClick={() => handleSort('email')} className="sortable">البريد {getSortIcon('email')}</th>
                                     <th>معلومات</th>
@@ -546,10 +626,13 @@ function Users({ onViewDetail }) {
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /></>
+                                    <><TableRowSkeleton columns={10} /><TableRowSkeleton columns={10} /><TableRowSkeleton columns={10} /></>
                                 ) : (
                                     paginatedUsers.map((user) => (
-                                        <tr key={user._id} className={user.bannedWords?.isBanned ? 'row-banned' : (user.deviceLink?.deviceBanned && !user.suspension?.isSuspended) ? 'row-device-banned' : ''}>
+                                        <tr key={user._id} className={`${user.bannedWords?.isBanned ? 'row-banned' : (user.deviceLink?.deviceBanned && !user.suspension?.isSuspended) ? 'row-device-banned' : ''} ${selected.has(user._id) ? 'row-selected' : ''}`}>
+                                            <td className="select-col">
+                                                <input type="checkbox" checked={selected.has(user._id)} onChange={() => toggleSelect(user._id)} aria-label={`تحديد ${user.name}`} />
+                                            </td>
                                             <td>
                                                 <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
                                                     <div className="user-avatar-wrap">
