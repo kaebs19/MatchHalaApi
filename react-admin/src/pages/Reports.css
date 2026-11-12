@@ -6,7 +6,7 @@
 /* Statistics */
 .reports-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 15px;
     margin-bottom: 25px;
 }
@@ -280,7 +280,7 @@
     margin: 8px 0 0 0;
     font-size: 14px;
     color: #444;
-    background: #fff3e0;
+    background: var(--tint-warning);
     padding: 10px;
     border-radius: 6px;
     border: 1px dashed #ffb74d;
@@ -773,7 +773,7 @@
 }
 
 .report-card.selected {
-    background: #f0f4ff;
+    background: var(--tint-info);
     border-color: #2F9E85;
     box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
@@ -1011,7 +1011,7 @@
 .context-message-box {
     margin-top: 8px;
     padding: 10px 14px;
-    background: #f8fafc;
+    background: var(--bg-subtle);
     border-radius: 10px;
     border: 1px solid #e2e8f0;
     direction: rtl;
@@ -1042,7 +1042,7 @@
 .report-screenshot-inline {
     margin-top: 14px;
     padding: 14px;
-    background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
+    background: var(--tint-warning);
     border-radius: 12px;
     border: 1px dashed #f39c12;
     display: flex;
@@ -1053,14 +1053,14 @@
 .screenshot-label {
     font-size: 14px;
     font-weight: 700;
-    color: #e67e22;
+    color: var(--text-warning);
     display: block;
 }
 
 .report-screenshot-thumb {
     width: 100%;
-    max-width: 420px;
-    max-height: 600px;
+    max-width: 220px;
+    max-height: 220px;
     border-radius: 10px;
     cursor: zoom-in;
     object-fit: contain;
@@ -1129,7 +1129,7 @@
 .report-user-comment {
     margin: 10px 0;
     padding: 10px 14px;
-    background: linear-gradient(135deg, #f3e5f5 0%, #ede7f6 100%);
+    background: var(--tint-purple);
     border-radius: 10px;
     border-right: 4px solid #9c27b0;
 }
@@ -1138,7 +1138,7 @@
     display: block;
     font-size: 11px;
     font-weight: 700;
-    color: #7b1fa2;
+    color: var(--text-purple);
     margin-bottom: 4px;
 }
 
@@ -1167,7 +1167,7 @@
 .context-screenshot-box {
     margin-top: 12px;
     padding: 12px;
-    background: linear-gradient(135deg, #fff8e1 0%, #fff3e0 100%);
+    background: var(--tint-warning);
     border-radius: 10px;
     border: 1px dashed #f39c12;
 }
@@ -1338,4 +1338,9 @@
     border-radius: 10px;
     margin-right: 8px;
     font-weight: 600;
+}
+
+/* الصورة المصغّرة والدليل جنباً إلى جنب على الشاشات الواسعة — البلاغ أقصر فتُراجَع عدة بلاغات في الشاشة */
+@media (min-width: 900px) {
+    .report-screenshot-inline { flex-direction: row; align-items: flex-start; }
 }
