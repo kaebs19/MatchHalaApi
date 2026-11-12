@@ -2246,3 +2246,15 @@
     }
 }
 
+
+/* 🔗 الحسابات المرتبطة: مصدر التسجيل + نمط البريد */
+.related-signup { margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: var(--bg-subtle); font-size: 13px; line-height: 1.8; }
+.related-muted { font-size: 12px; color: var(--text-secondary); }
+.related-ip { display: inline-block; margin: 2px 4px; padding: 1px 6px; border-radius: 6px; background: var(--tint-info); color: var(--text-info); font-size: 12px; }
+.related-row { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: var(--bg-subtle); font-size: 13px; cursor: pointer; }
+.related-row:hover { background: var(--tint-info); }
+.related-row img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.related-chip { margin-inline-start: 6px; padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.related-chip.danger { background: var(--tint-danger); color: var(--text-danger); }
+.related-chip.purple { background: var(--tint-purple); color: var(--text-purple); }
+.related-act { padding: 5px 10px; font-size: 12px; border-radius: 8px; border: 1px solid var(--tint-danger-strong); background: var(--tint-warning); color: var(--text-warning); cursor: pointer; flex-shrink: 0; font-family: inherit; }

@@ -28,6 +28,8 @@ function Users({ onViewDetail }) {
     const [filterPremium, setFilterPremium] = useState('all');
     const [filterOnline, setFilterOnline] = useState('all');
     const [newToday, setNewToday] = useState(false);
+    const [filterSource, setFilterSource] = useState('all');   // مصدر التسجيل: web | ios | android
+    const [filterDevice, setFilterDevice] = useState('all');   // none = بلا أي معرّف جهاز
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [serverStats, setServerStats] = useState(null);
     const fetchSeq = useRef(0);
@@ -51,7 +53,8 @@ function Users({ onViewDetail }) {
 
     // ⚠️ الفلاتر كلها في السيرفر — كانت تُطبَّق هنا على الصفحة المحمّلة وحدها (20 من ~70 ألفاً)
     useEffect(() => { fetchUsers(); }, [currentPage, itemsPerPage, sortField, sortOrder, debouncedSearch,
-        filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender, filterPremium, filterOnline, newToday]);
+        filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender, filterPremium, filterOnline, newToday,
+        filterSource, filterDevice]);
     useEffect(() => { setFilteredUsers(users); setPaginatedUsers(users); }, [users]);
 
     const fetchUsers = async () => {
@@ -61,7 +64,8 @@ function Users({ onViewDetail }) {
             const response = await getAllUsers(currentPage, itemsPerPage, debouncedSearch, sortField, sortOrder,
                 filterStatus === 'all' ? '' : filterStatus,
                 { role: filterRole, auth: filterAuthProvider, banned: filterBanned, gender: filterGender,
-                  premium: filterPremium, online: filterOnline, newToday: newToday ? 'true' : '' });
+                  premium: filterPremium, online: filterOnline, newToday: newToday ? 'true' : '',
+                  source: filterSource, device: filterDevice });
             // ردّ قديم وصل بعد أحدث منه (تبديل فلاتر سريع) — يُهمل
             if (seq !== fetchSeq.current) return;
             if (response.success) {
@@ -218,14 +222,46 @@ function Users({ onViewDetail }) {
         setSearchTerm(''); setDebouncedSearch(''); setFilterStatus('all'); setFilterRole('all');
         setFilterAuthProvider('all'); setFilterBanned('all'); setFilterGender('all');
         setFilterPremium('all'); setFilterOnline('all'); setNewToday(false); setCurrentPage(1);
+        setFilterSource('all'); setFilterDevice('all');
+    };
+
+    // 🔗 فتح تبويب «الحسابات المرتبطة» مباشرة (UserDetail يقرأه مرة عند فتحه)
+    const openRelated = (e, userId) => {
+        e.stopPropagation();
+        try { sessionStorage.setItem('userDetail.openTab', 'related'); } catch { /* المتصفح يمنع التخزين */ }
+        onViewDetail && onViewDetail(userId);
+    };
+
+    // شارات الربط والمصدر — نفسها في الجدول والبطاقات
+    const linkBadges = (user) => {
+        const d = user.deviceLink || {};
+        const src = user.signupMeta?.source;
+        return (
+            <>
+                {d.deviceBanned && (
+                    <button type="button" className="link-badge link-banned" onClick={(e) => openRelated(e, user._id)}
+                        title="هذا الحساب على جهاز محظور — اضغط لعرض الحسابات المرتبطة">📵 جهاز محظور</button>
+                )}
+                {d.sameDevice > 0 && (
+                    <button type="button" className="link-badge link-same" onClick={(e) => openRelated(e, user._id)}
+                        title={`${d.sameDevice} حساب آخر على الجهاز نفسه`}>🔗 {d.sameDevice}</button>
+                )}
+                {d.hasDevice === false && (
+                    <span className="link-badge link-nodevice" title="لا معرّف جهاز — لم يدخل من التطبيق قط (الموقع غالباً)">⚠️ بلا جهاز</span>
+                )}
+                {src === 'web' && <span className="link-badge link-web" title="أُنشئ الحساب من المتصفح">🌐 ويب</span>}
+            </>
+        );
     };
 
     // الإحصائيات — من السيرفر لكل المستخدمين (كاش 5 دقائق)
     const stats = serverStats || { total: totalServerCount, active: '…', banned: '…', violations: '…', premium: '…', online: '…', today: '…' };
     const fmt = (n) => typeof n === 'number' ? n.toLocaleString('en-US') : n;
 
-    const onlyDefaults = filterStatus === 'all' && filterRole === 'all' && filterAuthProvider === 'all' && filterGender === 'all';
+    const onlyDefaults = filterStatus === 'all' && filterRole === 'all' && filterAuthProvider === 'all' && filterGender === 'all'
+        && filterSource === 'all' && filterDevice === 'all';
     const quickKey = newToday ? 'today'
+        : filterDevice === 'none' ? 'nodevice'
         : filterBanned === 'violations' ? 'violations'
         : filterBanned === 'banned' ? 'banned'
         : filterBanned === 'suspended' ? 'suspended'
@@ -240,6 +276,7 @@ function Users({ onViewDetail }) {
         { key: 'suspended', label: 'معلّقين', icon: '⏸️', fn: () => { resetFilters(); setFilterBanned('suspended'); } },
         { key: 'banned', label: 'محظورين', icon: '🚫', fn: () => { resetFilters(); setFilterBanned('banned'); } },
         { key: 'premium', label: 'بريميوم', icon: '⭐', fn: () => { resetFilters(); setFilterPremium('premium'); } },
+        { key: 'nodevice', label: 'بلا جهاز', icon: '⚠️', fn: () => { resetFilters(); setFilterDevice('none'); } },
     ];
 
     const formatRelativeTime = (date) => {
@@ -344,6 +381,16 @@ function Users({ onViewDetail }) {
                             <option value="apple">Apple</option>
                             <option value="facebook">Facebook</option>
                         </select>
+                        <select value={filterSource} onChange={(e) => pick(setFilterSource)(e.target.value)} title="يُسجَّل منذ ١٢ نوفمبر ٢٠٢٦">
+                            <option value="all">مصدر التسجيل - الكل</option>
+                            <option value="web">الموقع (متصفح)</option>
+                            <option value="ios">تطبيق iOS</option>
+                            <option value="android">تطبيق Android</option>
+                        </select>
+                        <select value={filterDevice} onChange={(e) => pick(setFilterDevice)(e.target.value)}>
+                            <option value="all">معرّف الجهاز - الكل</option>
+                            <option value="none">بلا معرّف جهاز</option>
+                        </select>
                         <select value={filterBanned} onChange={(e) => pick(setFilterBanned)(e.target.value)}>
                             <option value="all">جميع - محظور/معلّق</option>
                             <option value="banned">محظور فقط</option>
@@ -440,6 +487,7 @@ function Users({ onViewDetail }) {
                                         {user.country && <span className="uinfo">🌍 {user.country}{user.city ? ` · ${user.city}` : ''}</span>}
                                         {loc && <span className="uinfo">{loc.icon} {loc.text}</span>}
                                         {user.deviceInfo?.platform && <span className="uinfo">{user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻'}</span>}
+                                        {linkBadges(user)}
                                         {(user.bannedWords?.violations || 0) > 0 && <span className="uinfo warn">⚠️ {user.bannedWords.violations}/3</span>}
                                         <span className="uinfo">🕐 {formatRelativeTime(user.lastLogin)}</span>
                                         <span className="uinfo">📅 {formatDate(user.createdAt)}</span>
@@ -475,7 +523,7 @@ function Users({ onViewDetail }) {
                                     <><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /><TableRowSkeleton columns={9} /></>
                                 ) : (
                                     paginatedUsers.map((user) => (
-                                        <tr key={user._id} className={user.bannedWords?.isBanned ? 'row-banned' : ''}>
+                                        <tr key={user._id} className={user.bannedWords?.isBanned ? 'row-banned' : (user.deviceLink?.deviceBanned && !user.suspension?.isSuspended) ? 'row-device-banned' : ''}>
                                             <td>
                                                 <div className="user-cell" onClick={() => onViewDetail && onViewDetail(user._id)} style={{ cursor: 'pointer' }}>
                                                     <div className="user-avatar-wrap">
@@ -518,6 +566,7 @@ function Users({ onViewDetail }) {
                                                             {user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻 ' + user.deviceInfo.platform}
                                                         </span>
                                                     )}
+                                                    {linkBadges(user)}
                                                 </div>
                                             </td>
                                             <td>

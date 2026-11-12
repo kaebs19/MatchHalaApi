@@ -15,6 +15,35 @@ const { withExpiredPhotoForAdmin } = require('../utils/expiredPhotoAdmin');
 // @route   GET /api/users
 // @desc    الحصول على جميع المستخدمين
 // @access  Private/Admin
+// 🔗 لكل صفّ في قائمة المستخدمين: هل جهازه محظور؟ كم حساباً على الجهاز نفسه؟ — ثم تُحذف المعرّفات من الردّ.
+//    الربط بـ keychainToken وحده: البصمة تتصادم بين أجهزة بنفس الموديل. القيم الضوضائية (≥ NOISE_THRESHOLD) تُهمل.
+async function attachDeviceLinks(users) {
+    const BannedDevice = require('../models/BannedDevice');
+    const kcs = [...new Set(users.map(u => u.keychainToken).filter(Boolean))];
+    const [counts, banned] = kcs.length ? await Promise.all([
+        User.aggregate([
+            { $match: { keychainToken: { $in: kcs } } },
+            { $group: { _id: '$keychainToken', n: { $sum: 1 } } }
+        ]),
+        BannedDevice.find({ isActive: true, keychainToken: { $in: kcs } }).select('keychainToken').lean()
+    ]) : [[], []];
+    const countBy = new Map(counts.map(c => [c._id, c.n]));
+    const bannedSet = new Set(banned.map(b => b.keychainToken));
+    for (const u of users) {
+        const kc = u.keychainToken;
+        const n = kc ? (countBy.get(kc) || 1) : 0;
+        const noisy = n >= NOISE_THRESHOLD;
+        u.deviceLink = {
+            hasDevice: !!(u.keychainToken || u.deviceFingerprint || u.vendorId),
+            sameDevice: kc && !noisy ? n - 1 : 0,
+            deviceBanned: !!(kc && !noisy && bannedSet.has(kc))
+        };
+        delete u.keychainToken;
+        delete u.deviceFingerprint;
+        delete u.vendorId;
+    }
+}
+
 router.get('/', protect, adminOnly, async (req, res) => {
     try {
         const { page = 1, limit = 20, search, sort = 'createdAt', order = 'desc', filter } = req.query;
@@ -57,7 +86,14 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         // فلاتر اللوحة — كانت تُطبَّق في المتصفح على الصفحة المحمّلة وحدها (20 مستخدماً)،
         // فـ«محظورين» و«مخالفين» تبحث في أحدث 20 فقط من ~70 ألفاً.
-        const { role, auth, banned, gender, premium, online, newToday } = req.query;
+        const { role, auth, banned, gender, premium, online, newToday, source, device } = req.query;
+        // 🕵️ مصدر التسجيل (signupMeta يُحفظ منذ ١٢ نوفمبر ٢٠٢٦) + حسابات بلا أي معرّف جهاز
+        if (['web', 'ios', 'android'].includes(source)) queryFilter['signupMeta.source'] = source;
+        if (device === 'none') {
+            queryFilter.keychainToken = null;
+            queryFilter.deviceFingerprint = null;
+            queryFilter.vendorId = null;
+        }
         if (role === 'admin' || role === 'user') queryFilter.role = role;
         if (auth === 'app') queryFilter.authProvider = { $in: ['app', null] };
         else if (['google', 'apple', 'facebook'].includes(auth)) queryFilter.authProvider = auth;
@@ -80,7 +116,7 @@ router.get('/', protect, adminOnly, async (req, res) => {
             queryFilter.createdAt = { $gte: startOfDay };
         }
 
-        const filtersKey = JSON.stringify({ role, auth, banned, gender, premium, online, newToday });
+        const filtersKey = JSON.stringify({ role, auth, banned, gender, premium, online, newToday, source, device });
         const cacheKey = `users_list_${pageNum}_${limitNum}_${search || ''}_${sort}_${order}_${filter || ''}_${filtersKey}`;
         const cachedData = get(cacheKey);
         if (cachedData) {
@@ -92,13 +128,14 @@ router.get('/', protect, adminOnly, async (req, res) => {
 
         const [users, total] = await Promise.all([
             User.find(queryFilter)
-                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId authProvider deviceInfo.platform gender bannedWords.isBanned bannedWords.violations country city gpsLocation ipLocation location')
+                .select('name email profileImage role isActive createdAt lastLogin isOnline suspension.isSuspended isPremium verification.isVerified halaId authProvider deviceInfo.platform gender bannedWords.isBanned bannedWords.violations country city gpsLocation ipLocation location signupMeta.source +keychainToken +deviceFingerprint +vendorId')
                 .sort(sortObj)
                 .limit(limitNum)
                 .skip((pageNum - 1) * limitNum)
                 .lean(),
             User.countDocuments(queryFilter)
         ]);
+        await attachDeviceLinks(users);
 
         // إحصاءات الشريط العلوي لكل المستخدمين — كانت تُعدّ من الصفحة المحمّلة فقط
         let stats = get('users_list_stats');
@@ -3577,13 +3614,28 @@ router.put('/warnings/:warningId/dismiss', protect, adminOnly, async (req, res) 
     }
 });
 
+// ✉️ جذع البريد للمطابقة: أطول تسلسل أرقام ≥4 (zyd11156nb ← 11156)، وإلا أول 7 أحرف من بريد غير شائع.
+//    بريد أبل المخفي والقصير لا جذع له. يعيد RegExp على البريد كاملاً أو null.
+function emailStemRegex(email) {
+    if (!email || /privaterelay\.appleid\.com$|@private\.appleid\.com$/i.test(email)) return null;
+    const local = String(email).split('@')[0].toLowerCase();
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const digits = (local.match(/\d{4,}/g) || [])
+        .filter(d => !/^(19|20)\d\d$/.test(d) && !/^(\d)\1+$/.test(d) && !/^(1234|12345|123456)$/.test(d))
+        .sort((a, b) => b.length - a.length)[0];
+    if (digits) return new RegExp('^[^@]*' + esc(digits) + '[^@]*@', 'i');
+    const letters = local.replace(/[^a-z]/g, '');
+    if (letters.length >= 8) return new RegExp('^' + esc(local.slice(0, 7)), 'i');
+    return null;
+}
+
 // @route   GET /api/users/:id/related-accounts
 // @desc    حسابات مرتبطة بالمستخدم (بصمة/keychain/IP/email similar)
 // @access  Private/Admin
 router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
     try {
         const mainUser = await User.findById(req.params.id)
-            .select('+deviceFingerprint +keychainToken +lastIP name email halaId')
+            .select('+deviceFingerprint +keychainToken +lastIP name email halaId signupMeta loginHistory.ip')
             .lean();
 
         if (!mainUser) {
@@ -3608,8 +3660,18 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
         const useFingerprint = mainUser.deviceFingerprint && !noise.deviceFingerprint.noisy;
         const useKeychain = mainUser.keychainToken && !noise.keychainToken.noisy;
 
+        // 🌐 كل عناوين IP المعروفة: آخر دخول + التسجيل (signupMeta، منذ ١٢ نوفمبر) + آخر 5 دخولات
+        const ipList = [...new Set([
+            mainUser.lastIP,
+            mainUser.signupMeta?.ip,
+            ...(mainUser.loginHistory || []).slice(-5).map(l => l.ip)
+        ].filter(ip => typeof ip === 'string' && ip.length > 3))];
+
+        // ✉️ نمط البريد: من يُنشئ حسابات متتالية يكرّر جذع البريد (zyd11156n@ ← zyd11156nb@ …)
+        const emailPattern = emailStemRegex(mainUser.email);
+
         // ✅ استعلامات مرتبطة بالتوازي — نتخطّى البصمات الضوضائية
-        const [byFingerprint, byKeychain, byIP, bannedDevices] = await Promise.all([
+        const [byFingerprint, byKeychain, byIP, bannedDevices, byEmailPattern] = await Promise.all([
             useFingerprint
                 ? User.find({ _id: { $ne: mainUser._id }, deviceFingerprint: mainUser.deviceFingerprint })
                     .select(SELECT_FIELDS).limit(50).lean()
@@ -3618,9 +3680,9 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                 ? User.find({ _id: { $ne: mainUser._id }, keychainToken: mainUser.keychainToken })
                     .select(SELECT_FIELDS).limit(50).lean()
                 : Promise.resolve([]),
-            mainUser.lastIP
-                ? User.find({ _id: { $ne: mainUser._id }, lastIP: mainUser.lastIP })
-                    .select(SELECT_FIELDS).limit(30).lean()
+            ipList.length
+                ? User.find({ _id: { $ne: mainUser._id }, $or: [{ lastIP: { $in: ipList } }, { 'signupMeta.ip': { $in: ipList } }] })
+                    .select(SELECT_FIELDS + ' signupMeta').limit(30).lean()
                 : Promise.resolve([]),
             (useFingerprint || useKeychain)
                 ? BannedDevice.find({
@@ -3630,6 +3692,10 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                         ...(useKeychain ? [{ keychainToken: mainUser.keychainToken }] : [])
                     ]
                 }).populate('originalUserId', 'name email halaId profileImage').lean()
+                : Promise.resolve([]),
+            emailPattern
+                ? User.find({ _id: { $ne: mainUser._id }, email: emailPattern })
+                    .select(SELECT_FIELDS).sort({ createdAt: -1 }).limit(41).lean()
                 : Promise.resolve([])
         ]);
 
@@ -3653,6 +3719,9 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
         results.byDeviceFingerprint = enrich(results.byDeviceFingerprint);
         results.byKeychainToken = enrich(results.byKeychainToken);
         results.byIP = enrich(results.byIP);
+        // أكثر من 40 = جذع شائع (اسم منتشر) — ليس إشارة
+        const emailPatternNoisy = byEmailPattern.length > 40;
+        const byEmail = emailPatternNoisy ? [] : enrich(byEmailPattern);
 
         // dedupe: إذا نفس المستخدم ظهر في byDeviceFingerprint و byKeychainToken
         const seen = new Set();
@@ -3674,7 +3743,11 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                 mainUserId: mainUser._id,
                 hasFingerprint: !!mainUser.deviceFingerprint,
                 hasKeychain: !!mainUser.keychainToken,
-                hasIP: !!mainUser.lastIP,
+                hasIP: ipList.length > 0,
+                signupMeta: mainUser.signupMeta || null,
+                ips: ipList,
+                emailStem: emailPattern ? emailPattern.source : null,
+                emailPatternNoisy,
                 noise: {
                     threshold: NOISE_THRESHOLD,
                     fingerprintNoisy: !!(mainUser.deviceFingerprint && noise.deviceFingerprint.noisy),
@@ -3687,13 +3760,15 @@ router.get('/:id/related-accounts', protect, adminOnly, async (req, res) => {
                     byKeychain: results.byKeychainToken.length,
                     byIP: results.byIP.length,
                     byBannedDevice: results.byBannedDevice.length,
+                    byEmailPattern: byEmail.length,
                     uniqueRelated: uniqueRelated.length
                 },
                 uniqueRelated,
                 byDeviceFingerprint: results.byDeviceFingerprint,
                 byKeychainToken: results.byKeychainToken,
                 byIP: results.byIP,
-                byBannedDevice: results.byBannedDevice
+                byBannedDevice: results.byBannedDevice,
+                byEmailPattern: byEmail
             }
         });
     } catch (error) {

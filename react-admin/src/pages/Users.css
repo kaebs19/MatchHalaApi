@@ -928,3 +928,26 @@
 .loc-map-link:hover { opacity: 1; }
 
 .loc-empty { color: #9ca3af; font-size: 12px; }
+
+/* 🔗 شارات ربط الحسابات (جهاز محظور / نفس الجهاز / بلا جهاز / ويب) */
+.link-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    line-height: 1.6;
+    font-family: inherit;
+    white-space: nowrap;
+}
+button.link-badge { cursor: pointer; }
+button.link-badge:hover { filter: brightness(0.95); text-decoration: underline; }
+.link-banned { background: var(--tint-danger); color: var(--text-danger); border-color: var(--tint-danger-strong); }
+.link-same { background: var(--tint-purple); color: var(--text-purple); }
+.link-nodevice { background: var(--tint-warning); color: var(--text-warning); }
+.link-web { background: var(--tint-info); color: var(--text-info); }
+/* حساب نشط على جهاز محظور — يجب أن يلفت النظر */
+.users-table tr.row-device-banned td { background: var(--tint-danger); }

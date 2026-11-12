@@ -82,7 +82,14 @@ const REPORT_ACTIONS = {
 function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
-    const [activeTab, setActiveTab] = useState('info');
+    // 🔗 شارات قائمة المستخدمين تفتح «الحسابات المرتبطة» مباشرة (تُقرأ مرة)
+    const [activeTab, setActiveTab] = useState(() => {
+        try {
+            const t = sessionStorage.getItem('userDetail.openTab');
+            if (t) { sessionStorage.removeItem('userDetail.openTab'); return t; }
+        } catch { /* التخزين ممنوع */ }
+        return 'info';
+    });
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const { showToast } = useToast();
@@ -2583,8 +2590,8 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                 {/* تحذير البصمة */}
                                 {!relatedAccounts.hasFingerprint && !relatedAccounts.hasKeychain && (
                                     <div style={{marginTop:16,padding:14,background:'var(--tint-warning)',border:'1px solid #f59e0b',borderRadius:12,color: 'var(--text-warning)'}}>
-                                        ⚠️ <strong>لا توجد بصمة جهاز لهذا المستخدم</strong> — لم يسجل دخول من التطبيق المحدّث.
-                                        <div style={{fontSize:12,marginTop:4,color:'#92400e'}}>سيتم تحديث البصمة تلقائياً عند فتح المستخدم للتطبيق المحدّث.</div>
+                                        ⚠️ <strong>لا يوجد معرّف جهاز لهذا المستخدم</strong> — لم يدخل من التطبيق قط (غالباً أُنشئ من الموقع).
+                                        <div style={{fontSize:12,marginTop:4}}>الربط هنا بعناوين IP ونمط البريد فقط. يُضاف الجهاز تلقائياً إن فتح التطبيق.</div>
                                     </div>
                                 )}
 
@@ -2620,11 +2627,34 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                         <div style={{fontSize:12,color:'#065f46'}}>IP مشترك</div>
                                         <div style={{fontSize:22,fontWeight:700,color:'#064e3b'}}>{relatedAccounts.counts.byIP}</div>
                                     </div>
+                                    <div style={{padding:14,background:'var(--tint-info)',borderRadius:12}}>
+                                        <div style={{fontSize:12,color:'var(--text-info)'}}>نمط البريد</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'var(--text-info)'}}>{relatedAccounts.emailPatternNoisy ? '—' : (relatedAccounts.counts.byEmailPattern || 0)}</div>
+                                    </div>
                                     <div style={{padding:14,background:'#fef2f2',borderRadius:12,border:'1px solid #fecaca'}}>
                                         <div style={{fontSize:12,color:'#991b1b'}}>أجهزة محظورة</div>
                                         <div style={{fontSize:22,fontWeight:700,color:'#7f1d1d'}}>{relatedAccounts.counts.byBannedDevice}</div>
                                     </div>
                                 </div>
+
+                                {/* 🕵️ مصدر التسجيل + عناوين IP المعروفة */}
+                                {(relatedAccounts.signupMeta || relatedAccounts.ips?.length > 0) && (
+                                    <div className="related-signup">
+                                        {relatedAccounts.signupMeta?.source && (
+                                            <div><strong>مصدر التسجيل:</strong> {{ web: '🌐 الموقع (متصفح)', ios: '📱 تطبيق iOS', android: '🤖 تطبيق Android' }[relatedAccounts.signupMeta.source] || relatedAccounts.signupMeta.source}
+                                                {relatedAccounts.signupMeta.at && <span className="related-muted"> — {formatDate(relatedAccounts.signupMeta.at)}</span>}
+                                            </div>
+                                        )}
+                                        {relatedAccounts.signupMeta?.userAgent && (
+                                            <div className="related-muted" dir="ltr" style={{ wordBreak: 'break-all' }}>{relatedAccounts.signupMeta.userAgent}</div>
+                                        )}
+                                        {relatedAccounts.ips?.length > 0 && (
+                                            <div style={{ marginTop: 6 }}><strong>عناوين IP:</strong>{' '}
+                                                {relatedAccounts.ips.map(ip => <code key={ip} dir="ltr" className="related-ip">{ip}</code>)}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* حسابات مرتبطة (فريدة - دمج بصمة + keychain) */}
                                 {relatedAccounts.uniqueRelated?.length > 0 && (
@@ -2741,6 +2771,31 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     </div>
                                 )}
 
+                                {/* ✉️ نمط البريد نفسه — إشارة أضعف من الجهاز: راجع قبل أي إجراء */}
+                                {relatedAccounts.byEmailPattern?.length > 0 && (
+                                    <div style={{marginTop:20}}>
+                                        <h4 style={{marginBottom:4}}>✉️ بريد بالنمط نفسه ({relatedAccounts.byEmailPattern.length})</h4>
+                                        <div className="related-muted" style={{marginBottom:10}}>إشارة أضعف من الجهاز — تشابه البريد وحده قد يكون صدفة.</div>
+                                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                                            {relatedAccounts.byEmailPattern.map(u => (
+                                                <div key={u._id} className="related-row" onClick={() => onNavigateToUser && onNavigateToUser(u._id)}>
+                                                    <img src={getImageUrl(u.profileImage) || getDefaultAvatar(u.name)} alt="" onError={(e)=>{e.target.src=getDefaultAvatar(u.name)}}/>
+                                                    <span style={{flex:1,minWidth:0}}>
+                                                        {u.name} • <span dir="ltr">{u.email}</span>
+                                                        {u.suspension?.isSuspended && <span className="related-chip danger">⛔ معلّق</span>}
+                                                        {u.bannedWords?.isBanned && <span className="related-chip danger">🚫 محظور</span>}
+                                                        {u.deviceBanned && <span className="related-chip purple">📵 جهاز محظور</span>}
+                                                    </span>
+                                                    <span className="related-muted">{formatDate(u.createdAt)}</span>
+                                                    {!u.bannedWords?.isBanned && !u.suspension?.isSuspended && (
+                                                        <button className="related-act" onClick={(e) => { e.stopPropagation(); handleQuickSuspendRelated(u._id, u.name); }} title="تعليق سريع 3 أيام">⛔ تعليق</button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* أجهزة محظورة مرتبطة */}
                                 {relatedAccounts.byBannedDevice?.length > 0 && (
                                     <div style={{marginTop:20,padding:14,background:'#fef2f2',borderRadius:12,border:'1px solid #fecaca'}}>
@@ -2753,7 +2808,7 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
                                     </div>
                                 )}
 
-                                {relatedAccounts.uniqueRelated?.length === 0 && relatedAccounts.byIP?.length === 0 && relatedAccounts.byBannedDevice?.length === 0 && (relatedAccounts.hasFingerprint || relatedAccounts.hasKeychain) && (
+                                {relatedAccounts.uniqueRelated?.length === 0 && relatedAccounts.byIP?.length === 0 && relatedAccounts.byBannedDevice?.length === 0 && !(relatedAccounts.byEmailPattern?.length > 0) && (relatedAccounts.hasFingerprint || relatedAccounts.hasKeychain) && (
                                     <div style={{padding:40,textAlign:'center',color: 'var(--text-secondary)',background: 'var(--bg-subtle)',borderRadius:12,marginTop:16}}>
                                         ✅ لم يتم العثور على حسابات مرتبطة لهذا المستخدم
                                     </div>
