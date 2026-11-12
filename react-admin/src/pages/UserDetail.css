@@ -157,14 +157,21 @@
 /* Tabs Navigation */
 .tabs-navigation {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 25px;
-    flex-wrap: wrap;
+    /* صفّ واحد لاصق تحت الرأس: تبديل التبويب بلا صعود لأعلى الصفحة في كل مرة */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    position: sticky;
+    top: var(--admin-header-h, 0px);
+    z-index: 20;
     background: var(--bg-card);
-    padding: 15px;
+    padding: 10px 12px;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 }
+.tabs-navigation .tab-btn { white-space: nowrap; flex: 0 0 auto; }
 
 .user-detail .tab-btn {
     padding: 12px 24px;

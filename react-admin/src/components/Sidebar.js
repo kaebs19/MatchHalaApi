@@ -1,6 +1,6 @@
 import React from 'react';
 import { getImageUrl, getDefaultAvatar } from '../config';
-import { navItems } from '../config/pages';
+import { navItems, NAV_GROUPS } from '../config/pages';
 import ThemeToggle from './ThemeToggle';
 import './Sidebar.css';
 
@@ -11,7 +11,8 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
     // تمييز العنصر الصحيح حتى عند التنقل من Dashboard بمعرّف قديم
     const isActive = (itemId) => {
         if (currentPage === itemId) return true;
-        if (itemId === 'users' && currentPage === 'premium-users') return true;
+        if (itemId === 'users' && (currentPage === 'premium-users' || currentPage === 'user-detail')) return true;
+        if (itemId === 'conversations' && currentPage === 'report-conversation') return true;
         return false;
     };
 
@@ -25,22 +26,32 @@ function Sidebar({ currentPage, onPageChange, user, onProfileClick, badges = {},
             </div>
 
             <nav className="sidebar-nav">
-                {menuItems.map((item) => {
-                    const badgeCount = badges[item.badge || item.id] || 0;
+                {NAV_GROUPS.map((group) => {
+                    const items = menuItems.filter((it) => (it.group || 'main') === group.id);
+                    if (items.length === 0) return null;
                     return (
-                        <button
-                            key={item.id}
-                            className={`nav-item ${isActive(item.id) ? 'active' : ''} ${item.disabled ? 'disabled' : ''}`}
-                            onClick={() => !item.disabled && onPageChange(item.id)}
-                            disabled={item.disabled}
-                        >
-                            <span className="nav-icon">{item.icon}</span>
-                            <span className="nav-name">{item.title}</span>
-                            {badgeCount > 0 && (
-                                <span className="nav-badge">{badgeCount > 99 ? '99+' : badgeCount}</span>
-                            )}
-                            {item.disabled && <span className="coming-soon">قريباً</span>}
-                        </button>
+                        <div key={group.id} className="nav-group">
+                            {group.title && <div className="nav-group-title">{group.title}</div>}
+                            {items.map((item) => {
+                                const badgeCount = badges[item.badge || item.id] || 0;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        className={`nav-item ${isActive(item.id) ? 'active' : ''} ${item.disabled ? 'disabled' : ''}`}
+                                        onClick={() => !item.disabled && onPageChange(item.id)}
+                                        disabled={item.disabled}
+                                        aria-current={isActive(item.id) ? 'page' : undefined}
+                                    >
+                                        <span className="nav-icon">{item.icon}</span>
+                                        <span className="nav-name">{item.title}</span>
+                                        {badgeCount > 0 && (
+                                            <span className="nav-badge">{badgeCount > 99 ? '99+' : badgeCount}</span>
+                                        )}
+                                        {item.disabled && <span className="coming-soon">قريباً</span>}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     );
                 })}
             </nav>

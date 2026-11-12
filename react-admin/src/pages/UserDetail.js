@@ -79,17 +79,15 @@ const REPORT_ACTIONS = {
     conversation_locked: '🔒 قفل محادثة'
 };
 
-function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
+function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, initialTab, onTabChange }) {
     const [loading, setLoading] = useState(true);
     const [userData, setUserData] = useState(null);
-    // 🔗 شارات قائمة المستخدمين تفتح «الحسابات المرتبطة» مباشرة (تُقرأ مرة)
-    const [activeTab, setActiveTab] = useState(() => {
-        try {
-            const t = sessionStorage.getItem('userDetail.openTab');
-            if (t) { sessionStorage.removeItem('userDetail.openTab'); return t; }
-        } catch { /* التخزين ممنوع */ }
-        return 'info';
-    });
+    // التبويب في الرابط (#/user/<id>?tab=related): الرجوع والتحديث ومشاركة الرابط تعود إليه
+    const [activeTab, setActiveTabState] = useState(initialTab || 'info');
+    const setActiveTab = (tab) => {
+        setActiveTabState(tab);
+        if (onTabChange) onTabChange(tab);
+    };
     const [viewingConversationId, setViewingConversationId] = useState(null);
     const [viewingConversationMessages, setViewingConversationMessages] = useState(false);
     const { showToast } = useToast();
@@ -1010,10 +1008,11 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
     return (
         <div className="user-detail">
             <div className="detail-header">
-                <button onClick={onBack} className="back-btn">
-                    ← رجوع
+                {/* → في الواجهة العربية = رجوع (كان ← يوحي بالتقدّم) */}
+                <button onClick={onBack} className="back-btn" title="رجوع (Alt+→)">
+                    → رجوع
                 </button>
-                <h2>تفاصيل المستخدم</h2>
+                <h2>{user.name}</h2>
             </div>
 
             {/* User Info Card */}
@@ -1255,9 +1254,15 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation }) {
             <div
                 className="tabs-navigation"
                 ref={(el) => {
-                    if (!el || window.innerWidth > 768) return;
+                    if (!el) return;
                     const active = el.querySelector('.tab-btn.active');
-                    if (active) active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    if (!active) return;
+                    // داخل الشريط أفقياً فقط — scrollIntoView كان يحرّك الصفحة عمودياً إن كان الشريط خارج الشاشة
+                    const box = el.getBoundingClientRect();
+                    const a = active.getBoundingClientRect();
+                    if (a.left < box.left || a.right > box.right) {
+                        el.scrollBy({ left: (a.left + a.width / 2) - (box.left + box.width / 2), behavior: 'smooth' });
+                    }
                 }}
             >
                 <button

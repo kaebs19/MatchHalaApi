@@ -32,7 +32,7 @@ import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
 import { pageTitle, getPage } from '../config/pages';
-import { useRoute, navigate, goBack } from '../router';
+import { useRoute, navigate, goBack, replace } from '../router';
 import ThemeToggle from '../components/ThemeToggle';
 import PageLoader from '../components/PageLoader';
 import './MainLayout.css';
@@ -40,7 +40,7 @@ import './MainLayout.css';
 function MainLayout({ onLogout, user: initialUser }) {
     // الرابط هو مصدر الحقيقة للصفحة الحالية — تحديث الصفحة وزر الرجوع
     // والروابط المباشرة كلها تعمل، وكانت كلها معطّلة مع useState وحده.
-    const { page: currentPage, param: routeParam } = useRoute();
+    const { page: currentPage, param: routeParam, query: routeQuery } = useRoute();
     const setCurrentPage = (p) => navigate(p);
     const selectedUserId = currentPage === 'user-detail' ? routeParam : null;
     const viewingConversationFromReport = currentPage === 'report-conversation' ? routeParam : null;
@@ -57,11 +57,33 @@ function MainLayout({ onLogout, user: initialUser }) {
         if (mobileSearchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
     }, [mobileSearchOpen]);
 
-    // الرجوع لأعلى الصفحة عند تبديلها — كان موضع التمرير القديم يبقى أحياناً
-    // فتُفتح الصفحة الجديدة من منتصفها
+    // موضع التمرير يديره الراوتر: الأمام ← الأعلى، الرجوع ← الموضع السابق (router.js)
+    useEffect(() => { setMobileSearchOpen(false); }, [currentPage]);
+
+    // ارتفاع الرأس اللاصق ← متغيّر CSS: الأشرطة اللاصقة تحته (تبويبات المستخدم) تقف عند حافّته
     useEffect(() => {
-        window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
-        setMobileSearchOpen(false);
+        const header = document.querySelector('.top-header');
+        if (!header || typeof ResizeObserver === 'undefined') return undefined;
+        const sync = () => document.documentElement.style.setProperty('--admin-header-h', `${header.offsetHeight}px`);
+        sync();
+        const ro = new ResizeObserver(sync);
+        ro.observe(header);
+        return () => ro.disconnect();
+    }, []);
+
+    // Alt+→ (رجوع في الواجهة العربية) أو Alt+← كما في المتصفح — من صفحات التفاصيل
+    useEffect(() => {
+        const onKey = (e) => {
+            if (!e.altKey || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+            const tag = (e.target && e.target.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+            const parent = getPage(currentPage).parent;
+            if (!parent) return;
+            e.preventDefault();
+            goBack(parent);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, [currentPage]);
 
     // سحبٌ من الحافّة اليمنى يفتح القائمة (RTL) — كما في التطبيقات
@@ -478,7 +500,10 @@ function MainLayout({ onLogout, user: initialUser }) {
             case 'maintenance':
                 return <MaintenancePage />;
             case 'user-detail':
-                return <UserDetail userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} onViewConversation={handleViewConversation} />;
+                // key: مستخدم آخر = تركيب جديد — كانت تبويبات تُحمَّل «إن كانت فارغة» تعرض بيانات المستخدم السابق
+                return <UserDetail key={selectedUserId} userId={selectedUserId} onBack={handleBackFromUserDetail} onNavigateToUser={handleViewUserDetail} onViewConversation={handleViewConversation}
+                    initialTab={routeQuery?.tab}
+                    onTabChange={(tab) => replace('user-detail', selectedUserId, tab && tab !== 'info' ? { tab } : null, { silent: true })} />;
             default:
                 return <Dashboard user={user} onPageChange={setCurrentPage} />;
         }

@@ -9,6 +9,8 @@
     margin-right: 280px;
     display: flex;
     flex-direction: column;
+    /* بدونه يتمدّد العمود بعرض أعرض جدول فيدفع الصفحة كلها خارج الشاشة (1366: 139px مخفية مع زرّ الخروج) */
+    min-width: 0;
 }
 
 .top-header {

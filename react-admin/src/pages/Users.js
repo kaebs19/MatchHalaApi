@@ -8,40 +8,49 @@ import { getImageUrl, getDefaultAvatar } from '../config';
 import { formatDate } from '../utils/formatters';
 import { bestLocation, sourceLabel, mapsUrl, formatCoords } from '../utils/location';
 import ConfirmModal from '../components/ConfirmModal';
+import { navigate } from '../router';
 import './Users.css';
 
+// 🔙 حالة القائمة تبقى عند العودة من صفحة مستخدم (كانت تعود للصفحة 1 بلا بحث ولا فلاتر).
+//    sessionStorage: لكل تبويب متصفح، تُنسى بإغلاقه. أي فشل في التخزين ← القيم الافتراضية.
+const LIST_STATE_KEY = 'admin.users.listState.v1';
+const loadListState = () => {
+    try { return JSON.parse(sessionStorage.getItem(LIST_STATE_KEY)) || {}; } catch { return {}; }
+};
+
 function Users({ onViewDetail }) {
+    const [saved] = useState(loadListState);
     const [users, setUsers] = useState([]);
     const [filteredUsers, setFilteredUsers] = useState([]);
     const [paginatedUsers, setPaginatedUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(saved.searchTerm ?? '');
     const [totalServerPages, setTotalServerPages] = useState(1);
     const [totalServerCount, setTotalServerCount] = useState(0);
     const [searchTimer, setSearchTimer] = useState(null);
-    const [filterStatus, setFilterStatus] = useState('all');
-    const [filterRole, setFilterRole] = useState('all');
-    const [filterAuthProvider, setFilterAuthProvider] = useState('all');
-    const [filterBanned, setFilterBanned] = useState('all');
-    const [filterGender, setFilterGender] = useState('all');
-    const [filterPremium, setFilterPremium] = useState('all');
-    const [filterOnline, setFilterOnline] = useState('all');
-    const [newToday, setNewToday] = useState(false);
-    const [filterSource, setFilterSource] = useState('all');   // مصدر التسجيل: web | ios | android
-    const [filterDevice, setFilterDevice] = useState('all');   // none = بلا أي معرّف جهاز
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [filterStatus, setFilterStatus] = useState(saved.filterStatus ?? 'all');
+    const [filterRole, setFilterRole] = useState(saved.filterRole ?? 'all');
+    const [filterAuthProvider, setFilterAuthProvider] = useState(saved.filterAuthProvider ?? 'all');
+    const [filterBanned, setFilterBanned] = useState(saved.filterBanned ?? 'all');
+    const [filterGender, setFilterGender] = useState(saved.filterGender ?? 'all');
+    const [filterPremium, setFilterPremium] = useState(saved.filterPremium ?? 'all');
+    const [filterOnline, setFilterOnline] = useState(saved.filterOnline ?? 'all');
+    const [newToday, setNewToday] = useState(saved.newToday ?? false);
+    const [filterSource, setFilterSource] = useState(saved.filterSource ?? 'all');   // مصدر التسجيل: web | ios | android
+    const [filterDevice, setFilterDevice] = useState(saved.filterDevice ?? 'all');   // none = بلا أي معرّف جهاز
+    const [debouncedSearch, setDebouncedSearch] = useState(saved.debouncedSearch ?? '');
     const [serverStats, setServerStats] = useState(null);
     const fetchSeq = useRef(0);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [userToEdit, setUserToEdit] = useState(null);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(20);
-    const [sortField, setSortField] = useState('createdAt');
-    const [sortOrder, setSortOrder] = useState('desc');
-    const [showFilters, setShowFilters] = useState(false);
+    const [currentPage, setCurrentPage] = useState(saved.currentPage ?? 1);
+    const [itemsPerPage, setItemsPerPage] = useState(saved.itemsPerPage ?? 20);
+    const [sortField, setSortField] = useState(saved.sortField ?? 'createdAt');
+    const [sortOrder, setSortOrder] = useState(saved.sortOrder ?? 'desc');
+    const [showFilters, setShowFilters] = useState(saved.showFilters ?? false);
     // ✅ Quick Actions State
     const [quickActionUser, setQuickActionUser] = useState(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
@@ -50,6 +59,18 @@ function Users({ onViewDetail }) {
     const [quickNotifyForm, setQuickNotifyForm] = useState({ title: '', body: '' });
     const [quickActionLoading, setQuickActionLoading] = useState(false);
     const toast = useToast();
+
+    useEffect(() => {
+        try {
+            sessionStorage.setItem(LIST_STATE_KEY, JSON.stringify({
+                searchTerm, debouncedSearch, filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender,
+                filterPremium, filterOnline, newToday, filterSource, filterDevice, currentPage, itemsPerPage,
+                sortField, sortOrder, showFilters
+            }));
+        } catch { /* التخزين ممنوع — لا شيء */ }
+    }, [searchTerm, debouncedSearch, filterStatus, filterRole, filterAuthProvider, filterBanned, filterGender,
+        filterPremium, filterOnline, newToday, filterSource, filterDevice, currentPage, itemsPerPage,
+        sortField, sortOrder, showFilters]);
 
     // ⚠️ الفلاتر كلها في السيرفر — كانت تُطبَّق هنا على الصفحة المحمّلة وحدها (20 من ~70 ألفاً)
     useEffect(() => { fetchUsers(); }, [currentPage, itemsPerPage, sortField, sortOrder, debouncedSearch,
@@ -228,8 +249,7 @@ function Users({ onViewDetail }) {
     // 🔗 فتح تبويب «الحسابات المرتبطة» مباشرة (UserDetail يقرأه مرة عند فتحه)
     const openRelated = (e, userId) => {
         e.stopPropagation();
-        try { sessionStorage.setItem('userDetail.openTab', 'related'); } catch { /* المتصفح يمنع التخزين */ }
-        onViewDetail && onViewDetail(userId);
+        navigate('user-detail', userId, { tab: 'related' });
     };
 
     // شارات الربط والمصدر — نفسها في الجدول والبطاقات

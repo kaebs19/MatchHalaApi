@@ -242,8 +242,20 @@
     background: var(--bg-card);
     border-radius: 14px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    overflow: hidden;
+    /* الجدول يتمرّر داخله أفقياً بدل أن يدفع الصفحة؛ عمود الإجراءات لاصق فيبقى ظاهراً */
+    overflow-x: auto;
 }
+.users-table th:last-child,
+.users-table td:last-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bg-card);
+    box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.18);
+}
+.users-table thead th:last-child { background: #1F6AA8; }
+.users-table tr.row-banned td:last-child,
+.users-table tr.row-device-banned td:last-child { background: var(--tint-danger); }
 
 .users-table {
     width: 100%;

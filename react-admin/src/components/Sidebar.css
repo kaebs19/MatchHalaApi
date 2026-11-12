@@ -35,9 +35,14 @@
 }
 
 .sidebar-header {
-    padding: 30px 25px;
+    /* صفّ واحد مضغوط — كان رأساً بارتفاع ~190px يدفع العناصر خارج الشاشة */
+    padding: 16px 18px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    text-align: center;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    align-items: center;
 }
 
 .sidebar-logo {
@@ -48,50 +53,72 @@
     object-fit: contain;
     padding: 7px;
     background: var(--bg-card);
-    border-radius: 16px;
+    border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-    margin-bottom: 10px;
+    grid-row: 1 / span 2;
+    width: 44px;
+    height: 44px;
+    padding: 5px;
 }
 
 .sidebar-header h2 {
-    margin: 0 0 5px 0;
-    font-size: 28px;
+    margin: 0;
+    font-size: 20px;
     font-weight: 700;
+    line-height: 1.2;
 }
 
 .sidebar-header p {
     margin: 0;
-    font-size: 14px;
-    opacity: 0.9;
+    font-size: 12px;
+    opacity: 0.85;
 }
 
 .sidebar-nav {
     flex: 1;
-    padding: 20px 15px;
+    padding: 10px 12px 14px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+.nav-group + .nav-group { margin-top: 6px; }
+
+.nav-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    opacity: 0.7;
+    padding: 8px 10px 4px;
 }
 
 .nav-item {
     width: 100%;
-    padding: 15px 20px;
-    margin-bottom: 10px;
-    background: rgba(255, 255, 255, 0.1);
+    min-height: 40px;
+    padding: 8px 12px;
+    margin-bottom: 2px;
+    background: transparent;
     border: none;
-    border-radius: 12px;
+    border-radius: 10px;
     color: white;
-    font-size: 15px;
+    font-size: 14px;
+    font-family: inherit;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: background 0.15s, color 0.15s;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     text-align: right;
     position: relative;
 }
 
 .nav-item:hover:not(.disabled) {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateX(-5px);
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.nav-item:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 1px;
 }
 
 .nav-item.active {
@@ -107,7 +134,9 @@
 }
 
 .nav-icon {
-    font-size: 20px;
+    font-size: 17px;
+    width: 22px;
+    text-align: center;
 }
 
 .nav-name {
@@ -136,6 +165,7 @@
     box-shadow: 0 2px 6px rgba(255, 59, 48, 0.5);
     animation: badgePulse 2s ease-in-out infinite;
 }
+@media (prefers-reduced-motion: reduce) { .nav-badge { animation: none; } }
 
 @keyframes badgePulse {
     0%, 100% { transform: scale(1); }
@@ -143,17 +173,17 @@
 }
 
 .sidebar-footer {
-    padding: 20px;
+    padding: 10px 12px;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .user-info {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: rgba(255, 255, 255, 0.1);
-    padding: 15px;
-    border-radius: 12px;
+    padding: 8px 10px;
+    border-radius: 10px;
 }
 
 .user-avatar {
@@ -219,11 +249,9 @@
     }
 
     /* رأس أصغر وعناصر أرشق — كانت ٨ من ١٤ عنصراً فقط تظهر على ٨٤٤px */
-    .sidebar-header { padding: 18px 20px 14px; }
-    .sidebar-logo { width: 44px; height: 44px; padding: 5px; margin-bottom: 6px; }
-    .sidebar-header h2 { font-size: 20px; }
-    .sidebar-header p { font-size: 12px; }
-    .nav-item { padding: 11px 14px; margin-bottom: 6px; font-size: 14px; }
+    .sidebar-header { padding: 16px 18px; }
+    /* لمسات الجوال: 44px على الأقل */
+    .nav-item { min-height: 44px; padding: 10px 12px; margin-bottom: 2px; font-size: 15px; }
     .nav-icon { font-size: 18px; }
     .sidebar-footer { padding: 12px 15px; }
     .user-info { padding: 10px 12px; }
@@ -235,7 +263,7 @@
     }
 
     .sidebar-nav {
-        padding: 15px;
+        padding: 8px 12px 14px;
         max-height: none;
         flex: 1;
     }
