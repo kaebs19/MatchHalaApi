@@ -94,3 +94,30 @@
 .btn-primary.danger { background: var(--gradient-red); }
 .games-modal select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; font-family: inherit; font-size: 14px;
     border: 1px solid var(--border-color, rgba(128,128,128,.3)); background: var(--bg-subtle); color: var(--text-primary); }
+
+/* 🎲 تبويب الألعاب في التطبيق */
+.games-tab-card {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color, rgba(128,128,128,.25));
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.games-tab-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.games-tab-head h3 { margin: 0; font-size: 16px; }
+.games-tab-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+.games-tab-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.games-tab-modes button {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+    padding: 10px 12px; border-radius: 12px; cursor: pointer; text-align: start;
+    border: 1px solid var(--border-color, rgba(128,128,128,.25));
+    background: transparent; color: inherit; font: inherit;
+}
+.games-tab-modes button span { font-size: 12px; color: var(--text-secondary); }
+.games-tab-modes button.active { border-color: #7c3aed; background: rgba(124, 58, 237, 0.1); }
+.games-tab-modes button.active.mode-all { border-color: #16a34a; background: rgba(22, 163, 74, 0.1); }
+.games-tab-modes button.active.mode-off { border-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+@media (max-width: 640px) {
+    .games-tab-modes { grid-template-columns: 1fr; }
+}

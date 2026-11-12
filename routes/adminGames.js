@@ -6,6 +6,7 @@
 //   DELETE /api/admin/games/questions/:id   حذف
 //   GET/PUT /api/admin/games/config     الألعاب المتاحة للمستخدمين
 //   GET    /api/admin/games/stats       إحصائيات الاستخدام
+//   GET/PUT /api/admin/games/tab        ظهور تبويب الألعاب (هلا لودو) في التطبيق: off | admins | all
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -267,6 +268,62 @@ router.put('/config', async (req, res) => {
         res.json({ success: true, data: { enabledKinds: config.enabledKinds } });
     } catch (error) {
         console.error('❌ admin games config update:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ─────────── 🎲 تبويب الألعاب (Settings.gamesTab) + أرقام هلا لودو ───────────
+const GAMES_TAB_MODES = ['off', 'admins', 'all'];
+// كل حالات دعوة لودو — الاستعلام بها يستعمل الفهرس الجزئي game.status_1_game.updatedAt_1 (رسائل اللعب وحدها)
+const LUDO_INVITE_STATUSES = ['pending', 'playing', 'finished', 'declined', 'cancelled', 'expired'];
+
+async function ludoNumbers() {
+    const LudoMatch = require('../models/LudoMatch');
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [total, last7, bySource, invites] = await Promise.all([
+        LudoMatch.estimatedDocumentCount(),
+        LudoMatch.countDocuments({ endedAt: { $gte: since } }),
+        LudoMatch.aggregate([{ $match: { endedAt: { $gte: since } } }, { $group: { _id: '$source', n: { $sum: 1 } } }]),
+        Message.aggregate([
+            { $match: { type: 'game', 'game.status': { $in: LUDO_INVITE_STATUSES }, 'game.updatedAt': { $gte: since.toISOString() } } },
+            { $match: { 'game.kind': 'ludo' } },
+            { $group: { _id: '$game.status', n: { $sum: 1 } } }
+        ])
+    ]);
+    return {
+        total,
+        last7,
+        bySource: Object.fromEntries(bySource.map(r => [r._id || 'other', r.n])),
+        invites: Object.fromEntries(invites.map(r => [r._id, r.n]))
+    };
+}
+
+router.get('/tab', async (req, res) => {
+    try {
+        const Settings = require('../models/Settings');
+        const doc = await Settings.findOne().select('gamesTab').lean();
+        res.json({ success: true, data: { gamesTab: doc?.gamesTab || 'admins', modes: GAMES_TAB_MODES, ludo: await ludoNumbers() } });
+    } catch (error) {
+        console.error('❌ admin games tab:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+router.put('/tab', async (req, res) => {
+    try {
+        const { gamesTab } = req.body;
+        if (!GAMES_TAB_MODES.includes(gamesTab)) {
+            return res.status(400).json({ success: false, message: 'قيمة غير صالحة' });
+        }
+        const Settings = require('../models/Settings');
+        // وثيقة الإعدادات واحدة — updateOne بلا upsert: لا ننشئ وثيقة ثانية بالافتراضيات
+        const r = await Settings.updateOne({}, { $set: { gamesTab } });
+        if (!r.matchedCount) return res.status(404).json({ success: false, message: 'وثيقة الإعدادات غير موجودة' });
+        require('../utils/featureFlags').invalidateFeatureFlags();
+        console.log(`🎮 gamesTab ← ${gamesTab} (admin ${req.user._id})`);
+        res.json({ success: true, data: { gamesTab } });
+    } catch (error) {
+        console.error('❌ admin games tab update:', error);
         res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
     }
 });

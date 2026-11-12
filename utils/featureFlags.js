@@ -36,4 +36,7 @@ async function getFeaturesForUser(user) {
     }
 }
 
-module.exports = { getFeaturesForUser, gamesVisibleFor };
+// بعد تغيير المفتاح من اللوحة: هذه النسخة فوراً، والنسخ الأخرى خلال 60ث (كاش لكل نسخة)
+function invalidateFeatureFlags() { cache.del(CACHE_KEY); }
+
+module.exports = { getFeaturesForUser, gamesVisibleFor, invalidateFeatureFlags };
