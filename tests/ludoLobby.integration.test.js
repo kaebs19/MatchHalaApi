@@ -788,6 +788,39 @@ maybe('الإنجازات واللقب مشتقّة من الإحصاءات', as
     assert.equal((await lobby.walletInfo(u)).wallet.title, 'legend');
 });
 
+maybe('الدردشة: نصّ يمرّ على الفلاتر، مهلة بين الرسائل، ويُحفظ مع نتيجة المباراة', async () => {
+    const chat = require('../utils/ludo/chat');
+    const bw = require('../routes/bannedWords');
+    const origCheck = bw.checkBannedWords;
+    bw.checkBannedWords = async (t) => ({ hasBannedWords: /كلمةسيئة/.test(t) });
+    try {
+        const a = addUser(); const b = addUser(); const outsider = addUser();
+        const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+        const t0 = Date.now();
+        const { line } = await chat.send(a, rec.id, '  مرحبا   يا بطل  ', t0);
+        assert.equal(line.text, 'مرحبا يا بطل');
+        assert.equal(line.playerId, a);
+        await assert.rejects(chat.send(a, rec.id, 'ثانية', t0 + 100), { code: 'CHAT_COOLDOWN' });
+        await chat.send(b, rec.id, 'أهلاً', t0 + 100);                          // المهلة لكل لاعب
+        await assert.rejects(chat.send(a, rec.id, 'كلّمني على snap: hala_123', t0 + 5000), { code: 'CHAT_BLOCKED' });
+        await assert.rejects(chat.send(a, rec.id, 'أنت كلمةسيئة', t0 + 5000), { code: 'CHAT_BLOCKED' });
+        await assert.rejects(chat.send(a, rec.id, '   ', t0 + 5000), { code: 'CHAT_EMPTY' });
+        await assert.rejects(chat.send(a, rec.id, 'ب'.repeat(81), t0 + 5000), { code: 'CHAT_TOO_LONG' });
+        await assert.rejects(chat.send(outsider, rec.id, 'مرحبا', t0 + 5000), { code: 'NOT_IN_GAME' });
+        users.get(b).restrictions = { messagingRestricted: true, messagingRestrictedLevel: 'all', messagingRestrictedUntil: null };
+        await assert.rejects(chat.send(b, rec.id, 'مرحبا', t0 + 5000), { code: 'CHAT_RESTRICTED' });
+        delete users.get(b).restrictions;
+
+        const view = service.view(await store.getGame(rec.id));
+        assert.deepEqual(view.chat.map(l => l.text), ['مرحبا يا بطل', 'أهلاً']);
+        await service.playerLeave(b, rec.id);
+        const doc = saved.find(d => d.gameId === rec.id);
+        assert.deepEqual(doc.chat.map(l => [String(l.user), l.text]), [[a, 'مرحبا يا بطل'], [b, 'أهلاً']]);
+    } finally {
+        bw.checkBannedWords = origCheck;
+    }
+});
+
 maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {
     const poor = addUser();
     await lobby.walletInfo(poor);

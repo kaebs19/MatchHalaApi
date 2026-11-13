@@ -91,6 +91,8 @@ function view(record) {
         stake: record.meta.stake || null,
         // 💎 من فعّل نرد الحظ في هذه المباراة (يراه الجميع) وسعره
         boosts: Object.keys(record.meta.boosts || {}),
+        // الدردشة حتى الآن — لمن يعود للمباراة أو يفتحها متأخراً
+        chat: (record.meta.chat || []).slice(-30),
         boostCost: economy.constants.BOOST_COST,
         ...engine.publicState(record.state)
     };
@@ -218,6 +220,7 @@ async function finalize(record) {
             }),
             winners: (record.state.winners || []).filter(id => !id.startsWith('bot:')),
             rolls: record.meta.rolls,
+            chat: (record.meta.chat || []).map(l => ({ user: l.playerId, text: l.text, at: new Date(l.at) })),
             ...(stake ? { league: stake.league, fee: stake.fee, prize: stake.prize } : {}),
             startedAt: new Date(record.meta.startedAt),
             endedAt: new Date()

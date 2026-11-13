@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const ludoMatchSchema = new mongoose.Schema({
     gameId: { type: String, required: true, unique: true },
     mode: { type: String, enum: ['classic', 'quick', 'teams'], required: true },
-    source: { type: String, enum: ['queue', 'room', 'solo', 'invite'], required: true },
+    source: { type: String, enum: ['queue', 'room', 'solo', 'invite', 'challenge'], required: true },
     players: [{
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },  // null = بوت
         color: String,
@@ -20,6 +20,13 @@ const ludoMatchSchema = new mongoose.Schema({
     league: { type: String, enum: ['bronze', 'silver', 'gold'] },
     fee: Number,
     prize: Number,          // جائزة كل فائز
+    // دردشة المباراة (utils/ludo/chat.js) — آخر 60 رسالة، للإشراف والبلاغات
+    chat: [{
+        _id: false,
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        text: String,
+        at: Date
+    }],
     startedAt: Date,
     endedAt: Date
 }, { timestamps: false });

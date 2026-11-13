@@ -9,11 +9,12 @@
 //   ludo:emote        عبارة/ملصق جاهز من لاعب
 //   ludo:queue-dropped  أُخرج من الطابور (رصيده لم يعد يكفي رسوم الدوري)
 //
-// ⚠️ لا نصّ حرّ: العبارات والملصقات معرّفات من قائمة ثابتة، والنصّ نفسه في التطبيق.
+// العبارات والملصقات معرّفات من قائمة ثابتة. النصّ الحرّ وحده عبر ludo:chat (يمرّ على فلاتر الترويج والكلمات).
 
 const service = require('./service');
 const lobby = require('./lobby');
 const store = require('./store');
+const chat = require('./chat');
 
 // العبارات (16) وملصقات الشخصيات (12) وملصقات الكلمات (6) — دليل التصميم
 const PHRASES = Array.from({ length: 16 }, (_, i) => `phrase_${i + 1}`);
@@ -96,6 +97,14 @@ function registerLudoHandlers(io, socket) {
         ({ game: await service.playerPass(userId, gameId, version) }));
     on('ludo:claim', async ({ gameId }) => ({ game: await service.playerClaim(userId, gameId) }));
     on('ludo:leave', async ({ gameId }) => ({ game: await service.playerLeave(userId, gameId) }));
+
+    // ── الدردشة (نصّ حرّ عبر الفلاتر — utils/ludo/chat.js) ──
+    on('ludo:chat', async ({ gameId, text }) => {
+        const { record, line } = await chat.send(userId, String(gameId || ''), text);
+        const rooms = record.meta.players.filter(p => !p.isBot).map(p => `user:${p.id}`);
+        io.to(rooms).emit('ludo:chat', { gameId: record.id, ...line });
+        return { line };
+    });
 
     // ── العبارات والملصقات ──
     let lastEmoteAt = 0;
