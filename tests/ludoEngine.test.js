@@ -266,6 +266,30 @@ test('العودة: من تولّاه البوت يستعيد مقعده مرت�
     assert.throws(() => L.reclaim(g, { playerId: 'zzz' }), { code: 'NOT_IN_GAME' });
 });
 
+test('الإنهاء المبكر: يحقّ حين يغيب كل الخصوم البشر — لا ضدّ بوتات أصلية', () => {
+    const mk = (bots) => L.createGame({
+        players: ['a', 'b', 'c', 'd'].map(id => ({ id, isBot: bots.includes(id) })), now: 0
+    });
+    // كل الخصوم بوتات أصلية: تُلعب للنهاية
+    assert.equal(L.canClaimWin(mk(['b', 'c', 'd']), 'a'), false);
+    let g = mk(['c', 'd']);
+    assert.equal(L.canClaimWin(g, 'a'), false);                    // b حاضر
+    assert.throws(() => L.claimWin(g, { playerId: 'a' }), { code: 'CANNOT_CLAIM' });
+    g.seats[1].isBot = true; g.seats[1].takenOver = true;          // تولّاه البوت
+    assert.deepEqual(L.publicState(g).claimable, ['a']);
+    assert.equal(L.canClaimWin(g, 'b'), false);                    // الغائب نفسه لا يطالب
+    assert.equal(L.canClaimWin(g, 'c'), false);
+    const r = L.claimWin(g, { playerId: 'a' });
+    assert.equal(r.state.phase, 'ended');
+    assert.deepEqual(r.state.winners, ['a']);
+    assert.equal(L.ranking(r.state)[0].id, 'a');
+    assert.equal(g.phase, 'roll');                                  // المُدخل لم يتغيّر
+    // انسحاب الخصم البشري الوحيد في أربعة: المباراة تستمر ضدّ البوتات، وللباقي أن ينهيها
+    g = L.leave(mk(['c', 'd']), { playerId: 'b' }).state;
+    assert.equal(g.phase, 'roll');
+    assert.equal(L.canClaimWin(g, 'a'), true);
+});
+
 test('البوت يفضّل الأكل', () => {
     let g = withTokens(two(), { a: [5, 20, BASE, BASE], b: [36, BASE, BASE, BASE] });
     ({ state: g } = L.roll(g, { playerId: 'a', rollDie: dice(5) }));

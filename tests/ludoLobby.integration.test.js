@@ -3,6 +3,7 @@
 process.env.REDIS_URL = process.env.LUDO_TEST_REDIS || 'redis://127.0.0.1:6379/9';
 process.env.LUDO_TURN_MS = '300';
 process.env.LUDO_OFFLINE_TURN_MS = '60';
+process.env.LUDO_RETURN_GRACE_MS = '5000';
 process.env.LUDO_BOT_FILL_MS = '200';
 
 const test = require('node:test');
@@ -519,6 +520,89 @@ maybe('الدوري: الرسوم تُخصم عند البدء، الفائز ي
     const doc = saved.find(s => s.gameId === gameId);
     assert.equal(doc.league, 'silver');
     assert.equal(doc.prize, fee * 2);
+});
+
+maybe('الدوري: المنقطع تُحسم عليه بعد مهلة العودة، والعودة قبلها تلغي الحسم', async () => {
+    const { START_COINS, LEAGUES } = economy.constants;
+    const fee = LEAGUES.bronze.fee;
+    const grace = service.constants.RETURN_GRACE_MS;
+    const a = addUser(); const b = addUser();
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'bronze' });
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'bronze' });
+    const gameId = await store.getUserGame(a);
+    const isDue = async (at) => (await store.dueForfeits(at)).some(f => f.gameId === gameId && f.userId === b);
+
+    await service.setPresence(b, false);
+    let r = await store.getGame(gameId);
+    const since = r.meta.offline[b];
+    assert.equal(service.view(r).forfeitAt[b], since + grace);
+    assert.equal(await isDue(since + grace - 1), false);
+    assert.equal(await isDue(since + grace), true);
+    assert.equal(await service.forfeitOffline(gameId, b, since + grace - 1), false);   // المهلة لم تنتهِ
+
+    await service.setPresence(b, true);                              // عاد: لا حسم
+    assert.equal(await isDue(since + grace * 10), false);
+    assert.deepEqual(service.view(await store.getGame(gameId)).forfeitAt, {});
+    assert.equal(await service.forfeitOffline(gameId, b, since + grace * 10), false);
+
+    await service.setPresence(b, false);
+    r = await store.getGame(gameId);
+    assert.equal(await service.forfeitOffline(gameId, b, r.meta.offline[b] + grace), true);
+    r = await store.getGame(gameId);
+    assert.equal(r.state.phase, 'ended');
+    assert.deepEqual(r.state.winners, [a]);
+    assert.equal(coinsOf(a), START_COINS + fee);
+    assert.equal(coinsOf(b), START_COINS - fee);
+    assert.equal(await store.getUserGame(b), null);
+    const ended = eventsFor(a, 'ludo:ended').find(e => e.gameId === gameId);
+    assert.equal(ended.rewards.find(x => x.id === a).won, true);
+    // الودّية بلا مهلة عودة
+    const friendly = await lobby.startInviteMatch(addUser(), b, { mode: 'quick', messageId: oid() });
+    await service.setPresence(b, false);
+    assert.deepEqual(service.view(await store.getGame(friendly.id)).forfeitAt, {});
+    await service.playerLeave(b, friendly.id);
+});
+
+maybe('الدوري: الخروج المتكرر ← منع مؤقت متصاعد من الدوري وحده', async () => {
+    const penalties = require('../utils/ludo/penalties');
+    const u = addUser();
+    await lobby.walletInfo(u);
+    const now = Date.now();
+    assert.equal(await penalties.recordLeagueQuit(u, now), null);
+    assert.equal(await penalties.recordLeagueQuit(u, now + 1), null);
+    assert.equal(await penalties.leagueBan(u), null);
+    const ban = await penalties.recordLeagueQuit(u, now + 2);
+    assert.equal(ban.minutes, 10);
+    await assert.rejects(lobby.joinQueue(u, { mode: 'quick', size: 2, league: 'bronze' }), { code: 'LEAGUE_COOLDOWN' });
+    assert.equal((await lobby.joinQueue(u, { mode: 'quick', size: 2 })).queued, true);   // الودّي متاح
+    await lobby.leaveQueue(u);
+    // المنع يبدأ بصفحة جديدة، والتالي أطول
+    assert.equal(await penalties.recordLeagueQuit(u, now + 3), null);
+    assert.equal(await penalties.recordLeagueQuit(u, now + 4), null);
+    assert.equal((await penalties.recordLeagueQuit(u, now + 5)).minutes, 30);
+    // خروج قديم خارج النافذة لا يُحسب
+    const v = addUser();
+    await penalties.recordLeagueQuit(v, now - 2 * 60 * 60 * 1000);
+    await penalties.recordLeagueQuit(v, now - 90 * 60 * 1000);
+    assert.equal(await penalties.recordLeagueQuit(v, now), null);
+});
+
+maybe('الإنهاء المبكر عبر الخدمة: يُرفض والخصم حاضر، ويُقبل حين يتولّاه البوت', async () => {
+    const a = addUser(); const b = addUser();
+    const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+    await assert.rejects(service.playerClaim(a, rec.id), { code: 'CANNOT_CLAIM' });
+    await store.withLock(`game:${rec.id}`, async () => {
+        const g = await store.getGame(rec.id);
+        const seat = g.state.seats.find(s => s.id === b);
+        seat.isBot = true; seat.takenOver = true;
+        await store.saveGame(g);
+    });
+    assert.deepEqual(service.view(await store.getGame(rec.id)).claimable, [a]);
+    await assert.rejects(service.playerClaim(b, rec.id), { code: 'CANNOT_CLAIM' });
+    const end = await service.playerClaim(a, rec.id);
+    assert.equal(end.phase, 'ended');
+    assert.deepEqual(end.winners, [a]);
+    assert.ok(eventsFor(a, 'ludo:ended').some(e => e.gameId === rec.id));
 });
 
 maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {

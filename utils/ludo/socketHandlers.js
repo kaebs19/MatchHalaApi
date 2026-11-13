@@ -85,6 +85,7 @@ function registerLudoHandlers(io, socket) {
     on('ludo:boost', async ({ gameId }) => ({ game: await service.playerBoost(userId, gameId) }));
     on('ludo:pass', async ({ gameId, version }) =>
         ({ game: await service.playerPass(userId, gameId, version) }));
+    on('ludo:claim', async ({ gameId }) => ({ game: await service.playerClaim(userId, gameId) }));
     on('ludo:leave', async ({ gameId }) => ({ game: await service.playerLeave(userId, gameId) }));
 
     // ── العبارات والملصقات ──

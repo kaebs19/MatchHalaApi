@@ -812,6 +812,22 @@ ludoService.onTurn(async ({ gameId, userId }) => {
     }, { type: 'ludo_turn', gameId: String(gameId) }, false);
 });
 
+// 🔔 انقطع عن مباراة دوري: له مهلة ليعود قبل أن تُحسب خسارة — إشعار واحد لكل انقطاع (لا يُحفظ في القائمة)
+ludoService.onAway(async ({ gameId, userId, graceMs }) => {
+    if (!mongoose.isValidObjectId(userId)) return;
+    const { getClient } = require('../../utils/redisClient');
+    const redis = await getClient();
+    if (redis) {
+        const fresh = await redis.set(`ludo:awaypush:${gameId}:${userId}`, '1', { NX: true, PX: graceMs });
+        if (!fresh) return;
+    }
+    const seconds = Math.round(graceMs / 1000);
+    await pushNotificationService.sendNotificationToUser(userId, {
+        title: '🎲 هلا لودو',
+        body: `مباراتك في الدوري ما زالت جارية — ارجع خلال ${seconds} ثانية وإلا تُحسب خسارة`
+    }, { type: 'ludo_turn', gameId: String(gameId) }, false);
+});
+
 // ─────────────────────────────────────────────────────────────
 // POST /games/ludo/invite { conversationId, mode }
 // ─────────────────────────────────────────────────────────────

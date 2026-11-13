@@ -19,6 +19,8 @@ const GAME_TTL_S = 3 * 60 * 60;
 const ROOM_TTL_S = 15 * 60;
 const LOCK_TTL_MS = 4000;
 const DEADLINES = 'ludo:deadlines';
+// مهلة عودة المنقطع في مباراة دوري: العضو `<gameId>|<userId>` والدرجة موعد الحسم
+const FORFEITS = 'ludo:forfeits';
 
 class StoreUnavailable extends Error {
     constructor() {
@@ -41,7 +43,10 @@ const k = {
     qentry: (userId) => `ludo:qentry:${userId}`,
     room: (code) => `ludo:room:${code}`,
     userRoom: (userId) => `ludo:userroom:${userId}`,
-    lock: (name) => `ludo:lock:${name}`
+    lock: (name) => `ludo:lock:${name}`,
+    quits: (userId) => `ludo:quits:${userId}`,
+    quitLevel: (userId) => `ludo:quitlevel:${userId}`,
+    quitBan: (userId) => `ludo:quitban:${userId}`
 };
 
 // ───────────── القفل ─────────────
@@ -113,6 +118,54 @@ const CLEAR_IF = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.cal
 async function clearUserGame(userIds, gameId) {
     const c = await redis();
     await Promise.all(userIds.map(u => c.eval(CLEAR_IF, { keys: [k.user(u)], arguments: [gameId] })));
+}
+
+// ───────────── مهلة العودة (الدوري) ─────────────
+
+async function addForfeit(gameId, userId, at) {
+    await (await redis()).zAdd(FORFEITS, { score: at, value: `${gameId}|${userId}` });
+}
+
+async function removeForfeit(gameId, userId) {
+    await (await redis()).zRem(FORFEITS, `${gameId}|${userId}`);
+}
+
+async function dueForfeits(now, limit = 50) {
+    const due = await (await redis()).zRangeByScore(FORFEITS, '-inf', now, { LIMIT: { offset: 0, count: limit } });
+    return due.map(v => { const i = v.indexOf('|'); return { gameId: v.slice(0, i), userId: v.slice(i + 1) }; });
+}
+
+// ───────────── عقوبة الخروج المتكرر (penalties.js) ─────────────
+
+// يضيف خروجاً ويعيد عددها داخل النافذة
+async function addQuit(userId, now, windowMs) {
+    const c = await redis();
+    const key = k.quits(userId);
+    const res = await c.multi()
+        .zAdd(key, { score: now, value: `${now}:${crypto.randomBytes(3).toString('hex')}` })
+        .zRemRangeByScore(key, '-inf', now - windowMs)
+        .zCard(key)
+        .expire(key, Math.ceil(windowMs / 1000))
+        .exec();
+    return Number(res[2]) || 0;
+}
+
+// مستوى التصعيد (1، 2، …) — يتصفّر بعد ttl بلا عقوبة جديدة
+async function bumpQuitLevel(userId, ttlS) {
+    const c = await redis();
+    const res = await c.multi().incr(k.quitLevel(userId)).expire(k.quitLevel(userId), ttlS).exec();
+    return Number(res[0]) || 1;
+}
+
+// المنع يبدأ بصفحة جديدة: الخروجات التي أوجبته لا تُحسب مرة ثانية
+async function setQuitBan(userId, until, ms) {
+    const c = await redis();
+    await c.multi().set(k.quitBan(userId), String(until), { PX: ms }).del(k.quits(userId)).exec();
+}
+
+async function getQuitBan(userId) {
+    const v = await (await redis()).get(k.quitBan(userId));
+    return v ? Number(v) : null;
 }
 
 // ───────────── طابور المطابقة ─────────────
@@ -209,6 +262,8 @@ module.exports = {
     withLock,
     getGame, saveGame, deleteGame, dueGames,
     setUserGame, getUserGame, clearUserGame,
+    addForfeit, removeForfeit, dueForfeits,
+    addQuit, bumpQuitLevel, setQuitBan, getQuitBan,
     enqueue, dequeue, getQueueEntry, queueEntries, activeQueueKeys,
     createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom,
     StoreUnavailable

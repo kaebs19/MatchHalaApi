@@ -13,6 +13,7 @@ const { LudoError, constants: { MODES } } = require('../ludoEngine');
 const store = require('./store');
 const service = require('./service');
 const economy = require('./economy');
+const penalties = require('./penalties');
 
 const BOT_FILL_MS = Number(process.env.LUDO_BOT_FILL_MS) || 20000;
 const SWEEP_MS = 2000;
@@ -79,6 +80,12 @@ async function joinQueue(userId, { mode, size, league }) {
     await assertFree(id);
     // الرسوم تُخصم عند بدء المباراة — هنا نتحقق فقط أن الرصيد يكفي
     if (league) await economy.assertCanAfford(id, league);
+    // خرج من مباريات الدوري مراراً ← منع مؤقت من الدوري وحده (الودّي متاح)
+    const ban = league ? await penalties.leagueBan(id) : null;
+    if (ban) {
+        throw new LudoError('LEAGUE_COOLDOWN',
+            `خرجت من مباريات الدوري أكثر من مرة — الدوري متاح لك بعد ${ban.minutes} دقيقة. اللعب الودّي متاح الآن.`, 429);
+    }
     const key = queueKeyOf(mode, size, league);
     await store.enqueue(key, {
         userId: id,

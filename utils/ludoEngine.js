@@ -585,6 +585,41 @@ function reclaim(input, { playerId }) {
     return { state, events: [{ type: 'returned', playerId: seat.id }] };
 }
 
+// بوت أصلي (لا لاعب تولّاه البوت)
+const isOriginalBot = (seat) => seat.isBot && !seat.takenOver;
+
+// «أنهِ المباراة فائزاً»: كل خصومي البشر غابوا (انسحبوا أو تولّاهم البوت) — لا معنى لإكمالها ضدّ الكمبيوتر.
+// يلزم خصم بشري واحد على الأقل: مباراة كل خصومها بوتات أصلية تُلعب للنهاية.
+function canClaimWin(state, playerId) {
+    if (state.phase === 'ended') return false;
+    const me = state.seats.find(s => s.id === String(playerId));
+    if (!me || me.status !== 'active' || me.isBot) return false;
+    const rivals = state.seats.filter(s => s.team !== me.team && !isOriginalBot(s));
+    return rivals.length > 0 && rivals.every(s => s.status === 'left' || s.takenOver);
+}
+
+function claimWin(input, { playerId }) {
+    if (input.phase === 'ended') throw new LudoError('GAME_ENDED', 'انتهت المباراة', 409);
+    if (!canClaimWin(input, playerId)) {
+        throw new LudoError('CANNOT_CLAIM', 'ما زال في المباراة لاعب آخر', 409);
+    }
+    const state = clone(input);
+    const me = state.seats.find(s => s.id === String(playerId));
+    if (MODES[state.mode].teams) {
+        state.winners = state.seats.filter(s => s.team === me.team).map(s => s.id);
+    } else {
+        state.finishOrder = [me.id, ...state.finishOrder.filter(id => id !== me.id)];
+        state.winners = [me.id];
+    }
+    state.phase = 'ended';
+    state.legalMoves = [];
+    state.canReroll = false;
+    state.version++;
+    const action = { type: 'claim', playerId: me.id };
+    state.lastAction = action;
+    return { state, events: [action] };
+}
+
 // ───────────────────────── العرض ─────────────────────────
 
 // ما يُرسل للعملاء — لا أسرار في اللودو، لكن نُبقي الشكل ثابتاً ومستقلاً عن التخزين
@@ -604,6 +639,8 @@ function publicState(state) {
         legalMoves: state.legalMoves,
         canReroll: !!state.canReroll,
         rerollCost: rerollCost(state),
+        // من يحقّ له إنهاء المباراة فائزاً الآن (غاب كل خصومه البشر)
+        claimable: state.seats.filter(s => canClaimWin(state, s.id)).map(s => s.id),
         winners: state.winners,
         ranking: state.phase === 'ended' ? ranking(state) : null,
         version: state.version,
@@ -621,6 +658,8 @@ module.exports = {
     leave,
     handleTimeout,
     reclaim,
+    canClaimWin,
+    claimWin,
     autoStep,
     chooseBotMove,
     legalMovesFor,

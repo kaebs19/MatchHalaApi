@@ -7,6 +7,8 @@
 // المؤقّت يعمل على instance 0 وحده (startLudoTicker): يقرأ ludo:deadlines كل 400ms.
 // - انتهت مهلة لاعب ← البوت يكمل دوره (يُحسب فائتاً، 3 متتالية = يتولّاه البوت).
 // - لاعب بلا اتصال (meta.offline) ← مهلته OFFLINE_TURN_MS بدل TURN_MS؛ عودته تعيد له بقية مهلته.
+// - مباراة دوري: المنقطع له RETURN_GRACE_MS ليعود (ludo:forfeits)، بعدها يُحسب منسحباً (forfeitOffline).
+// - غاب كل الخصوم البشر ← engine.claimWin («أنهِ المباراة فائزاً»، ludo:claim).
 // - من تولّاه البوت يستعيد مقعده بعودته (ludo:resume بـ back) — engine.reclaim، بحدّ maxComebacks.
 // - دور بوت ← يلعب بعد BOT_DELAY_MS (يبدو طبيعياً).
 // - حركة واحدة ممكنة ← تُنفَّذ تلقائياً بعد AUTO_MOVE_MS ولا تُحسب فائتة.
@@ -15,10 +17,13 @@ const crypto = require('crypto');
 const engine = require('../ludoEngine');
 const store = require('./store');
 const economy = require('./economy');
+const penalties = require('./penalties');
 
 const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
 // المنقطع (لا سوكت له): لا ننتظره المهلة كاملة — الخصم لا يُعاقَب بانقطاع غيره
 const OFFLINE_TURN_MS = Number(process.env.LUDO_OFFLINE_TURN_MS) || 5000;
+// مباراة دوري: مهلة عودة المنقطع قبل أن تُحسب عليه انسحاباً (البوت يلعب عنه خلالها)
+const RETURN_GRACE_MS = Number(process.env.LUDO_RETURN_GRACE_MS) || 60000;
 const BOT_DELAY_MS = 1200;
 const AUTO_MOVE_MS = 700;
 // قرار إعادة الرمي: لا حركة ممكنة ← مهلة قصيرة ثم تخطٍّ تلقائي (لا يُحسب دوراً فائتاً)
@@ -77,6 +82,10 @@ function view(record) {
         // اللاعبون بلا اتصال الآن (شارة «انقطع الاتصال») ومهلة دورهم الأقصر
         offline: Object.keys(record.meta.offline || {}),
         offlineTurnMs: OFFLINE_TURN_MS,
+        // الدوري: موعد حسم المباراة على كل منقطع إن لم يعد — و now ليحسب التطبيق الفرق عن ساعته
+        forfeitAt: forfeitTimes(record),
+        returnGraceMs: record.meta.stake ? RETURN_GRACE_MS : null,
+        now: Date.now(),
         // مباراة دوري: { league, fee, prize } — null للودّية
         stake: record.meta.stake || null,
         // 💎 من فعّل نرد الحظ في هذه المباراة (يراه الجميع) وسعره
@@ -84,6 +93,15 @@ function view(record) {
         boostCost: economy.constants.BOOST_COST,
         ...engine.publicState(record.state)
     };
+}
+
+function forfeitTimes(record) {
+    if (!record.meta.stake || record.state.phase === 'ended') return {};
+    const out = {};
+    for (const [id, since] of Object.entries(record.meta.offline || {})) {
+        if (record.state.seats.some(s => s.id === id && s.status === 'active')) out[id] = since + RETURN_GRACE_MS;
+    }
+    return out;
 }
 
 // موعد الخطوة التالية بحسب صاحب الدور
@@ -160,6 +178,16 @@ function onFinalize(fn) { finalizeHooks.push(fn); }
 // انتقل الدور إلى لاعب بشري (رمية جديدة لا رمية إضافية) — مستمعو إشعار «دورك» (routes/mobile/games.js)
 const turnHooks = [];
 function onTurn(fn) { turnHooks.push(fn); }
+
+// انقطع لاعب في مباراة دوري وبدأت مهلة عودته — مستمعو إشعار «ارجع قبل أن تُحسب خسارة»
+const awayHooks = [];
+function onAway(fn) { awayHooks.push(fn); }
+
+// خروج من مباراة دوري (انسحاب أو حسم بعد انقطاع) ← عدّاد عقوبة الخروج المتكرر
+async function countLeagueQuit(record, userId) {
+    if (!record?.meta?.stake) return;
+    try { await penalties.recordLeagueQuit(userId); } catch (e) { console.error('ludo quit penalty:', e.message); }
+}
 
 async function finalize(record) {
     if (record.meta.persisted) return;
@@ -332,7 +360,42 @@ async function playerLeave(userId, gameId) {
         return engine.leave(record.state, { playerId: userId });
     });
     await store.clearUserGame([String(userId)], gameId);
+    await store.removeForfeit(gameId, String(userId)).catch(() => {});
+    await countLeagueQuit(r, userId);
     return view(r);
+}
+
+// «أنهِ المباراة فائزاً»: غاب كل خصومي البشر — الجائزة والترتيب كأي فوز
+async function playerClaim(userId, gameId) {
+    const r = await mutate(gameId, (record) => {
+        assertPlayer(record, userId);
+        return engine.claimWin(record.state, { playerId: userId });
+    });
+    return view(r);
+}
+
+// انتهت مهلة عودة منقطع في مباراة دوري: يُحسب منسحباً (في لاعبَين تُحسم للخصم فوراً)
+async function forfeitOffline(gameId, userId, now = Date.now()) {
+    const id = String(userId);
+    let forfeited = false;
+    const r = await mutate(gameId, (record) => {
+        if (record.state.phase === 'ended' || !record.meta.stake) return null;
+        const since = record.meta.offline?.[id];
+        if (!since || since + RETURN_GRACE_MS > now) return null;      // عاد، أو انقطع من جديد بمهلة جديدة
+        const { [id]: _gone, ...rest } = record.meta.offline;
+        record.meta.offline = rest;
+        const seat = record.state.seats.find(s => s.id === id);
+        if (!seat || seat.status !== 'active') return { state: bump(record.state), events: [], keepDeadline: true };
+        const result = engine.leave(record.state, { playerId: id });
+        result.events[0].reason = 'offline';
+        forfeited = true;
+        return result;
+    });
+    if (forfeited) {
+        await store.clearUserGame([id], gameId);
+        await countLeagueQuit(r, id);
+    }
+    return forfeited;
 }
 
 // ───────────── الحضور والعودة ─────────────
@@ -346,7 +409,8 @@ async function setPresence(userId, online, { reclaim = false } = {}) {
     const id = String(userId);
     const gameId = await store.getUserGame(id);
     if (!gameId) return null;
-    return mutate(gameId, (record) => {
+    let presenceChange = null;      // دوري فقط: 'away' بدأت مهلة العودة · 'back' أُلغيت
+    const result = await mutate(gameId, (record) => {
         if (record.state.phase === 'ended') return null;
         if (!record.meta.players.some(p => p.id === id && !p.isBot)) return null;
         const seat = record.state.seats.find(s => s.id === id);
@@ -368,6 +432,8 @@ async function setPresence(userId, online, { reclaim = false } = {}) {
             events.push({ type: 'presence', playerId: id, online: false });
         }
 
+        if (record.meta.stake) presenceChange = online ? 'back' : 'away';
+
         if (canReclaim) {
             const r = engine.reclaim(record.state, { playerId: id });
             events.push(...r.events);
@@ -384,6 +450,17 @@ async function setPresence(userId, online, { reclaim = false } = {}) {
         }
         return { state: bump(record.state), events, keepDeadline: true };
     });
+    if (presenceChange === 'away') {
+        const since = result.meta.offline?.[id];
+        if (since) {
+            await store.addForfeit(gameId, id, since + RETURN_GRACE_MS);
+            const snapshot = { gameId, userId: id, graceMs: RETURN_GRACE_MS };
+            for (const fn of awayHooks) Promise.resolve().then(() => fn(snapshot)).catch(e => console.error('ludo away hook:', e.message));
+        }
+    } else if (presenceChange === 'back') {
+        await store.removeForfeit(gameId, id);
+    }
+    return result;
 }
 
 // ludo:resume — العودة للمباراة: متصل من جديد، و(back) يستعيد مقعده من البوت
@@ -450,6 +527,17 @@ async function tick() {
                 }
             }
         }
+        // مهلة عودة المنقطعين في الدوري
+        for (const f of await store.dueForfeits(now)) {
+            try {
+                await forfeitOffline(f.gameId, f.userId, now);
+                await store.removeForfeit(f.gameId, f.userId);
+            } catch (e) {
+                if (e.code === 'LOCK_BUSY') continue;                  // يُعاد في الدورة التالية
+                await store.removeForfeit(f.gameId, f.userId).catch(() => {});
+                if (e.code !== 'GAME_NOT_FOUND') console.error(`ludo forfeit ${f.gameId}:`, e.code || '', e.message);
+            }
+        }
     } catch (e) {
         if (e.code !== 'GAMES_UNAVAILABLE') console.error('ludo tick error:', e.message);
     } finally {
@@ -478,6 +566,8 @@ module.exports = {
     playerBoost,
     playerPass,
     playerLeave,
+    playerClaim,
+    forfeitOffline,
     currentGame,
     setPresence,
     playerReturn,
@@ -489,5 +579,6 @@ module.exports = {
     rollDie,
     onFinalize,
     onTurn,
-    constants: { TURN_MS, OFFLINE_TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
+    onAway,
+    constants: { TURN_MS, OFFLINE_TURN_MS, RETURN_GRACE_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
 };
