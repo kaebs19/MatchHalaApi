@@ -839,6 +839,24 @@ maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان
     assert.equal(coinsOf(a), economy.constants.START_COINS);
 });
 
+maybe('المطابقة عبر الدوريات: بعد نافذة «الأقرب» يلعب برونز وفضة بالأدنى، وكلٌّ يدفع رسوم البرونز', async () => {
+    const { LEAGUES, START_COINS } = economy.constants;
+    const a = addUser(); const b = addUser();
+    await lobby.walletInfo(a); await lobby.walletInfo(b);
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'bronze' });
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'silver' });
+    assert.equal(await store.getUserGame(a), null);                  // ليس فوراً
+    // بعد نافذة «الأقرب» (60% من مهلة البوت) وقبل البوت
+    const [gameId] = await lobby.tryMatch('quick:2:silver', { now: Date.now() + 150 });
+    assert.ok(gameId);
+    assert.equal(await store.getUserGame(b), gameId);
+    const stake = service.view(await store.getGame(gameId)).stake;
+    assert.deepEqual(stake, { league: 'bronze', fee: LEAGUES.bronze.fee, prize: LEAGUES.bronze.fee * 2 });
+    assert.equal(coinsOf(a), START_COINS - LEAGUES.bronze.fee);
+    assert.equal(coinsOf(b), START_COINS - LEAGUES.bronze.fee);   // لم يُخصم منه 10K
+    await service.playerLeave(a, gameId);
+});
+
 maybe('الدوري مع بوت: مقعد البوت يدخل الجائزة، والودّية (غرفة/كمبيوتر/طابور بلا دوري) بلا رسوم', async () => {
     const { START_COINS, LEAGUES } = economy.constants;
     const fee = LEAGUES.bronze.fee;

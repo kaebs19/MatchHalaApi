@@ -15,12 +15,26 @@ const service = require('./service');
 const economy = require('./economy');
 const penalties = require('./penalties');
 const missions = require('./missions');
+const { planGroups } = require('./matchmaking');
 
 const BOT_FILL_MS = Number(process.env.LUDO_BOT_FILL_MS) || 20000;
 const SWEEP_MS = 2000;
 
 // الدوري جزء من مفتاح الطابور: لا يُجمع لاعبان برسوم مختلفة. بلا دوري = طابور ودّي (النسخ القديمة)
 const queueKeyOf = (mode, size, league) => league ? `${mode}:${size}:${league}` : `${mode}:${size}`;
+// طوابير الدوري الثلاثة لنمط وحجم واحد تُطابَق معاً (رسوم ← مستوى ← الأقرب — utils/ludo/matchmaking.js)
+const LEAGUE_IDS = ['bronze', 'silver', 'gold'];
+const poolOf = (queueKey) => {
+    const [mode, size, league] = queueKey.split(':');
+    return league ? { mode, size: Number(size), keys: LEAGUE_IDS.map(l => `${mode}:${size}:${l}`), lock: `${mode}:${size}:leagues` }
+                  : { mode, size: Number(size), keys: [queueKey], lock: queueKey };
+};
+// نوافذ التوسّع (نسب من مهلة البوت كي تتبعها في الاختبارات)
+const windows = () => ({
+    sameFee: Number(process.env.LUDO_MATCH_SAME_FEE_MS) || Math.round(BOT_FILL_MS * 0.3),
+    level: Number(process.env.LUDO_MATCH_LEVEL_MS) || Math.round(BOT_FILL_MS * 0.6),
+    botFill: BOT_FILL_MS
+});
 
 function validateSetup(mode, size) {
     // ⚠️ الكلاسيكي أُلغي (قرار المالك ١٣ نوفمبر ٢٠٢٦): اللعبة المعتمدة هي السريعة (قطعتان).
@@ -88,12 +102,16 @@ async function joinQueue(userId, { mode, size, league }) {
             `خرجت من مباريات الدوري أكثر من مرة — الدوري متاح لك بعد ${ban.minutes} دقيقة. اللعب الودّي متاح الآن.`, 429);
     }
     const key = queueKeyOf(mode, size, league);
+    // المستوى للمطابقة (مرتبة النجوم) — للدوري وحده
+    const level = league ? economy.levelOf((await economy.getWallet(id)).points) : 0;
     await store.enqueue(key, {
         userId: id,
         joinedAt: Date.now(),
         mode,
         size,
         league,
+        fee: league ? economy.assertLeague(league).fee : 0,
+        level,
         blocked: blockedList(user),
         player: playerInfo(user)
     });
@@ -277,28 +295,19 @@ async function leaveQueue(userId) {
     return { queued: false };
 }
 
-// يكوّن مجموعات متوافقة (بلا طرفَي حظر) بترتيب الانضمام.
+// يكوّن مجموعات متوافقة (بلا طرفَي حظر) — الدوري برسوم ← مستوى ← الأقرب (matchmaking.js)، والودّي بترتيب الانضمام.
 // fillBots: من انتظر BOT_FILL_MS تكتمل مجموعته ببوتات.
 async function tryMatch(queueKey, { fillBots = false, now = Date.now() } = {}) {
-    const [mode, sizeStr, league] = queueKey.split(':');
-    const size = Number(sizeStr);
-    const stake = league ? economy.stakeFor(league, mode, size) : null;
-    return store.withLock(`queue:${queueKey}`, async () => {
-        let entries = await store.queueEntries(queueKey);
+    const pool = poolOf(queueKey);
+    const { mode, size } = pool;
+    return store.withLock(`queue:${pool.lock}`, async () => {
+        const entries = (await Promise.all(pool.keys.map(k => store.queueEntries(k)))).flat()
+            // طابور قديم بلا fee (قبل النشر) — يُشتقّ من دوريه
+            .map(e => (e.league && !e.fee ? { ...e, fee: economy.assertLeague(e.league).fee } : e));
         const started = [];
-        while (entries.length > 0) {
-            const seed = entries[0];
-            const group = [seed];
-            for (const e of entries.slice(1)) {
-                if (group.length === size) break;
-                if (group.every(g => !conflict(g, e))) group.push(e);
-            }
-            const waitedEnough = fillBots && now - seed.joinedAt >= BOT_FILL_MS;
-            if (group.length < size && !waitedEnough) {
-                // هذا المنتظر لم يكتمل بعد — جرّب التالي كبذرة (قد تتكوّن مجموعة بدونه)
-                entries = entries.slice(1);
-                continue;
-            }
+        for (const { members: group, fee } of planGroups(entries, { size, now, windows: windows(), fillBots })) {
+            const league = fee ? economy.leagueOfFee(fee) : null;
+            const stake = league ? economy.stakeFor(league, mode, size) : null;
             const ids = group.map(g => g.userId);
             await store.dequeue(ids);
             // من دخل مباراة أخرى أثناء الانتظار يُستبعد
@@ -321,7 +330,6 @@ async function tryMatch(queueKey, { fillBots = false, now = Date.now() } = {}) {
                     throw e;
                 }
             }
-            entries = entries.filter(e => !ids.includes(e.userId));
         }
         return started;
     }, { waitMs: 1500 });
@@ -332,7 +340,14 @@ function startLudoLobbySweeper() {
     if (sweepTimer) return;
     sweepTimer = setInterval(async () => {
         try {
-            const keys = await store.activeQueueKeys();
+            // طوابير الدوري الثلاثة مجمّع واحد — يُطابَق مرة لكل دورة
+            const seen = new Set();
+            const keys = (await store.activeQueueKeys()).filter(k => {
+                const lock = poolOf(k).lock;
+                if (seen.has(lock)) return false;
+                seen.add(lock);
+                return true;
+            });
             for (const key of keys) {
                 await tryMatch(key, { fillBots: true }).catch(e => {
                     if (e.code !== 'LOCK_BUSY') console.error('ludo sweep:', e.message);

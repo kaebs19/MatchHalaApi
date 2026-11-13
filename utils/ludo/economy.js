@@ -21,9 +21,10 @@ const WEEK_MS = 7 * DAILY_MS;
 
 // الترتيب = ترتيب العرض في التطبيق. points = نجوم الفوز
 const LEAGUES = {
-    bronze: { fee: 500, points: 10 },
-    silver: { fee: 5000, points: 30 },
-    gold: { fee: 20000, points: 100 }
+    // رسوم الدخول: ألف · عشرة آلاف · مئة ألف (قرار المالك ١٤ نوفمبر ٢٠٢٦؛ كانت 500/5K/20K)
+    bronze: { fee: 1000, points: 10 },
+    silver: { fee: 10000, points: 30 },
+    gold: { fee: 100000, points: 100 }
 };
 
 // المرتبة من مجموع النجوم (عرض فقط — لا تمنع دخول دوري)
@@ -95,6 +96,18 @@ function assertLeague(league) {
 function prizeFor(league, mode, size) {
     const pot = assertLeague(league).fee * size;
     return mode === 'teams' ? pot / 2 : pot;
+}
+
+// الدوري برسومه (للمطابقة: مجموعة برسوم مختلفة تلعب في دوري الأدنى)
+function leagueOfFee(fee) {
+    return Object.keys(LEAGUES).find(id => LEAGUES[id].fee === fee) || null;
+}
+
+// مستوى اللاعب للمطابقة: ترتيب مرتبته (0 برونز، 1 فضة، 2 ذهب) من مجموع النجوم
+function levelOf(points) {
+    let i = 0;
+    while (i + 1 < TIERS.length && (points || 0) >= TIERS[i + 1].from) i++;
+    return i;
 }
 
 function stakeFor(league, mode, size) {
@@ -579,6 +592,6 @@ module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
-    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, grant, onPrize, ssvReward, refundPurchase, restorePurchase, tierOf, weekKeyOf,
+    assertLeague, prizeFor, stakeFor, leaguesView, leagueOfFee, levelOf, walletView, publicStats, recordFriendly, grant, onPrize, ssvReward, refundPurchase, restorePurchase, tierOf, weekKeyOf,
     constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };
