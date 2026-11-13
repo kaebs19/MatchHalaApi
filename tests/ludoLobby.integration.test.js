@@ -326,10 +326,13 @@ maybe('السوكت: ack موحّد، والعبارات من القائمة ف�
 
     assert.equal((await sa.call('ludo:emote', { gameId: game.gameId, emote: 'hack <script>' })).code, 'BAD_EMOTE');
     assert.equal((await sa.call('ludo:emote', { gameId: game.gameId, emote: 'love' })).code, 'PREMIUM_REQUIRED');
-    assert.equal((await sb.call('ludo:emote', { gameId: game.gameId, emote: 'love' })).ok, true);
-    assert.equal((await sa.call('ludo:emote', { gameId: game.gameId, emote: 'laugh' })).ok, true);
+    // هدف ليس في المباراة (أو المرسل نفسه) ← تُرسل بلا هدف
+    assert.equal((await sb.call('ludo:emote', { gameId: game.gameId, emote: 'love', to: 'stranger' })).ok, true);
+    assert.ok(eventsFor(a, 'ludo:emote').some(e => e.emote === 'love' && e.playerId === b && e.to === undefined));
+    // موجَّهة للخصم: يراها الجميع ومعها الهدف
+    assert.equal((await sa.call('ludo:emote', { gameId: game.gameId, emote: 'laugh', to: b })).ok, true);
     assert.equal((await sa.call('ludo:emote', { gameId: game.gameId, emote: 'laugh' })).code, 'EMOTE_COOLDOWN');
-    assert.ok(eventsFor(b, 'ludo:emote').some(e => e.emote === 'laugh' && e.playerId === a));
+    assert.ok(eventsFor(b, 'ludo:emote').some(e => e.emote === 'laugh' && e.playerId === a && e.to === b));
 
     const left = await sa.call('ludo:leave', { gameId: game.gameId });
     assert.equal(left.ok, true);

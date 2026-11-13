@@ -86,7 +86,8 @@ function registerLudoHandlers(io, socket) {
 
     // ── العبارات والملصقات ──
     let lastEmoteAt = 0;
-    on('ludo:emote', async ({ gameId, emote }) => {
+    // to (اختياري): لاعب في المباراة تُوجَّه له العبارة/الملصق (الضغط على صورته) — يراها الجميع
+    on('ludo:emote', async ({ gameId, emote, to }) => {
         if (!EMOTES.has(emote)) {
             const e = new Error('عبارة غير معروفة'); e.code = 'BAD_EMOTE'; e.status = 400; throw e;
         }
@@ -101,9 +102,11 @@ function registerLudoHandlers(io, socket) {
         if (!record || !record.meta.players.some(p => p.id === userId && !p.isBot)) {
             const e = new Error('لست في هذه المباراة'); e.code = 'NOT_IN_GAME'; e.status = 403; throw e;
         }
+        // الهدف يجب أن يكون لاعباً آخر في المباراة نفسها (بوت أو إنسان) — وإلا تُرسل للجميع بلا هدف
+        const target = typeof to === 'string' && to !== userId && record.meta.players.some(p => p.id === to) ? to : null;
         lastEmoteAt = now;
         const rooms = record.meta.players.filter(p => !p.isBot).map(p => `user:${p.id}`);
-        io.to(rooms).emit('ludo:emote', { gameId: record.id, playerId: userId, emote, at: now });
+        io.to(rooms).emit('ludo:emote', { gameId: record.id, playerId: userId, emote, at: now, ...(target ? { to: target } : {}) });
         return {};
     });
 
