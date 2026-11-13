@@ -112,6 +112,42 @@ function tierOf(points) {
     return { id: TIERS[i].id, points, from: TIERS[i].from, next: TIERS[i + 1]?.from ?? null };
 }
 
+// ── الإنجازات والألقاب: مشتقّة من إحصاءات المحفظة — لا تخزين ولا منح؛ التطبيق يسمّيها ويرسمها بالمعرّف ──
+const ACHIEVEMENTS = [
+    { id: 'first_win', stat: 'wins', target: 1 },
+    { id: 'wins_10', stat: 'wins', target: 10 },
+    { id: 'wins_50', stat: 'wins', target: 50 },
+    { id: 'wins_100', stat: 'wins', target: 100 },
+    { id: 'streak_3', stat: 'bestStreak', target: 3 },
+    { id: 'streak_5', stat: 'bestStreak', target: 5 },
+    { id: 'streak_10', stat: 'bestStreak', target: 10 },
+    { id: 'played_50', stat: 'played', target: 50 },
+    { id: 'friendly_10', stat: 'friendlyPlayed', target: 10 },
+    { id: 'tier_silver', stat: 'points', target: TIERS[1].from },
+    { id: 'tier_gold', stat: 'points', target: TIERS[2].from }
+];
+// اللقب بعدد انتصارات الدوري
+const TITLES = [
+    { id: 'rookie', wins: 0 },
+    { id: 'player', wins: 10 },
+    { id: 'pro', wins: 50 },
+    { id: 'legend', wins: 100 }
+];
+
+function achievementsOf(w) {
+    return ACHIEVEMENTS.map(a => {
+        const value = w[a.stat] || 0;
+        return { id: a.id, target: a.target, progress: Math.min(a.target, value), unlocked: value >= a.target };
+    });
+}
+
+function titleOf(w) {
+    const wins = w.wins || 0;
+    let t = TITLES[0];
+    for (const x of TITLES) if (wins >= x.wins) t = x;
+    return t.id;
+}
+
 function walletView(w, now = Date.now()) {
     const claimed = w.dailyClaimedAt ? new Date(w.dailyClaimedAt).getTime() : 0;
     const prize = w.lastPrize && w.lastPrize.weekKey && !w.lastPrize.seen
@@ -128,6 +164,8 @@ function walletView(w, now = Date.now()) {
         coinsWon: w.coinsWon || 0,
         friendlyPlayed: w.friendlyPlayed || 0,
         friendlyWins: w.friendlyWins || 0,
+        title: titleOf(w),
+        achievements: achievementsOf(w),
         tier: tierOf(w.points || 0),
         weekPoints: w.weekKey === weekKeyOf(now) ? (w.weekPoints || 0) : 0,
         prize,
@@ -157,6 +195,8 @@ async function publicStats(userId, now = Date.now()) {
         bestStreak: w.bestStreak || 0,
         friendlyPlayed: w.friendlyPlayed || 0,
         friendlyWins: w.friendlyWins || 0,
+        title: titleOf(w),
+        achievements: achievementsOf(w),
         tier: tierOf(w.points || 0),
         weekPoints,
         weekRank
@@ -249,6 +289,14 @@ async function settle(userId, { won, prize, league }, now = Date.now()) {
         }
     });
     return points;
+}
+
+// مكافأة مباشرة (مهام اليوم): عملات/جواهر تُضاف ذرّياً — يعيد المحفظة بعد الإضافة
+async function grant(userId, { coins = 0, gems = 0 }) {
+    await getWallet(userId);
+    const w = await LudoWallet.findOneAndUpdate({ user: userId }, { $inc: { coins, gems } }, { new: true }).lean();
+    if (!w) throw new LudoError('WALLET_UNAVAILABLE', 'تعذّر إضافة المكافأة — حاول مجدداً', 500);
+    return w;
 }
 
 // مباراة ودّية بين بشر: عدّاد منفصل للعرض — لا عملات ولا نجوم ولا سلاسل
@@ -405,6 +453,10 @@ async function leaderboard(viewer, now = Date.now()) {
 }
 
 // جوائز الأسبوع المنتهي — مرة واحدة (فرادة weekKey في LudoSeason تحسم السباق بين النسخ)
+// مُنحت جائزة أسبوعية للاعب — مستمعو الإشعار (routes/mobile/games.js)
+const prizeHooks = [];
+function onPrize(fn) { prizeHooks.push(fn); }
+
 async function awardLastWeek(now = Date.now()) {
     const LudoSeason = require('../../models/LudoSeason');
     const last = weekKeyOf(weekStart(now) - 1);
@@ -425,6 +477,9 @@ async function awardLastWeek(now = Date.now()) {
         await LudoWallet.updateOne({ user: w.user }, {
             $inc: { gems: w.gems, coins: w.coins },
             $set: { lastPrize: { weekKey: last, rank: w.rank, gems: w.gems, coins: w.coins, seen: false } }
+        }).then(() => {
+            const prize = { userId: String(w.user), weekKey: last, rank: w.rank, gems: w.gems, coins: w.coins };
+            for (const fn of prizeHooks) Promise.resolve().then(() => fn(prize)).catch(e => console.error('ludo prize hook:', e.message));
         }).catch(e => console.error(`ludo prize ${last} ${w.user}:`, e.message));
     }
     console.log(`🏆 هلا لودو: وُزّعت جوائز أسبوع ${last} على ${winners.length}`);
@@ -448,6 +503,6 @@ module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
-    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, tierOf, weekKeyOf,
+    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, grant, onPrize, tierOf, weekKeyOf,
     constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };

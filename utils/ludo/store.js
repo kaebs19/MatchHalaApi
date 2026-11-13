@@ -50,7 +50,8 @@ const k = {
     lastResult: (userId) => `ludo:lastresult:${userId}`,
     rival: (a, b) => `ludo:rival:${[String(a), String(b)].sort().join(':')}`,
     challenge: (to, from) => `ludo:challenge:${to}:${from}`,
-    challengeCd: (from, to) => `ludo:challengecd:${from}:${to}`
+    challengeCd: (from, to) => `ludo:challengecd:${from}:${to}`,
+    missions: (userId, day) => `ludo:missions:${userId}:${day}`
 };
 
 // ───────────── القفل ─────────────
@@ -216,6 +217,26 @@ async function takeChallenge(to, from) {
     return res[0] ? JSON.parse(String(res[0])) : null;
 }
 
+// ───────────── مهام اليوم (missions.js) ─────────────
+
+async function missionIncr(userId, day, key, n) {
+    const mk = k.missions(userId, day);
+    await (await redis()).multi().hIncrBy(mk, key, n).expire(mk, 48 * 60 * 60).exec();
+}
+
+async function missionGet(userId, day) {
+    return (await (await redis()).hGetAll(k.missions(userId, day))) || {};
+}
+
+// true إن كان هذا أول استلام للمهمة اليوم
+async function missionClaim(userId, day, missionId) {
+    return !!(await (await redis()).hSetNX(k.missions(userId, day), `claimed:${missionId}`, '1'));
+}
+
+async function missionUnclaim(userId, day, missionId) {
+    await (await redis()).hDel(k.missions(userId, day), `claimed:${missionId}`);
+}
+
 // ───────────── طابور المطابقة ─────────────
 
 async function enqueue(queueKey, entry) {
@@ -313,6 +334,7 @@ module.exports = {
     addForfeit, removeForfeit, dueForfeits,
     addQuit, bumpQuitLevel, setQuitBan, getQuitBan,
     setLastResult, getLastResult,
+    missionIncr, missionGet, missionClaim, missionUnclaim,
     markRivals, areRivals, challengeCooldown, setChallenge, takeChallenge,
     enqueue, dequeue, getQueueEntry, queueEntries, activeQueueKeys,
     createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom,

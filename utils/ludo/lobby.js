@@ -14,6 +14,7 @@ const store = require('./store');
 const service = require('./service');
 const economy = require('./economy');
 const penalties = require('./penalties');
+const missions = require('./missions');
 
 const BOT_FILL_MS = Number(process.env.LUDO_BOT_FILL_MS) || 20000;
 const SWEEP_MS = 2000;
@@ -124,8 +125,17 @@ async function walletInfo(userId) {
     const ban = await penalties.leagueBan(String(user._id)).catch(() => null);
     return {
         wallet: economy.walletView(wallet), leagues: economy.leaguesView(),
-        leagueBanUntil: ban ? ban.until : null, now: Date.now()
+        leagueBanUntil: ban ? ban.until : null, now: Date.now(),
+        daily: await missions.view(String(user._id))
     };
+}
+
+// 🎯 استلام مكافأة مهمة مكتملة — يعيد الرصيد والمهام بعد الاستلام
+async function claimMission(userId, missionId) {
+    const user = await loadEligible(userId);
+    const id = String(user._id);
+    const wallet = await missions.claim(id, missionId);
+    return { wallet: economy.walletView(wallet), daily: await missions.view(id) };
 }
 
 // المتجر: باقات العملات (بالجواهر) ومنتجات الجواهر (App Store)
@@ -507,6 +517,7 @@ module.exports = {
     leaveRoom,
     loadEligible,
     walletInfo,
+    claimMission,
     playerCard,
     challenge,
     challengeReply,

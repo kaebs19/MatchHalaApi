@@ -730,6 +730,64 @@ maybe('منع الدوري يظهر في بيانات الرصيد قبل محا
     assert.ok(info.leagueBanUntil > info.now);
 });
 
+maybe('مهام اليوم: التقدّم من المباريات، الاستلام مرة واحدة، ومهمة اللعب مع صديق', async () => {
+    const missions = require('../utils/ludo/missions');
+    const a = addUser(); const b = addUser();
+    const before = (await lobby.walletInfo(a)).daily;
+    assert.deepEqual(before.missions.map(m => m.id), ['play3', 'win1', 'capture3', 'friend1']);
+    assert.ok(before.missions.every(m => m.progress === 0 && !m.claimed));
+    assert.ok(before.resetsAt > Date.now());
+    await assert.rejects(lobby.claimMission(a, 'win1'), { code: 'MISSION_NOT_DONE' });
+    await assert.rejects(lobby.claimMission(a, 'nope'), { code: 'BAD_MISSION' });
+
+    // مباراة دعوة: a يفوز بانسحاب b — a أكمل (لعب + فاز + مع صديق)، والمنسحب لا يُحسب له شيء
+    const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+    await service.playerLeave(b, rec.id);
+    const byId = (d) => Object.fromEntries(d.missions.map(m => [m.id, m]));
+    let da = byId((await lobby.walletInfo(a)).daily);
+    assert.equal(da.play3.progress, 1);
+    assert.equal(da.win1.progress, 1);
+    assert.equal(da.friend1.progress, 1);
+    assert.ok(byId((await lobby.walletInfo(b)).daily).play3.progress === 0);
+
+    // الاستلام: المكافأة تُضاف مرة واحدة حتى مع طلبين متزامنين
+    const coins = coinsOf(a); const gems = wallets.get(a).gems || 0;
+    const results = await Promise.allSettled([lobby.claimMission(a, 'friend1'), lobby.claimMission(a, 'friend1')]);
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+    assert.equal(results.find(r => r.status === 'rejected').reason.code, 'MISSION_CLAIMED');
+    assert.equal(coinsOf(a), coins + 500);
+    assert.equal(wallets.get(a).gems, gems + 1);
+    const ok = results.find(r => r.status === 'fulfilled').value;
+    assert.equal(byId(ok.daily).friend1.claimed, true);
+    assert.equal(ok.wallet.coins, coins + 500);
+
+    // ضدّ الكمبيوتر: تُحسب «العب» لا «مع صديق»؛ والأكل يُعدّ ولا يتجاوز الهدف في العرض
+    await missions.track(a, 'capture', 5);
+    da = byId((await lobby.walletInfo(a)).daily);
+    assert.equal(da.capture3.progress, 3);
+    assert.equal(da.friend1.progress, 1);
+    // يوم جديد: صفحة بيضاء
+    const tomorrow = await missions.view(a, Date.now() + 24 * 60 * 60 * 1000);
+    assert.ok(tomorrow.missions.every(m => m.progress === 0 && !m.claimed));
+});
+
+maybe('الإنجازات واللقب مشتقّة من الإحصاءات', async () => {
+    const u = addUser(); const viewer = addUser();
+    await lobby.walletInfo(u);
+    let w = (await lobby.walletInfo(u)).wallet;
+    assert.equal(w.title, 'rookie');
+    assert.ok(w.achievements.every(x => !x.unlocked));
+    Object.assign(wallets.get(u), { wins: 12, played: 20, bestStreak: 5, points: 150, friendlyPlayed: 3 });
+    const { stats } = (await lobby.playerCard(viewer, u)).player;
+    assert.equal(stats.title, 'player');
+    const un = stats.achievements.filter(x => x.unlocked).map(x => x.id);
+    assert.deepEqual(un, ['first_win', 'wins_10', 'streak_3', 'streak_5', 'tier_silver']);
+    const f = stats.achievements.find(x => x.id === 'friendly_10');
+    assert.deepEqual({ progress: f.progress, target: f.target }, { progress: 3, target: 10 });
+    wallets.get(u).wins = 100;
+    assert.equal((await lobby.walletInfo(u)).wallet.title, 'legend');
+});
+
 maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {
     const poor = addUser();
     await lobby.walletInfo(poor);

@@ -18,6 +18,7 @@ const engine = require('../ludoEngine');
 const store = require('./store');
 const economy = require('./economy');
 const penalties = require('./penalties');
+const missions = require('./missions');
 
 const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
 // المنقطع (لا سوكت له): لا ننتظره المهلة كاملة — الخصم لا يُعاقَب بانقطاع غيره
@@ -239,6 +240,8 @@ async function finalize(record) {
 
 // لعبا معاً ← يحقّ لهما تحدّي بعضهما (مباراة ثانية) خلال هذه المدة
 const RIVAL_TTL_S = 10 * 60;
+// مصادر المباراة التي يختار فيها اللاعب خصمه (لا الطابور)
+const FRIEND_SOURCES = new Set(['invite', 'challenge', 'room']);
 
 // بعد الحفظ: إحصاءات الودّية، آخر نتيجة لكل لاعب (يراها من انتهت مباراته وهو غائب)، وحقّ المباراة الثانية.
 // كلها ثانوية — فشلها لا يمسّ النتيجة ولا الجوائز.
@@ -253,6 +256,10 @@ async function afterMatch(record, ranking, stake, rewards) {
             if (!stake && ids.length >= 2) await economy.recordFriendly(id, won);
             // من خرج (انسحاب أو حسم بالانقطاع) يعرف نتيجته من لحظتها
             if (seat?.status === 'left') continue;
+            // 🎯 مهام اليوم — لمن أكمل المباراة: لعب، فاز، ولعب مع صديق (دعوة/تحدٍّ/غرفة فيها بشريّ آخر)
+            await missions.track(id, 'play');
+            if (won) await missions.track(id, 'win');
+            if (ids.length >= 2 && FRIEND_SOURCES.has(record.meta.source)) await missions.track(id, 'friend');
             const reward = rewards.find(r => r.id === id);
             await store.setLastResult(id, lastResult(record, id, {
                 won, place: placeOf.get(id) ?? null, reason: 'ended',
@@ -309,6 +316,12 @@ async function mutate(gameId, fn) {
         if (!result.keepDeadline) scheduleNext(record);
         await store.saveGame(record);
         emitToPlayers(record, 'ludo:state', { ...view(record), events: result.events });
+        // 🎯 مهام اليوم: أكل قطع الخصم (بلا انتظار — لا يؤخّر القفل)
+        for (const e of result.events) {
+            if (e.type === 'move' && e.captured?.length && record.meta.players.some(p => p.id === e.playerId && !p.isBot)) {
+                missions.track(e.playerId, 'capture', e.captured.length);
+            }
+        }
         const seat = record.state.seats[record.state.turn];
         if (seat && seat.id !== previousTurnId && !seat.isBot && seat.status !== 'left'
             && record.state.phase === 'roll' && turnHooks.length) {

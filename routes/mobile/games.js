@@ -812,6 +812,18 @@ ludoService.onTurn(async ({ gameId, userId }) => {
     }, { type: 'ludo_turn', gameId: String(gameId) }, false);
 });
 
+// 🏆 جائزة الترتيب الأسبوعي — كانت تُضاف بصمت وتظهر بانراً عند الفتح فقط (لا يُحفظ في القائمة)
+require('../../utils/ludo/economy').onPrize(async ({ userId, rank, gems, coins }) => {
+    if (!mongoose.isValidObjectId(userId)) return;
+    const parts = [];
+    if (gems) parts.push(`${gems} جوهرة`);
+    if (coins) parts.push(`${coins.toLocaleString('en-US')} عملة`);
+    await pushNotificationService.sendNotificationToUser(userId, {
+        title: '🏆 هلا لودو — جائزة الأسبوع',
+        body: `أنهيت الأسبوع في المركز ${rank}! ${parts.join(' و')} بانتظارك`
+    }, { type: 'ludo_turn' }, false);
+});
+
 // 🔔 انقطع عن مباراة دوري: له مهلة ليعود قبل أن تُحسب خسارة — إشعار واحد لكل انقطاع (لا يُحفظ في القائمة)
 ludoService.onAway(async ({ gameId, userId, graceMs }) => {
     if (!mongoose.isValidObjectId(userId)) return;
