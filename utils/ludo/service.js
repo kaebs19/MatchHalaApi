@@ -308,6 +308,8 @@ async function mutate(gameId, fn) {
         const record = await store.getGame(gameId);
         if (!record) throw new engine.LudoError('GAME_NOT_FOUND', 'المباراة غير موجودة', 404);
         const previousTurnId = record.state.seats[record.state.turn]?.id;
+        // حالة المقاعد قبل الفعل — لمعرفة هل الحركة بيد اللاعب أم الكمبيوتر
+        const previousSeats = new Map(record.state.seats.map(x => [x.id, { isBot: x.isBot }]));
         const result = await fn(record);
         if (!result) return record;
         record.state = result.state;
@@ -318,7 +320,9 @@ async function mutate(gameId, fn) {
         emitToPlayers(record, 'ludo:state', { ...view(record), events: result.events });
         // 🎯 مهام اليوم: أكل قطع الخصم (بلا انتظار — لا يؤخّر القفل)
         for (const e of result.events) {
-            if (e.type === 'move' && e.captured?.length && record.meta.players.some(p => p.id === e.playerId && !p.isBot)) {
+            // أكل اللاعب بيده فقط — لا ما أكله الكمبيوتر وهو يلعب عنه (takenOver أو انتهت مهلته)
+            const before = previousSeats.get(e.playerId);
+            if (e.type === 'move' && e.captured?.length && before && !before.isBot && !result.timedOut) {
                 missions.track(e.playerId, 'capture', e.captured.length);
             }
         }
@@ -562,8 +566,8 @@ async function processDue(gameId, now = Date.now()) {
         }
         // بوت: خطوة واحدة (رمي أو حركة) — تبدو طبيعية للآخرين
         if (seat.isBot) return engine.autoStep(s, { rollDie: dieFor(record) });
-        // انتهت مهلة لاعب
-        return engine.handleTimeout(s, { rollDie: dieFor(record) });
+        // انتهت مهلة لاعب — الكمبيوتر أكمل دوره (لا يُحسب له في المهام)
+        return { ...engine.handleTimeout(s, { rollDie: dieFor(record) }), timedOut: true };
     });
 }
 

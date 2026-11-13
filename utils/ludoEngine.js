@@ -146,13 +146,15 @@ function legalMovesFor(state, seatIndex, dice) {
 
 // ───────────────────────── التحقّق ─────────────────────────
 
-function assertTurn(state, playerId, expectVersion) {
+function assertTurn(state, playerId, expectVersion, auto = false) {
     if (state.phase === 'ended') throw new LudoError('GAME_ENDED', 'انتهت المباراة', 409);
     if (expectVersion !== undefined && expectVersion !== state.version) {
         throw new LudoError('STALE_VERSION', 'الحالة تغيّرت — حدّث اللوحة', 409);
     }
     const seat = state.seats[state.turn];
     if (seat.id !== String(playerId)) throw new LudoError('NOT_YOUR_TURN', 'ليس دورك', 403);
+    // تولّاه الكمبيوتر: لا يلعب بيده حتى يستعيد مقعده (reclaim) — وإلا يتخطّى حدّ مرات العودة
+    if (seat.takenOver && !auto) throw new LudoError('TAKEN_OVER', 'الكمبيوتر يلعب عنك — استعد التحكم أولاً', 409);
 }
 
 // ───────────────────────── الدور ─────────────────────────
@@ -301,8 +303,8 @@ function applyRoll(state, seat, dice, action, now) {
 }
 
 // rollDie: (state) => 1..6
-function roll(input, { playerId, rollDie, expectVersion, now = Date.now() }) {
-    assertTurn(input, playerId, expectVersion);
+function roll(input, { playerId, rollDie, expectVersion, now = Date.now(), auto = false }) {
+    assertTurn(input, playerId, expectVersion, auto);
     if (input.phase !== 'roll') throw new LudoError('NOT_ROLL_PHASE', 'حرّك قطعة أولاً', 409);
 
     const state = clone(input);
@@ -347,8 +349,8 @@ function reroll(input, { playerId, rollDie, expectVersion, now = Date.now(), pai
 }
 
 // تخطّي الدور حين لا حركة ممكنة (بدل إعادة الرمي)
-function pass(input, { playerId, expectVersion, now = Date.now() }) {
-    assertTurn(input, playerId, expectVersion);
+function pass(input, { playerId, expectVersion, now = Date.now(), auto = false }) {
+    assertTurn(input, playerId, expectVersion, auto);
     if (input.phase !== 'move' || input.legalMoves.length > 0) {
         throw new LudoError('CANNOT_PASS', 'لا يمكن التخطّي الآن', 409);
     }
@@ -363,8 +365,8 @@ function pass(input, { playerId, expectVersion, now = Date.now() }) {
     return { state, events: [action] };
 }
 
-function move(input, { playerId, token, expectVersion, now = Date.now() }) {
-    assertTurn(input, playerId, expectVersion);
+function move(input, { playerId, token, expectVersion, now = Date.now(), auto = false }) {
+    assertTurn(input, playerId, expectVersion, auto);
     if (input.phase !== 'move') throw new LudoError('NOT_MOVE_PHASE', 'ارمِ النرد أولاً', 409);
     const chosen = input.legalMoves.find(m => m.token === token);
     if (!chosen) throw new LudoError('ILLEGAL_MOVE', 'حركة غير مسموحة');
@@ -520,11 +522,11 @@ function chooseBotMove(state) {
 // خطوة واحدة نيابة عن صاحب الدور (بوت، أو لاعب انتهت مهلته)
 function autoStep(state, { rollDie, now }) {
     const playerId = state.seats[state.turn].id;
-    if (state.phase === 'roll') return roll(state, { playerId, rollDie, now });
+    if (state.phase === 'roll') return roll(state, { playerId, rollDie, now, auto: true });
     // لا حركة ممكنة وكان بانتظار قرار إعادة الرمي ← تخطٍّ
-    if (state.legalMoves.length === 0) return pass(state, { playerId, now });
+    if (state.legalMoves.length === 0) return pass(state, { playerId, now, auto: true });
     const m = chooseBotMove(state);
-    return move(state, { playerId, token: m.token, now });
+    return move(state, { playerId, token: m.token, now, auto: true });
 }
 
 // انتهت مهلة الدور: البوت يكمل الدور كاملاً (رمي + حركة)، ويُعدّ دوراً فائتاً.

@@ -246,6 +246,15 @@ test('العودة: من تولّاه البوت يستعيد مقعده مرت�
         }
     };
     assert.throws(() => L.reclaim(g, { playerId: 'a' }), { code: 'NOT_TAKEN_OVER' });
+    // تولّاه البوت: لا رمية بيده قبل الاستعادة
+    {
+        const t = structuredClone(g);
+        t.seats[0].isBot = true; t.seats[0].takenOver = true; t.turn = 0; t.phase = 'roll';
+        assert.throws(() => L.roll(t, { playerId: 'a', rollDie: () => 3 }), { code: 'TAKEN_OVER' });
+        // والكمبيوتر يلعب عنه كالمعتاد
+        const auto = L.autoStep(t, { rollDie: () => 3, now: 0 });
+        assert.deepEqual({ type: auto.events[0].type, dice: auto.events[0].dice }, { type: 'roll', dice: 3 });
+    }
     for (let round = 1; round <= 2; round++) {
         takeOver();
         if (g.phase === 'ended') return;
