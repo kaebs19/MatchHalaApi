@@ -271,3 +271,23 @@ test('محاكاة 3000 مباراة بكل الأنماط تنتهي بفائز
     }
     assert.ok(total > 0);
 });
+
+test('البوت: يأكل الخصم الأبعد تقدّماً، ويهرب بالقطعة المكشوفة بدل تحريك الآمنة', () => {
+    // أحمر (a) يبدأ من 0، أصفر (b) من 26. مربع عام = (بداية + الموضع) % 52
+    let g = L.createGame({ players: [{ id: 'a', isBot: true }, { id: 'b', isBot: true }], mode: 'classic' });
+    // قطعتا a على 10 و20؛ خصمان على المربعين العامّين 14 (تقدّمه 40) و24 (تقدّمه 50)
+    g.seats[0].tokens = [10, 20, -1, -1];
+    g.seats[1].tokens = [40, 50, -1, -1];
+    g.phase = 'move'; g.dice = 4;
+    g.legalMoves = L.legalMovesFor(g, 0, 4);
+    assert.equal(L.chooseBotMove(g).token, 1, 'يأكل الأبعد تقدّماً (50)');
+
+    // a: قطعة مكشوفة على 30 (خصم خلفها بـ 3) وقطعة آمنة في ممرّ البيت 51.
+    // برمية 4 تخرج المكشوفة من مدى الخصم (المسافة تصير 7) ← يحرّكها، لا الآمنة
+    g = L.createGame({ players: [{ id: 'a', isBot: true }, { id: 'b', isBot: true }], mode: 'quick' });
+    g.seats[0].tokens = [30, 51];
+    g.seats[1].tokens = [1, -1];           // مربعه العام 27 ← خلف 30 بثلاثة
+    g.phase = 'move'; g.dice = 4;
+    g.legalMoves = L.legalMovesFor(g, 0, 4);
+    assert.equal(L.chooseBotMove(g).token, 0);
+});

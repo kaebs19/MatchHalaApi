@@ -718,3 +718,42 @@ maybe('المتجر: منتجات العملات والباقات المجمّع
     assert.equal(again.grantedCoins, 0);
     assert.equal(wallets.get(a).coins, START_COINS + 350000);
 });
+
+maybe('الكلاسيكي أُلغي: أي طلب به أو بلا نمط يُلعب سريعاً (قطعتان)', async () => {
+    const a = addUser(); const b = addUser(); const c = addUser();
+    const solo = await lobby.startSolo(a, { mode: 'classic', size: 2 });
+    assert.equal(solo.mode, 'quick');
+    assert.equal(solo.seats[0].tokens.length, 2);
+    await service.playerLeave(a, solo.gameId);
+
+    // classic و quick يلتقيان في الطابور نفسه
+    await lobby.joinQueue(b, { mode: 'classic', size: 2 });
+    await lobby.joinQueue(c, { mode: 'quick', size: 2 });
+    const gameId = await store.getUserGame(b);
+    assert.ok(gameId);
+    assert.equal(await store.getUserGame(c), gameId);
+    await service.playerLeave(b, gameId);
+    const room = await lobby.createRoom(addUser(), { mode: 'classic', size: 2 });
+    assert.equal(room.mode, 'quick');
+});
+
+maybe('ضمان الـ 6: بعد 3 رميات جافة وكل القطع عالقة، الرابعة 6 — والعدّاد يتصفّر', async () => {
+    const engine = require('../utils/ludoEngine');
+    const { PITY_SIX_AFTER } = service.constants;
+    let s = engine.createGame({ players: [{ id: 'a' }, { id: 'b' }], mode: 'quick', options: { rerollsPerPlayer: 0 } });
+    for (let i = 0; i < PITY_SIX_AFTER; i++) {
+        s = engine.roll(s, { playerId: 'a', rollDie: () => 2 }).state;       // لا حركة ← ينتقل الدور
+        assert.equal(s.seats[0].dry, i + 1);
+        s = engine.roll(s, { playerId: 'b', rollDie: () => 6 }).state;       // b يخرج قطعة
+        s = engine.move(s, { playerId: 'b', token: 0 }).state;
+        s = engine.roll(s, { playerId: 'b', rollDie: () => 1 }).state;       // رميته الإضافية
+        s = engine.move(s, { playerId: 'b', token: 0 }).state;
+    }
+    assert.equal(s.seats[s.turn].id, 'a');
+    for (let i = 0; i < 50; i++) assert.equal(service.rollDie(s), 6, 'مضمونة');
+    s = engine.roll(s, { playerId: 'a', rollDie: service.rollDie }).state;
+    assert.equal(s.dice, 6);
+    assert.equal(s.seats[0].dry, 0);
+    // b له قطعة على المسار ← غير عالق ← لا عدّ
+    assert.equal(s.seats[1].dry, 0);
+});

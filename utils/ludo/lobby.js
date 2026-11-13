@@ -21,6 +21,9 @@ const SWEEP_MS = 2000;
 const queueKeyOf = (mode, size, league) => league ? `${mode}:${size}:${league}` : `${mode}:${size}`;
 
 function validateSetup(mode, size) {
+    // ⚠️ الكلاسيكي أُلغي (قرار المالك ١٣ نوفمبر ٢٠٢٦): اللعبة المعتمدة هي السريعة (قطعتان).
+    //    أي طلب بلا نمط أو بـ classic يُلعب سريعاً — المحرّك ما زال يعرّف classic للاختبارات وللفرق.
+    if (!mode || mode === 'classic') mode = 'quick';
     if (!MODES[mode]) throw new LudoError('BAD_MODE', 'نمط غير معروف');
     size = Number(size);
     if (![2, 4].includes(size)) throw new LudoError('BAD_PLAYERS', 'عدد اللاعبين 2 أو 4');

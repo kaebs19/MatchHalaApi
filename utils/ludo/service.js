@@ -33,8 +33,13 @@ const SIX_WEIGHT_ALL_BASE = Number(process.env.LUDO_SIX_WEIGHT_BASE) || 2.5;
 //    ظاهر لكل اللاعبين (boosts في view) — لا ميزة خفية.
 const BOOST_SIX_WEIGHT = Number(process.env.LUDO_BOOST_SIX_WEIGHT) || 1;
 
+// 🎯 ضمان الـ 6: من علقت كل قطعه (قاعدة/بيت) ورمى PITY_SIX_AFTER مرات متتالية بلا 6، رميته التالية 6.
+//    (seat.dry يعدّه المحرّك). السريع قطعتان فقط، فالانتظار الطويل للخروج أكثر ما يُملّ.
+const PITY_SIX_AFTER = Number(process.env.LUDO_PITY_SIX_AFTER) || 3;
+
 function rollDie(state, boosted = false) {
     const seat = state?.seats?.[state.turn];
+    if (seat && (seat.dry || 0) >= PITY_SIX_AFTER) return 6;
     const allBase = !!seat && seat.tokens.some(p => p === -1) && seat.tokens.every(p => p === -1 || p === 56);
     const weight = (allBase ? SIX_WEIGHT_ALL_BASE : SIX_WEIGHT) + (boosted ? BOOST_SIX_WEIGHT : 0);
     const r = (crypto.randomInt(0, 1_000_000) / 1_000_000) * (5 + weight);
@@ -402,5 +407,5 @@ module.exports = {
     rollDie,
     onFinalize,
     onTurn,
-    constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE }
+    constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
 };

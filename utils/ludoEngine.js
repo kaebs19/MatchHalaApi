@@ -267,6 +267,9 @@ function rollValue(rollDie, state) {
 
 // يطبّق نتيجة رمية على state (مشترك بين roll وreroll)
 function applyRoll(state, seat, dice, action, now) {
+    // رميات متتالية بلا 6 وكل القطع خارج اللعب (قاعدة/بيت) — الخدمة تضمن الـ 6 بعد حدّ (service.rollDie)
+    const stuck = seat.tokens.some(p => p === BASE) && seat.tokens.every(p => p === BASE || p === HOME);
+    seat.dry = stuck && dice !== 6 ? (seat.dry || 0) + 1 : 0;
     state.dice = dice;
     state.sixes = dice === 6 ? state.sixes + 1 : 0;
     state.canReroll = false;
@@ -444,7 +447,11 @@ function leave(input, { playerId, now = Date.now() }) {
 
 // ───────────────────────── البوت والمهلة ─────────────────────────
 
-// اختيار حركة بأولويات بسيطة: أكل > بيت > خروج > أمان > هروب من خطر > الأبعد تقدّماً
+// اختيار حركة البوت — تقييم لكل حركة ممكنة (الأعلى يُلعب):
+//   أكل قطعة خصم (أثمن كلما كانت أبعد تقدّماً) > الوصول للبيت > الخروج من القاعدة > دخول ممرّ البيت >
+//   مربع آمن > الهروب من خطر، مع خصم يتناسب مع **عدد** الخصوم القادرين على أكلها وقيمة القطعة المهدَّدة،
+//   وتفضيل تحريك قطعة المسار المكشوفة على قطعة آمنة في الممرّ، ومطاردة خصم على بُعد رمية.
+// حتمي بلا عشوائية (التعادل لأول حركة) — الاختبارات تعتمد على ذلك.
 function chooseBotMove(state) {
     const seat = state.seats[state.turn];
     const moves = state.legalMoves;
@@ -458,26 +465,51 @@ function chooseBotMove(state) {
             if (sq !== null) enemySquares.push(sq);
         });
     });
-    // مربع مهدَّد = خصم خلفه بمسافة 1..6
-    const threatened = (sq) => sq !== null && !isSafeSquare(sq) &&
-        enemySquares.some(e => {
+    // تقدّم كل قطعة خصم على مربعها (لتقدير قيمة الأكل)
+    const enemyProgress = new Map();
+    state.seats.forEach(o => {
+        if (o === seat || sameSide(o, seat) || o.status !== 'active') return;
+        o.tokens.forEach(p => {
+            const sq = globalSquare(o.color, p);
+            if (sq !== null) enemyProgress.set(sq, Math.max(enemyProgress.get(sq) || 0, p));
+        });
+    });
+    // كم خصماً يستطيع أكل قطعة على هذا المربع بالرمية القادمة (خلفه بمسافة 1..6)
+    const attackers = (sq) => sq === null || isSafeSquare(sq) ? 0 :
+        enemySquares.filter(e => {
             const d = (sq - e + TRACK_LENGTH) % TRACK_LENGTH;
             return d >= 1 && d <= 6;
-        });
+        }).length;
+    // خصم أمامي بمسافة 1..6 على مربع غير آمن — أستطيع أكله في رميتي القادمة
+    const canChase = (sq) => sq !== null && enemySquares.some(e => {
+        const d = (e - sq + TRACK_LENGTH) % TRACK_LENGTH;
+        return d >= 1 && d <= 6 && !isSafeSquare(e);
+    });
 
     let best = null;
     let bestScore = -Infinity;
     for (const m of moves) {
         const toSq = globalSquare(seat.color, m.to);
         const fromSq = globalSquare(seat.color, m.from);
+        const riskFrom = attackers(fromSq);
+        const riskTo = attackers(toSq);
         let score = m.to;                                   // التقدّم
-        if (toSq !== null && !isSafeSquare(toSq) && enemySquares.includes(toSq)) score += 1000;
+        // الأكل: يعيد الخصم لقاعدته — أثمن كلما كان أبعد تقدّماً
+        if (toSq !== null && !isSafeSquare(toSq) && enemyProgress.has(toSq)) score += 1000 + enemyProgress.get(toSq) * 6;
         if (m.to === HOME) score += 800;
         if (m.from === BASE) score += 600;
         if (m.to > LAST_TRACK_STEP && m.from <= LAST_TRACK_STEP) score += 400;   // دخل ممرّ البيت
         if (toSq !== null && isSafeSquare(toSq)) score += 200;
-        if (threatened(fromSq) && !threatened(toSq)) score += 150;
-        if (threatened(toSq)) score -= 300;
+        // الهروب: قطعة مكشوفة تنتقل لمكان أأمن — أهمّ كلما كانت أبعد تقدّماً
+        if (riskFrom > 0 && riskTo < riskFrom) score += 150 + m.from * 3;
+        // الخطر في الوجهة: بعدد المهاجمين وبقيمة ما سأخسره
+        if (riskTo > 0) score -= 220 * riskTo + m.to * 4;
+        // ترك مربع آمن إلى مكشوف بلا مكسب — يُعاقَب
+        if (fromSq !== null && isSafeSquare(fromSq) && riskTo > 0) score -= 120;
+        // قطعة في ممرّ البيت آمنة أصلاً: تحريكها (دون الوصول) أقلّ إلحاحاً من قطعة على المسار
+        if (m.from > LAST_TRACK_STEP && m.to !== HOME) score -= 80;
+        // مطاردة: الوقوف خلف خصم على بُعد رمية (إن لم أكن مكشوفاً أكثر)
+        if (riskTo === 0 && canChase(toSq)) score += 90;
         if (score > bestScore) { bestScore = score; best = m; }
     }
     return best;
