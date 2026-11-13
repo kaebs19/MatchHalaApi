@@ -36,6 +36,10 @@ const wallets = new Map();
 const walletMatches = (w, filter) => {
     if (!w) return false;
     if (filter.coins?.$gte !== undefined && !(w.coins >= filter.coins.$gte)) return false;
+    if (filter.gems?.$gte !== undefined && !((w.gems || 0) >= filter.gems.$gte)) return false;
+    if (filter.gems?.$exists === false && w.gems !== undefined) return false;
+    if (typeof filter.weekKey === 'string' && w.weekKey !== filter.weekKey) return false;
+    if (filter.weekPoints?.$gt !== undefined && !((w.weekPoints || 0) > filter.weekPoints.$gt)) return false;
     if (filter.$or) {
         const ok = filter.$or.some(c => c.dailyClaimedAt === null
             ? w.dailyClaimedAt === null
@@ -46,14 +50,16 @@ const walletMatches = (w, filter) => {
 };
 const walletApply = (w, update) => {
     for (const [k, v] of Object.entries(update.$inc || {})) w[k] = (w[k] || 0) + v;
-    Object.assign(w, update.$set || {});
+    for (const [k, v] of Object.entries(update.$set || {})) {
+        if (k.includes('.')) { const [a, b] = k.split('.'); w[a] = { ...(w[a] || {}), [b]: v }; } else w[k] = v;
+    }
 };
 LudoWallet.findOneAndUpdate = (filter, update, opts = {}) => ({
     lean: async () => {
         const id = String(filter.user);
         let w = wallets.get(id);
         if (!w && opts.upsert) {
-            w = { user: id, coins: 0, played: 0, wins: 0, losses: 0, dailyClaimedAt: null, ...(update.$setOnInsert || {}) };
+            w = { user: id, coins: 0, played: 0, wins: 0, losses: 0, dailyClaimedAt: null, weekKey: null, ...(update.$setOnInsert || {}) };
             wallets.set(id, w);
             return { ...w };
         }
@@ -66,6 +72,47 @@ LudoWallet.updateOne = async (filter, update) => {
     const w = wallets.get(String(filter.user));
     if (w) walletApply(w, update);
 };
+// find(...).sort().limit().select().populate().lean() — ترتيب تنازلي بـ weekPoints
+LudoWallet.find = (filter) => {
+    let rows = [...wallets.values()].filter(w => walletMatches(w, filter))
+        .sort((a, b) => (b.weekPoints || 0) - (a.weekPoints || 0));
+    let populate = false;
+    const chain = {
+        sort: () => chain,
+        limit: (n) => { rows = rows.slice(0, n); return chain; },
+        select: () => chain,
+        populate: () => { populate = true; return chain; },
+        lean: async () => rows.map(w => ({ ...w, user: populate ? (users.get(w.user) || null) : w.user }))
+    };
+    return chain;
+};
+LudoWallet.countDocuments = async (filter) => [...wallets.values()].filter(w => walletMatches(w, filter)).length;
+
+const LudoSeason = require('../models/LudoSeason');
+const seasons = new Map();
+LudoSeason.create = async (doc) => {
+    if (seasons.has(doc.weekKey)) { const e = new Error('dup'); e.code = 11000; throw e; }
+    seasons.set(doc.weekKey, doc);
+    return doc;
+};
+
+const LudoPurchase = require('../models/LudoPurchase');
+const purchases = new Map();
+LudoPurchase.create = async (doc) => {
+    if (purchases.has(doc.transactionId)) { const e = new Error('dup'); e.code = 11000; throw e; }
+    purchases.set(doc.transactionId, doc);
+    return doc;
+};
+LudoPurchase.findOne = (f) => ({ select: () => ({ lean: async () => purchases.get(f.transactionId) || null }) });
+
+// تحقق أبل وهمي: الـ JWS هنا JSON مباشر
+const apple = require('../utils/appleTransactions');
+apple.verifySignedTransaction = async (jws) => {
+    const t = JSON.parse(jws);
+    if (t.bad) throw new Error('INVALID_JWS');
+    return { transactionId: t.id, originalTransactionId: t.id, productId: t.productId, revoked: !!t.revoked, environment: 'Sandbox' };
+};
+
 const coinsOf = (id) => wallets.get(String(id))?.coins;
 
 // ── سوكت وهمي يلتقط البثّ ──
@@ -290,6 +337,8 @@ maybe('السوكت: ack موحّد، والعبارات من القائمة ف�
 
 maybe('إعادة الرمي والتخطّي عبر الخدمة، والمهلة تتخطّى بلا احتساب خطأ', async () => {
     const a = addUser();
+    await lobby.walletInfo(a);
+    wallets.get(a).gems = 0;                       // بلا جواهر: المجانية وحدها (المدفوعة في اختبارها)
     const game = await lobby.startSolo(a, { mode: 'classic', size: 2 });
     let rec = await store.getGame(game.gameId);
     // نوصل الدور لـ a برمية بلا حركة (كل القطع في القاعدة)
@@ -394,8 +443,8 @@ maybe('الدوري: الرسوم تُخصم عند البدء، الفائز ي
 
     const ended = eventsFor(a, 'ludo:ended').find(e => e.gameId === gameId);
     assert.equal(ended.stake.league, 'silver');
-    assert.deepEqual(ended.rewards.find(r => r.id === winner), { id: winner, won: true, prize: fee * 2, delta: fee });
-    assert.deepEqual(ended.rewards.find(r => r.id === loser), { id: loser, won: false, prize: 0, delta: -fee });
+    assert.deepEqual(ended.rewards.find(r => r.id === winner), { id: winner, won: true, prize: fee * 2, delta: fee, points: 30 });
+    assert.deepEqual(ended.rewards.find(r => r.id === loser), { id: loser, won: false, prize: 0, delta: -fee, points: 0 });
     const doc = saved.find(s => s.gameId === gameId);
     assert.equal(doc.league, 'silver');
     assert.equal(doc.prize, fee * 2);
@@ -466,4 +515,152 @@ maybe('المكافأة اليومية: مرة كل 24 ساعة', async () => {
     await assert.rejects(lobby.claimDaily(a), { code: 'DAILY_NOT_READY' });
     wallets.get(a).dailyClaimedAt = new Date(Date.now() - 25 * 3600 * 1000);
     assert.equal((await lobby.claimDaily(a)).wallet.coins, START_COINS + 2 * DAILY_BONUS);
+});
+
+// ───────────── الجواهر: إعادة الرمي المدفوعة، نرد الحظ، المتجر ─────────────
+
+// يوصل دور اللاعب إلى رمية مفتوحة (phase move) ثم يعيد fn — البوت خصمه
+async function untilMyMove(gameId, me, limit = 400) {
+    for (let i = 0; i < limit; i++) {
+        const rec = await store.getGame(gameId);
+        if (rec.state.phase === 'ended') return null;
+        const seat = rec.state.seats[rec.state.turn];
+        if (seat.id !== me) { await service.processDue(gameId, Date.now() + 60_000); continue; }
+        if (rec.state.phase === 'roll') { await service.playerRoll(me, gameId, rec.state.version); continue; }
+        return rec;
+    }
+    return null;
+}
+
+maybe('إعادة الرمي بالجواهر: بعد المجانية، السعر يتصاعد 2 ← 4 ← 8 ثم تنتهي', async () => {
+    const a = addUser();
+    await lobby.walletInfo(a);
+    assert.equal(wallets.get(a).gems, economy.constants.START_GEMS);
+    const game = await lobby.startSolo(a, { mode: 'classic', size: 2 });
+    const paid = [];
+    let freeUsed = false;
+    for (let guard = 0; guard < 60 && paid.length < 3; guard++) {
+        const rec = await untilMyMove(game.gameId, a);
+        if (!rec) break;
+        const v = service.view(rec);
+        if (v.canReroll) {
+            if (v.rerollCost === 0) { freeUsed = true; }
+            else paid.push(v.rerollCost);
+            const before = wallets.get(a).gems;
+            const after = await service.playerReroll(a, game.gameId, v.version);
+            assert.equal(before - wallets.get(a).gems, v.rerollCost);
+            assert.equal(!!after.lastAction.paid, v.rerollCost > 0);
+            continue;
+        }
+        if (rec.state.legalMoves.length === 0) await service.playerPass(a, game.gameId, rec.state.version);
+        else await service.playerMove(a, game.gameId, rec.state.legalMoves[0].token, rec.state.version);
+    }
+    assert.ok(freeUsed, 'المجانية أولاً');
+    assert.deepEqual(paid, [2, 4, 8]);
+    assert.equal(wallets.get(a).gems, economy.constants.START_GEMS - 14);
+    const rec = await untilMyMove(game.gameId, a);
+    if (rec) assert.equal(service.view(rec).canReroll, false, 'لا إعادة رابعة');
+    await service.playerLeave(a, game.gameId).catch(() => {});
+});
+
+maybe('بلا جواهر: لا إعادة مدفوعة ولا انتظار قرار، ونرد الحظ يُرفض', async () => {
+    const a = addUser();
+    await lobby.walletInfo(a);
+    wallets.get(a).gems = 0;
+    const game = await lobby.startSolo(a, { mode: 'classic', size: 2 });
+    await assert.rejects(service.playerBoost(a, game.gameId), { code: 'NOT_ENOUGH_GEMS' });
+    let rec = await untilMyMove(game.gameId, a);
+    if (rec && service.view(rec).rerollCost === 0) {
+        await service.playerReroll(a, game.gameId, rec.state.version);
+        rec = await untilMyMove(game.gameId, a);
+    }
+    if (rec) assert.equal(service.view(rec).canReroll && service.view(rec).rerollCost > 0, false);
+    await service.playerLeave(a, game.gameId).catch(() => {});
+});
+
+maybe('نرد الحظ: يُخصم مرة، يظهر للجميع، ويرفع نسبة الـ 6 فعلاً', async () => {
+    const a = addUser(); const b = addUser();
+    await lobby.joinQueue(a, { mode: 'quick', size: 2 });
+    await lobby.joinQueue(b, { mode: 'quick', size: 2 });
+    const gameId = await store.getUserGame(a);
+    const before = (await store.getGame(gameId)).state.version;
+    const v = await service.playerBoost(a, gameId);
+    assert.deepEqual(v.boosts, [a]);
+    assert.equal(v.version, before + 1);
+    assert.equal(wallets.get(a).gems, economy.constants.START_GEMS - economy.constants.BOOST_COST);
+    assert.ok(eventsFor(b, 'ludo:state').some(e => e.gameId === gameId && e.boosts.includes(a)), 'الخصم يراه');
+    await assert.rejects(service.playerBoost(a, gameId), { code: 'BOOST_ACTIVE' });
+    await assert.rejects(service.playerBoost(addUser(), gameId), { code: 'NOT_IN_GAME' });
+
+    const state = { turn: 0, seats: [{ id: 'x', tokens: [5, 9] }] };
+    const sixes = (boosted) => { let n = 0; for (let i = 0; i < 30000; i++) if (service.rollDie(state, boosted) === 6) n++; return n / 30000; };
+    const plain = sixes(false), lucky = sixes(true);
+    assert.ok(plain > 0.21 && plain < 0.275, `عادي ${plain}`);
+    assert.ok(lucky > 0.31 && lucky < 0.375, `محظوظ ${lucky}`);
+    await service.playerLeave(a, gameId);
+});
+
+maybe('المتجر: عملات بالجواهر (ذرّي)، وشراء الجواهر يُمنح مرة لكل معاملة', async () => {
+    const a = addUser(); const b = addUser();
+    const { START_COINS, START_GEMS } = economy.constants;
+    const info = await lobby.storeInfo(a);
+    assert.equal(info.store.coinPacks.length, 3);
+    assert.equal(info.store.gemProducts.length, 3);
+
+    assert.equal((await lobby.buyCoins(a, 'coins_s')).wallet.coins, START_COINS + 5000);
+    assert.equal(wallets.get(a).gems, START_GEMS - 10);
+    await assert.rejects(lobby.buyCoins(a, 'coins_m'), { code: 'NOT_ENOUGH_GEMS' });
+    await assert.rejects(lobby.buyCoins(a, 'nope'), { code: 'BAD_PACK' });
+    assert.equal(wallets.get(a).coins, START_COINS + 5000);
+
+    const jws = JSON.stringify({ id: 't1', productId: 'com.app.hala.ludo.gems60' });
+    const first = await lobby.redeemPurchase(a, jws);
+    assert.equal(first.granted, 60);
+    assert.equal(first.wallet.gems, START_GEMS - 10 + 60);
+    const again = await lobby.redeemPurchase(a, jws);
+    assert.equal(again.granted, 0);
+    assert.equal(again.wallet.gems, START_GEMS - 10 + 60);
+    await assert.rejects(lobby.redeemPurchase(b, jws), { code: 'IAP_IN_USE' });
+    await assert.rejects(lobby.redeemPurchase(a, JSON.stringify({ id: 't2', productId: 'com.app.hala.monthly' })), { code: 'IAP_UNKNOWN_PRODUCT' });
+    await assert.rejects(lobby.redeemPurchase(a, JSON.stringify({ id: 't3', productId: 'com.app.hala.ludo.gems60', revoked: true })), { code: 'IAP_REVOKED' });
+    await assert.rejects(lobby.redeemPurchase(a, JSON.stringify({ bad: true })), { code: 'IAP_VERIFICATION_FAILED' });
+});
+
+maybe('الإحصاءات والترتيب: النجوم والسلسلة، الترتيب الأسبوعي بلا المحظورين، والجوائز مرة واحدة', async () => {
+    wallets.clear();
+    const a = addUser(); const b = addUser(); const c = addUser();
+    const now = Date.UTC(2026, 10, 11);           // أربعاء
+    await economy.settle(a, { won: true, prize: 1000, league: 'bronze' }, now);
+    await economy.settle(a, { won: true, prize: 10000, league: 'silver' }, now);
+    await economy.settle(b, { won: true, prize: 40000, league: 'gold' }, now);
+    await economy.settle(c, { won: false, prize: 0, league: 'gold' }, now);
+    await economy.settle(a, { won: false, prize: 0, league: 'bronze' }, now);
+
+    const wa = economy.walletView(wallets.get(a), now);
+    assert.deepEqual([wa.wins, wa.losses, wa.winStreak, wa.bestStreak, wa.weekPoints, wa.coinsWon], [2, 1, 0, 2, 40, 11000]);
+    assert.equal(economy.walletView(wallets.get(b), now).tier.id, 'silver');
+    assert.equal(wa.tier.next, 100);
+
+    let board = await economy.leaderboard(users.get(a), now);
+    assert.deepEqual(board.top.map(r => r.id), [b, a]);
+    assert.deepEqual(board.me, { rank: 2, points: 40 });
+    assert.equal(board.endsAt, Date.UTC(2026, 10, 16));
+    users.get(b).blockedUsers = [a];              // b حظر a ← لا يراه a
+    board = await economy.leaderboard(users.get(a), now);
+    assert.deepEqual(board.top.map(r => r.id), [a]);
+
+    // أسبوع جديد: نقاط الأسبوع تبدأ من صفر، والمجموع يبقى
+    const next = now + 7 * 24 * 3600 * 1000;
+    assert.equal(economy.walletView(wallets.get(a), next).weekPoints, 0);
+    const gemsB = wallets.get(b).gems;
+    assert.equal(await economy.awardLastWeek(next), 2);
+    assert.equal(wallets.get(b).gems, gemsB + 50);
+    assert.deepEqual(economy.walletView(wallets.get(b), next).prize, { weekKey: '2026-11-09', rank: 1, gems: 50, coins: 50000 });
+    assert.equal(await economy.awardLastWeek(next), 0, 'لا توزيع ثانٍ');
+    assert.equal(wallets.get(b).gems, gemsB + 50);
+    await lobby.prizeSeen(b);
+    assert.equal(economy.walletView(wallets.get(b), next).prize, null);
+    await economy.settle(a, { won: true, prize: 1000, league: 'bronze' }, next);
+    assert.equal(economy.walletView(wallets.get(a), next).weekPoints, 10);
+    assert.equal(wallets.get(a).points, 50);
 });

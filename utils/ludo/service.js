@@ -29,13 +29,19 @@ const BOT_NAMES = ['سهم', 'نجمة', 'برق', 'موج', 'غيمة', 'صقر
 const SIX_WEIGHT = Number(process.env.LUDO_SIX_WEIGHT) || 1.6;
 const SIX_WEIGHT_ALL_BASE = Number(process.env.LUDO_SIX_WEIGHT_BASE) || 2.5;
 
-function rollDie(state) {
+// 💎 نرد الحظ (جواهر، مرة لكل مباراة): يُضاف لوزن الـ 6 عند صاحبه. 1 ≈ +9 نقاط مئوية (24% ← 34%).
+//    ظاهر لكل اللاعبين (boosts في view) — لا ميزة خفية.
+const BOOST_SIX_WEIGHT = Number(process.env.LUDO_BOOST_SIX_WEIGHT) || 1;
+
+function rollDie(state, boosted = false) {
     const seat = state?.seats?.[state.turn];
     const allBase = !!seat && seat.tokens.some(p => p === -1) && seat.tokens.every(p => p === -1 || p === 56);
-    const weight = allBase ? SIX_WEIGHT_ALL_BASE : SIX_WEIGHT;
+    const weight = (allBase ? SIX_WEIGHT_ALL_BASE : SIX_WEIGHT) + (boosted ? BOOST_SIX_WEIGHT : 0);
     const r = (crypto.randomInt(0, 1_000_000) / 1_000_000) * (5 + weight);
     return r < 5 ? 1 + Math.floor(r) : 6;
 }
+// نرد المباراة: يعرف من اشترى نرد الحظ
+const dieFor = (record) => (state) => rollDie(state, !!record.meta.boosts?.[state.seats[state.turn]?.id]);
 const newGameId = () => crypto.randomBytes(9).toString('base64url');
 
 let ioRef = null;
@@ -61,6 +67,9 @@ function view(record) {
         deadlineAt: record.deadlineAt,
         // مباراة دوري: { league, fee, prize } — null للودّية
         stake: record.meta.stake || null,
+        // 💎 من فعّل نرد الحظ في هذه المباراة (يراه الجميع) وسعره
+        boosts: Object.keys(record.meta.boosts || {}),
+        boostCost: economy.constants.BOOST_COST,
         ...engine.publicState(record.state)
     };
 }
@@ -98,6 +107,14 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
         players: all.map(p => ({ id: p.id, isBot: p.isBot })),
         mode
     });
+    // إعادة الرمي المدفوعة: متاحة لمن تكفي جواهره السعر الأول (تُحدَّث بعد كل شراء)
+    const firstCost = state.options.paidRerollCosts?.[0];
+    if (firstCost) {
+        await Promise.all(state.seats.filter(s => !s.isBot).map(async (s) => {
+            const w = await economy.getWallet(s.id).catch(() => null);
+            s.paidOk = !!w && (w.gems || 0) >= firstCost;
+        }));
+    }
     const record = {
         id: newGameId(),
         state,
@@ -175,8 +192,8 @@ async function settleStake(record, stake) {
     for (const id of humans(record)) {
         const won = winners.has(id);
         try {
-            await economy.settle(id, { won, prize: stake.prize });
-            rewards.push({ id, won, prize: won ? stake.prize : 0, delta: (won ? stake.prize : 0) - stake.fee });
+            const points = await economy.settle(id, { won, prize: stake.prize, league: stake.league });
+            rewards.push({ id, won, prize: won ? stake.prize : 0, delta: (won ? stake.prize : 0) - stake.fee, points });
         } catch (e) {
             console.error(`ludo settle ${record.id} ${id}:`, e.message);
         }
@@ -220,7 +237,7 @@ function assertPlayer(record, userId) {
 async function playerRoll(userId, gameId, version) {
     const r = await mutate(gameId, (record) => {
         assertPlayer(record, userId);
-        return engine.roll(record.state, { playerId: userId, rollDie, expectVersion: version });
+        return engine.roll(record.state, { playerId: userId, rollDie: dieFor(record), expectVersion: version });
     });
     return view(r);
 }
@@ -233,10 +250,46 @@ async function playerMove(userId, gameId, token, version) {
     return view(r);
 }
 
+// المجانية أولاً؛ بعدها بالجواهر بسعر يتصاعد (engine.rerollCost) — الخصم قبل الرمية، ويُردّ إن رُفضت
 async function playerReroll(userId, gameId, version) {
-    const r = await mutate(gameId, (record) => {
+    const r = await mutate(gameId, async (record) => {
         assertPlayer(record, userId);
-        return engine.reroll(record.state, { playerId: userId, rollDie, expectVersion: version });
+        const s = record.state;
+        const mine = s.seats[s.turn]?.id === String(userId);
+        const cost = mine ? engine.rerollCost(s) : null;
+        if (!cost) return engine.reroll(s, { playerId: userId, rollDie: dieFor(record), expectVersion: version });
+
+        const wallet = await economy.chargeGems(String(userId), cost);
+        let result;
+        try {
+            result = engine.reroll(s, { playerId: userId, rollDie: dieFor(record), expectVersion: version, paid: true });
+        } catch (e) {
+            await economy.refundGems(String(userId), cost).catch(() => {});
+            throw e;
+        }
+        // هل تكفي جواهره المرة القادمة؟ (وإلا لا ننتظر قراره عند كل رمية)
+        const seat = result.state.seats.find(x => x.id === String(userId));
+        const nextCost = result.state.options.paidRerollCosts?.[seat.paidRerolls || 0];
+        seat.paidOk = nextCost !== undefined && (wallet.gems || 0) >= nextCost;
+        if (!seat.paidOk && (seat.rerolls || 0) <= 0 && result.state.seats[result.state.turn].id === seat.id) {
+            result.state.canReroll = false;
+        }
+        return result;
+    });
+    return view(r);
+}
+
+// 💎 نرد الحظ: مرة لكل مباراة لكل لاعب، في أي وقت قبل النهاية
+async function playerBoost(userId, gameId) {
+    const id = String(userId);
+    const r = await mutate(gameId, async (record) => {
+        assertPlayer(record, id);
+        if (record.state.phase === 'ended') throw new engine.LudoError('GAME_ENDED', 'انتهت المباراة', 409);
+        if (record.meta.boosts?.[id]) throw new engine.LudoError('BOOST_ACTIVE', 'نرد الحظ مفعّل في هذه المباراة', 409);
+        await economy.chargeGems(id, economy.constants.BOOST_COST);
+        record.meta.boosts = { ...(record.meta.boosts || {}), [id]: true };
+        // نسخة جديدة ليقبلها التطبيق (يتجاهل ما لا يتقدّم رقم نسخته)
+        return { state: { ...record.state, version: record.state.version + 1 }, events: [{ type: 'boost', playerId: id }] };
     });
     return view(r);
 }
@@ -286,9 +339,9 @@ async function processDue(gameId, now = Date.now()) {
             return engine.move(s, { playerId: seat.id, token: s.legalMoves[0].token });
         }
         // بوت: خطوة واحدة (رمي أو حركة) — تبدو طبيعية للآخرين
-        if (seat.isBot) return engine.autoStep(s, { rollDie });
+        if (seat.isBot) return engine.autoStep(s, { rollDie: dieFor(record) });
         // انتهت مهلة لاعب
-        return engine.handleTimeout(s, { rollDie });
+        return engine.handleTimeout(s, { rollDie: dieFor(record) });
     });
 }
 
@@ -337,6 +390,7 @@ module.exports = {
     playerRoll,
     playerMove,
     playerReroll,
+    playerBoost,
     playerPass,
     playerLeave,
     currentGame,

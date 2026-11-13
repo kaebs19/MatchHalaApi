@@ -945,6 +945,7 @@ server.listen(PORT, () => {
             // 🎲 هلا لودو: مهلة الأدوار وأدوار البوت، وإكمال الطابور ببوتات
             require('./utils/ludo/service').startLudoTicker();
             require('./utils/ludo/lobby').startLudoLobbySweeper();
+            require('./utils/ludo/economy').startSeasonSweeper();
         } catch (e) {
             console.error('تعذّر بدء مؤقّت هلا لودو:', e.message);
         }

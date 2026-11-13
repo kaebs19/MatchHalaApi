@@ -63,6 +63,11 @@ function registerLudoHandlers(io, socket) {
     // ── الرصيد والدوريات ──
     on('ludo:wallet', () => lobby.walletInfo(userId));
     on('ludo:wallet:claim', () => lobby.claimDaily(userId));
+    on('ludo:store', () => lobby.storeInfo(userId));
+    on('ludo:store:buy-coins', ({ packId }) => lobby.buyCoins(userId, packId));
+    on('ludo:store:purchase', ({ signedTransaction }) => lobby.redeemPurchase(userId, signedTransaction));
+    on('ludo:leaderboard', () => lobby.leaderboard(userId));
+    on('ludo:prize:seen', () => lobby.prizeSeen(userId));
 
     // ── المباراة ──
     on('ludo:resume', async () => ({ game: await service.currentGame(userId) }));
@@ -72,6 +77,7 @@ function registerLudoHandlers(io, socket) {
         ({ game: await service.playerMove(userId, gameId, Number(token), version) }));
     on('ludo:reroll', async ({ gameId, version }) =>
         ({ game: await service.playerReroll(userId, gameId, version) }));
+    on('ludo:boost', async ({ gameId }) => ({ game: await service.playerBoost(userId, gameId) }));
     on('ludo:pass', async ({ gameId, version }) =>
         ({ game: await service.playerPass(userId, gameId, version) }));
     on('ludo:leave', async ({ gameId }) => ({ game: await service.playerLeave(userId, gameId) }));

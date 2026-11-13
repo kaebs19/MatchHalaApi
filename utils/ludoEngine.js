@@ -47,7 +47,10 @@ const DEFAULT_OPTIONS = {
     // أدوار متتالية بلا تفاعل قبل أن يتولّى البوت اللاعب نهائياً
     maxMissedTurns: 3,
     // أداة «إعادة الرمي»: مرات لكل لاعب بشري في المباراة (البوت لا يستعملها)
-    rerollsPerPlayer: 1
+    rerollsPerPlayer: 1,
+    // إعادة رمي مدفوعة بالجواهر بعد نفاد المجانية — السعر يتصاعد مع كل مرة في المباراة.
+    // المحرّك لا يعرف الأرصدة: الخدمة تضبط seat.paidOk (يقدر على السعر التالي) وتخصم قبل النداء بـ paid:true.
+    paidRerollCosts: [2, 4, 8]
 };
 
 class LudoError extends Error {
@@ -242,7 +245,18 @@ function ranking(state) {
 // ───────────────────────── الأفعال ─────────────────────────
 
 // يُبقي الرمية مفتوحة للإعادة؟ (لاعب بشري بقي له رصيد إعادة)
-const canRerollNow = (state, seat) => !seat.isBot && (seat.rerolls || 0) > 0 && state.phase === 'move';
+const paidRerollCost = (state, seat) => {
+    const costs = state.options.paidRerollCosts || [];
+    return seat.paidOk ? (costs[seat.paidRerolls || 0] ?? null) : null;
+};
+const hasReroll = (state, seat) => !seat.isBot && ((seat.rerolls || 0) > 0 || paidRerollCost(state, seat) !== null);
+const canRerollNow = (state, seat) => hasReroll(state, seat) && state.phase === 'move';
+// سعر إعادة الرمية الحالية: 0 مجانية، رقم = جواهر، null = غير متاحة
+function rerollCost(state) {
+    if (!state.canReroll) return null;
+    const seat = state.seats[state.turn];
+    return (seat.rerolls || 0) > 0 ? 0 : paidRerollCost(state, seat);
+}
 
 function rollValue(rollDie, state) {
     // النرد يرى الحالة (الخدمة ترفع احتمال الـ 6 حين تكون كل القطع في القاعدة)
@@ -265,7 +279,7 @@ function applyRoll(state, seat, dice, action, now) {
     const moves = legalMovesFor(state, state.turn, dice);
     if (moves.length === 0) {
         action.noMoves = true;
-        if (!seat.isBot && (seat.rerolls || 0) > 0) {
+        if (hasReroll(state, seat)) {
             // يبقى الدور: إعادة الرمي أو التخطّي (pass) — المهلة تتخطّى تلقائياً
             state.phase = 'move';
             state.legalMoves = [];
@@ -301,22 +315,26 @@ function roll(input, { playerId, rollDie, expectVersion, now = Date.now() }) {
 
 // إعادة الرمي (أداة مساعدة): بعد الرمي وقبل التحريك، rerollsPerPlayer مرة لكل لاعب في المباراة.
 // الرمية الملغاة لا تُحسب في عدّ الستات المتتالية.
-function reroll(input, { playerId, rollDie, expectVersion, now = Date.now() }) {
+// paid: الخدمة خصمت الجواهر (سعر rerollCost) — بلا هذا العلم لا تُقبل إلا المجانية.
+function reroll(input, { playerId, rollDie, expectVersion, now = Date.now(), paid = false }) {
     assertTurn(input, playerId, expectVersion);
     if (input.phase !== 'move' || !input.canReroll) {
         throw new LudoError('CANNOT_REROLL', 'لا يمكن إعادة الرمي الآن', 409);
     }
     const state = clone(input);
     const seat = state.seats[state.turn];
-    if ((seat.rerolls || 0) <= 0) throw new LudoError('NO_REROLLS', 'استعملت إعادة الرمي', 409);
-
-    seat.rerolls -= 1;
+    const free = (seat.rerolls || 0) > 0;
+    if (!free && !(paid && paidRerollCost(state, seat) !== null)) {
+        throw new LudoError('NO_REROLLS', 'استعملت إعادة الرمي', 409);
+    }
+    if (free) seat.rerolls -= 1;
+    else seat.paidRerolls = (seat.paidRerolls || 0) + 1;
     seat.missed = 0;
     if (state.dice === 6) state.sixes = Math.max(0, state.sixes - 1);
     const previous = state.dice;
     const dice = rollValue(rollDie, state);
     state.version++;
-    const action = { type: 'roll', playerId: seat.id, dice, reroll: true, previous };
+    const action = { type: 'roll', playerId: seat.id, dice, reroll: true, previous, ...(free ? {} : { paid: true }) };
     applyRoll(state, seat, dice, action, now);
 
     state.lastAction = action;
@@ -522,6 +540,7 @@ function publicState(state) {
         dice: state.dice,
         legalMoves: state.legalMoves,
         canReroll: !!state.canReroll,
+        rerollCost: rerollCost(state),
         winners: state.winners,
         ranking: state.phase === 'ended' ? ranking(state) : null,
         version: state.version,
@@ -545,6 +564,7 @@ module.exports = {
     isSafeSquare,
     ranking,
     publicState,
+    rerollCost,
     LudoError,
     constants: { TRACK_LENGTH, LAST_TRACK_STEP, HOME, BASE, COLORS, START_OFFSET, MODES }
 };

@@ -113,6 +113,34 @@ async function walletInfo(userId) {
     return { wallet: economy.walletView(wallet), leagues: economy.leaguesView() };
 }
 
+// المتجر: باقات العملات (بالجواهر) ومنتجات الجواهر (App Store)
+async function storeInfo(userId) {
+    const user = await loadEligible(userId);
+    const wallet = await economy.getWallet(String(user._id));
+    return { wallet: economy.walletView(wallet), store: economy.storeView() };
+}
+
+async function buyCoins(userId, packId) {
+    const user = await loadEligible(userId);
+    return { wallet: economy.walletView(await economy.buyCoins(String(user._id), String(packId))) };
+}
+
+async function redeemPurchase(userId, signedTransaction) {
+    const user = await loadEligible(userId);
+    const r = await economy.redeemPurchase(String(user._id), signedTransaction);
+    return { wallet: economy.walletView(r.wallet), granted: r.granted, transactionId: r.transactionId };
+}
+
+async function leaderboard(userId) {
+    const user = await loadEligible(userId);
+    return economy.leaderboard(user);
+}
+
+async function prizeSeen(userId) {
+    await economy.markPrizeSeen(String(userId));
+    return {};
+}
+
 async function claimDaily(userId) {
     const user = await loadEligible(userId);
     return { wallet: economy.walletView(await economy.claimDaily(String(user._id))) };
@@ -364,6 +392,11 @@ module.exports = {
     loadEligible,
     walletInfo,
     claimDaily,
+    storeInfo,
+    buyCoins,
+    redeemPurchase,
+    leaderboard,
+    prizeSeen,
     startLudoLobbySweeper,
     stopLudoLobbySweeper,
     constants: { BOT_FILL_MS }
