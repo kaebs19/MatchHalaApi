@@ -128,7 +128,7 @@ async function buyCoins(userId, packId) {
 async function redeemPurchase(userId, signedTransaction) {
     const user = await loadEligible(userId);
     const r = await economy.redeemPurchase(String(user._id), signedTransaction);
-    return { wallet: economy.walletView(r.wallet), granted: r.granted, transactionId: r.transactionId };
+    return { wallet: economy.walletView(r.wallet), granted: r.granted, grantedCoins: r.grantedCoins, transactionId: r.transactionId };
 }
 
 // مكافأة مشاهدة إعلان: رمز عند البدء ثم المطالبة به بعد انتهاء الإعلان

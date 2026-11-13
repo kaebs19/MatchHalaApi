@@ -694,3 +694,27 @@ maybe('مكافأة الإعلان: رمز يُستعمل مرة، بعد مدة
     await economy.claimAd(a, r.token, next + AD_MIN_MS);
     assert.equal(wallets.get(a).adCount, 1);
 });
+
+maybe('المتجر: منتجات العملات والباقات المجمّعة تُمنح كاملة ومرة واحدة', async () => {
+    const a = addUser();
+    const { START_COINS, START_GEMS } = economy.constants;
+    const info = await lobby.storeInfo(a);
+    assert.deepEqual(info.store.coinProducts.map(p => p.coins), [50000, 300000, 1000000]);
+    assert.deepEqual(info.store.bundles.map(b => b.id), ['starter', 'pro']);
+    assert.equal(info.store.gemProducts.length, 3, 'الباقات لا تظهر ضمن الجواهر');
+
+    const coins = await lobby.redeemPurchase(a, JSON.stringify({ id: 'c1', productId: 'com.app.hala.ludo.coins300k' }));
+    assert.equal(coins.grantedCoins, 300000);
+    assert.equal(coins.wallet.coins, START_COINS + 300000);
+    assert.equal(coins.wallet.gems, START_GEMS);
+
+    const bundle = await lobby.redeemPurchase(a, JSON.stringify({ id: 'b1', productId: 'com.app.hala.ludo.bundle.starter' }));
+    assert.equal(bundle.granted, 60);
+    assert.equal(bundle.grantedCoins, 50000);
+    assert.equal(bundle.wallet.coins, START_COINS + 350000);
+    assert.equal(bundle.wallet.gems, START_GEMS + 60);
+
+    const again = await lobby.redeemPurchase(a, JSON.stringify({ id: 'b1', productId: 'com.app.hala.ludo.bundle.starter' }));
+    assert.equal(again.grantedCoins, 0);
+    assert.equal(wallets.get(a).coins, START_COINS + 350000);
+});

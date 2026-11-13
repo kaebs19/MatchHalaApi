@@ -42,12 +42,20 @@ const COIN_PACKS = [
     { id: 'coins_m', coins: 30000, gems: 50 },
     { id: 'coins_l', coins: 100000, gems: 150 }
 ];
-// منتجات App Store Connect (Consumable) — المالك ينشئها بهذه المعرّفات نفسها
-const GEM_PRODUCTS = {
-    'com.app.hala.ludo.gems60': 60,
-    'com.app.hala.ludo.gems330': 330,
-    'com.app.hala.ludo.gems900': 900
+// منتجات App Store Connect (كلها Consumable) — المالك ينشئها بهذه المعرّفات نفسها.
+// كل منتج يمنح جواهر أو عملات أو الاثنين (الباقات المجمّعة). ⚠️ معرّف جديد هنا = منتج في App Store Connect أولاً.
+const IAP_PRODUCTS = {
+    'com.app.hala.ludo.gems60': { gems: 60 },
+    'com.app.hala.ludo.gems330': { gems: 330 },
+    'com.app.hala.ludo.gems900': { gems: 900 },
+    'com.app.hala.ludo.coins50k': { coins: 50000 },
+    'com.app.hala.ludo.coins300k': { coins: 300000 },
+    'com.app.hala.ludo.coins1m': { coins: 1000000 },
+    'com.app.hala.ludo.bundle.starter': { gems: 60, coins: 50000, bundle: 'starter' },
+    'com.app.hala.ludo.bundle.pro': { gems: 330, coins: 300000, bundle: 'pro' }
 };
+const GEM_PRODUCTS = Object.fromEntries(
+    Object.entries(IAP_PRODUCTS).filter(([, p]) => p.gems && !p.coins).map(([id, p]) => [id, p.gems]));
 
 // ── مكافأة مشاهدة إعلان ──
 // الخادم لا يرى الإعلان نفسه: يصدر رمزاً عند البدء، ولا يمنح إلا برمز عمره AD_MIN_MS على الأقل ومرة واحدة،
@@ -264,6 +272,10 @@ async function claimAd(userId, token, now = Date.now()) {
 const storeView = () => ({
     coinPacks: COIN_PACKS,
     gemProducts: Object.entries(GEM_PRODUCTS).map(([productId, gems]) => ({ productId, gems })),
+    coinProducts: Object.entries(IAP_PRODUCTS).filter(([, p]) => p.coins && !p.gems)
+        .map(([productId, p]) => ({ productId, coins: p.coins })),
+    bundles: Object.entries(IAP_PRODUCTS).filter(([, p]) => p.bundle)
+        .map(([productId, p]) => ({ productId, id: p.bundle, gems: p.gems, coins: p.coins })),
     boostCost: BOOST_COST,
     // أسعار إعادة الرمي المدفوعة بالترتيب (المصدر: خيارات المحرّك)
     rerollCosts: require('../ludoEngine').createGame({ players: [{ id: 'a' }, { id: 'b' }] }).options.paidRerollCosts
@@ -283,7 +295,7 @@ async function buyCoins(userId, packId) {
     return w;
 }
 
-// شراء جواهر: معاملة StoreKit 2 موثّقة بشهادات أبل. تُمنح مرة واحدة (transactionId فريد)،
+// شراء (جواهر، عملات، أو باقة مجمّعة): معاملة StoreKit 2 موثّقة بشهادات أبل. تُمنح مرة واحدة (transactionId فريد)،
 // وإعادة إرسال المعاملة نفسها تُرجع الرصيد بلا منح ثانٍ (التطبيق يعيد المحاولة حتى ينهي المعاملة).
 async function redeemPurchase(userId, signedTransaction) {
     const apple = require('../appleTransactions');
@@ -294,15 +306,17 @@ async function redeemPurchase(userId, signedTransaction) {
         console.warn(`[ludo-iap] رُفض تحقق أبل للمستخدم ${userId}: ${e.message || e}`);
         throw new LudoError('IAP_VERIFICATION_FAILED', 'تعذّر التحقق من عملية الشراء', 400);
     }
-    const gems = GEM_PRODUCTS[t.productId];
-    if (!gems) throw new LudoError('IAP_UNKNOWN_PRODUCT', 'منتج غير معروف', 400);
+    const product = IAP_PRODUCTS[t.productId];
+    if (!product) throw new LudoError('IAP_UNKNOWN_PRODUCT', 'منتج غير معروف', 400);
+    const gems = product.gems || 0;
+    const coins = product.coins || 0;
     if (t.revoked) throw new LudoError('IAP_REVOKED', 'هذه العملية مستردّة أو ملغاة', 400);
 
     const LudoPurchase = require('../../models/LudoPurchase');
     await getWallet(userId);
     try {
         await LudoPurchase.create({
-            transactionId: t.transactionId, user: userId, productId: t.productId, gems, environment: t.environment
+            transactionId: t.transactionId, user: userId, productId: t.productId, gems, coins, environment: t.environment
         });
     } catch (e) {
         if (e.code !== 11000) throw e;
@@ -310,10 +324,10 @@ async function redeemPurchase(userId, signedTransaction) {
         if (existing && String(existing.user) !== String(userId)) {
             throw new LudoError('IAP_IN_USE', 'هذه العملية مستعملة في حساب آخر', 409);
         }
-        return { wallet: await getWallet(userId), granted: 0, transactionId: t.transactionId };
+        return { wallet: await getWallet(userId), granted: 0, grantedCoins: 0, transactionId: t.transactionId };
     }
-    const w = await LudoWallet.findOneAndUpdate({ user: userId }, { $inc: { gems } }, { new: true }).lean();
-    return { wallet: w, granted: gems, transactionId: t.transactionId };
+    const w = await LudoWallet.findOneAndUpdate({ user: userId }, { $inc: { gems, coins } }, { new: true }).lean();
+    return { wallet: w, granted: gems, grantedCoins: coins, transactionId: t.transactionId };
 }
 
 // ───────────── الترتيب الأسبوعي ─────────────
@@ -402,5 +416,5 @@ module.exports = {
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
     assertLeague, prizeFor, stakeFor, leaguesView, walletView, tierOf, weekKeyOf,
-    constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
+    constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };
