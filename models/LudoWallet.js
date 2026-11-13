@@ -30,6 +30,8 @@ const ludoWalletSchema = new mongoose.Schema({
     adDay: { type: String, default: null },
     adCount: { type: Number, default: 0 },
     adToken: { type: String, default: null },
+    // آخر رمز مُنح (من التطبيق أو من AdMob SSV) — ludo:ad:claim بعد منح SSV يُرجع نجاحاً لا خطأً
+    adLastToken: { type: String, default: null },
     adTokenAt: { type: Date, default: null }
 }, { timestamps: true });
 

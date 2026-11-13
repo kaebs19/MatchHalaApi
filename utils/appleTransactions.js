@@ -75,6 +75,22 @@ async function verifySignedTransaction(jws) {
     throw lastError || new Error('VERIFICATION_FAILED');
 }
 
+/** يتحقق من إشعار App Store Server Notifications V2 (signedPayload) ويُرجع حمولته المفكوكة أو يرمي */
+async function verifySignedNotification(signedPayload) {
+    if (typeof signedPayload !== 'string' || signedPayload.split('.').length !== 3) {
+        throw new Error('INVALID_JWS');
+    }
+    let lastError;
+    for (const verifier of getVerifiers()) {
+        try {
+            return await verifier.verifyAndDecodeNotification(signedPayload);
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError || new Error('VERIFICATION_FAILED');
+}
+
 /** App Store Server API (للنسخ القديمة التي ترسل transactionId فقط) — null إن لم يُضبط المفتاح */
 function apiClient(environmentName) {
     const keyId = process.env.APPLE_IAP_KEY_ID;
@@ -112,6 +128,7 @@ async function verifyTransactionId(transactionId) {
 
 module.exports = {
     verifySignedTransaction,
+    verifySignedNotification,
     verifyTransactionId,
     isApiConfigured,
     PRODUCT_PLANS,

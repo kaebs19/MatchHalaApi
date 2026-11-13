@@ -1015,7 +1015,10 @@ maybe('مكافأة الإعلان: رمز يُستعمل مرة، بعد مدة
     const w = await economy.claimAd(a, token, t0 + AD_MIN_MS);
     assert.equal(w.coins, START_COINS + AD_REWARD.coins);
     assert.equal(w.gems, START_GEMS + AD_REWARD.gems);
-    await assert.rejects(economy.claimAd(a, token, t0 + AD_MIN_MS + 1), { code: 'AD_NOT_VERIFIED' }); // مرة واحدة
+    // الرمز نفسه مرة ثانية: نجاح بلا منح ثانٍ (قد يكون SSV سبق التطبيق)
+    const again = await economy.claimAd(a, token, t0 + AD_MIN_MS + 1);
+    assert.equal(again.coins, START_COINS + AD_REWARD.coins);
+    assert.equal(wallets.get(a).coins, START_COINS + AD_REWARD.coins);
 
     for (let i = 1; i < AD_DAILY_MAX; i++) {
         const r = await economy.startAd(a, t0 + i * 60000);

@@ -58,8 +58,10 @@ const GEM_PRODUCTS = Object.fromEntries(
     Object.entries(IAP_PRODUCTS).filter(([, p]) => p.gems && !p.coins).map(([id, p]) => [id, p.gems]));
 
 // ── مكافأة مشاهدة إعلان ──
-// الخادم لا يرى الإعلان نفسه: يصدر رمزاً عند البدء، ولا يمنح إلا برمز عمره AD_MIN_MS على الأقل ومرة واحدة،
-// وبسقف يومي — فأقصى ما يُنتزع بلا مشاهدة هو سقف اليوم. (تشديد لاحق: AdMob Server-Side Verification.)
+// يصدر رمزاً عند البدء، والمنح مرة واحدة بالرمز وبسقف يومي. طريقان للمنح:
+//   - AdMob SSV (utils/admobSsv.js ← ssvReward): جوجل تؤكد اكتمال المشاهدة بتوقيعها — الطريق الموثوق.
+//   - ludo:ad:claim من التطبيق برمز عمره AD_MIN_MS على الأقل — يُغلق حين LUDO_AD_SSV=1 (بعد ضبط رابط SSV في AdMob).
+const adSsvRequired = () => process.env.LUDO_AD_SSV === '1';
 const AD_REWARD = { coins: Number(process.env.LUDO_AD_COINS) || 500, gems: Number(process.env.LUDO_AD_GEMS) || 1 };
 const AD_DAILY_MAX = Number(process.env.LUDO_AD_DAILY_MAX) || 5;
 const AD_MIN_MS = 5000;
@@ -328,11 +330,27 @@ async function startAd(userId, now = Date.now()) {
 
 async function claimAd(userId, token, now = Date.now()) {
     const w = await getWallet(userId);
+    // منحها SSV قبل وصول طلب التطبيق ← نجاح بلا منح ثانٍ
+    if (token && w.adLastToken === String(token)) return w;
     const age = w.adTokenAt ? now - new Date(w.adTokenAt).getTime() : -1;
+    if (adSsvRequired()) {
+        // المنح من جوجل وحدها: الرمز ما زال ينتظر تأكيدها ← التطبيق يعيد المحاولة بعد لحظة
+        if (token && w.adToken === String(token) && age >= 0 && age <= AD_MAX_MS) {
+            throw new LudoError('AD_PENDING', 'نتحقّق من المشاهدة…', 409);
+        }
+        throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
+    }
     if (!token || w.adToken !== String(token) || age < AD_MIN_MS || age > AD_MAX_MS) {
         throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
     }
     if (adsLeft(w, now) <= 0) throw new LudoError('AD_LIMIT', 'وصلت حدّ مكافآت الإعلانات اليوم — ارجع غداً', 429);
+    const updated = await grantAd(userId, token, w, now);
+    if (!updated) throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
+    return updated;
+}
+
+// منح مكافأة الإعلان مرة واحدة: الرمز في الشرط — طلبان بالرمز نفسه (أو SSV والتطبيق معاً) يمنح أحدهما فقط
+async function grantAd(userId, token, w, now = Date.now()) {
     const today = dayKeyOf(now);
     const sameDay = w.adDay === today;
     // الرمز في الشرط: طلبان بالرمز نفسه يمنح أحدهما فقط
@@ -340,12 +358,24 @@ async function claimAd(userId, token, now = Date.now()) {
         { user: userId, adToken: String(token) },
         {
             $inc: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, ...(sameDay ? { adCount: 1 } : {}) },
-            $set: { adToken: null, adTokenAt: null, ...(sameDay ? {} : { adDay: today, adCount: 1 }) }
+            $set: { adToken: null, adTokenAt: null, adLastToken: String(token), ...(sameDay ? {} : { adDay: today, adCount: 1 }) }
         },
         { new: true }
     ).lean();
-    if (!updated) throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
     return updated;
+}
+
+// AdMob SSV: جوجل أكّدت اكتمال المشاهدة (التوقيع تحقّق منه routes/rewardCallbacks.js).
+// userId و token ضبطهما التطبيق في الإعلان — المنح بالشروط نفسها (رمز ساري، سقف اليوم). true إن مُنحت.
+async function ssvReward(userId, token, meta = {}, now = Date.now()) {
+    if (!/^[a-f0-9]{24}$/i.test(String(userId))) return false;
+    const w = await getWallet(String(userId));
+    const age = w.adTokenAt ? now - new Date(w.adTokenAt).getTime() : -1;
+    if (w.adToken !== String(token) || age < 0 || age > AD_MAX_MS || adsLeft(w, now) <= 0) {
+        if (w.adLastToken !== String(token)) console.warn(`[admob-ssv] رمز غير ساري للمستخدم ${userId} (${meta.transactionId || '-'})`);
+        return false;
+    }
+    return !!(await grantAd(String(userId), token, w, now));
 }
 
 // ───────────── المتجر ─────────────
@@ -409,6 +439,52 @@ async function redeemPurchase(userId, signedTransaction) {
     }
     const w = await LudoWallet.findOneAndUpdate({ user: userId }, { $inc: { gems, coins } }, { new: true }).lean();
     return { wallet: w, granted: gems, grantedCoins: coins, transactionId: t.transactionId };
+}
+
+// ───────────── استرداد أبل (App Store Server Notifications — utils/appleNotifications.js) ─────────────
+
+// يسحب ما منحته المعاملة. ما أُنفق قبل الاسترداد لا يُسحب (لا أرصدة سالبة) — يُسجَّل في shortfall* للمراجعة.
+// مرة واحدة: refundedAt شرط في التحديث. يُرجع null إن لم تكن المعاملة عندنا (لم يُطالب بها التطبيق قط).
+async function refundPurchase(transactionId) {
+    const LudoPurchase = require('../../models/LudoPurchase');
+    const p = await LudoPurchase.findOneAndUpdate(
+        { transactionId: String(transactionId), refundedAt: null },
+        { $set: { refundedAt: new Date() } },
+        { new: true }
+    ).lean();
+    if (!p) {
+        const existing = await LudoPurchase.findOne({ transactionId: String(transactionId) }).lean();
+        return existing ? { user: String(existing.user), alreadyRefunded: true, clawedGems: existing.clawedGems, clawedCoins: existing.clawedCoins } : null;
+    }
+    let clawedGems = 0; let clawedCoins = 0;
+    // قراءة ثم خصم مشروط بالرصيد نفسه — إن تغيّر بينهما (مباراة، شراء) نعيد المحاولة
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const w = await getWallet(p.user);
+        const g = Math.min(p.gems || 0, w.gems || 0);
+        const c = Math.min(p.coins || 0, w.coins || 0);
+        const done = await LudoWallet.findOneAndUpdate(
+            { user: p.user, gems: { $gte: g }, coins: { $gte: c } },
+            { $inc: { gems: -g, coins: -c } },
+            { new: true }
+        ).lean();
+        if (done) { clawedGems = g; clawedCoins = c; break; }
+    }
+    const shortfallGems = (p.gems || 0) - clawedGems;
+    const shortfallCoins = (p.coins || 0) - clawedCoins;
+    await LudoPurchase.updateOne({ _id: p._id }, { $set: { clawedGems, clawedCoins, shortfallGems, shortfallCoins } });
+    return { user: String(p.user), productId: p.productId, clawedGems, clawedCoins, shortfallGems, shortfallCoins };
+}
+
+// أبل ألغت الاسترداد (REFUND_REVERSED) ← يُعاد ما سُحب فعلاً
+async function restorePurchase(transactionId) {
+    const LudoPurchase = require('../../models/LudoPurchase');
+    const p = await LudoPurchase.findOneAndUpdate(
+        { transactionId: String(transactionId), refundedAt: { $ne: null } },
+        { $set: { refundedAt: null, clawedGems: 0, clawedCoins: 0, shortfallGems: 0, shortfallCoins: 0 } }
+    ).lean();
+    if (!p) return null;
+    await LudoWallet.updateOne({ user: p.user }, { $inc: { gems: p.clawedGems || 0, coins: p.clawedCoins || 0 } });
+    return { user: String(p.user), restoredGems: p.clawedGems || 0, restoredCoins: p.clawedCoins || 0 };
 }
 
 // ───────────── الترتيب الأسبوعي ─────────────
@@ -503,6 +579,6 @@ module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
-    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, grant, onPrize, tierOf, weekKeyOf,
+    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, grant, onPrize, ssvReward, refundPurchase, restorePurchase, tierOf, weekKeyOf,
     constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };

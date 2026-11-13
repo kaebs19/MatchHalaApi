@@ -386,6 +386,9 @@ app.use('/api/swipes', require('./routes/swipes'));
 app.use('/api/matches', require('./routes/matches'));
 app.use('/api/banned-words', require('./routes/bannedWords'));
 app.use('/api/admin/games', require('./routes/adminGames'));
+// استدعاءات خارجية موقَّعة (بلا توكن مستخدم): استرداد أبل، وتأكيد مكافأة AdMob
+app.use('/api/apple/notifications', require('./routes/rewardCallbacks').apple);
+app.use('/api/admob', require('./routes/rewardCallbacks').admob);
 app.use('/api/admin/stories', require('./routes/adminStories'));
 app.use('/api/admin/stickers', require('./routes/adminStickers'));
 app.use('/api/admin/removal-requests', require('./routes/adminRemovalRequests'));

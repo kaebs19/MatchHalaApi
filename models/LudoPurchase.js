@@ -7,7 +7,13 @@ const ludoPurchaseSchema = new mongoose.Schema({
     productId: { type: String, required: true },
     gems: { type: Number, default: 0 },
     coins: { type: Number, default: 0 },
-    environment: String
+    environment: String,
+    // استرداد أبل (REFUND/REVOKE): ما سُحب فعلاً، وما لم يُسحب لأنه أُنفق قبل الاسترداد
+    refundedAt: { type: Date, default: null },
+    clawedGems: { type: Number, default: 0 },
+    clawedCoins: { type: Number, default: 0 },
+    shortfallGems: { type: Number, default: 0 },
+    shortfallCoins: { type: Number, default: 0 }
 }, { timestamps: true });
 
 module.exports = mongoose.model('LudoPurchase', ludoPurchaseSchema);
