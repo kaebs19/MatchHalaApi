@@ -13,9 +13,14 @@
 const LudoWallet = require('../../models/LudoWallet');
 const { LudoError } = require('../ludoEngine');
 
-const START_COINS = Number(process.env.LUDO_START_COINS) || 10000;
-const START_GEMS = Number(process.env.LUDO_START_GEMS) || 20;
-const DAILY_BONUS = Number(process.env.LUDO_DAILY_BONUS) || 1000;
+// قيم حيّة تتغيّر من لوحة التحكم (utils/ludo/config.js ← setLive) — لا تُنسخ في متغيّرات ثابتة
+const LIVE = {
+    startCoins: Number(process.env.LUDO_START_COINS) || 10000,
+    startGems: Number(process.env.LUDO_START_GEMS) || 20,
+    dailyBonus: Number(process.env.LUDO_DAILY_BONUS) || 1000,
+    adDailyMax: Number(process.env.LUDO_AD_DAILY_MAX) || 5
+};
+function setLive(patch) { Object.assign(LIVE, patch); }
 const DAILY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAILY_MS;
 
@@ -64,11 +69,10 @@ const GEM_PRODUCTS = Object.fromEntries(
 //   - ludo:ad:claim من التطبيق برمز عمره AD_MIN_MS على الأقل — يُغلق حين LUDO_AD_SSV=1 (بعد ضبط رابط SSV في AdMob).
 const adSsvRequired = () => process.env.LUDO_AD_SSV === '1';
 const AD_REWARD = { coins: Number(process.env.LUDO_AD_COINS) || 500, gems: Number(process.env.LUDO_AD_GEMS) || 1 };
-const AD_DAILY_MAX = Number(process.env.LUDO_AD_DAILY_MAX) || 5;
 const AD_MIN_MS = 5000;
 const AD_MAX_MS = 10 * 60 * 1000;
 const dayKeyOf = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
-const adsLeft = (w, now = Date.now()) => Math.max(0, AD_DAILY_MAX - (w.adDay === dayKeyOf(now) ? (w.adCount || 0) : 0));
+const adsLeft = (w, now = Date.now()) => Math.max(0, LIVE.adDailyMax - (w.adDay === dayKeyOf(now) ? (w.adCount || 0) : 0));
 
 // ── الترتيب الأسبوعي ──
 const LEADERBOARD_SIZE = 50;
@@ -184,8 +188,8 @@ function walletView(w, now = Date.now()) {
         tier: tierOf(w.points || 0),
         weekPoints: w.weekKey === weekKeyOf(now) ? (w.weekPoints || 0) : 0,
         prize,
-        ad: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, left: adsLeft(w, now), max: AD_DAILY_MAX },
-        dailyBonus: DAILY_BONUS,
+        ad: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, left: adsLeft(w, now), max: LIVE.adDailyMax },
+        dailyBonus: LIVE.dailyBonus,
         // 0 = متاحة الآن
         dailyAvailableAt: claimed && claimed + DAILY_MS > now ? claimed + DAILY_MS : 0
     };
@@ -222,7 +226,7 @@ async function publicStats(userId, now = Date.now()) {
 async function getWallet(userId) {
     const upsert = () => LudoWallet.findOneAndUpdate(
         { user: userId },
-        { $setOnInsert: { coins: START_COINS, gems: START_GEMS } },
+        { $setOnInsert: { coins: LIVE.startCoins, gems: LIVE.startGems } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
     ).lean();
     let w;
@@ -235,9 +239,9 @@ async function getWallet(userId) {
     // محافظ أُنشئت قبل الجواهر: جواهر البداية مرة واحدة
     if (w.gems === undefined) {
         const fixed = await LudoWallet.findOneAndUpdate(
-            { user: userId, gems: { $exists: false } }, { $set: { gems: START_GEMS } }, { new: true }
+            { user: userId, gems: { $exists: false } }, { $set: { gems: LIVE.startGems } }, { new: true }
         ).lean();
-        w = fixed || { ...w, gems: START_GEMS };
+        w = fixed || { ...w, gems: LIVE.startGems };
     }
     return w;
 }
@@ -324,7 +328,7 @@ async function claimDaily(userId, now = Date.now()) {
     await getWallet(userId);
     const w = await LudoWallet.findOneAndUpdate(
         { user: userId, $or: [{ dailyClaimedAt: null }, { dailyClaimedAt: { $lte: new Date(now - DAILY_MS) } }] },
-        { $inc: { coins: DAILY_BONUS }, $set: { dailyClaimedAt: new Date(now) } },
+        { $inc: { coins: LIVE.dailyBonus }, $set: { dailyClaimedAt: new Date(now) } },
         { new: true }
     ).lean();
     if (!w) throw new LudoError('DAILY_NOT_READY', 'أخذت مكافأة اليوم — ارجع غداً', 409);
@@ -541,6 +545,29 @@ async function leaderboard(viewer, now = Date.now()) {
     };
 }
 
+// ترتيب أسبوع للوحة التحكم: أعلى N بنقاطه وما سيأخذه كل مركز (بلا تصفية حظر — المشرف يرى الكل)
+async function weekStandings(limit = WEEKLY_PRIZES.length, now = Date.now(), weekKey = weekKeyOf(now)) {
+    const rows = await LudoWallet.find({ weekKey, weekPoints: { $gt: 0 } })
+        .sort({ weekPoints: -1, updatedAt: 1 })
+        .limit(limit)
+        .select('user weekPoints wins points')
+        .populate('user', 'name profileImage isActive suspension')
+        .lean();
+    return {
+        weekKey,
+        endsAt: weekStart(now) + WEEK_MS,
+        rows: rows.map((r, i) => ({
+            rank: i + 1,
+            id: r.user ? String(r.user._id) : null,
+            name: r.user?.name || '—',
+            photo: r.user?.profileImage || null,
+            inactive: !r.user || !r.user.isActive || !!r.user.suspension?.isSuspended,
+            weekPoints: r.weekPoints,
+            prize: WEEKLY_PRIZES[i] ? { ...WEEKLY_PRIZES[i] } : null
+        }))
+    };
+}
+
 // جوائز الأسبوع المنتهي — مرة واحدة (فرادة weekKey في LudoSeason تحسم السباق بين النسخ)
 // مُنحت جائزة أسبوعية للاعب — مستمعو الإشعار (routes/mobile/games.js)
 const prizeHooks = [];
@@ -591,7 +618,15 @@ function startSeasonSweeper() {
 module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
-    leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
+    leaderboard, weekStandings, awardLastWeek, markPrizeSeen, startSeasonSweeper,
     assertLeague, prizeFor, stakeFor, leaguesView, leagueOfFee, levelOf, walletView, publicStats, recordFriendly, grant, onPrize, ssvReward, refundPurchase, restorePurchase, tierOf, weekKeyOf,
-    constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
+    setLive,
+    // getters: القيم الحيّة (قد تتغيّر من لوحة التحكم) لا لقطة وقت التحميل
+    constants: {
+        get START_COINS() { return LIVE.startCoins; },
+        get START_GEMS() { return LIVE.startGems; },
+        get DAILY_BONUS() { return LIVE.dailyBonus; },
+        get AD_DAILY_MAX() { return LIVE.adDailyMax; },
+        DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_MIN_MS
+    }
 };

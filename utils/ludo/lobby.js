@@ -306,7 +306,9 @@ async function tryMatch(queueKey, { fillBots = false, now = Date.now() } = {}) {
             .map(e => (e.league && !e.fee ? { ...e, fee: economy.assertLeague(e.league).fee } : e));
         const started = [];
         for (const { members: group, fee } of planGroups(entries, { size, now, windows: windows(), fillBots })) {
-            const league = fee ? economy.leagueOfFee(fee) : null;
+            // دوري الأدنى رسوماً في المجموعة — بمعرّفه لا برسومه (قد تتغيّر الرسوم من اللوحة أثناء الانتظار)
+            const lowest = fee ? group.reduce((m, g) => (g.fee < m.fee ? g : m)) : null;
+            const league = lowest?.league || null;
             const stake = league ? economy.stakeFor(league, mode, size) : null;
             const ids = group.map(g => g.userId);
             await store.dequeue(ids);

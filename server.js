@@ -911,6 +911,13 @@ server.listen(PORT, () => {
     console.log(`📝 البيئة: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔌 Socket.IO جاهز للاتصال`);
 
+    // 🎲 إعدادات هلا لودو من لوحة التحكم — على كل نسخة (تُعاد كل دقيقة)
+    try {
+        require('./utils/ludo/config').start();
+    } catch (e) {
+        console.error('تعذّر تحميل إعدادات هلا لودو:', e.message);
+    }
+
     // ✅ مراقب فك تقييد المراسلة — على instance 0 فقط لتجنّب التكرار في الـ cluster
     if (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0') {
         try {

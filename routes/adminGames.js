@@ -298,6 +298,69 @@ async function ludoNumbers() {
     };
 }
 
+// ─────────── 🎲 هلا لودو: الإعدادات والجوائز (utils/ludo/config.js) ───────────
+
+router.get('/ludo/config', async (req, res) => {
+    try {
+        const ludoConfig = require('../utils/ludo/config');
+        const loaded = await ludoConfig.load();
+        res.json({ success: true, data: { ...loaded, defaults: ludoConfig.defaults(), refreshMs: ludoConfig.constants.REFRESH_MS } });
+    } catch (error) {
+        console.error('❌ admin ludo config:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+router.put('/ludo/config', async (req, res) => {
+    try {
+        const ludoConfig = require('../utils/ludo/config');
+        const saved = await ludoConfig.save(req.body?.config, req.user._id);
+        console.log(`🎲 إعدادات هلا لودو حُدّثت (admin ${req.user._id})`);
+        res.json({ success: true, data: saved });
+    } catch (error) {
+        if (error instanceof require('../utils/ludo/config').ConfigError) {
+            return res.status(400).json({ success: false, message: error.message, errors: error.errors });
+        }
+        console.error('❌ admin ludo config update:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// ترتيب الأسبوع الحالي (أو weekKey) وما سيأخذه أعلى 10 — للمراجعة قبل التوزيع
+router.get('/ludo/standings', async (req, res) => {
+    try {
+        const economy = require('../utils/ludo/economy');
+        const weekKey = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? String(req.query.week) : undefined;
+        res.json({ success: true, data: await economy.weekStandings(10, Date.now(), weekKey) });
+    } catch (error) {
+        console.error('❌ admin ludo standings:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// أرشيف الأسابيع الموزّعة: من فاز وماذا أخذ
+router.get('/ludo/seasons', async (req, res) => {
+    try {
+        const LudoSeason = require('../models/LudoSeason');
+        const seasons = await LudoSeason.find().sort({ weekKey: -1 }).limit(12)
+            .populate('winners.user', 'name profileImage').lean();
+        res.json({
+            success: true,
+            data: seasons.map(s => ({
+                weekKey: s.weekKey,
+                awardedAt: s.awardedAt,
+                winners: (s.winners || []).map(w => ({
+                    rank: w.rank, points: w.points, coins: w.coins || 0, gems: w.gems || 0,
+                    id: w.user?._id ? String(w.user._id) : null, name: w.user?.name || '—', photo: w.user?.profileImage || null
+                }))
+            }))
+        });
+    } catch (error) {
+        console.error('❌ admin ludo seasons:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 router.get('/tab', async (req, res) => {
     try {
         const Settings = require('../models/Settings');

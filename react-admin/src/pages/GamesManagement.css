@@ -121,3 +121,58 @@
 @media (max-width: 640px) {
     .games-tab-modes { grid-template-columns: 1fr; }
 }
+
+/* ── 🎲 هلا لودو: الإعدادات والجوائز ── */
+.ludo-settings { display: flex; flex-direction: column; gap: 14px; }
+.ludo-savebar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--bg-card); border: 1px solid var(--border-color, rgba(128,128,128,.2)); border-radius: 14px; padding: 12px 16px; }
+.ludo-savebar.dirty { border-color: var(--color-warning, #f59e0b); box-shadow: 0 0 0 3px rgba(245,158,11,.15); }
+.ludo-savebar b { display: block; color: var(--text-heading); font-size: 14px; }
+.ludo-savebar span { font-size: 12px; color: var(--text-secondary); }
+.ludo-savebar-actions { display: flex; gap: 8px; }
+.ludo-errors { background: rgba(220,38,38,.1); color: var(--color-danger); border-radius: 12px; padding: 10px 14px; font-size: 13px; line-height: 1.8; }
+.ludo-section { background: var(--bg-card); border: 1px solid var(--border-color, rgba(128,128,128,.18)); border-radius: 16px; padding: 18px; }
+.ludo-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ludo-section-head h3 { margin: 0 0 4px; font-size: 17px; color: var(--text-heading); }
+.ludo-section-head p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+.ludo-note { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); }
+.ludo-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.ludo-field small { font-size: 11px; color: var(--text-muted); }
+.ludo-input { display: flex; align-items: center; gap: 6px; background: var(--bg-subtle); border: 1px solid var(--border-color, rgba(128,128,128,.25));
+    border-radius: 10px; padding: 0 10px; min-width: 0; }
+.ludo-input input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text-primary); font-family: inherit; font-size: 15px;
+    padding: 9px 0; direction: ltr; text-align: left; font-variant-numeric: tabular-nums; outline: none; }
+.ludo-input em { font-style: normal; font-size: 13px; color: var(--text-muted); flex-shrink: 0; }
+.ludo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ludo-leagues, .ludo-missions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.ludo-league, .ludo-mission { display: flex; flex-direction: column; gap: 10px; border-radius: 14px; padding: 14px; background: var(--bg-subtle); }
+.ludo-league h4, .ludo-mission h4 { margin: 0; font-size: 15px; color: var(--text-heading); }
+.ludo-league.league-bronze { box-shadow: inset 0 3px 0 #3cc9b4; }
+.ludo-league.league-silver { box-shadow: inset 0 3px 0 #9c70ff; }
+.ludo-league.league-gold { box-shadow: inset 0 3px 0 #f2647f; }
+.ludo-prizes { display: flex; flex-direction: column; gap: 6px; }
+.ludo-prize-row { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 10px; align-items: center; }
+.ludo-prize-row.head { font-size: 12px; color: var(--text-muted); }
+.ludo-prize-row .rank { font-size: 18px; text-align: center; font-weight: 700; color: var(--text-heading); }
+.ludo-prize-row.top-1 .ludo-input { border-color: #f5b301; }
+.ludo-prize-row.total { border-top: 1px dashed var(--border-color, rgba(128,128,128,.3)); padding-top: 10px; margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+.ludo-prize-row.total b { color: var(--text-heading); font-variant-numeric: tabular-nums; }
+.ludo-standings { display: flex; flex-direction: column; gap: 6px; }
+.ludo-standing { display: grid; grid-template-columns: 48px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 12px; border-radius: 10px;
+    background: var(--bg-subtle); color: var(--text-primary); text-decoration: none; font-size: 14px; }
+.ludo-standing:hover { outline: 1px solid var(--color-primary); }
+.ludo-standing.inactive { opacity: .55; }
+.ludo-standing .rank { text-align: center; font-weight: 700; }
+.ludo-standing .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ludo-standing .name small { color: var(--color-danger); }
+.ludo-standing .pts, .ludo-standing .prize { font-size: 12px; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ludo-season { border-radius: 12px; background: var(--bg-subtle); padding: 10px 14px; margin-bottom: 8px; }
+.ludo-season summary { cursor: pointer; font-size: 14px; color: var(--text-heading); }
+.ludo-season .ludo-standing { background: var(--bg-card); margin-top: 6px; }
+.ludo-reset { align-self: flex-start; }
+@media (max-width: 600px) {
+    .ludo-prize-row { grid-template-columns: 48px 1fr 1fr; gap: 6px; }
+    .ludo-standing { grid-template-columns: 36px 1fr auto; }
+    .ludo-standing .prize { grid-column: 2 / 4; }
+    .ludo-savebar { top: 56px; }
+}

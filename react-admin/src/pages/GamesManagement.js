@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/Toast';
 import config from '../config';
 import './GamesManagement.css';
+import LudoSettings from './LudoSettings';
 
 const API = `${config.API_URL}/admin/games`;
 
@@ -220,7 +221,10 @@ function GamesManagement() {
                     {(uq.pending.pending_review + uq.pending.reported) > 0 && <span className="tab-badge">{uq.pending.pending_review + uq.pending.reported}</span>}
                 </button>
                 <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>⚙️ الألعاب والإحصائيات</button>
+                <button className={tab === 'ludo' ? 'active' : ''} onClick={() => setTab('ludo')}>🎲 هلا لودو: الإعدادات والجوائز</button>
             </div>
+
+            {tab === 'ludo' && <LudoSettings />}
 
             {tab === 'overview' && gamesTab && (
                 <div className="games-tab-card">
