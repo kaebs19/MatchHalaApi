@@ -9,6 +9,7 @@ import { formatDate } from '../utils/formatters';
 import { bestLocation, sourceLabel, mapsUrl, formatCoords } from '../utils/location';
 import ConfirmModal from '../components/ConfirmModal';
 import { navigate } from '../router';
+import { deviceSummary } from '../utils/device';
 import './Users.css';
 
 // 🔙 حالة القائمة تبقى عند العودة من صفحة مستخدم (كانت تعود للصفحة 1 بلا بحث ولا فلاتر).
@@ -307,8 +308,26 @@ function Users({ onViewDetail }) {
                 {d.hasDevice === false && (
                     <span className="link-badge link-nodevice" title="لا معرّف جهاز — لم يدخل من التطبيق قط (الموقع غالباً)">⚠️ بلا جهاز</span>
                 )}
-                {src === 'web' && <span className="link-badge link-web" title="أُنشئ الحساب من المتصفح">🌐 ويب</span>}
+                {src === 'web' && user.deviceInfo?.platform !== 'web' && (
+                    <span className="link-badge link-web" title="أُنشئ الحساب من المتصفح ثم استُعمل من جهاز آخر">🌐 من الموقع</span>
+                )}
             </>
+        );
+    };
+
+    // 📱 شارة الجهاز: الطراز المقروء + نظام التشغيل ونسخة التطبيق (المعرّف الخام في التلميح)
+    const deviceChip = (user) => {
+        const d = deviceSummary(user.deviceInfo);
+        if (!d) return null;
+        const sub = [d.os, d.app].filter(Boolean).join(' · ');
+        return (
+            <span className={`device-chip device-${d.kind}`} title={[d.raw, d.os, d.app && `التطبيق ${d.app}`].filter(Boolean).join(' — ')}>
+                <span className="device-icon" aria-hidden="true">{d.icon}</span>
+                <span className="device-text">
+                    <span className="device-name">{d.name}</span>
+                    {sub && <span className="device-sub" dir="ltr">{sub}</span>}
+                </span>
+            </span>
         );
     };
 
@@ -591,9 +610,10 @@ function Users({ onViewDetail }) {
                                     </div>
                                     <div className="users-card-meta">
                                         {user.gender && <span className="uinfo">{user.gender === 'male' ? '♂ ذكر' : '♀ أنثى'}</span>}
-                                        {user.country && <span className="uinfo">🌍 {user.country}{user.city ? ` · ${user.city}` : ''}</span>}
-                                        {loc && <span className="uinfo">{loc.icon} {loc.text}</span>}
-                                        {user.deviceInfo?.platform && <span className="uinfo">{user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻'}</span>}
+                                        {/* الموقع مرة واحدة: الأدقّ إن وُجد، وإلا الدولة/المدينة */}
+                                        {loc ? <span className="uinfo">{loc.icon} {loc.text}</span>
+                                            : user.country && <span className="uinfo">🌍 {user.country}{user.city ? ` · ${user.city}` : ''}</span>}
+                                        {deviceChip(user)}
                                         {linkBadges(user)}
                                         {(user.bannedWords?.violations || 0) > 0 && <span className="uinfo warn">⚠️ {user.bannedWords.violations}/3</span>}
                                         <span className="uinfo">🕐 {formatRelativeTime(user.lastLogin)}</span>
@@ -671,14 +691,9 @@ function Users({ onViewDetail }) {
                                             </td>
                                             <td>
                                                 <div className="user-info-col">
-                                                    {user.gender && <span className="uinfo">{user.gender === 'male' ? '♂' : '♀'}</span>}
-                                                    {user.country && <span className="uinfo">{user.country}</span>}
-                                                    {user.city && <span className="uinfo">{user.city}</span>}
-                                                    {user.deviceInfo?.platform && (
-                                                        <span className="uinfo" title={`الجهاز: ${user.deviceInfo.platform}`}>
-                                                            {user.deviceInfo.platform === 'ios' ? '📱 iPhone' : user.deviceInfo.platform === 'android' ? '🤖 Android' : '💻 ' + user.deviceInfo.platform}
-                                                        </span>
-                                                    )}
+                                                    {/* الدولة والمدينة في عمود «الموقع» — لا تكرار هنا */}
+                                                    {deviceChip(user)}
+                                                    {user.gender && <span className="uinfo gender-chip" title={user.gender === 'male' ? 'ذكر' : 'أنثى'}>{user.gender === 'male' ? '♂' : '♀'}</span>}
                                                     {linkBadges(user)}
                                                 </div>
                                             </td>

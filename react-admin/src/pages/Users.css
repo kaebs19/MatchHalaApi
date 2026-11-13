@@ -999,3 +999,21 @@ button.link-badge:hover { filter: brightness(0.95); text-decoration: underline; 
 .bulk-progress-bar { position: absolute; inset-block: 0; right: 0; background: var(--tint-success); transition: width 0.2s; }
 .bulk-progress span { position: relative; }
 .bulk-actions { display: flex; gap: 8px; justify-content: flex-start; }
+
+/* 📱 شارة الجهاز */
+.user-info-col { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.device-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px 3px 7px; border-radius: 9px;
+    background: var(--bg-subtle); border: 1px solid var(--border-color);
+    line-height: 1.2; white-space: nowrap;
+}
+.device-icon { font-size: 15px; }
+.device-text { display: flex; flex-direction: column; }
+.device-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.device-sub { font-size: 10.5px; color: var(--text-secondary); }
+.device-ios { border-color: rgba(31, 106, 168, 0.35); }
+.device-android { border-color: rgba(47, 158, 133, 0.45); }
+.device-web { background: var(--tint-info); border-color: transparent; }
+.device-web .device-name { color: var(--text-info); }
+.gender-chip { font-weight: 700; }
