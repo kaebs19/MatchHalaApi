@@ -264,7 +264,9 @@ async function claimAd(userId, token, now = Date.now()) {
 const storeView = () => ({
     coinPacks: COIN_PACKS,
     gemProducts: Object.entries(GEM_PRODUCTS).map(([productId, gems]) => ({ productId, gems })),
-    boostCost: BOOST_COST
+    boostCost: BOOST_COST,
+    // أسعار إعادة الرمي المدفوعة بالترتيب (المصدر: خيارات المحرّك)
+    rerollCosts: require('../ludoEngine').createGame({ players: [{ id: 'a' }, { id: 'b' }] }).options.paidRerollCosts
 });
 
 // عملات مقابل جواهر — عملية واحدة ذرّية (الخصم والإضافة معاً)
