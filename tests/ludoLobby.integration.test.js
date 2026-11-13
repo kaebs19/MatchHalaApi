@@ -38,6 +38,7 @@ const walletMatches = (w, filter) => {
     if (filter.coins?.$gte !== undefined && !(w.coins >= filter.coins.$gte)) return false;
     if (filter.gems?.$gte !== undefined && !((w.gems || 0) >= filter.gems.$gte)) return false;
     if (filter.gems?.$exists === false && w.gems !== undefined) return false;
+    if (typeof filter.adToken === 'string' && w.adToken !== filter.adToken) return false;
     if (typeof filter.weekKey === 'string' && w.weekKey !== filter.weekKey) return false;
     if (filter.weekPoints?.$gt !== undefined && !((w.weekPoints || 0) > filter.weekPoints.$gt)) return false;
     if (filter.$or) {
@@ -663,4 +664,33 @@ maybe('الإحصاءات والترتيب: النجوم والسلسلة، ال
     await economy.settle(a, { won: true, prize: 1000, league: 'bronze' }, next);
     assert.equal(economy.walletView(wallets.get(a), next).weekPoints, 10);
     assert.equal(wallets.get(a).points, 50);
+});
+
+maybe('مكافأة الإعلان: رمز يُستعمل مرة، بعد مدة الإعلان، وبسقف يومي', async () => {
+    const a = addUser();
+    const { START_COINS, START_GEMS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS } = economy.constants;
+    const t0 = Date.UTC(2026, 10, 13, 10);
+    assert.deepEqual((await lobby.walletInfo(a)).wallet.ad.max, AD_DAILY_MAX);
+
+    const { token } = await economy.startAd(a, t0);
+    await assert.rejects(economy.claimAd(a, token, t0 + 1000), { code: 'AD_NOT_VERIFIED' });      // قبل انتهاء الإعلان
+    await assert.rejects(economy.claimAd(a, 'wrong', t0 + AD_MIN_MS), { code: 'AD_NOT_VERIFIED' });
+    const w = await economy.claimAd(a, token, t0 + AD_MIN_MS);
+    assert.equal(w.coins, START_COINS + AD_REWARD.coins);
+    assert.equal(w.gems, START_GEMS + AD_REWARD.gems);
+    await assert.rejects(economy.claimAd(a, token, t0 + AD_MIN_MS + 1), { code: 'AD_NOT_VERIFIED' }); // مرة واحدة
+
+    for (let i = 1; i < AD_DAILY_MAX; i++) {
+        const r = await economy.startAd(a, t0 + i * 60000);
+        await economy.claimAd(a, r.token, t0 + i * 60000 + AD_MIN_MS);
+    }
+    assert.equal(economy.walletView(wallets.get(a), t0 + 3600000).ad.left, 0);
+    await assert.rejects(economy.startAd(a, t0 + 3600000), { code: 'AD_LIMIT' });
+    assert.equal(wallets.get(a).gems, START_GEMS + AD_REWARD.gems * AD_DAILY_MAX);
+    // يوم جديد
+    const next = t0 + 24 * 3600 * 1000;
+    assert.equal(economy.walletView(wallets.get(a), next).ad.left, AD_DAILY_MAX);
+    const r = await economy.startAd(a, next);
+    await economy.claimAd(a, r.token, next + AD_MIN_MS);
+    assert.equal(wallets.get(a).adCount, 1);
 });

@@ -131,6 +131,17 @@ async function redeemPurchase(userId, signedTransaction) {
     return { wallet: economy.walletView(r.wallet), granted: r.granted, transactionId: r.transactionId };
 }
 
+// مكافأة مشاهدة إعلان: رمز عند البدء ثم المطالبة به بعد انتهاء الإعلان
+async function adStart(userId) {
+    const user = await loadEligible(userId);
+    return economy.startAd(String(user._id));
+}
+
+async function adClaim(userId, token) {
+    const user = await loadEligible(userId);
+    return { wallet: economy.walletView(await economy.claimAd(String(user._id), token)) };
+}
+
 async function leaderboard(userId) {
     const user = await loadEligible(userId);
     return economy.leaderboard(user);
@@ -395,6 +406,8 @@ module.exports = {
     storeInfo,
     buyCoins,
     redeemPurchase,
+    adStart,
+    adClaim,
     leaderboard,
     prizeSeen,
     startLudoLobbySweeper,

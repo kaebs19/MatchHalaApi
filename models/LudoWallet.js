@@ -22,7 +22,12 @@ const ludoWalletSchema = new mongoose.Schema({
         weekKey: String, rank: Number, gems: Number, coins: Number,
         seen: { type: Boolean, default: false }
     },
-    dailyClaimedAt: { type: Date, default: null }
+    dailyClaimedAt: { type: Date, default: null },
+    // مكافأة مشاهدة إعلان: عدّاد اليوم (UTC) ورمز الإعلان الجاري (يُستعمل مرة)
+    adDay: { type: String, default: null },
+    adCount: { type: Number, default: 0 },
+    adToken: { type: String, default: null },
+    adTokenAt: { type: Date, default: null }
 }, { timestamps: true });
 
 // الترتيب الأسبوعي

@@ -66,6 +66,8 @@ function registerLudoHandlers(io, socket) {
     on('ludo:store', () => lobby.storeInfo(userId));
     on('ludo:store:buy-coins', ({ packId }) => lobby.buyCoins(userId, packId));
     on('ludo:store:purchase', ({ signedTransaction }) => lobby.redeemPurchase(userId, signedTransaction));
+    on('ludo:ad:start', () => lobby.adStart(userId));
+    on('ludo:ad:claim', ({ token }) => lobby.adClaim(userId, token));
     on('ludo:leaderboard', () => lobby.leaderboard(userId));
     on('ludo:prize:seen', () => lobby.prizeSeen(userId));
 

@@ -49,6 +49,16 @@ const GEM_PRODUCTS = {
     'com.app.hala.ludo.gems900': 900
 };
 
+// ── مكافأة مشاهدة إعلان ──
+// الخادم لا يرى الإعلان نفسه: يصدر رمزاً عند البدء، ولا يمنح إلا برمز عمره AD_MIN_MS على الأقل ومرة واحدة،
+// وبسقف يومي — فأقصى ما يُنتزع بلا مشاهدة هو سقف اليوم. (تشديد لاحق: AdMob Server-Side Verification.)
+const AD_REWARD = { coins: Number(process.env.LUDO_AD_COINS) || 500, gems: Number(process.env.LUDO_AD_GEMS) || 1 };
+const AD_DAILY_MAX = Number(process.env.LUDO_AD_DAILY_MAX) || 5;
+const AD_MIN_MS = 5000;
+const AD_MAX_MS = 10 * 60 * 1000;
+const dayKeyOf = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
+const adsLeft = (w, now = Date.now()) => Math.max(0, AD_DAILY_MAX - (w.adDay === dayKeyOf(now) ? (w.adCount || 0) : 0));
+
 // ── الترتيب الأسبوعي ──
 const LEADERBOARD_SIZE = 50;
 const WEEKLY_PRIZES = [
@@ -111,6 +121,7 @@ function walletView(w, now = Date.now()) {
         tier: tierOf(w.points || 0),
         weekPoints: w.weekKey === weekKeyOf(now) ? (w.weekPoints || 0) : 0,
         prize,
+        ad: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, left: adsLeft(w, now), max: AD_DAILY_MAX },
         dailyBonus: DAILY_BONUS,
         // 0 = متاحة الآن
         dailyAvailableAt: claimed && claimed + DAILY_MS > now ? claimed + DAILY_MS : 0
@@ -214,6 +225,38 @@ async function claimDaily(userId, now = Date.now()) {
     ).lean();
     if (!w) throw new LudoError('DAILY_NOT_READY', 'أخذت مكافأة اليوم — ارجع غداً', 409);
     return w;
+}
+
+// ───────────── مكافأة الإعلان ─────────────
+
+async function startAd(userId, now = Date.now()) {
+    const w = await getWallet(userId);
+    if (adsLeft(w, now) <= 0) throw new LudoError('AD_LIMIT', 'وصلت حدّ مكافآت الإعلانات اليوم — ارجع غداً', 429);
+    const token = require('crypto').randomBytes(12).toString('base64url');
+    await LudoWallet.updateOne({ user: userId }, { $set: { adToken: token, adTokenAt: new Date(now) } });
+    return { token };
+}
+
+async function claimAd(userId, token, now = Date.now()) {
+    const w = await getWallet(userId);
+    const age = w.adTokenAt ? now - new Date(w.adTokenAt).getTime() : -1;
+    if (!token || w.adToken !== String(token) || age < AD_MIN_MS || age > AD_MAX_MS) {
+        throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
+    }
+    if (adsLeft(w, now) <= 0) throw new LudoError('AD_LIMIT', 'وصلت حدّ مكافآت الإعلانات اليوم — ارجع غداً', 429);
+    const today = dayKeyOf(now);
+    const sameDay = w.adDay === today;
+    // الرمز في الشرط: طلبان بالرمز نفسه يمنح أحدهما فقط
+    const updated = await LudoWallet.findOneAndUpdate(
+        { user: userId, adToken: String(token) },
+        {
+            $inc: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, ...(sameDay ? { adCount: 1 } : {}) },
+            $set: { adToken: null, adTokenAt: null, ...(sameDay ? {} : { adDay: today, adCount: 1 }) }
+        },
+        { new: true }
+    ).lean();
+    if (!updated) throw new LudoError('AD_NOT_VERIFIED', 'لم تكتمل مشاهدة الإعلان', 400);
+    return updated;
 }
 
 // ───────────── المتجر ─────────────
@@ -354,8 +397,8 @@ function startSeasonSweeper() {
 
 module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
-    storeView, buyCoins, redeemPurchase,
+    storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
     assertLeague, prizeFor, stakeFor, leaguesView, walletView, tierOf, weekKeyOf,
-    constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, WEEKLY_PRIZES, TIERS }
+    constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };
