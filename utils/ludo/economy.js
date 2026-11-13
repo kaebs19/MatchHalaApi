@@ -126,6 +126,8 @@ function walletView(w, now = Date.now()) {
         winStreak: w.winStreak || 0,
         bestStreak: w.bestStreak || 0,
         coinsWon: w.coinsWon || 0,
+        friendlyPlayed: w.friendlyPlayed || 0,
+        friendlyWins: w.friendlyWins || 0,
         tier: tierOf(w.points || 0),
         weekPoints: w.weekKey === weekKeyOf(now) ? (w.weekPoints || 0) : 0,
         prize,
@@ -153,6 +155,8 @@ async function publicStats(userId, now = Date.now()) {
         winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
         winStreak: w.winStreak || 0,
         bestStreak: w.bestStreak || 0,
+        friendlyPlayed: w.friendlyPlayed || 0,
+        friendlyWins: w.friendlyWins || 0,
         tier: tierOf(w.points || 0),
         weekPoints,
         weekRank
@@ -245,6 +249,12 @@ async function settle(userId, { won, prize, league }, now = Date.now()) {
         }
     });
     return points;
+}
+
+// مباراة ودّية بين بشر: عدّاد منفصل للعرض — لا عملات ولا نجوم ولا سلاسل
+async function recordFriendly(userId, won) {
+    await getWallet(userId);
+    await LudoWallet.updateOne({ user: userId }, { $inc: { friendlyPlayed: 1, friendlyWins: won ? 1 : 0 } });
 }
 
 async function claimDaily(userId, now = Date.now()) {
@@ -438,6 +448,6 @@ module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
-    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, tierOf, weekKeyOf,
+    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, recordFriendly, tierOf, weekKeyOf,
     constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };

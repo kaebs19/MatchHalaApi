@@ -13,6 +13,9 @@ const ludoWalletSchema = new mongoose.Schema({
     winStreak: { type: Number, default: 0 },
     bestStreak: { type: Number, default: 0 },
     coinsWon: { type: Number, default: 0 },
+    // المباريات الودّية بين لاعبَين بشريَّين فأكثر (غرفة، دعوة، تحدٍّ) — عرض فقط، بلا أثر على المرتبة والترتيب
+    friendlyPlayed: { type: Number, default: 0 },
+    friendlyWins: { type: Number, default: 0 },
     // النجوم: كل فوز في الدوري — المجموع يحدّد المرتبة، والأسبوعي يحدّد الترتيب
     points: { type: Number, default: 0 },
     weekKey: { type: String, default: null },      // 'YYYY-MM-DD' (اثنين الأسبوع، UTC)

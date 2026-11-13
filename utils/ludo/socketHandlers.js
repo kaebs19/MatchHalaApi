@@ -70,13 +70,20 @@ function registerLudoHandlers(io, socket) {
     on('ludo:store:purchase', ({ signedTransaction }) => lobby.redeemPurchase(userId, signedTransaction));
     on('ludo:ad:start', () => lobby.adStart(userId));
     on('ludo:ad:claim', ({ token }) => lobby.adClaim(userId, token));
+    // ── التحدّي المباشر (صديق، أو خصم مباراة انتهت للتوّ) ──
+    on('ludo:challenge', ({ to }) => lobby.challenge(userId, to));
+    on('ludo:challenge:reply', ({ from, accept }) => lobby.challengeReply(userId, from, accept === true));
     on('ludo:player', ({ userId: target }) => lobby.playerCard(userId, target));
     on('ludo:leaderboard', () => lobby.leaderboard(userId));
     on('ludo:prize:seen', () => lobby.prizeSeen(userId));
 
     // ── المباراة ──
     // back: شاشة المباراة أمامه ← يستعيد مقعده إن كان البوت تولّاه
-    on('ludo:resume', async ({ back }) => ({ game: await service.playerReturn(userId, { reclaim: back === true }) }));
+    // lastResult: آخر مباراة انتهت (24س) — التطبيق يعرضها إن لم يكن رأى نهايتها (انتهت وهو غائب)
+    on('ludo:resume', async ({ back }) => {
+        const game = await service.playerReturn(userId, { reclaim: back === true });
+        return { game, lastResult: game ? null : await store.getLastResult(userId).catch(() => null) };
+    });
     on('ludo:roll', async ({ gameId, version }) =>
         ({ game: await service.playerRoll(userId, gameId, version) }));
     on('ludo:move', async ({ gameId, token, version }) =>

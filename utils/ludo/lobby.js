@@ -120,7 +120,12 @@ function emitQueueDropped(userId) {
 async function walletInfo(userId) {
     const user = await loadEligible(userId);
     const wallet = await economy.getWallet(String(user._id));
-    return { wallet: economy.walletView(wallet), leagues: economy.leaguesView() };
+    // منع الدوري الساري (خروج متكرر) — ليُعرض قفلاً قبل الضغط؛ now لتصحيح فرق الساعة
+    const ban = await penalties.leagueBan(String(user._id)).catch(() => null);
+    return {
+        wallet: economy.walletView(wallet), leagues: economy.leaguesView(),
+        leagueBanUntil: ban ? ban.until : null, now: Date.now()
+    };
 }
 
 // المتجر: باقات العملات (بالجواهر) ومنتجات الجواهر (App Store)
@@ -167,6 +172,70 @@ async function claimDaily(userId) {
     return { wallet: economy.walletView(await economy.claimDaily(String(user._id))) };
 }
 
+// ───────────── التحدّي المباشر ─────────────
+// مباراة ودّية من لاعبَين، بلا رسوم. يحقّ بين صديقَين، أو بين خصمَي مباراة انتهت للتوّ («مباراة ثانية»)
+// — لا تحدٍّ لغريب: الاسم ظاهر في الترتيب لكل الناس، والتحدّي تنبيه يقاطع صاحبه.
+
+const CHALLENGE_TTL_MS = Number(process.env.LUDO_CHALLENGE_TTL_MS) || 30000;
+
+async function mayChallenge(a, b) {
+    if (await store.areRivals(a, b)) return true;
+    const Friendship = require('../../models/Friendship');
+    return !!(await Friendship.findOne({
+        status: 'accepted',
+        $or: [{ requester: a, recipient: b }, { requester: b, recipient: a }]
+    }).select('_id').lean());
+}
+
+async function challenge(userId, targetId) {
+    const from = await loadEligible(userId);
+    const fromId = String(from._id);
+    const toId = String(targetId || '');
+    const unavailable = () => new LudoError('PLAYER_UNAVAILABLE', 'هذا اللاعب غير متاح الآن', 404);
+    if (!/^[a-f0-9]{24}$/i.test(toId) || toId === fromId) throw unavailable();
+    let to;
+    try { to = await loadEligible(toId); } catch (e) { throw unavailable(); }
+    if (blockedList(from).includes(toId) || blockedList(to).includes(fromId)) throw unavailable();
+    if (!(await mayChallenge(fromId, toId))) {
+        throw new LudoError('CHALLENGE_NOT_ALLOWED', 'التحدّي متاح لأصدقائك ولمن لعبت معه للتوّ', 403);
+    }
+    await assertFree(fromId);
+    if (await store.getUserGame(toId)) throw new LudoError('PLAYER_BUSY', 'اللاعب في مباراة أخرى الآن', 409);
+    if (!(await store.challengeCooldown(fromId, toId, CHALLENGE_TTL_MS))) {
+        throw new LudoError('CHALLENGE_PENDING', 'أرسلت له تحدّياً للتوّ — انتظر ردّه', 429);
+    }
+    const expiresAt = Date.now() + CHALLENGE_TTL_MS;
+    await store.setChallenge(toId, fromId, { from: playerInfo(from), expiresAt }, CHALLENGE_TTL_MS);
+    global.io?.to(`user:${toId}`).emit('ludo:challenge', { from: playerInfo(from), expiresAt, now: Date.now() });
+    return { expiresAt, now: Date.now() };
+}
+
+async function challengeReply(userId, fromId, accept) {
+    const toId = String(userId);
+    const from = String(fromId || '');
+    const pending = /^[a-f0-9]{24}$/i.test(from) ? await store.takeChallenge(toId, from) : null;
+    if (!pending) throw new LudoError('CHALLENGE_EXPIRED', 'انتهت مهلة التحدّي', 410);
+    if (!accept) {
+        global.io?.to(`user:${from}`).emit('ludo:challenge:declined', { by: toId });
+        return { started: false };
+    }
+    let a; let b;
+    try {
+        [a, b] = await Promise.all([loadEligible(from), loadEligible(toId)]);
+        if (blockedList(a).includes(toId) || blockedList(b).includes(from)) throw new Error('blocked');
+        await assertFree(from);
+    } catch (e) {
+        global.io?.to(`user:${from}`).emit('ludo:challenge:declined', { by: toId });
+        throw new LudoError('CHALLENGE_EXPIRED', 'صاحب التحدّي لم يعد متاحاً', 410);
+    }
+    await assertFree(toId);
+    await store.dequeue([from, toId]);
+    const record = await service.createMatch({
+        players: [playerInfo(a), playerInfo(b)], mode: 'quick', source: 'challenge'
+    });
+    return { started: true, gameId: record.id };
+}
+
 // 👤 بطاقة لاعب (الضغط على اسمه): بيانات عامة + إحصاءات الدوري. لا تُعرض لطرفَي حظر ولا لحساب غير متاح.
 async function playerCard(viewerId, targetId) {
     const viewer = await loadEligible(viewerId);
@@ -187,6 +256,7 @@ async function playerCard(viewerId, targetId) {
             joinedAt: user.createdAt ? new Date(user.createdAt).getTime() : null,
             premium,
             isMe,
+            canChallenge: !isMe && await mayChallenge(String(viewer._id), id),
             stats: await economy.publicStats(id)
         }
     };
@@ -438,6 +508,8 @@ module.exports = {
     loadEligible,
     walletInfo,
     playerCard,
+    challenge,
+    challengeReply,
     claimDaily,
     storeInfo,
     buyCoins,

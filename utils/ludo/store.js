@@ -46,7 +46,11 @@ const k = {
     lock: (name) => `ludo:lock:${name}`,
     quits: (userId) => `ludo:quits:${userId}`,
     quitLevel: (userId) => `ludo:quitlevel:${userId}`,
-    quitBan: (userId) => `ludo:quitban:${userId}`
+    quitBan: (userId) => `ludo:quitban:${userId}`,
+    lastResult: (userId) => `ludo:lastresult:${userId}`,
+    rival: (a, b) => `ludo:rival:${[String(a), String(b)].sort().join(':')}`,
+    challenge: (to, from) => `ludo:challenge:${to}:${from}`,
+    challengeCd: (from, to) => `ludo:challengecd:${from}:${to}`
 };
 
 // ───────────── القفل ─────────────
@@ -168,6 +172,50 @@ async function getQuitBan(userId) {
     return v ? Number(v) : null;
 }
 
+// ───────────── آخر نتيجة (لمن انتهت مباراته وهو غائب) ─────────────
+
+async function setLastResult(userId, result, ttlS = 24 * 60 * 60) {
+    await (await redis()).set(k.lastResult(userId), JSON.stringify(result), { EX: ttlS });
+}
+
+async function getLastResult(userId) {
+    const raw = await (await redis()).get(k.lastResult(userId));
+    return raw ? JSON.parse(raw) : null;
+}
+
+// ───────────── التحدّي المباشر ─────────────
+
+// لعبا معاً للتوّ ← يحقّ لأيّهما تحدّي الآخر (مباراة ثانية) خلال ttl
+async function markRivals(userIds, ttlS) {
+    const c = await redis();
+    const multi = c.multi();
+    for (let i = 0; i < userIds.length; i++) {
+        for (let j = i + 1; j < userIds.length; j++) multi.set(k.rival(userIds[i], userIds[j]), '1', { EX: ttlS });
+    }
+    await multi.exec();
+}
+
+async function areRivals(a, b) {
+    return !!(await (await redis()).get(k.rival(a, b)));
+}
+
+// false إن كان أرسل له للتوّ (مهلة بين تحدٍّ وآخر للشخص نفسه)
+async function challengeCooldown(from, to, ms) {
+    return !!(await (await redis()).set(k.challengeCd(from, to), '1', { NX: true, PX: ms }));
+}
+
+async function setChallenge(to, from, data, ms) {
+    await (await redis()).set(k.challenge(to, from), JSON.stringify(data), { PX: ms });
+}
+
+// يأخذ التحدّي ويمحوه (يُردّ عليه مرة واحدة)
+async function takeChallenge(to, from) {
+    // get+del في معاملة واحدة (لا GETDEL: يحتاج Redis 6.2)
+    const key = k.challenge(to, from);
+    const res = await (await redis()).multi().get(key).del(key).exec();
+    return res[0] ? JSON.parse(String(res[0])) : null;
+}
+
 // ───────────── طابور المطابقة ─────────────
 
 async function enqueue(queueKey, entry) {
@@ -264,6 +312,8 @@ module.exports = {
     setUserGame, getUserGame, clearUserGame,
     addForfeit, removeForfeit, dueForfeits,
     addQuit, bumpQuitLevel, setQuitBan, getQuitBan,
+    setLastResult, getLastResult,
+    markRivals, areRivals, challengeCooldown, setChallenge, takeChallenge,
     enqueue, dequeue, getQueueEntry, queueEntries, activeQueueKeys,
     createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom,
     StoreUnavailable

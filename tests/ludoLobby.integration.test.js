@@ -28,6 +28,14 @@ const Settings = require('../models/Settings');
 let gamesTab = 'admins';
 Settings.findOne = () => ({ select: () => ({ lean: async () => ({ gamesTab }) }) });
 
+// صداقات وهمية: مجموعة مفاتيح "a|b"
+const Friendship = require('../models/Friendship');
+const friendships = new Set();
+Friendship.findOne = (filter) => ({ select: () => ({ lean: async () => {
+    const hit = (filter.$or || []).some(c => friendships.has(`${c.requester}|${c.recipient}`));
+    return hit ? { _id: 'f' } : null;
+} }) });
+
 const LudoMatch = require('../models/LudoMatch');
 const saved = [];
 LudoMatch.create = async (doc) => { saved.push(doc); return doc; };
@@ -317,7 +325,7 @@ maybe('السوكت: ack موحّد، والعبارات من القائمة ف�
     const sa = makeSocket(a, users.get(a)); registerLudoHandlers(fakeIo, sa);
     const sb = makeSocket(b, { ...users.get(b), isPremium: true }); registerLudoHandlers(fakeIo, sb);
 
-    assert.deepEqual(await sa.call('ludo:resume', {}), { ok: true, game: null });
+    assert.deepEqual(await sa.call('ludo:resume', {}), { ok: true, game: null, lastResult: null });
     const bad = await sa.call('ludo:queue:join', { mode: 'x', size: 2 });
     assert.equal(bad.ok, false); assert.equal(bad.code, 'BAD_MODE');
 
@@ -630,6 +638,96 @@ maybe('بطاقة اللاعب: بيانات عامة وإحصاءات بلا أ
     users.get(b).blockedUsers = [];
     users.get(b).suspension = { isSuspended: true };
     await assert.rejects(lobby.playerCard(a, b), { code: 'PLAYER_UNAVAILABLE' });
+});
+
+maybe('بعد المباراة: إحصاءات الودّية، آخر نتيجة للحاضر، ونتيجة الحسم للغائب', async () => {
+    const { LEAGUES } = economy.constants;
+    const a = addUser(); const b = addUser();
+    await lobby.walletInfo(a); await lobby.walletInfo(b);
+    // ودّية بين بشريَّين: تُحسب للطرفين (المنسحب خاسر) ولا تمسّ إحصاءات الدوري
+    const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+    await service.playerLeave(b, rec.id);
+    assert.equal(wallets.get(a).friendlyPlayed, 1);
+    assert.equal(wallets.get(a).friendlyWins, 1);
+    assert.equal(wallets.get(b).friendlyPlayed, 1);
+    assert.equal(wallets.get(b).friendlyWins || 0, 0);
+    assert.equal(wallets.get(a).played || 0, 0);
+    const card = await lobby.playerCard(b, a);
+    assert.equal(card.player.stats.friendlyWins, 1);
+    // الفائز له آخر نتيجة، والمنسحب بيده لا
+    const ra = await store.getLastResult(a);
+    assert.equal(ra.gameId, rec.id);
+    assert.deepEqual({ won: ra.won, reason: ra.reason, delta: ra.delta, rivals: ra.rivals },
+        { won: true, reason: 'ended', delta: 0, rivals: [users.get(b).name] });
+    assert.equal(await store.getLastResult(b), null);
+    // ضدّ الكمبيوتر وحده لا تُحسب ودّية
+    const solo = await lobby.startSolo(a, { mode: 'quick', size: 2 });
+    await service.playerLeave(a, solo.gameId);
+    assert.equal(wallets.get(a).friendlyPlayed, 1);
+
+    // دوري: الحسم بالانقطاع يترك للغائب نتيجته بالرسوم المخصومة، وludo:resume يعيدها
+    const c = addUser(); const d = addUser();
+    await lobby.joinQueue(c, { mode: 'quick', size: 2, league: 'bronze' });
+    await lobby.joinQueue(d, { mode: 'quick', size: 2, league: 'bronze' });
+    const gid = await store.getUserGame(c);
+    await service.setPresence(d, false);
+    const since = (await store.getGame(gid)).meta.offline[d];
+    await service.forfeitOffline(gid, d, since + service.constants.RETURN_GRACE_MS);
+    const rd = await store.getLastResult(d);
+    assert.deepEqual({ gameId: rd.gameId, won: rd.won, reason: rd.reason, delta: rd.delta, league: rd.league },
+        { gameId: gid, won: false, reason: 'forfeit', delta: -LEAGUES.bronze.fee, league: 'bronze' });
+    const rc = await store.getLastResult(c);
+    assert.deepEqual({ won: rc.won, delta: rc.delta }, { won: true, delta: LEAGUES.bronze.fee });
+});
+
+maybe('التحدّي: لصديق أو لخصم مباراة انتهت للتوّ — قبول يبدأ ودّية، ورفض يُبلَّغ', async () => {
+    const a = addUser(); const b = addUser(); const stranger = addUser();
+    await assert.rejects(lobby.challenge(a, stranger), { code: 'CHALLENGE_NOT_ALLOWED' });
+    await assert.rejects(lobby.challenge(a, a), { code: 'PLAYER_UNAVAILABLE' });
+    await assert.rejects(lobby.challenge(a, 'bot:0:x'), { code: 'PLAYER_UNAVAILABLE' });
+    assert.equal((await lobby.playerCard(a, b)).player.canChallenge, false);
+
+    friendships.add(`${a}|${b}`);
+    assert.equal((await lobby.playerCard(b, a)).player.canChallenge, true);
+    const sent = await lobby.challenge(a, b);
+    assert.ok(sent.expiresAt > Date.now());
+    assert.ok(eventsFor(b, 'ludo:challenge').some(e => e.from.id === a));
+    await assert.rejects(lobby.challenge(a, b), { code: 'CHALLENGE_PENDING' });
+    // رفض: يُبلَّغ المرسل، والردّ مرة واحدة
+    assert.deepEqual(await lobby.challengeReply(b, a, false), { started: false });
+    assert.ok(eventsFor(a, 'ludo:challenge:declined').some(e => e.by === b));
+    await assert.rejects(lobby.challengeReply(b, a, true), { code: 'CHALLENGE_EXPIRED' });
+
+    // الاتجاه الآخر (مهلة منفصلة): قبول ← مباراة ودّية من لاعبَين
+    await lobby.challenge(b, a);
+    const r = await lobby.challengeReply(a, b, true);
+    assert.equal(r.started, true);
+    const g = service.view(await store.getGame(r.gameId));
+    assert.equal(g.source, 'challenge');
+    assert.equal(g.stake, null);
+    assert.deepEqual(g.players.map(p => p.id).sort(), [a, b].sort());
+    // في مباراة ← لا يُتحدّى
+    const c = addUser(); friendships.add(`${c}|${a}`);
+    await assert.rejects(lobby.challenge(c, a), { code: 'PLAYER_BUSY' });
+    await service.playerLeave(a, r.gameId);
+
+    // خصما مباراة انتهت للتوّ (بلا صداقة): «مباراة ثانية» مسموحة
+    const x = addUser(); const y = addUser();
+    const rec = await lobby.startInviteMatch(x, y, { mode: 'quick', messageId: oid() });
+    await service.playerLeave(y, rec.id);
+    assert.equal((await lobby.challenge(x, y)).expiresAt > 0, true);
+    // محظور ← غير متاح
+    users.get(y).blockedUsers = [x];
+    await assert.rejects(lobby.challenge(y, x), { code: 'PLAYER_UNAVAILABLE' });
+});
+
+maybe('منع الدوري يظهر في بيانات الرصيد قبل محاولة الدخول', async () => {
+    const penalties = require('../utils/ludo/penalties');
+    const u = addUser();
+    assert.equal((await lobby.walletInfo(u)).leagueBanUntil, null);
+    for (let i = 0; i < 3; i++) await penalties.recordLeagueQuit(u);
+    const info = await lobby.walletInfo(u);
+    assert.ok(info.leagueBanUntil > info.now);
 });
 
 maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {

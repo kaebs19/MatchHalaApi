@@ -226,6 +226,7 @@ async function finalize(record) {
         console.error('ludo finalize error:', e.message);
     }
     const rewards = stake && !alreadySaved ? await settleStake(record, stake) : [];
+    if (!alreadySaved) await afterMatch(record, ranking, stake, rewards);
     await store.clearUserGame(humans(record), record.id);
     emitToPlayers(record, 'ludo:ended', {
         gameId: record.id, winners: record.state.winners, ranking,
@@ -234,6 +235,48 @@ async function finalize(record) {
     for (const fn of finalizeHooks) {
         try { await fn(record, ranking); } catch (e) { console.error('ludo finalize hook:', e.message); }
     }
+}
+
+// لعبا معاً ← يحقّ لهما تحدّي بعضهما (مباراة ثانية) خلال هذه المدة
+const RIVAL_TTL_S = 10 * 60;
+
+// بعد الحفظ: إحصاءات الودّية، آخر نتيجة لكل لاعب (يراها من انتهت مباراته وهو غائب)، وحقّ المباراة الثانية.
+// كلها ثانوية — فشلها لا يمسّ النتيجة ولا الجوائز.
+async function afterMatch(record, ranking, stake, rewards) {
+    const ids = humans(record);
+    const winners = new Set(record.state.winners || []);
+    const placeOf = new Map(ranking.map(r => [r.id, r.place]));
+    try {
+        for (const id of ids) {
+            const seat = record.state.seats.find(s => s.id === id);
+            const won = winners.has(id);
+            if (!stake && ids.length >= 2) await economy.recordFriendly(id, won);
+            // من خرج (انسحاب أو حسم بالانقطاع) يعرف نتيجته من لحظتها
+            if (seat?.status === 'left') continue;
+            const reward = rewards.find(r => r.id === id);
+            await store.setLastResult(id, lastResult(record, id, {
+                won, place: placeOf.get(id) ?? null, reason: 'ended',
+                delta: reward ? reward.delta : 0, points: reward ? reward.points : 0
+            }));
+        }
+        if (ids.length >= 2) await store.markRivals(ids, RIVAL_TTL_S);
+    } catch (e) {
+        console.error('ludo afterMatch:', e.message);
+    }
+}
+
+function lastResult(record, userId, extra) {
+    const stake = record.meta.stake || null;
+    return {
+        gameId: record.id,
+        league: stake?.league || null,
+        fee: stake?.fee || 0,
+        prize: stake?.prize || 0,
+        // الخصوم البشر — للعرض («ضدّ نورة»)
+        rivals: record.meta.players.filter(p => !p.isBot && p.id !== userId).map(p => p.name),
+        endedAt: Date.now(),
+        ...extra
+    };
 }
 
 // الفائز يأخذ الجائزة، والخاسر خسر رسومه (خُصمت عند البدء). delta = صافي المباراة للّاعب.
@@ -394,6 +437,10 @@ async function forfeitOffline(gameId, userId, now = Date.now()) {
     if (forfeited) {
         await store.clearUserGame([id], gameId);
         await countLeagueQuit(r, id);
+        // يعود فيجد المباراة اختفت — نخبره لماذا وكم خسر
+        await store.setLastResult(id, lastResult(r, id, {
+            won: false, place: null, reason: 'forfeit', delta: -(r.meta.stake?.fee || 0), points: 0
+        })).catch(() => {});
     }
     return forfeited;
 }
