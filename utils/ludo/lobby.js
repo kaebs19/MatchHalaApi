@@ -167,6 +167,31 @@ async function claimDaily(userId) {
     return { wallet: economy.walletView(await economy.claimDaily(String(user._id))) };
 }
 
+// 👤 بطاقة لاعب (الضغط على اسمه): بيانات عامة + إحصاءات الدوري. لا تُعرض لطرفَي حظر ولا لحساب غير متاح.
+async function playerCard(viewerId, targetId) {
+    const viewer = await loadEligible(viewerId);
+    const gone = () => new LudoError('PLAYER_UNAVAILABLE', 'هذا اللاعب غير متاح', 404);
+    const id = String(targetId || '');
+    if (!/^[a-f0-9]{24}$/i.test(id)) throw gone();
+    const isMe = id === String(viewer._id);
+    const user = await User.findById(id)
+        .select('name profileImage country createdAt isActive suspension blockedUsers isPremium premiumExpiresAt')
+        .lean();
+    if (!user || !user.isActive || user.suspension?.isSuspended) throw gone();
+    if (!isMe && (blockedList(viewer).includes(id) || blockedList(user).includes(String(viewer._id)))) throw gone();
+    const premium = !!user.isPremium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
+    return {
+        player: {
+            ...playerInfo(user),
+            country: user.country || null,
+            joinedAt: user.createdAt ? new Date(user.createdAt).getTime() : null,
+            premium,
+            isMe,
+            stats: await economy.publicStats(id)
+        }
+    };
+}
+
 async function leaveQueue(userId) {
     await store.dequeue([String(userId)]);
     return { queued: false };
@@ -412,6 +437,7 @@ module.exports = {
     leaveRoom,
     loadEligible,
     walletInfo,
+    playerCard,
     claimDaily,
     storeInfo,
     buyCoins,

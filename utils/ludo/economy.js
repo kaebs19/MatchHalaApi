@@ -136,6 +136,29 @@ function walletView(w, now = Date.now()) {
     };
 }
 
+// ما يراه لاعب آخر (بطاقة اللاعب): الأداء والمرتبة فقط — لا أرصدة ولا مشتريات
+async function publicStats(userId, now = Date.now()) {
+    const w = await getWallet(userId);
+    const wk = weekKeyOf(now);
+    const played = w.played || 0;
+    const wins = w.wins || 0;
+    const weekPoints = w.weekKey === wk ? (w.weekPoints || 0) : 0;
+    const weekRank = weekPoints > 0
+        ? 1 + await LudoWallet.countDocuments({ weekKey: wk, weekPoints: { $gt: weekPoints } })
+        : null;
+    return {
+        played,
+        wins,
+        losses: w.losses || 0,
+        winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
+        winStreak: w.winStreak || 0,
+        bestStreak: w.bestStreak || 0,
+        tier: tierOf(w.points || 0),
+        weekPoints,
+        weekRank
+    };
+}
+
 // يُنشئ المحفظة عند أول طلب برصيد البداية
 async function getWallet(userId) {
     const upsert = () => LudoWallet.findOneAndUpdate(
@@ -415,6 +438,6 @@ module.exports = {
     getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, awardLastWeek, markPrizeSeen, startSeasonSweeper,
-    assertLeague, prizeFor, stakeFor, leaguesView, walletView, tierOf, weekKeyOf,
+    assertLeague, prizeFor, stakeFor, leaguesView, walletView, publicStats, tierOf, weekKeyOf,
     constants: { START_COINS, START_GEMS, DAILY_BONUS, DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_DAILY_MAX, AD_MIN_MS }
 };

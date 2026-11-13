@@ -605,6 +605,33 @@ maybe('الإنهاء المبكر عبر الخدمة: يُرفض والخصم 
     assert.ok(eventsFor(a, 'ludo:ended').some(e => e.gameId === rec.id));
 });
 
+maybe('بطاقة اللاعب: بيانات عامة وإحصاءات بلا أرصدة، ومحجوبة بين طرفَي حظر', async () => {
+    const created = new Date('2025-03-04T00:00:00Z');
+    const a = addUser(); const b = addUser({ country: 'السعودية', createdAt: created, isPremium: true });
+    await lobby.walletInfo(b);
+    Object.assign(wallets.get(b), { played: 8, wins: 6, losses: 2, winStreak: 2, bestStreak: 4, points: 120 });
+    const { player } = await lobby.playerCard(a, b);
+    assert.equal(player.id, b);
+    assert.equal(player.country, 'السعودية');
+    assert.equal(player.joinedAt, created.getTime());
+    assert.equal(player.premium, true);
+    assert.equal(player.isMe, false);
+    assert.deepEqual(
+        { played: player.stats.played, wins: player.stats.wins, losses: player.stats.losses, winRate: player.stats.winRate, best: player.stats.bestStreak },
+        { played: 8, wins: 6, losses: 2, winRate: 75, best: 4 });
+    assert.equal(player.stats.tier.id, 'silver');
+    assert.equal(player.stats.coins, undefined);
+    assert.equal(player.coins, undefined);
+    assert.equal((await lobby.playerCard(a, a)).player.isMe, true);
+    await assert.rejects(lobby.playerCard(a, 'bot:0:abc'), { code: 'PLAYER_UNAVAILABLE' });
+    await assert.rejects(lobby.playerCard(a, oid()), { code: 'PLAYER_UNAVAILABLE' });
+    users.get(b).blockedUsers = [a];
+    await assert.rejects(lobby.playerCard(a, b), { code: 'PLAYER_UNAVAILABLE' });
+    users.get(b).blockedUsers = [];
+    users.get(b).suspension = { isSuspended: true };
+    await assert.rejects(lobby.playerCard(a, b), { code: 'PLAYER_UNAVAILABLE' });
+});
+
 maybe('الدوري: رصيد لا يكفي، دوري خاطئ، ودوريان مختلفان لا يُجمعان', async () => {
     const poor = addUser();
     await lobby.walletInfo(poor);
