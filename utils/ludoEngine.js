@@ -46,6 +46,8 @@ const DEFAULT_OPTIONS = {
     endOnFirstFinish: true,
     // أدوار متتالية بلا تفاعل قبل أن يتولّى البوت اللاعب نهائياً
     maxMissedTurns: 3,
+    // مرات استعادة التحكم بعد أن يتولّى البوت اللاعب (عودته للمباراة)
+    maxComebacks: 2,
     // أداة «إعادة الرمي»: مرات لكل لاعب بشري في المباراة (البوت لا يستعملها)
     rerollsPerPlayer: 1,
     // إعادة رمي مدفوعة بالجواهر بعد نفاد المجانية — السعر يتصاعد مع كل مرة في المباراة.
@@ -551,9 +553,36 @@ function handleTimeout(input, { rollDie, expectVersion, now = Date.now() }) {
     s.missed = missed;
     if (missed >= state.options.maxMissedTurns && !s.isBot) {
         s.isBot = true;
+        s.takenOver = true;      // يميّزه عن بوت أصلي — يستطيع استعادة مقعده (reclaim)
         events.push({ type: 'taken_over', playerId: s.id });
     }
     return { state, events };
+}
+
+const comebacksLeft = (state, seat) =>
+    Math.max(0, (state.options.maxComebacks ?? 0) - (seat.comebacks || 0));
+
+// عاد اللاعب الذي تولّاه البوت: يستعيد مقعده (بحدّ maxComebacks في المباراة).
+// الدور والنرد كما هما — إن كان دوره يكمله بنفسه من حيث وقف البوت.
+function reclaim(input, { playerId }) {
+    if (input.phase === 'ended') throw new LudoError('GAME_ENDED', 'انتهت المباراة', 409);
+    const index = input.seats.findIndex(s => s.id === String(playerId));
+    if (index < 0) throw new LudoError('NOT_IN_GAME', 'لست في هذه المباراة', 403);
+    const current = input.seats[index];
+    if (current.status !== 'active' || !current.takenOver) {
+        throw new LudoError('NOT_TAKEN_OVER', 'أنت تتحكم بقطعك', 409);
+    }
+    if (comebacksLeft(input, current) <= 0) {
+        throw new LudoError('NO_COMEBACKS', 'استنفدت مرات العودة — الكمبيوتر يكمل عنك', 409);
+    }
+    const state = clone(input);
+    const seat = state.seats[index];
+    seat.isBot = false;
+    seat.takenOver = false;
+    seat.missed = 0;
+    seat.comebacks = (seat.comebacks || 0) + 1;
+    state.version++;
+    return { state, events: [{ type: 'returned', playerId: seat.id }] };
 }
 
 // ───────────────────────── العرض ─────────────────────────
@@ -564,7 +593,9 @@ function publicState(state) {
         mode: state.mode,
         seats: state.seats.map(s => ({
             id: s.id, color: s.color, team: s.team, tokens: s.tokens,
-            status: s.status, isBot: s.isBot, rerolls: s.rerolls || 0
+            status: s.status, isBot: s.isBot, rerolls: s.rerolls || 0,
+            // تولّاه البوت بعد أدوار فائتة، وكم مرة بقيت له ليستعيد التحكم
+            takenOver: !!s.takenOver, comebacksLeft: comebacksLeft(state, s)
         })),
         turn: state.turn,
         currentPlayerId: state.seats[state.turn]?.id || null,
@@ -589,6 +620,7 @@ module.exports = {
     move,
     leave,
     handleTimeout,
+    reclaim,
     autoStep,
     chooseBotMove,
     legalMovesFor,

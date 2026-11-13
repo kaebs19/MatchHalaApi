@@ -2,6 +2,7 @@
 // node --test tests/ludoLobby.integration.test.js   (يُتخطّى إن لم يتوفر Redis)
 process.env.REDIS_URL = process.env.LUDO_TEST_REDIS || 'redis://127.0.0.1:6379/9';
 process.env.LUDO_TURN_MS = '300';
+process.env.LUDO_OFFLINE_TURN_MS = '60';
 process.env.LUDO_BOT_FILL_MS = '200';
 
 const test = require('node:test');
@@ -337,6 +338,72 @@ maybe('السوكت: ack موحّد، والعبارات من القائمة ف�
     const left = await sa.call('ludo:leave', { gameId: game.gameId });
     assert.equal(left.ok, true);
     assert.equal(left.game.phase, 'ended');
+});
+
+maybe('الانقطاع: شارة للخصم، مهلة أقصر للمنقطع، والعودة تعيد المهلة والمقعد', async () => {
+    const a = addUser(); const b = addUser();
+    const rec = await lobby.startInviteMatch(a, b, { mode: 'quick', messageId: oid() });
+    const id = rec.id;
+    const turnId = () => store.getGame(id).then(r => r.state.seats[r.state.turn].id);
+    const first = await turnId();
+    const other = first === a ? b : a;
+    const full = (await store.getGame(id)).deadlineAt;
+
+    // ليس دوره: يُعلَن الانقطاع ولا يُمسّ مؤقّت صاحب الدور
+    await service.setPresence(other, false);
+    let r = await store.getGame(id);
+    assert.deepEqual(service.view(r).offline, [other]);
+    assert.equal(r.deadlineAt, full);
+    assert.ok(eventsFor(first, 'ludo:state').some(e => e.gameId === id
+        && e.events.some(x => x.type === 'presence' && x.playerId === other && x.online === false)));
+    const v = r.state.version;
+    await service.setPresence(other, false);                       // تكرار: لا بثّ جديد
+    assert.equal((await store.getGame(id)).state.version, v);
+    await service.setPresence(other, true);
+    r = await store.getGame(id);
+    assert.deepEqual(service.view(r).offline, []);
+    assert.equal(r.deadlineAt, full);
+
+    // دوره وانقطع: المهلة تقصر، وعودته تعيد الموعد الأصلي لا مهلة جديدة
+    await service.setPresence(first, false);
+    r = await store.getGame(id);
+    assert.ok(r.deadlineAt <= Date.now() + service.constants.OFFLINE_TURN_MS);
+    assert.equal(r.meta.fullDeadlineAt, full);
+    await service.setPresence(first, true);
+    r = await store.getGame(id);
+    assert.equal(r.deadlineAt, full);
+    assert.equal(r.meta.fullDeadlineAt, undefined);
+
+    // منقطع حين يصله الدور: مهلته القصيرة من البداية
+    await service.setPresence(other, false);
+    for (let i = 0; i < 40 && (await turnId()) !== other; i++) {
+        const g = await store.getGame(id);
+        if (g.state.phase === 'ended') return;
+        await service.processDue(id, g.deadlineAt + 1);
+    }
+    r = await store.getGame(id);
+    if (r.state.phase === 'ended') return;
+    assert.ok(r.deadlineAt <= Date.now() + service.constants.OFFLINE_TURN_MS);
+
+    // يتولّاه البوت بعد 3 أدوار فائتة، ثم يعود بـ ludo:resume (back) فيستعيد مقعده
+    const seatOf = (g) => g.state.seats.find(s => s.id === other);
+    for (let i = 0; i < 200; i++) {
+        const g = await store.getGame(id);
+        if (g.state.phase === 'ended') return;
+        if (seatOf(g).takenOver) break;
+        await service.processDue(id, g.deadlineAt + 1);
+    }
+    r = await store.getGame(id);
+    assert.equal(seatOf(r).takenOver, true);
+    const plain = await service.playerReturn(other);               // بلا back: متصل فقط، البوت يكمل
+    assert.equal(plain.seats.find(s => s.id === other).takenOver, true);
+    assert.deepEqual(plain.offline, []);
+    const back = await service.playerReturn(other, { reclaim: true });
+    const mine = back.seats.find(s => s.id === other);
+    assert.equal(mine.takenOver, false);
+    assert.equal(mine.isBot, false);
+    assert.equal(mine.comebacksLeft, 1);
+    await service.playerLeave(a, id).catch(() => {});
 });
 
 maybe('إعادة الرمي والتخطّي عبر الخدمة، والمهلة تتخطّى بلا احتساب خطأ', async () => {

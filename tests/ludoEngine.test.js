@@ -236,6 +236,36 @@ test('المهلة: البوت يكمل الدور، وبعد 3 أدوار فا�
     }
 });
 
+test('العودة: من تولّاه البوت يستعيد مقعده مرتين فقط', () => {
+    let g = two();
+    const rnd = seeded(11);
+    const takeOver = () => {
+        for (let i = 0; i < 3 && g.phase !== 'ended'; i++) {
+            while (g.seats[g.turn].id !== 'a') ({ state: g } = L.autoStep(g, { rollDie: rnd, now: 0 }));
+            g = L.handleTimeout(g, { rollDie: rnd, now: 0 }).state;
+        }
+    };
+    assert.throws(() => L.reclaim(g, { playerId: 'a' }), { code: 'NOT_TAKEN_OVER' });
+    for (let round = 1; round <= 2; round++) {
+        takeOver();
+        if (g.phase === 'ended') return;
+        assert.equal(L.publicState(g).seats[0].takenOver, true);
+        assert.equal(L.publicState(g).seats[0].comebacksLeft, 3 - round);
+        const v = g.version;
+        const r = L.reclaim(g, { playerId: 'a' });
+        g = r.state;
+        assert.equal(g.seats[0].isBot, false);
+        assert.equal(g.seats[0].missed, 0);
+        assert.equal(g.version, v + 1);
+        assert.deepEqual(r.events, [{ type: 'returned', playerId: 'a' }]);
+    }
+    takeOver();
+    if (g.phase === 'ended') return;
+    assert.throws(() => L.reclaim(g, { playerId: 'a' }), { code: 'NO_COMEBACKS' });
+    // بوت أصلي لا «يعود»
+    assert.throws(() => L.reclaim(g, { playerId: 'zzz' }), { code: 'NOT_IN_GAME' });
+});
+
 test('البوت يفضّل الأكل', () => {
     let g = withTokens(two(), { a: [5, 20, BASE, BASE], b: [36, BASE, BASE, BASE] });
     ({ state: g } = L.roll(g, { playerId: 'a', rollDie: dice(5) }));

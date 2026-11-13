@@ -22,6 +22,8 @@ const PREMIUM_STICKERS = ['cool', 'love', 'party', 'scared'];   // لمشترك�
 const WORD_STICKERS = ['word_challenge', 'word_hurry', 'word_masterstroke', 'word_watch_me', 'word_what_luck', 'word_got_it'];
 const EMOTES = new Set([...PHRASES, ...FREE_STICKERS, ...PREMIUM_STICKERS, ...WORD_STICKERS]);
 const EMOTE_COOLDOWN_MS = 2000;
+// انقطاع عابر (تبديل شبكة) لا يُعلَن: ننتظر قليلاً ثم نتأكد أنه لم يعد
+const OFFLINE_GRACE_MS = Number(process.env.LUDO_OFFLINE_GRACE_MS) || 3000;
 
 const isPremium = (user) =>
     !!user?.isPremium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
@@ -72,7 +74,8 @@ function registerLudoHandlers(io, socket) {
     on('ludo:prize:seen', () => lobby.prizeSeen(userId));
 
     // ── المباراة ──
-    on('ludo:resume', async () => ({ game: await service.currentGame(userId) }));
+    // back: شاشة المباراة أمامه ← يستعيد مقعده إن كان البوت تولّاه
+    on('ludo:resume', async ({ back }) => ({ game: await service.playerReturn(userId, { reclaim: back === true }) }));
     on('ludo:roll', async ({ gameId, version }) =>
         ({ game: await service.playerRoll(userId, gameId, version) }));
     on('ludo:move', async ({ gameId, token, version }) =>
@@ -110,18 +113,33 @@ function registerLudoHandlers(io, socket) {
         return {};
     });
 
-    // انقطاع: لا شيء — المؤقّت يكمل الأدوار، والعودة بـ ludo:resume.
-    // لكن الطابور وغرفة الانتظار لا يبقيان لمن خرج.
+    // اتصال جديد لمن له مباراة جارية ← لم يعد «منقطعاً» عند خصمه (قراءة واحدة رخيصة من Redis لكل اتصال)
+    store.getUserGame(userId)
+        .then(gameId => (gameId ? service.setPresence(userId, true) : null))
+        .catch(() => {});
+
+    // انقطاع: المؤقّت يكمل الأدوار (بمهلة أقصر للمنقطع)، والعودة بـ ludo:resume.
+    // والطابور وغرفة الانتظار لا يبقيان لمن خرج.
     socket.on('disconnect', async () => {
         try {
             // ⚠️ كل انقطاع لكل مستخدم يمرّ هنا — لا نسأل الـ cluster (fetchSockets) إلا لمن
-            //    ينتظر فعلاً في طابور أو غرفة (قراءتان رخيصتان من Redis)
-            const [entry, room] = await Promise.all([store.getQueueEntry(userId), store.getUserRoom(userId)]);
-            if (!entry && !room) return;
-            const sockets = await io.in(`user:${userId}`).fetchSockets();
-            if (sockets.length > 0) return;          // ما زال متصلاً من جهاز/نسخة أخرى
-            await lobby.leaveQueue(userId);
-            await lobby.leaveRoom(userId);
+            //    ينتظر في طابور/غرفة أو له مباراة جارية (ثلاث قراءات رخيصة من Redis)
+            const [entry, room, gameId] = await Promise.all([
+                store.getQueueEntry(userId), store.getUserRoom(userId), store.getUserGame(userId)
+            ]);
+            if (!entry && !room && !gameId) return;
+            const connected = async () => (await io.in(`user:${userId}`).fetchSockets()).length > 0;
+            if (await connected()) return;           // ما زال متصلاً من جهاز/نسخة أخرى
+            if (entry) await lobby.leaveQueue(userId);
+            if (room) await lobby.leaveRoom(userId);
+            if (gameId) {
+                const timer = setTimeout(async () => {
+                    try {
+                        if (!(await connected())) await service.setPresence(userId, false);
+                    } catch (e) { /* قفل مشغول أو Redis — المهلة الكاملة تبقى */ }
+                }, OFFLINE_GRACE_MS);
+                timer.unref?.();
+            }
         } catch (e) { /* Redis غير متاح — تنتهي صلاحية المفاتيح وحدها */ }
     });
 }

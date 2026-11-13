@@ -6,6 +6,8 @@
 //
 // المؤقّت يعمل على instance 0 وحده (startLudoTicker): يقرأ ludo:deadlines كل 400ms.
 // - انتهت مهلة لاعب ← البوت يكمل دوره (يُحسب فائتاً، 3 متتالية = يتولّاه البوت).
+// - لاعب بلا اتصال (meta.offline) ← مهلته OFFLINE_TURN_MS بدل TURN_MS؛ عودته تعيد له بقية مهلته.
+// - من تولّاه البوت يستعيد مقعده بعودته (ludo:resume بـ back) — engine.reclaim، بحدّ maxComebacks.
 // - دور بوت ← يلعب بعد BOT_DELAY_MS (يبدو طبيعياً).
 // - حركة واحدة ممكنة ← تُنفَّذ تلقائياً بعد AUTO_MOVE_MS ولا تُحسب فائتة.
 
@@ -15,6 +17,8 @@ const store = require('./store');
 const economy = require('./economy');
 
 const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
+// المنقطع (لا سوكت له): لا ننتظره المهلة كاملة — الخصم لا يُعاقَب بانقطاع غيره
+const OFFLINE_TURN_MS = Number(process.env.LUDO_OFFLINE_TURN_MS) || 5000;
 const BOT_DELAY_MS = 1200;
 const AUTO_MOVE_MS = 700;
 // قرار إعادة الرمي: لا حركة ممكنة ← مهلة قصيرة ثم تخطٍّ تلقائي (لا يُحسب دوراً فائتاً)
@@ -70,6 +74,9 @@ function view(record) {
         players: record.meta.players,           // { id, name, photo, isBot }
         turnMs: TURN_MS,
         deadlineAt: record.deadlineAt,
+        // اللاعبون بلا اتصال الآن (شارة «انقطع الاتصال») ومهلة دورهم الأقصر
+        offline: Object.keys(record.meta.offline || {}),
+        offlineTurnMs: OFFLINE_TURN_MS,
         // مباراة دوري: { league, fee, prize } — null للودّية
         stake: record.meta.stake || null,
         // 💎 من فعّل نرد الحظ في هذه المباراة (يراه الجميع) وسعره
@@ -82,6 +89,7 @@ function view(record) {
 // موعد الخطوة التالية بحسب صاحب الدور
 function scheduleNext(record, now = Date.now()) {
     const s = record.state;
+    delete record.meta.fullDeadlineAt;
     if (s.phase === 'ended') { record.deadlineAt = null; return; }
     const seat = s.seats[s.turn];
     if (seat.isBot) record.deadlineAt = now + BOT_DELAY_MS;
@@ -91,6 +99,16 @@ function scheduleNext(record, now = Date.now()) {
         record.deadlineAt = now + (s.canReroll ? REROLL_DECIDE_MS : AUTO_MOVE_MS);
     }
     else record.deadlineAt = now + TURN_MS;
+    if (!seat.isBot && record.meta.offline?.[seat.id]) shortenForOffline(record, now);
+}
+
+// صاحب الدور منقطع: المهلة OFFLINE_TURN_MS على الأكثر. الموعد الأصلي يُحفظ ليعود له إن رجع قبل انتهائه
+// (لا من لحظة العودة — وإلا صار قطع الاتصال ووصله وسيلة لتمديد الدور).
+function shortenForOffline(record, now) {
+    const short = now + OFFLINE_TURN_MS;
+    if (!record.deadlineAt || record.deadlineAt <= short) return;
+    record.meta.fullDeadlineAt = record.deadlineAt;
+    record.deadlineAt = short;
 }
 
 // ───────────── الإنشاء ─────────────
@@ -216,7 +234,8 @@ async function mutate(gameId, fn) {
         if (!result) return record;
         record.state = result.state;
         record.meta.rolls += result.events.filter(e => e.type === 'roll').length;
-        scheduleNext(record);
+        // keepDeadline: تغيّر لا يمسّ الدور (حضور لاعب) — لا يُعاد ضبط مؤقّت صاحب الدور
+        if (!result.keepDeadline) scheduleNext(record);
         await store.saveGame(record);
         emitToPlayers(record, 'ludo:state', { ...view(record), events: result.events });
         const seat = record.state.seats[record.state.turn];
@@ -316,6 +335,67 @@ async function playerLeave(userId, gameId) {
     return view(r);
 }
 
+// ───────────── الحضور والعودة ─────────────
+
+// نسخة جديدة بلا تغيير في اللعب — ليقبلها التطبيق (يتجاهل ما لا يتقدّم رقم نسخته)
+const bump = (state) => ({ ...state, version: state.version + 1 });
+
+// انقطع/عاد اتصال لاعب في مباراة جارية: يُبثّ للجميع (شارة على صورته) وتُقصَّر/تُستعاد مهلته إن كان دوره.
+// reclaim: عاد فعلاً لشاشة المباراة ← يستعيد مقعده إن كان البوت تولّاه وبقيت له مرات.
+async function setPresence(userId, online, { reclaim = false } = {}) {
+    const id = String(userId);
+    const gameId = await store.getUserGame(id);
+    if (!gameId) return null;
+    return mutate(gameId, (record) => {
+        if (record.state.phase === 'ended') return null;
+        if (!record.meta.players.some(p => p.id === id && !p.isBot)) return null;
+        const seat = record.state.seats.find(s => s.id === id);
+        if (!seat || seat.status !== 'active') return null;
+
+        const wasOffline = !!record.meta.offline?.[id];
+        const canReclaim = online && reclaim && seat.takenOver
+            && (seat.comebacks || 0) < (record.state.options.maxComebacks ?? 0);
+        if (online === !wasOffline && !canReclaim) return null;
+
+        const now = Date.now();
+        const events = [];
+        if (online && wasOffline) {
+            const { [id]: _gone, ...rest } = record.meta.offline;
+            record.meta.offline = rest;
+            events.push({ type: 'presence', playerId: id, online: true });
+        } else if (!online) {
+            record.meta.offline = { ...(record.meta.offline || {}), [id]: now };
+            events.push({ type: 'presence', playerId: id, online: false });
+        }
+
+        if (canReclaim) {
+            const r = engine.reclaim(record.state, { playerId: id });
+            events.push(...r.events);
+            // دوره الآن (كان البوت سيلعب بعد لحظة) ← مهلة لاعب كاملة؛ وإلا لا يُمسّ مؤقّت غيره
+            const myTurn = r.state.seats[r.state.turn].id === id;
+            return { state: r.state, events, keepDeadline: !myTurn };
+        }
+
+        const myTurn = record.state.seats[record.state.turn].id === id && !seat.isBot;
+        if (myTurn && !online) shortenForOffline(record, now);
+        if (myTurn && online && record.meta.fullDeadlineAt > record.deadlineAt) {
+            record.deadlineAt = record.meta.fullDeadlineAt;
+            delete record.meta.fullDeadlineAt;
+        }
+        return { state: bump(record.state), events, keepDeadline: true };
+    });
+}
+
+// ludo:resume — العودة للمباراة: متصل من جديد، و(back) يستعيد مقعده من البوت
+async function playerReturn(userId, { reclaim = false } = {}) {
+    try {
+        await setPresence(userId, true, { reclaim });
+    } catch (e) {
+        if (!['GAME_NOT_FOUND', 'LOCK_BUSY'].includes(e.code)) console.error('ludo return:', e.code || '', e.message);
+    }
+    return currentGame(userId);
+}
+
 // المباراة الجارية للمستخدم (للعودة بعد انقطاع أو إعادة فتح التطبيق)
 async function currentGame(userId) {
     const gameId = await store.getUserGame(String(userId));
@@ -399,6 +479,8 @@ module.exports = {
     playerPass,
     playerLeave,
     currentGame,
+    setPresence,
+    playerReturn,
     processDue,
     tick,
     startLudoTicker,
@@ -407,5 +489,5 @@ module.exports = {
     rollDie,
     onFinalize,
     onTurn,
-    constants: { TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
+    constants: { TURN_MS, OFFLINE_TURN_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
 };
