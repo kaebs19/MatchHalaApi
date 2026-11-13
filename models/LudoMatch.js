@@ -16,6 +16,8 @@ const ludoMatchSchema = new mongoose.Schema({
     }],
     winners: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     rolls: { type: Number, default: 0 },
+    // فائز على الجهاز نفسه مع خصم بشري (حسابان لشخص واحد) — لا نجوم له (utils/ludo/service.js linkedWinners)
+    linkedPlayers: { type: Boolean, default: false },
     // مباراة دوري (utils/ludo/economy.js) — غائبة في الودّية
     league: { type: String, enum: ['bronze', 'silver', 'gold'] },
     fee: Number,

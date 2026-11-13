@@ -200,6 +200,9 @@ async function finalize(record) {
     const stake = record.meta.stake || null;
     // التسوية مرة واحدة: gameId فريد في LudoMatch — إن كانت النتيجة محفوظة من قبل فلا جائزة ثانية
     let alreadySaved = false;
+    // 🛡️ فائزون على الجهاز نفسه مع خصم بشري — مباراة دوري فقط (الودّية بلا نجوم أصلاً)
+    const linked = stake ? await linkedWinners(record) : new Set();
+    if (linked.size) console.warn(`🛡️ هلا لودو ${record.id}: فائز على جهاز خصمه (${[...linked].join(',')}) — بلا نجوم`);
     try {
         const LudoMatch = require('../../models/LudoMatch');
         await LudoMatch.create({
@@ -220,6 +223,7 @@ async function finalize(record) {
             }),
             winners: (record.state.winners || []).filter(id => !id.startsWith('bot:')),
             rolls: record.meta.rolls,
+            linkedPlayers: linked.size > 0,
             chat: (record.meta.chat || []).map(l => ({ user: l.playerId, text: l.text, at: new Date(l.at) })),
             ...(stake ? { league: stake.league, fee: stake.fee, prize: stake.prize } : {}),
             startedAt: new Date(record.meta.startedAt),
@@ -229,7 +233,7 @@ async function finalize(record) {
         if (e.code === 11000) alreadySaved = true;
         console.error('ludo finalize error:', e.message);
     }
-    const rewards = stake && !alreadySaved ? await settleStake(record, stake) : [];
+    const rewards = stake && !alreadySaved ? await settleStake(record, stake, linked) : [];
     if (!alreadySaved) await afterMatch(record, ranking, stake, rewards);
     await store.clearUserGame(humans(record), record.id);
     emitToPlayers(record, 'ludo:ended', {
@@ -238,6 +242,34 @@ async function finalize(record) {
     });
     for (const fn of finalizeHooks) {
         try { await fn(record, ranking); } catch (e) { console.error('ludo finalize hook:', e.message); }
+    }
+}
+
+// الفائزون الذين يشاركون جهازاً (keychainToken/vendorId) مع بشريّ من الطرف الخاسر — الطابور يمنع جمعهم،
+// وهذا احتياط لما يفلت (معرّف ضُبط بعد دخول الطابور، أو دخول قبل النشر)
+async function linkedWinners(record) {
+    const winners = new Set(record.state.winners || []);
+    const ids = humans(record);
+    if (ids.length < 2 || winners.size === 0) return new Set();
+    try {
+        const User = require('../../models/User');
+        const { deviceIds } = require('./lobby');
+        const devices = new Map();
+        for (const id of ids) {
+            const u = await User.findById(id).select('keychainToken vendorId').lean();
+            devices.set(id, u ? deviceIds(u) : []);
+        }
+        const teamOf = (id) => record.state.seats.find(s => s.id === id)?.team;
+        const out = new Set();
+        for (const w of winners) {
+            if (!devices.has(w)) continue;
+            const rivals = ids.filter(o => o !== w && teamOf(o) !== teamOf(w));
+            if (rivals.some(o => devices.get(o).some(d => devices.get(w).includes(d)))) out.add(w);
+        }
+        return out;
+    } catch (e) {
+        console.error('ludo linkedWinners:', e.message);
+        return new Set();
     }
 }
 
@@ -290,13 +322,14 @@ function lastResult(record, userId, extra) {
 }
 
 // الفائز يأخذ الجائزة، والخاسر خسر رسومه (خُصمت عند البدء). delta = صافي المباراة للّاعب.
-async function settleStake(record, stake) {
+async function settleStake(record, stake, linked = new Set()) {
     const winners = new Set(record.state.winners || []);
     const rewards = [];
     for (const id of humans(record)) {
         const won = winners.has(id);
         try {
-            const points = await economy.settle(id, { won, prize: stake.prize, league: stake.league });
+            // المرتبط بخصمه يأخذ عملاته (لا ربح صافٍ — دفعها حسابه الآخر) لكن بلا نجوم ترتيب
+            const points = await economy.settle(id, { won, prize: stake.prize, league: stake.league, noPoints: linked.has(id) });
             rewards.push({ id, won, prize: won ? stake.prize : 0, delta: (won ? stake.prize : 0) - stake.fee, points });
         } catch (e) {
             console.error(`ludo settle ${record.id} ${id}:`, e.message);

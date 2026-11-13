@@ -285,10 +285,10 @@ async function refundGems(userId, amount) {
 
 // نتيجة مباراة دوري: الجائزة والنجوم للفائز، والعدّادات للجميع (الرسوم خُصمت عند البدء).
 // مباراة واحدة لكل لاعب في الوقت نفسه، فقراءة السلسلة ثم ضبطها آمنة؛ الأرصدة نفسها بـ $inc.
-async function settle(userId, { won, prize, league }, now = Date.now()) {
+async function settle(userId, { won, prize, league, noPoints = false }, now = Date.now()) {
     const w = await getWallet(userId);
     const wk = weekKeyOf(now);
-    const points = won ? assertLeague(league).points : 0;
+    const points = won && !noPoints ? assertLeague(league).points : 0;
     const streak = won ? (w.winStreak || 0) + 1 : 0;
     const sameWeek = w.weekKey === wk;
     await LudoWallet.updateOne({ user: userId }, {

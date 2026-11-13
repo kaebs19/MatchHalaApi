@@ -50,7 +50,7 @@ function validateSetup(mode, size) {
 // يُعاد التحميل من القاعدة: socket.user يُقرأ عند الاتصال وقد يكون قديماً
 async function loadEligible(userId) {
     const user = await User.findById(userId)
-        .select('name profileImage role isActive suspension bannedWords blockedUsers')
+        .select('name profileImage role isActive suspension bannedWords blockedUsers keychainToken vendorId')
         .lean();
     if (!user || !user.isActive) throw new LudoError('NOT_ALLOWED', 'الحساب غير متاح', 403);
     const suspended = user.suspension?.isSuspended &&
@@ -70,6 +70,7 @@ const playerInfo = (user) => ({
 });
 
 const blockedList = (user) => (user.blockedUsers || []).map(String);
+const deviceIds = (user) => [user.keychainToken && `k:${user.keychainToken}`, user.vendorId && `v:${user.vendorId}`].filter(Boolean);
 
 // طرفا حظر؟ (entries تحمل blocked من وقت الانضمام)
 const conflict = (a, b) => a.blocked.includes(b.userId) || b.blocked.includes(a.userId);
@@ -113,6 +114,8 @@ async function joinQueue(userId, { mode, size, league }) {
         fee: league ? economy.assertLeague(league).fee : 0,
         level,
         blocked: blockedList(user),
+        // معرّفات الجهاز: حسابان على الجهاز نفسه لا يتقابلان (matchmaking.sameDevice). لا بصمة الجهاز — تتصادم بين أجهزة بالطراز نفسه
+        devices: deviceIds(user),
         player: playerInfo(user)
     });
     await tryMatch(key);
@@ -534,6 +537,7 @@ module.exports = {
     leaveRoom,
     loadEligible,
     walletInfo,
+    deviceIds,
     claimMission,
     playerCard,
     challenge,

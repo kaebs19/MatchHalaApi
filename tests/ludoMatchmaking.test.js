@@ -49,3 +49,14 @@ test('البوت: من انتظر المهلة كاملة تكتمل مجموع�
     assert.deepEqual(plan([e('a', 100000, 21000)], 2, true), [{ ids: ['a'], fee: 100000 }]);
     assert.deepEqual(plan([e('a', 100000, 19000)], 2, true), []);
 });
+
+test('حسابان على الجهاز نفسه لا يتقابلان أبداً — ولا بعد نافذة «الأقرب»', () => {
+    const dev = (id, fee, waited, devices) => ({ ...e(id, fee, waited), devices });
+    assert.deepEqual(plan([dev('a', 1000, 15000, ['k:1']), dev('b', 1000, 15000, ['k:1', 'v:9'])]), []);
+    // ثالث على جهاز آخر يُطابَق مع أحدهما
+    const r = plan([dev('a', 1000, 15000, ['k:1']), dev('b', 1000, 14000, ['k:1']), dev('c', 1000, 1000, ['k:2'])]);
+    assert.deepEqual(r, [{ ids: ['a', 'c'], fee: 1000 }]);
+    // البوت يكمل لصاحب الجهاز المكرّر
+    assert.deepEqual(plan([dev('a', 1000, 21000, ['k:1']), dev('b', 1000, 21000, ['k:1'])], 2, true),
+        [{ ids: ['a'], fee: 1000 }, { ids: ['b'], fee: 1000 }]);
+});

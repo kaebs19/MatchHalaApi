@@ -857,6 +857,39 @@ maybe('المطابقة عبر الدوريات: بعد نافذة «الأقر�
     await service.playerLeave(a, gameId);
 });
 
+maybe('حسابان على الجهاز نفسه: لا يتقابلان في الدوري، وإن تقابلا فلا نجوم للفائز', async () => {
+    const { LEAGUES, START_COINS } = economy.constants;
+    const a = addUser({ keychainToken: 'KC-same' }); const b = addUser({ keychainToken: 'KC-same' });
+    await lobby.walletInfo(a); await lobby.walletInfo(b);
+    await lobby.joinQueue(a, { mode: 'quick', size: 2, league: 'bronze' });
+    await lobby.joinQueue(b, { mode: 'quick', size: 2, league: 'bronze' });
+    assert.equal(await store.getUserGame(a), null);
+    assert.equal(await store.getUserGame(b), null);
+    await lobby.leaveQueue(a); await lobby.leaveQueue(b);
+    // احتياط التسوية: مباراة دوري بينهما (معرّف ضُبط بعد الطابور مثلاً) ← الفائز يأخذ الجائزة بلا نجوم
+    await economy.charge(a, LEAGUES.bronze.fee); await economy.charge(b, LEAGUES.bronze.fee);
+    const rec = await service.createMatch({
+        players: [{ id: a, name: 'a' }, { id: b, name: 'b' }], mode: 'quick', source: 'queue',
+        stake: economy.stakeFor('bronze', 'quick', 2)
+    });
+    await service.playerLeave(b, rec.id);                      // a يفوز
+    assert.equal(coinsOf(a), START_COINS + LEAGUES.bronze.fee);
+    assert.equal(wallets.get(a).points || 0, 0, 'لا نجوم');
+    assert.equal(wallets.get(a).weekPoints || 0, 0);
+    assert.equal(saved.find(d => d.gameId === rec.id).linkedPlayers, true);
+    // جهازان مختلفان ← النجوم كالمعتاد
+    const c = addUser({ keychainToken: 'KC-1' }); const d = addUser({ keychainToken: 'KC-2' });
+    await lobby.walletInfo(c); await lobby.walletInfo(d);
+    await economy.charge(c, LEAGUES.bronze.fee); await economy.charge(d, LEAGUES.bronze.fee);
+    const rec2 = await service.createMatch({
+        players: [{ id: c, name: 'c' }, { id: d, name: 'd' }], mode: 'quick', source: 'queue',
+        stake: economy.stakeFor('bronze', 'quick', 2)
+    });
+    await service.playerLeave(d, rec2.id);
+    assert.equal(wallets.get(c).points, LEAGUES.bronze.points);
+    assert.equal(saved.find(x => x.gameId === rec2.id).linkedPlayers, false);
+});
+
 maybe('الدوري مع بوت: مقعد البوت يدخل الجائزة، والودّية (غرفة/كمبيوتر/طابور بلا دوري) بلا رسوم', async () => {
     const { START_COINS, LEAGUES } = economy.constants;
     const fee = LEAGUES.bronze.fee;

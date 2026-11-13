@@ -40,9 +40,12 @@ const byCloseness = (seed) => (x, y) => {
  * entries: [{ userId, joinedAt, fee, league, level, blocked: [ids] }] لنمط وحجم واحد
  * يُرجع [{ members: [entries], fee }] — fee = الأدنى في المجموعة (المجموعة الناقصة تكتمل ببوتات)
  */
+// حسابان على الجهاز نفسه (keychainToken/vendorId) لا يتقابلان — وإلا يلعب صاحبهما ضدّ نفسه ليجمع نجوم الترتيب
+const sameDevice = (a, b) => (a.devices || []).some(d => (b.devices || []).includes(d));
+
 function planGroups(entries, { size, now = Date.now(), windows, fillBots = false }) {
     const w = windows;
-    const conflict = (a, b) => (a.blocked || []).includes(b.userId) || (b.blocked || []).includes(a.userId);
+    const conflict = (a, b) => (a.blocked || []).includes(b.userId) || (b.blocked || []).includes(a.userId) || sameDevice(a, b);
     const pool = [...entries].sort((a, b) => a.joinedAt - b.joinedAt);
     const used = new Set();
     const groups = [];
@@ -65,4 +68,4 @@ function planGroups(entries, { size, now = Date.now(), windows, fillBots = false
     return groups;
 }
 
-module.exports = { planGroups, compatible, stageOf };
+module.exports = { planGroups, compatible, stageOf, sameDevice };
