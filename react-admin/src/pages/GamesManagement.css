@@ -176,3 +176,14 @@
     .ludo-standing .prize { grid-column: 2 / 4; }
     .ludo-savebar { top: 56px; }
 }
+
+/* 📈 أرقام هلا لودو */
+.ludo-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.ludo-metric { background: var(--bg-secondary, rgba(127,127,127,.08)); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.ludo-metric b { font-size: 22px; }
+.ludo-metric span { font-size: 12px; color: var(--text-secondary); }
+.ludo-bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; margin-top: 14px; overflow-x: auto; padding-bottom: 4px; }
+.ludo-bar { flex: 1 0 22px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.ludo-bar i { display: block; width: 100%; max-width: 28px; min-height: 2px; background: linear-gradient(#9c70ff, #5a2fd8); border-radius: 6px 6px 2px 2px; }
+.ludo-bar em { font-style: normal; font-size: 11px; margin-top: 2px; }
+.ludo-bar small { font-size: 10px; color: var(--text-secondary); }

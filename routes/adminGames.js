@@ -326,6 +326,81 @@ router.put('/ludo/config', async (req, res) => {
     }
 });
 
+// 📈 أرقام هلا لودو (آخر N يوماً، الافتراضي 14): مباريات يومياً، فوز البشر ضدّ البوت، اللاعبون، هدية الإطلاق،
+//    المشتريات والاستردادات، وبلاغات الدردشة. كلها من مجموعات صغيرة (LudoMatch/LudoWallet/LudoPurchase/Report) —
+//    ⚠️ لا عدّ لدعوات المحادثة: تعني مسح مجموعة الرسائل (16 مليون).
+router.get('/ludo/metrics', async (req, res) => {
+    try {
+        const LudoMatch = require('../models/LudoMatch');
+        const LudoWallet = require('../models/LudoWallet');
+        const LudoPurchase = require('../models/LudoPurchase');
+        const Report = require('../models/Report');
+        const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14));
+        const since = new Date(Date.now() - days * 86400000);
+        const TZ = 'Asia/Riyadh';
+
+        const [perDay, botRows, players, giftClaimed, giftBlocked, purchases, reports] = await Promise.all([
+            LudoMatch.aggregate([
+                { $match: { endedAt: { $gte: since } } },
+                { $group: {
+                    _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$endedAt', timezone: TZ } }, league: { $ifNull: ['$league', 'friendly'] } },
+                    n: { $sum: 1 }
+                } },
+                { $sort: { '_id.day': 1 } }
+            ]),
+            // مباريات فيها بوت وإنسان: هل فاز إنسان؟ (winners = بشر فقط)
+            LudoMatch.aggregate([
+                { $match: { endedAt: { $gte: since }, 'players.isBot': true } },
+                { $match: { players: { $elemMatch: { isBot: false } } } },
+                { $group: {
+                    _id: { $cond: [{ $ifNull: ['$league', false] }, 'league', 'friendly'] },
+                    total: { $sum: 1 },
+                    humanWins: { $sum: { $cond: [{ $gt: [{ $size: { $ifNull: ['$winners', []] } }, 0] }, 1, 0] } }
+                } }
+            ]),
+            LudoMatch.distinct('players.user', { endedAt: { $gte: since } }),
+            LudoWallet.countDocuments({ launchGiftAt: { $ne: null }, launchGiftBlocked: { $ne: true } }),
+            LudoWallet.countDocuments({ launchGiftBlocked: true }),
+            LudoPurchase.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $group: { _id: '$productId', n: { $sum: 1 }, refunded: { $sum: { $cond: [{ $ifNull: ['$refundedAt', false] }, 1, 0] } } } },
+                { $sort: { n: -1 } }
+            ]),
+            Report.countDocuments({ createdAt: { $gte: since }, description: /^🎲 بلاغ من دردشة/ })
+        ]);
+
+        const daysMap = {};
+        for (const r of perDay) {
+            const d = (daysMap[r._id.day] ||= { day: r._id.day, total: 0, bronze: 0, silver: 0, gold: 0, friendly: 0 });
+            d[r._id.league] = r.n;
+            d.total += r.n;
+        }
+        const bot = Object.fromEntries(botRows.map(r => [r._id, {
+            total: r.total, humanWins: r.humanWins, humanWinRate: r.total ? Math.round((r.humanWins / r.total) * 100) : null
+        }]));
+        res.json({
+            success: true,
+            data: {
+                days,
+                perDay: Object.values(daysMap),
+                totals: {
+                    matches: perDay.reduce((a, r) => a + r.n, 0),
+                    players: players.filter(Boolean).length,
+                    giftClaimed, giftBlocked,
+                    purchases: purchases.reduce((a, p) => a + p.n, 0),
+                    refunds: purchases.reduce((a, p) => a + p.refunded, 0),
+                    chatReports: reports
+                },
+                botWinRate: bot,
+                purchases: purchases.map(p => ({ productId: p._id, n: p.n, refunded: p.refunded }))
+            }
+        });
+    } catch (error) {
+        console.error('❌ admin ludo metrics:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // ترتيب الأسبوع الحالي (أو weekKey) وما سيأخذه أعلى 10 — للمراجعة قبل التوزيع
 router.get('/ludo/standings', async (req, res) => {
     try {

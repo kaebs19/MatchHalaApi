@@ -72,6 +72,8 @@ function LudoSettings() {
     const [saving, setSaving] = useState(false);
     const [standings, setStandings] = useState(null);
     const [seasons, setSeasons] = useState([]);
+    const [metrics, setMetrics] = useState(null);
+    const [metricDays, setMetricDays] = useState(14);
 
     const load = useCallback(async () => {
         try {
@@ -84,6 +86,9 @@ function LudoSettings() {
         }
     }, [showToast]);
     useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        call(`/metrics?days=${metricDays}`).then(setMetrics).catch(() => setMetrics(null));
+    }, [metricDays]);
 
     const dirty = useMemo(() => JSON.stringify(cfg) !== JSON.stringify(saved), [cfg, saved]);
     const set = (path, value) => setCfg(prev => {
@@ -136,6 +141,52 @@ function LudoSettings() {
                     {errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
                 </div>
             )}
+
+            {/* ── 📈 الأرقام ── */}
+            {metrics && (() => {
+                const t = metrics.totals;
+                const max = Math.max(1, ...metrics.perDay.map(d => d.total));
+                const rate = (k) => metrics.botWinRate?.[k];
+                return (
+                    <section className="ludo-section">
+                        <div className="ludo-section-head">
+                            <div>
+                                <h3>📈 الأرقام</h3>
+                                <p>من نتائج المباريات المحفوظة — تتحدّث مع كل مباراة تنتهي.</p>
+                            </div>
+                            <div className="ludo-savebar-actions">
+                                {[7, 14, 30].map(d => (
+                                    <button key={d} className={d === metricDays ? 'btn-primary' : 'btn-ghost'} onClick={() => setMetricDays(d)}>{d} يوماً</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="ludo-metrics">
+                            <div className="ludo-metric"><b>{fmt(t.matches)}</b><span>مباراة</span></div>
+                            <div className="ludo-metric"><b>{fmt(t.players)}</b><span>لاعب</span></div>
+                            <div className="ludo-metric"><b>{rate('league') ? `${rate('league').humanWinRate}%` : '—'}</b><span>فوز البشر ضدّ البوت (دوري{rate('league') ? ` · ${rate('league').total}` : ''})</span></div>
+                            <div className="ludo-metric"><b>{rate('friendly') ? `${rate('friendly').humanWinRate}%` : '—'}</b><span>فوز البشر ضدّ البوت (ودّي{rate('friendly') ? ` · ${rate('friendly').total}` : ''})</span></div>
+                            <div className="ludo-metric"><b>{fmt(t.giftClaimed)}</b><span>استلموا هدية الإطلاق{t.giftBlocked ? ` · ${fmt(t.giftBlocked)} مرفوض (جهاز مكرر)` : ''}</span></div>
+                            <div className="ludo-metric"><b>{fmt(t.purchases)}</b><span>عملية شراء{t.refunds ? ` · ${t.refunds} مستردّة` : ''}</span></div>
+                            <div className="ludo-metric"><b>{fmt(t.chatReports)}</b><span>بلاغ من الدردشة</span></div>
+                        </div>
+                        {metrics.perDay.length > 0 && (
+                            <div className="ludo-bars" title="المباريات يومياً">
+                                {metrics.perDay.map(d => (
+                                    <div key={d.day} className="ludo-bar" title={`${d.day}: ${d.total} (ودّي ${d.friendly} · برونز ${d.bronze} · فضة ${d.silver} · ذهب ${d.gold})`}>
+                                        <i style={{ height: `${Math.round((d.total / max) * 100)}%` }} />
+                                        <em>{d.total}</em>
+                                        <small>{d.day.slice(5)}</small>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {metrics.purchases.length > 0 && (
+                            <p className="ludo-note">المشتريات: {metrics.purchases.map(p => `${p.productId.replace('com.app.hala.ludo.', '')} ×${p.n}${p.refunded ? ` (${p.refunded} مستردّ)` : ''}`).join(' · ')}</p>
+                        )}
+                        <p className="ludo-note">💡 فوز البشر تحت 40% في الدوري يعني بوتاً أقوى من اللازم — اللاعب يخسر رسومه أمامه.</p>
+                    </section>
+                );
+            })()}
 
             {/* ── جوائز الأسبوع ── */}
             <section className="ludo-section">
