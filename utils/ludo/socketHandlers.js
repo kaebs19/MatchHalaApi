@@ -107,6 +107,10 @@ function registerLudoHandlers(io, socket) {
         return { line };
     });
 
+    // 🚩 بلاغ على لاعب (من الدردشة أو بطاقته) ← «البلاغات» في اللوحة بآخر رسائله دليلاً
+    on('ludo:report', ({ gameId, playerId, category, note }) =>
+        chat.report(userId, String(gameId || ''), playerId, category, note));
+
     // ── العبارات والملصقات ──
     let lastEmoteAt = 0;
     // to (اختياري): لاعب في المباراة تُوجَّه له العبارة/الملصق (الضغط على صورته) — يراها الجميع
