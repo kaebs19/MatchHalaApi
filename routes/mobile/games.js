@@ -825,6 +825,59 @@ require('../../utils/ludo/economy').onPrize(async ({ userId, rank, gems, coins }
     }, { type: 'ludo_turn' }, false);
 });
 
+// ⭐ مساء الأحد (17:00 UTC = 8 مساءً بتوقيت السعودية، قبل التوزيع بسبع ساعات): المراكز 11–20 يعرفون كم ينقصهم
+//    لدخول العشرة الأوائل وأقلّ دوري يكفي فوزٌ فيه. مرة لكل أسبوع (Redis NX)، بلا حفظ في القائمة (عابر).
+const WEEK_NUDGE_FROM = 11;
+const WEEK_NUDGE_TO = 20;
+const WEEK_NUDGE_HOUR_UTC = 17;
+
+// تمييز العدد بالعربية: نجمة واحدة · نجمتان · 3–10 نجوم · 11+ نجمة
+const stars = (n) => (n === 1 ? 'نجمة واحدة' : n === 2 ? 'نجمتان' : n <= 10 ? `${n} نجوم` : `${n} نجمة`);
+
+function weekNudgeCopy(rank, gap, leagues) {
+    const names = { bronze: 'البرونز', silver: 'الفضة', gold: 'الذهب' };
+    const fit = ['bronze', 'silver', 'gold'].find(id => (leagues[id]?.points || 0) >= gap);
+    const how = fit
+        ? `فوز واحد في دوري ${names[fit]} يكفي`
+        : `${Math.ceil(gap / Math.max(1, leagues.gold?.points || 100))} انتصارات في دوري الذهب تكفي`;
+    return {
+        title: `⭐ أنت في المركز ${rank} هذا الأسبوع`,
+        body: `ينقصك ${stars(gap)} لتدخل العشرة الأوائل وتربح جائزة — ${how}. الأسبوع ينتهي الليلة!`
+    };
+}
+
+async function nudgeWeekEnd(now = Date.now()) {
+    const d = new Date(now);
+    if (d.getUTCDay() !== 0 || d.getUTCHours() < WEEK_NUDGE_HOUR_UTC) return 0;
+    const economy = require('../../utils/ludo/economy');
+    const { getClient } = require('../../utils/redisClient');
+    const redis = await getClient();
+    const weekKey = economy.weekKeyOf(now);
+    if (!redis || !(await redis.set(`ludo:weeknudge:${weekKey}`, '1', { NX: true, EX: 3 * 86400 }))) return 0;
+    const { rows } = await economy.weekStandings(WEEK_NUDGE_TO, now, weekKey);
+    const tenth = rows[9];
+    if (!tenth) return 0;                               // أقل من 10 لاعبين: الكل داخل الجوائز
+    const leagues = economy.constants.LEAGUES;
+    let sent = 0;
+    for (const r of rows.slice(WEEK_NUDGE_FROM - 1)) {
+        if (!r.id || r.inactive) continue;
+        const gap = tenth.weekPoints - r.weekPoints + 1;
+        await pushNotificationService.sendNotificationToUser(r.id, weekNudgeCopy(r.rank, gap, leagues),
+            { type: 'ludo_turn' }, false).catch(() => {});
+        sent++;
+    }
+    return sent;
+}
+
+let weekNudgeTimer = null;
+function startLudoWeekNudge() {
+    if (weekNudgeTimer) return;
+    weekNudgeTimer = setInterval(() => {
+        nudgeWeekEnd().catch(e => console.error('🎲 week nudge:', e.message));
+    }, 10 * 60 * 1000);
+    weekNudgeTimer.unref?.();
+}
+
 // 🔔 انقطع عن مباراة دوري: له مهلة ليعود قبل أن تُحسب خسارة — إشعار واحد لكل انقطاع (لا يُحفظ في القائمة)
 ludoService.onAway(async ({ gameId, userId, graceMs }) => {
     if (!mongoose.isValidObjectId(userId)) return;
@@ -1142,3 +1195,6 @@ module.exports.LUDO_COPY = LUDO_COPY;
 module.exports.notifyLudo = notifyLudo;
 module.exports.startLudoInviteSweeper = startLudoInviteSweeper;
 module.exports.sweepExpiredInvites = sweepExpiredInvites;
+module.exports.startLudoWeekNudge = startLudoWeekNudge;
+module.exports.nudgeWeekEnd = nudgeWeekEnd;
+module.exports.weekNudgeCopy = weekNudgeCopy;
