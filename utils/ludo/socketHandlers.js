@@ -77,6 +77,7 @@ function registerLudoHandlers(io, socket) {
     on('ludo:challenge', ({ to }) => lobby.challenge(userId, to));
     on('ludo:challenge:reply', ({ from, accept }) => lobby.challengeReply(userId, from, accept === true));
     on('ludo:player', ({ userId: target }) => lobby.playerCard(userId, target));
+    on('ludo:friends-online', () => lobby.onlineFriends(userId));
     on('ludo:leaderboard', () => lobby.leaderboard(userId));
     on('ludo:prize:seen', () => lobby.prizeSeen(userId));
 

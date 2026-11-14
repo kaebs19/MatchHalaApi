@@ -248,6 +248,49 @@ async function challenge(userId, targetId) {
     return { expiresAt, now: Date.now() };
 }
 
+// 👥 أصدقائي المتصلون الآن (شريط «تحدَّ صديقاً» في صفحة الألعاب).
+// ⚠️ الحضور خاص: لا يظهر من أخفى حضوره (stealth/آخر ظهور/القراءة الخفية)، ولا يرى غيره من أخفى حضوره هو
+//    (مثل «في المحادثة الآن» — utils/conversationViewing.hidesPresence). ولا طرفا حظر. فحص السوكت مرة واحدة لكل الأصدقاء.
+const FRIENDS_ONLINE_MAX = 20;
+async function onlineFriends(userId) {
+    const me = await loadEligible(userId);
+    const myId = String(me._id);
+    const { hidesPresence } = require('../conversationViewing');
+    const self = await User.findById(myId).select('stealthMode privacySettings role').lean();
+    if (!self || hidesPresence(self)) return { friends: [], hidden: true };
+
+    const Friendship = require('../../models/Friendship');
+    const rows = await Friendship.find({ status: 'accepted', $or: [{ requester: myId }, { recipient: myId }] })
+        .select('requester recipient').limit(300).lean();
+    const ids = [...new Set(rows.map(r => String(String(r.requester) === myId ? r.recipient : r.requester)))]
+        .filter(id => !blockedList(me).includes(id));
+    if (!ids.length || !global.io) return { friends: [] };
+
+    let sockets = [];
+    try {
+        const pending = global.io.in(ids.map(id => `user:${id}`)).fetchSockets();
+        pending.catch(() => {});
+        let timer;
+        sockets = await Promise.race([pending, new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 1500); })])
+            .finally(() => clearTimeout(timer));
+    } catch (e) { return { friends: [] }; }
+    const online = new Set();
+    for (const s of sockets) for (const room of s.rooms || []) {
+        if (typeof room === 'string' && room.startsWith('user:')) online.add(room.slice(5));
+    }
+    const onlineIds = ids.filter(id => online.has(id));
+    if (!onlineIds.length) return { friends: [] };
+
+    const users = await User.find({ _id: { $in: onlineIds }, isActive: true })
+        .select('name profileImage stealthMode privacySettings blockedUsers suspension role').lean();
+    const visible = users.filter(u => !hidesPresence(u) && !u.suspension?.isSuspended && !blockedList(u).includes(myId));
+    const busy = await Promise.all(visible.map(u => store.getUserGame(String(u._id)).catch(() => null)));
+    const friends = visible.map((u, i) => ({ ...playerInfo(u), inGame: !!busy[i] }))
+        .sort((a, b) => Number(a.inGame) - Number(b.inGame))
+        .slice(0, FRIENDS_ONLINE_MAX);
+    return { friends };
+}
+
 async function challengeReply(userId, fromId, accept) {
     const toId = String(userId);
     const from = String(fromId || '');
@@ -545,6 +588,7 @@ module.exports = {
     loadEligible,
     walletInfo,
     claimLaunchGift,
+    onlineFriends,
     deviceIds,
     claimMission,
     playerCard,
