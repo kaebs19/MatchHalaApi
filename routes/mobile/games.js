@@ -844,18 +844,19 @@ ludoService.onAway(async ({ gameId, userId, graceMs }) => {
 // 🎲 إشعارات التحدّي: تُحفظ في قائمة الإشعارات (تبويب «الألعاب») دائماً، وpush لمن ليس متصلاً.
 // الأنواع: ludo_invite (تحدٍّ / إعادة / ردّ) · ludo_accepted · ludo_declined — config/notificationCategories.js
 // ─────────────────────────────────────────────────────────────
+// f = المرسِل أنثى (الأفعال والضمائر تتبعه؛ بلا جنس ← المذكّر)
 const LUDO_COPY = {
-    invite:   (n) => ({ title: `🎲 ${n} يتحداك!`, body: 'تحدٍّ جديد في «هلا لودو» — اقبله قبل أن تنتهي الدعوة خلال 10 دقائق' }),
-    again:    (n) => ({ title: `🎲 ${n} يعيد التحدّي`, body: 'فرصة ثانية في «هلا لودو» — هل تقبل هذه المرة؟' }),
-    back:     (n) => ({ title: `🔥 ${n} يردّ على تحدّيك`, body: 'جاء دوره ليتحدّاك في «هلا لودو» — الدعوة بانتظارك' }),
-    accepted: (n) => ({ title: `✅ ${n} قبل تحدّيك`, body: 'المباراة بدأت الآن — ادخل والعب دورك' }),
-    declined: (n) => ({ title: `${n} اعتذر عن التحدّي`, body: 'ربما في وقت آخر — تقدر تتحدّاه لاحقاً من المحادثة' })
+    invite:   (n, f) => ({ title: `🎲 ${n} ${f ? 'تتحداك' : 'يتحداك'}!`, body: 'تحدٍّ جديد في «هلا لودو» — اقبله قبل أن تنتهي الدعوة خلال 10 دقائق' }),
+    again:    (n, f) => ({ title: `🎲 ${n} ${f ? 'تعيد' : 'يعيد'} التحدّي`, body: 'فرصة ثانية في «هلا لودو» — هل تقبل هذه المرة؟' }),
+    back:     (n, f) => ({ title: `🔥 ${n} ${f ? 'تردّ' : 'يردّ'} على تحدّيك`, body: `جاء ${f ? 'دورها لتتحدّاك' : 'دوره ليتحدّاك'} في «هلا لودو» — الدعوة بانتظارك` }),
+    accepted: (n, f) => ({ title: `✅ ${n} ${f ? 'قبلت' : 'قبل'} تحدّيك`, body: 'المباراة بدأت الآن — ادخل والعب دورك' }),
+    declined: (n, f) => ({ title: `${n} ${f ? 'اعتذرت' : 'اعتذر'} عن التحدّي`, body: `ربما في وقت آخر — تقدر ${f ? 'تتحدّاها' : 'تتحدّاه'} لاحقاً من المحادثة` })
 };
 const LUDO_TYPE = { invite: 'ludo_invite', again: 'ludo_invite', back: 'ludo_invite', accepted: 'ludo_accepted', declined: 'ludo_declined' };
 
 async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind) {
     try {
-        const copy = LUDO_COPY[kind](senderUser.name || 'لاعب');
+        const copy = LUDO_COPY[kind](senderUser.name || 'لاعب', senderUser.gender === 'female');
         const online = await isUserSocketConnected(recipientId);
         const img = getBestUserImage(senderUser);
         await pushNotificationService.sendNotificationToUser(recipientId, copy, {
@@ -1060,7 +1061,7 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
             record = await ludoLobby.startInviteMatch(inviterId, inviteeId, { mode: g.mode, messageId });
         } catch (err) { return ludoErrorResponse(res, err); }
 
-        const copy = LUDO_COPY.accepted(req.user.name || 'صديقك');
+        const copy = LUDO_COPY.accepted(req.user.name || 'صديقك', req.user.gender === 'female');
         const saved = await setLudoState(messageId, 'pending', { status: 'playing', gameId: record.id }, {
             event: 'ludo_accept', actorId: userId,
             notifyUser: inviterId, notifyTitle: copy.title, notifyBody: copy.body

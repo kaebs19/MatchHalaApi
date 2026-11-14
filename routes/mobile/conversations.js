@@ -447,11 +447,11 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         // ↩️ الردّ على القصة: نصّ الردّ يصل بعده في إشعار الرسالة (نفس apns-collapse-id
         //    = المحادثة، فيستبدل هذا ولا يتكرّر)
         const notifTitle = superLikeCreated ? '💎 إعجاب مميز!'
-            : (isStoryReply ? '↩️ ردّ على قصتك' : (wantsLudo ? `🎲 ${req.user.name} يتحداك في «هلا لودو»` : 'طلب محادثة جديد'));
+            : (isStoryReply ? '↩️ ردّ على قصتك' : (wantsLudo ? `🎲 ${req.user.name} ${req.user.gender === 'female' ? 'تتحداك' : 'يتحداك'} في «هلا لودو»` : 'طلب محادثة جديد'));
         const notifBody = superLikeCreated
             ? `${req.user.name} أرسل لك Super Like ويريد التحدث معك`
             : (isStoryReply ? `${req.user.name} ردّ على قصتك`
-                : (wantsLudo ? 'أرسل لك طلب محادثة مع تحدٍّ — اقبل الطلب وابدأ المباراة خلال ساعة' : `${req.user.name} يريد التحدث معك`));
+                : (wantsLudo ? `${req.user.gender === 'female' ? 'أرسلت' : 'أرسل'} لك طلب محادثة مع تحدٍّ — اقبل الطلب وابدأ المباراة خلال ساعة` : `${req.user.name} يريد التحدث معك`));
 
         try {
             await pushNotificationService.sendNotificationToUser(
