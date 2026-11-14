@@ -76,6 +76,10 @@ const NOTIFICATION_TYPES = {
     'story_screenshot':     { category: 'social', groupable: true, adminOnly: false },
     'friend_story':         { category: 'social', groupable: true, adminOnly: false },
     'story_expiring':       { category: 'personal', groupable: false, adminOnly: false },
+    // 🎲 هلا لودو — دعوة/قبول/اعتذار (تُحفظ: تبويب «الألعاب» في الإشعارات). «دورك» ludo_turn لا يُحفظ
+    'ludo_invite':          { category: 'social', groupable: false, adminOnly: false },
+    'ludo_accepted':        { category: 'social', groupable: false, adminOnly: false },
+    'ludo_declined':        { category: 'social', groupable: false, adminOnly: false },
     // 🧾 الملخّص الدوري — push فقط (لا يُحفظ: كل حدث فيه له صفّه أصلاً)
     'notification_digest':  { category: 'channel', groupable: false, adminOnly: false },
 
@@ -135,6 +139,10 @@ const PREFERENCE_KEY_BY_TYPE = {
     'conversation_request':  'invitations',
     'conversation_accepted': 'invitations',
     'conversation_reminder': 'invitations',
+    // 🎲 تحدّيات هلا لودو — مفتاح «الدعوات» نفسه
+    'ludo_invite':           'invitations',
+    'ludo_accepted':         'invitations',
+    'ludo_declined':         'invitations',
     // طلبات الصداقة
     'friend_request':        'invitations',
     'friend_accepted':       'invitations',
@@ -162,6 +170,9 @@ function getPreferenceKey(type) {
 /** 📸 أنواع تبويب «القصص» في الإشعارات (مع طلبات ردّ القصة — data.storyReply) */
 const STORY_NOTIFICATION_TYPES = ['story_reaction', 'story_screenshot', 'friend_story', 'story_expiring'];
 
+/** 🎲 أنواع تبويب «الألعاب» (مع طلبات المحادثة التي جاءت بتحدٍّ من الاكتشاف — data.ludoInvite) */
+const GAME_NOTIFICATION_TYPES = ['ludo_invite', 'ludo_accepted', 'ludo_declined'];
+
 /**
  * أنواع تُستخدم للـ filter tabs في iOS
  * يجب أن تطابق NotificationCategory.swift
@@ -171,7 +182,8 @@ const FILTER_CATEGORIES = {
     unread: 'غير المقروءة',
     social: 'تفاعلات',
     system: 'تنبيهات النظام',
-    stories: 'القصص'
+    stories: 'القصص',
+    games: 'الألعاب'
 };
 
 /**
@@ -216,6 +228,14 @@ function buildUserNotificationsFilter({ userId, role = 'user', filter = 'all' })
                 { type: 'conversation_request', 'data.storyReply': '1' }
             ]
         }];
+    } else if (filter === 'games') {
+        delete baseFilter.type;
+        baseFilter.$and = [{
+            $or: [
+                { type: { $in: GAME_NOTIFICATION_TYPES } },
+                { type: 'conversation_request', 'data.ludoInvite': '1' }
+            ]
+        }];
     } else if (filter === 'system') {
         const systemTypes = Object.entries(NOTIFICATION_TYPES)
             .filter(([, meta]) => meta.category === 'personal' && !meta.adminOnly)
@@ -235,5 +255,6 @@ module.exports = {
     isAdminOnlyType,
     isGroupableType,
     getPreferenceKey,
+    GAME_NOTIFICATION_TYPES,
     buildUserNotificationsFilter
 };

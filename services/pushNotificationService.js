@@ -87,7 +87,8 @@ const buildProfileCard = async (recipient, data) => {
  * @param {object} data - بيانات إضافية للإشعار
  * @param {boolean} saveToDb - حفظ في قاعدة البيانات
  */
-const sendNotificationToUser = async (userId, notification, data = {}, saveToDb = true) => {
+// opts.push=false: يُحفظ في قائمة الإشعارات بلا push (المستلم متصل ويرى الحدث داخل التطبيق)
+const sendNotificationToUser = async (userId, notification, data = {}, saveToDb = true, opts = {}) => {
     try {
         const user = await User.findById(userId);
 
@@ -123,6 +124,10 @@ const sendNotificationToUser = async (userId, notification, data = {}, saveToDb 
                 // لا نوقف push إذا فشل حفظ DB
                 console.error('⚠️ Notification save failed:', saveErr.message);
             }
+        }
+
+        if (opts.push === false) {
+            return { success: true, saved: true, pushed: false, reason: 'in_app' };
         }
 
         // ✅ admin-only types (flagged_message, report) → لا Push للأدمن في التطبيق

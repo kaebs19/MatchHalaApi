@@ -840,6 +840,43 @@ ludoService.onAway(async ({ gameId, userId, graceMs }) => {
     }, { type: 'ludo_turn', gameId: String(gameId) }, false);
 });
 
+// ─────────────────────────────────────────────────────────────
+// 🎲 إشعارات التحدّي: تُحفظ في قائمة الإشعارات (تبويب «الألعاب») دائماً، وpush لمن ليس متصلاً.
+// الأنواع: ludo_invite (تحدٍّ / إعادة / ردّ) · ludo_accepted · ludo_declined — config/notificationCategories.js
+// ─────────────────────────────────────────────────────────────
+const LUDO_COPY = {
+    invite:   (n) => ({ title: `🎲 ${n} يتحداك!`, body: 'تحدٍّ جديد في «هلا لودو» — اقبله قبل أن تنتهي الدعوة خلال 10 دقائق' }),
+    again:    (n) => ({ title: `🎲 ${n} يعيد التحدّي`, body: 'فرصة ثانية في «هلا لودو» — هل تقبل هذه المرة؟' }),
+    back:     (n) => ({ title: `🔥 ${n} يردّ على تحدّيك`, body: 'جاء دوره ليتحدّاك في «هلا لودو» — الدعوة بانتظارك' }),
+    accepted: (n) => ({ title: `✅ ${n} قبل تحدّيك`, body: 'المباراة بدأت الآن — ادخل والعب دورك' }),
+    declined: (n) => ({ title: `${n} اعتذر عن التحدّي`, body: 'ربما في وقت آخر — تقدر تتحدّاه لاحقاً من المحادثة' })
+};
+const LUDO_TYPE = { invite: 'ludo_invite', again: 'ludo_invite', back: 'ludo_invite', accepted: 'ludo_accepted', declined: 'ludo_declined' };
+
+async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind) {
+    try {
+        const copy = LUDO_COPY[kind](senderUser.name || 'لاعب');
+        const online = await isUserSocketConnected(recipientId);
+        const img = getBestUserImage(senderUser);
+        await pushNotificationService.sendNotificationToUser(recipientId, copy, {
+            type: LUDO_TYPE[kind],
+            gameEvent: kind === 'accepted' ? 'ludo_accept' : (kind === 'declined' ? 'ludo_decline' : 'ludo_invite'),
+            conversationId: String(conversationId),
+            messageId: String(messageId),
+            senderId: String(senderUser._id),
+            senderName: senderUser.name || '',
+            senderImage: img ? (img.startsWith('http') ? img : (process.env.BASE_URL || 'https://matchhala.chathala.com') + img) : '',
+            ...(LUDO_TYPE[kind] === 'ludo_invite' ? { apnsCategory: 'LUDO_INVITE_CATEGORY' } : {})
+        }, true, { push: !online });
+    } catch (err) {
+        console.error('🎲 notify error:', err.message);
+    }
+}
+
+// تحدّيات بلا ردّ: 3 دعوات مني في المحادثة خلال 24س لم تُقبل أيّ منها ← لا رابعة (منع الإزعاج بإعادة الطلب)
+const LUDO_UNANSWERED_MAX = 3;
+const LUDO_UNANSWERED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /**
  * رسالة دعوة لودو (pending) في محادثة ثنائية + بثّها للطرفين. لا إشعار push (المُنادي يرسله).
  * يستعملها مسار الدعوة في المحادثة، وطلب المحادثة من الاكتشاف (conversations/request + ludoInvite)
@@ -942,12 +979,26 @@ router.post('/games/ludo/invite', protect, async (req, res) => {
             return res.status(429).json({ success: false, message: 'انتظر قليلاً قبل دعوة جديدة', code: 'GAME_COOLDOWN' });
         }
 
-        const populated = await createLudoInviteMessage(conversation._id, req.user, opponent._id, { mode });
+        // آخر دعوات بيننا: إعادة بعد انتهاء/اعتذار (again)، أو ردّ من تلقّى التحدّي سابقاً (back)، وحدّ الدعوات بلا ردّ
+        const recentInvites = await Message.find({
+            conversation: conversation._id, type: 'game', 'game.kind': 'ludo',
+            createdAt: { $gte: new Date(Date.now() - LUDO_UNANSWERED_WINDOW_MS) }
+        }).sort({ _id: -1 }).limit(10).select('game.players game.status').lean();
+        const mine = recentInvites.filter(m => m.game?.players?.[0] === userId);
+        if (mine.length >= LUDO_UNANSWERED_MAX
+            && mine.slice(0, LUDO_UNANSWERED_MAX).every(m => !['playing', 'finished'].includes(m.game?.status))) {
+            return res.status(429).json({
+                success: false, code: 'LUDO_INVITE_LIMIT',
+                message: `أرسلت ${LUDO_UNANSWERED_MAX} تحدّيات لم يُقبل أيّ منها — امنحه وقتاً، أو انتظر أن يتحدّاك هو`
+            });
+        }
+        const last = recentInvites[0];
+        const lastClosed = last && ['expired', 'declined', 'cancelled'].includes(last.game?.status)
+            || (last && last.game?.status === 'pending');      // pending منتهية المهلة (مُعلَّمة قبل قليل)
+        const kind = !lastClosed ? 'invite' : (last.game.players[0] === userId ? 'again' : 'back');
 
-        pushGame(opponent._id, req.user, conversation._id, populated._id, {
-            title: '🎲 دعوة للعب',
-            body: `${req.user.name || 'صديقك'} يدعوك للعب «هلا لودو» — اضغط للقبول`
-        }, 'ludo_invite', { apnsCategory: 'LUDO_INVITE_CATEGORY' });
+        const populated = await createLudoInviteMessage(conversation._id, req.user, opponent._id, { mode });
+        notifyLudo(opponent._id, req.user, conversation._id, populated._id, kind);
 
         res.status(201).json({ success: true, data: { message: populated } });
     } catch (error) {
@@ -996,6 +1047,7 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
 
         if (action === 'decline') {
             const saved = await setLudoState(messageId, 'pending', { status: 'declined' });
+            if (saved) notifyLudo(inviterId, req.user, message.conversation, messageId, 'declined');
             return saved ? res.json({ success: true, data: { messageId, game: saved } }) : stale(g);
         }
 
@@ -1008,7 +1060,7 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
             record = await ludoLobby.startInviteMatch(inviterId, inviteeId, { mode: g.mode, messageId });
         } catch (err) { return ludoErrorResponse(res, err); }
 
-        const copy = { title: '🎲 هلا لودو', body: `${req.user.name || 'صديقك'} قبل دعوتك — المباراة بدأت! ادخل الآن` };
+        const copy = LUDO_COPY.accepted(req.user.name || 'صديقك');
         const saved = await setLudoState(messageId, 'pending', { status: 'playing', gameId: record.id }, {
             event: 'ludo_accept', actorId: userId,
             notifyUser: inviterId, notifyTitle: copy.title, notifyBody: copy.body
@@ -1019,7 +1071,7 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
             await ludoService.playerLeave(inviterId, record.id).catch(() => {});
             return stale(g);
         }
-        pushGame(inviterId, req.user, message.conversation, messageId, copy, 'ludo_accept');
+        notifyLudo(inviterId, req.user, message.conversation, messageId, 'accepted');
         res.json({ success: true, data: { messageId, game: saved, ludo: ludoService.view(record) } });
     } catch (error) {
         console.error('❌ games/ludo/respond:', error);
@@ -1030,3 +1082,5 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
 module.exports = router;
 module.exports.createLudoInviteMessage = createLudoInviteMessage;
 module.exports.LUDO_FALLBACK = LUDO_FALLBACK;
+module.exports.LUDO_COPY = LUDO_COPY;
+module.exports.notifyLudo = notifyLudo;

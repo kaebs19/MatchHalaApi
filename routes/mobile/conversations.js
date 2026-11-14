@@ -248,9 +248,9 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             }
         }
         const attachLudoInvite = async (conversationId) => {
-            if (!wantsLudo) return;
+            if (!wantsLudo) return null;
             const games = require('./games');
-            await games.createLudoInviteMessage(conversationId, req.user, targetUserId, { ttlMs: LUDO_REQUEST_INVITE_TTL_MS });
+            return games.createLudoInviteMessage(conversationId, req.user, targetUserId, { ttlMs: LUDO_REQUEST_INVITE_TTL_MS });
         };
         const origin = isStoryReply ? 'story_reply' : (wantsLudo ? 'ludo_invite' : null);
 
@@ -303,7 +303,9 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
 
                 // ✅ رسالة نظام في المسار: تم إرسال دعوة جديدة
                 await createSystemMessage(existingConversation._id, req.user._id, 'conversation_reinvited', 'تم إرسال دعوة جديدة', 'New invite sent');
-                await attachLudoInvite(existingConversation._id);
+                const ludoMsg = await attachLudoInvite(existingConversation._id);
+                // إعادة فتح محادثة منتهية لا ترسل push عادةً — التحدّي يستحقه (يُحفظ في «الألعاب» أيضاً)
+                if (ludoMsg) require('./games').notifyLudo(targetUserId, req.user, existingConversation._id, ludoMsg._id, 'invite');
 
                 const safeInitial = await filterInitialMessage(req.user, initialMessage, existingConversation._id);
                 if (safeInitial) {
@@ -445,11 +447,11 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         // ↩️ الردّ على القصة: نصّ الردّ يصل بعده في إشعار الرسالة (نفس apns-collapse-id
         //    = المحادثة، فيستبدل هذا ولا يتكرّر)
         const notifTitle = superLikeCreated ? '💎 إعجاب مميز!'
-            : (isStoryReply ? '↩️ ردّ على قصتك' : (wantsLudo ? '🎲 دعوة للعب' : 'طلب محادثة جديد'));
+            : (isStoryReply ? '↩️ ردّ على قصتك' : (wantsLudo ? `🎲 ${req.user.name} يتحداك في «هلا لودو»` : 'طلب محادثة جديد'));
         const notifBody = superLikeCreated
             ? `${req.user.name} أرسل لك Super Like ويريد التحدث معك`
             : (isStoryReply ? `${req.user.name} ردّ على قصتك`
-                : (wantsLudo ? `${req.user.name} يدعوك للعب «هلا لودو» — اقبل الطلب لتبدأ` : `${req.user.name} يريد التحدث معك`));
+                : (wantsLudo ? 'أرسل لك طلب محادثة مع تحدٍّ — اقبل الطلب وابدأ المباراة خلال ساعة' : `${req.user.name} يريد التحدث معك`));
 
         try {
             await pushNotificationService.sendNotificationToUser(
@@ -472,7 +474,9 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         return baseUrl + img;
                     })(),
                     isSuperLike: superLikeCreated ? 'true' : 'false',
-                    ...(isStoryReply ? { storyReply: '1' } : {})
+                    ...(isStoryReply ? { storyReply: '1' } : {}),
+                    // 🎲 تبويب «الألعاب» في الإشعارات + شارة «تحدٍّ» في الطلبات
+                    ...(wantsLudo ? { ludoInvite: '1', origin: 'ludo_invite' } : {})
                 }
             );
         } catch (notifError) {
