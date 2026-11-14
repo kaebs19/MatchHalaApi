@@ -61,9 +61,10 @@ router.get('/notifications', protect, async (req, res) => {
                 .skip((page - 1) * fetchLimit)
                 .lean(),
             Notification.countDocuments(query),
-            // عدّ غير المقروءة (نفس filter لكن مع شرط readBy)
+            // عدّ غير المقروءة — للكل دائماً لا للتبويب المختار: التطبيق يضعه على جرس التبويب وشريحة
+            // «غير المقروءة»، فكان اختيار «القصص/الألعاب» يُنزل الجرس من 99+ إلى 1 (١٤ نوفمبر ٢٠٢٦)
             Notification.countDocuments({
-                ...query,
+                ...buildUserNotificationsFilter({ userId, role, filter: 'all' }),
                 'readBy.user': { $ne: userId }
             }),
             // العداد الإجمالي (للتاب all)
