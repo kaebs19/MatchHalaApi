@@ -191,6 +191,17 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             });
         }
 
+        // 🎲 «طلب لعبة» لمن بيني وبينه محادثة مقبولة: ليست طلباً جديداً — إعدادات استقبال الطلبات لا تخصّها.
+        //    التطبيق يرسل الدعوة داخلها (/games/ludo/invite بحارسه الكامل). الحظر فُحص أعلاه.
+        if (wantsLudo) {
+            const live = await Conversation.findOne({
+                type: 'private', participants: { $all: [req.user._id, targetUserId] }, status: 'accepted', isActive: true
+            }).lean();
+            if (live) {
+                return res.status(200).json({ success: true, message: 'محادثة موجودة بالفعل', data: { conversation: live, isExisting: true } });
+            }
+        }
+
         // ✅ Privacy: المستخدم المستهدف أوقف استقبال الطلبات
         if (targetUser.acceptingRequests === false) {
             return res.status(403).json({
