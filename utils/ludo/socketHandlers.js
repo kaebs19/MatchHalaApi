@@ -67,6 +67,7 @@ function registerLudoHandlers(io, socket) {
     on('ludo:wallet', () => lobby.walletInfo(userId));
     on('ludo:missions:claim', ({ id }) => lobby.claimMission(userId, id));
     on('ludo:wallet:claim', () => lobby.claimDaily(userId));
+    on('ludo:launch-gift:claim', () => lobby.claimLaunchGift(userId));
     on('ludo:store', () => lobby.storeInfo(userId));
     on('ludo:store:buy-coins', ({ packId }) => lobby.buyCoins(userId, packId));
     on('ludo:store:purchase', ({ signedTransaction }) => lobby.redeemPurchase(userId, signedTransaction));

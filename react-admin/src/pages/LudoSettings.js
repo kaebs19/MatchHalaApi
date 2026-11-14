@@ -224,6 +224,50 @@ function LudoSettings() {
                 </div>
             </section>
 
+            {/* ── هدية الإطلاق ── */}
+            {cfg.launchGift && (() => {
+                const g = cfg.launchGift;
+                const now = Date.now();
+                const s = g.startsAt ? Date.parse(g.startsAt) : null;
+                const e = g.endsAt ? Date.parse(g.endsAt) : null;
+                const status = !s ? 'مطفأة' : now < s ? `تبدأ ${new Date(s).toLocaleString('ar')}`
+                    : now < e ? `مفعّلة — تنتهي ${new Date(e).toLocaleString('ar')} (بعد ${Math.ceil((e - now) / 86400000)} يوماً)` : 'انتهت';
+                const toDay = (iso) => (iso ? iso.slice(0, 10) : '');
+                const fromDay = (d) => (d ? new Date(`${d}T00:00:00Z`).toISOString() : null);
+                return (
+                    <section className="ludo-section">
+                        <div className="ludo-section-head">
+                            <div>
+                                <h3>🎁 هدية الإطلاق</h3>
+                                <p>تظهر بطاقة «استلم هديتك» في الألعاب لكل مستخدم خلال المدة — مرة لكل حساب ولكل جهاز (الحساب الثاني على الجهاز نفسه لا يأخذها). الحالة: <b>{status}</b></p>
+                            </div>
+                            <div className="ludo-savebar-actions">
+                                <button className="btn-ghost" onClick={() => {
+                                    const start = new Date();
+                                    set(['launchGift'], { ...g, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 30 * 86400000).toISOString() });
+                                }}>▶️ ابدأ الآن لـ 30 يوماً</button>
+                                {g.startsAt && <button className="btn-ghost" onClick={() => set(['launchGift'], { ...g, startsAt: null, endsAt: null })}>⏹ أوقف</button>}
+                            </div>
+                        </div>
+                        <div className="ludo-grid">
+                            <NumberField label="عملات" suffix="🪙" value={g.coins} onChange={v => set(['launchGift', 'coins'], v)} />
+                            <NumberField label="جواهر" suffix="💎" value={g.gems} onChange={v => set(['launchGift', 'gems'], v)} />
+                            <label className="ludo-field">
+                                <span>البداية (UTC)</span>
+                                <div className="ludo-input"><input type="date" value={toDay(g.startsAt)} onChange={ev => set(['launchGift', 'startsAt'], fromDay(ev.target.value))} /></div>
+                            </label>
+                            <label className="ludo-field">
+                                <span>النهاية (UTC)</span>
+                                <div className="ludo-input"><input type="date" value={toDay(g.endsAt)} onChange={ev => set(['launchGift', 'endsAt'], fromDay(ev.target.value))} /></div>
+                            </label>
+                        </div>
+                        {Number(g.gems) > 900 && (
+                            <p className="ludo-note">💡 {fmt(g.gems)} جوهرة لكل مستخدم أكثر من أكبر باقة تُباع (900 جوهرة = 3.99$) — قد يتوقّف شراء الجواهر طوال المدة.</p>
+                        )}
+                    </section>
+                );
+            })()}
+
             {/* ── مهام اليوم ── */}
             <section className="ludo-section">
                 <div className="ludo-section-head"><div><h3>🎯 مهام اليوم</h3><p>تتجدّد كل يوم (UTC). تغيير الهدف يسري فوراً على تقدّم اليوم.</p></div></div>

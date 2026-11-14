@@ -49,6 +49,7 @@ const walletMatches = (w, filter) => {
     if (filter.gems?.$gte !== undefined && !((w.gems || 0) >= filter.gems.$gte)) return false;
     if (filter.gems?.$exists === false && w.gems !== undefined) return false;
     if (typeof filter.adToken === 'string' && w.adToken !== filter.adToken) return false;
+    if (filter.launchGiftAt === null && w.launchGiftAt) return false;
     if (typeof filter.weekKey === 'string' && w.weekKey !== filter.weekKey) return false;
     if (filter.weekPoints?.$gt !== undefined && !((w.weekPoints || 0) > filter.weekPoints.$gt)) return false;
     if (filter.$or) {
@@ -1180,4 +1181,39 @@ maybe('ضمان الـ 6: بعد 3 رميات جافة وكل القطع عال�
     assert.equal(s.seats[0].dry, 0);
     // b له قطعة على المسار ← غير عالق ← لا عدّ
     assert.equal(s.seats[1].dry, 0);
+});
+
+test('🎁 هدية الإطلاق: مرة لكل حساب، ومرة لكل جهاز، وخارج النافذة لا شيء', async () => {
+    const g = economy.constants.LAUNCH_GIFT;
+    const saved = { ...g };
+    try {
+        const a = addUser({ keychainToken: 'kc-gift-1' });
+        const b = addUser({ keychainToken: 'kc-gift-1' });          // جهاز a نفسه
+        const c = addUser({ keychainToken: 'kc-gift-2' });
+
+        await assert.rejects(lobby.claimLaunchGift(a), { code: 'LAUNCH_GIFT_CLOSED' });
+
+        Object.assign(g, { coins: 100000, gems: 1000,
+            startsAt: new Date(Date.now() - 1000).toISOString(),
+            endsAt: new Date(Date.now() + 86400e3).toISOString() });
+
+        const before = (await lobby.walletInfo(a)).wallet;
+        assert.deepEqual(before.launchGift && [before.launchGift.coins, before.launchGift.gems], [100000, 1000]);
+        const r = await lobby.claimLaunchGift(a);
+        assert.equal(r.wallet.coins, before.coins + 100000);
+        assert.equal(r.wallet.gems, before.gems + 1000);
+        assert.equal(r.wallet.launchGift, null);
+        await assert.rejects(lobby.claimLaunchGift(a), { code: 'LAUNCH_GIFT_TAKEN' });
+
+        const coinsB = (await lobby.walletInfo(b)).wallet.coins;
+        await assert.rejects(lobby.claimLaunchGift(b), { code: 'LAUNCH_GIFT_DEVICE' });
+        const afterB = (await lobby.walletInfo(b)).wallet;
+        assert.equal(afterB.coins, coinsB);
+        assert.equal(afterB.launchGift, null);                     // لا تُعرض له مجدداً
+
+        const rc = await lobby.claimLaunchGift(c);
+        assert.equal(rc.gift.coins, 100000);
+    } finally {
+        Object.assign(g, saved);
+    }
 });

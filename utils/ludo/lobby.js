@@ -203,6 +203,13 @@ async function claimDaily(userId) {
     return { wallet: economy.walletView(await economy.claimDaily(String(user._id))) };
 }
 
+// 🎁 هدية الإطلاق (من اللوحة) — مرة لكل حساب وجهاز
+async function claimLaunchGift(userId) {
+    const user = await loadEligible(userId);
+    const { wallet, gift } = await economy.claimLaunchGift(String(user._id), deviceIds(user));
+    return { wallet: economy.walletView(wallet), gift };
+}
+
 // ───────────── التحدّي المباشر ─────────────
 // مباراة ودّية من لاعبَين، بلا رسوم. يحقّ بين صديقَين، أو بين خصمَي مباراة انتهت للتوّ («مباراة ثانية»)
 // — لا تحدٍّ لغريب: الاسم ظاهر في الترتيب لكل الناس، والتحدّي تنبيه يقاطع صاحبه.
@@ -537,6 +544,7 @@ module.exports = {
     leaveRoom,
     loadEligible,
     walletInfo,
+    claimLaunchGift,
     deviceIds,
     claimMission,
     playerCard,

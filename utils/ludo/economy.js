@@ -21,6 +21,16 @@ const LIVE = {
     adDailyMax: Number(process.env.LUDO_AD_DAILY_MAX) || 5
 };
 function setLive(patch) { Object.assign(LIVE, patch); }
+
+// 🎁 هدية الإطلاق (لوحة التحكم ← config.js يعدّلها في مكانها): مرة لكل حساب ولكل جهاز، خلال النافذة فقط.
+//    التواريخ فارغة = مطفأة. (قرار المالك ١٤ نوفمبر ٢٠٢٦: 100K عملة + 1000 جوهرة لكل مستخدم في شهر الإطلاق)
+const LAUNCH_GIFT = { coins: 100000, gems: 1000, startsAt: null, endsAt: null };
+function launchGiftOpen(now = Date.now()) {
+    const s = LAUNCH_GIFT.startsAt ? Date.parse(LAUNCH_GIFT.startsAt) : NaN;
+    const e = LAUNCH_GIFT.endsAt ? Date.parse(LAUNCH_GIFT.endsAt) : NaN;
+    return Number.isFinite(s) && Number.isFinite(e) && now >= s && now < e
+        && (LAUNCH_GIFT.coins > 0 || LAUNCH_GIFT.gems > 0);
+}
 const DAILY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAILY_MS;
 
@@ -190,6 +200,10 @@ function walletView(w, now = Date.now()) {
         prize,
         ad: { coins: AD_REWARD.coins, gems: AD_REWARD.gems, left: adsLeft(w, now), max: LIVE.adDailyMax },
         dailyBonus: LIVE.dailyBonus,
+        // 🎁 هدية الإطلاق متاحة لهذا الحساب (null = لا شيء يُعرض)
+        launchGift: !w.launchGiftAt && launchGiftOpen(now)
+            ? { coins: LAUNCH_GIFT.coins, gems: LAUNCH_GIFT.gems, endsAt: LAUNCH_GIFT.endsAt }
+            : null,
         // 0 = متاحة الآن
         dailyAvailableAt: claimed && claimed + DAILY_MS > now ? claimed + DAILY_MS : 0
     };
@@ -333,6 +347,36 @@ async function claimDaily(userId, now = Date.now()) {
     ).lean();
     if (!w) throw new LudoError('DAILY_NOT_READY', 'أخذت مكافأة اليوم — ارجع غداً', 409);
     return w;
+}
+
+// 🎁 استلام هدية الإطلاق — مرة لكل حساب، ولكل جهاز (keychainToken/vendorId) كي لا تُجمع بحسابات متعددة
+//    تُغذّي حساباً رئيسياً بالخسارة المتعمّدة في الدوري. devices = lobby.deviceIds(user).
+async function claimLaunchGift(userId, devices = [], now = Date.now()) {
+    if (!launchGiftOpen(now)) throw new LudoError('LAUNCH_GIFT_CLOSED', 'انتهت هدية الإطلاق', 410);
+    const w0 = await getWallet(userId);
+    if (w0.launchGiftAt) throw new LudoError('LAUNCH_GIFT_TAKEN', 'استلمت هدية الإطلاق من قبل', 409);
+
+    const { getClient } = require('../redisClient');
+    const redis = await getClient().catch(() => null);
+    if (redis && devices.length) {
+        const ttl = Math.max(60, Math.ceil((Date.parse(LAUNCH_GIFT.endsAt) - now) / 1000) + 90 * 86400);
+        for (const d of devices) {
+            const key = `ludo:launchgift:${d}`;
+            const set = await redis.set(key, String(userId), { NX: true, EX: ttl });
+            if (!set && (await redis.get(key)) !== String(userId)) {
+                await LudoWallet.updateOne({ user: userId, launchGiftAt: null },
+                    { $set: { launchGiftAt: new Date(now), launchGiftBlocked: true } });
+                throw new LudoError('LAUNCH_GIFT_DEVICE', 'استُلمت هدية الإطلاق على هذا الجهاز من حساب آخر', 409);
+            }
+        }
+    }
+    const w = await LudoWallet.findOneAndUpdate(
+        { user: userId, launchGiftAt: null },
+        { $inc: { coins: LAUNCH_GIFT.coins, gems: LAUNCH_GIFT.gems }, $set: { launchGiftAt: new Date(now) } },
+        { new: true }
+    ).lean();
+    if (!w) throw new LudoError('LAUNCH_GIFT_TAKEN', 'استلمت هدية الإطلاق من قبل', 409);
+    return { wallet: w, gift: { coins: LAUNCH_GIFT.coins, gems: LAUNCH_GIFT.gems } };
 }
 
 // ───────────── مكافأة الإعلان ─────────────
@@ -616,7 +660,7 @@ function startSeasonSweeper() {
 }
 
 module.exports = {
-    getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily,
+    getWallet, assertCanAfford, charge, refund, chargeGems, refundGems, settle, claimDaily, claimLaunchGift, launchGiftOpen,
     storeView, buyCoins, redeemPurchase, startAd, claimAd,
     leaderboard, weekStandings, awardLastWeek, markPrizeSeen, startSeasonSweeper,
     assertLeague, prizeFor, stakeFor, leaguesView, leagueOfFee, levelOf, walletView, publicStats, recordFriendly, grant, onPrize, ssvReward, refundPurchase, restorePurchase, tierOf, weekKeyOf,
@@ -627,6 +671,6 @@ module.exports = {
         get START_GEMS() { return LIVE.startGems; },
         get DAILY_BONUS() { return LIVE.dailyBonus; },
         get AD_DAILY_MAX() { return LIVE.adDailyMax; },
-        DAILY_MS, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_MIN_MS
+        DAILY_MS, LAUNCH_GIFT, LEAGUES, BOOST_COST, COIN_PACKS, GEM_PRODUCTS, IAP_PRODUCTS, WEEKLY_PRIZES, TIERS, AD_REWARD, AD_MIN_MS
     }
 };

@@ -28,7 +28,8 @@ const DEFAULTS = (() => {
         adReward: { coins: c.AD_REWARD.coins, gems: c.AD_REWARD.gems },
         adDailyMax: c.AD_DAILY_MAX,
         missions: Object.fromEntries(missions.constants.MISSIONS.map(m => [m.id, { target: m.target, coins: m.coins, gems: m.gems }])),
-        weeklyPrizes: prizes.map(p => ({ coins: p.coins || 0, gems: p.gems || 0 }))
+        weeklyPrizes: prizes.map(p => ({ coins: p.coins || 0, gems: p.gems || 0 })),
+        launchGift: { coins: c.LAUNCH_GIFT.coins, gems: c.LAUNCH_GIFT.gems, startsAt: null, endsAt: null }
     };
 })();
 
@@ -88,6 +89,26 @@ function sanitize(input = {}) {
         coins: int(e, `جائزة المركز ${i + 1} (عملات)`, prizes[i]?.coins ?? 0, 0, 1_000_000_000),
         gems: int(e, `جائزة المركز ${i + 1} (جواهر)`, prizes[i]?.gems ?? 0, 0, 1_000_000)
     }));
+    const g = { ...DEFAULTS.launchGift, ...(src.launchGift || {}) };
+    const date = (label, v) => {
+        if (v === null || v === undefined || v === '') return null;
+        const t = Date.parse(v);
+        if (!Number.isFinite(t)) { e.push(`${label}: تاريخ غير صالح`); return null; }
+        return new Date(t).toISOString();
+    };
+    out.launchGift = {
+        coins: int(e, 'هدية الإطلاق (عملات)', g.coins, 0, 100_000_000),
+        gems: int(e, 'هدية الإطلاق (جواهر)', g.gems, 0, 1_000_000),
+        startsAt: date('بداية هدية الإطلاق', g.startsAt),
+        endsAt: date('نهاية هدية الإطلاق', g.endsAt)
+    };
+    const { startsAt, endsAt } = out.launchGift;
+    if (!!startsAt !== !!endsAt) e.push('هدية الإطلاق: البداية والنهاية معاً أو كلتاهما فارغة');
+    if (startsAt && endsAt) {
+        const days = (Date.parse(endsAt) - Date.parse(startsAt)) / 86400000;
+        if (days <= 0) e.push('هدية الإطلاق: النهاية بعد البداية');
+        else if (days > 120) e.push('هدية الإطلاق: 120 يوماً كحدّ أقصى');
+    }
     if (e.length) throw new ConfigError(e);
     return out;
 }
@@ -102,6 +123,7 @@ function apply(cfg) {
     Object.assign(c.AD_REWARD, cfg.adReward);
     c.WEEKLY_PRIZES.splice(0, c.WEEKLY_PRIZES.length, ...cfg.weeklyPrizes.map(p => ({ ...p })));
     for (const m of missions.constants.MISSIONS) if (cfg.missions[m.id]) Object.assign(m, cfg.missions[m.id]);
+    Object.assign(c.LAUNCH_GIFT, cfg.launchGift);
     current = clone(cfg);
 }
 

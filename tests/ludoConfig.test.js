@@ -71,3 +71,26 @@ test('الحفظ يطبّق فوراً: الرسوم والجوائز والمه
     assert.equal(c.START_COINS, before.startCoins);
     config.apply(config.defaults());
 });
+
+test('🎁 هدية الإطلاق: مطفأة افتراضياً، والتواريخ تُتحقَّق، والحفظ يفتحها', async () => {
+    const d = config.defaults();
+    assert.deepEqual(d.launchGift, { coins: 100000, gems: 1000, startsAt: null, endsAt: null });
+    assert.equal(economy.launchGiftOpen(), false);
+    assert.throws(() => config.sanitize({ launchGift: { startsAt: '2026-11-20' } }), /معاً/);
+    assert.throws(() => config.sanitize({ launchGift: { startsAt: '2026-11-20', endsAt: '2026-11-19' } }), /بعد البداية/);
+    assert.throws(() => config.sanitize({ launchGift: { startsAt: '2026-01-01', endsAt: '2026-12-31' } }), /120/);
+    assert.throws(() => config.sanitize({ launchGift: { startsAt: 'x', endsAt: '2026-11-19' } }), /تاريخ/);
+
+    const now = Date.now();
+    const startsAt = new Date(now - 3600e3).toISOString();
+    const endsAt = new Date(now + 30 * 86400e3).toISOString();
+    await config.save({ ...config.current(), launchGift: { coins: 100000, gems: 1000, startsAt, endsAt } }, null);
+    assert.equal(economy.launchGiftOpen(now), true);
+    assert.equal(economy.launchGiftOpen(Date.parse(endsAt) + 1), false);
+    const view = economy.walletView({ coins: 0, gems: 0 }, now);
+    assert.deepEqual(view.launchGift, { coins: 100000, gems: 1000, endsAt });
+    assert.equal(economy.walletView({ coins: 0, gems: 0, launchGiftAt: new Date() }, now).launchGift, null);
+
+    await config.save({ ...config.current(), launchGift: { coins: 1, gems: 1, startsAt: null, endsAt: null } }, null);
+    assert.equal(economy.launchGiftOpen(now), false);
+});

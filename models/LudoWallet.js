@@ -26,6 +26,9 @@ const ludoWalletSchema = new mongoose.Schema({
         seen: { type: Boolean, default: false }
     },
     dailyClaimedAt: { type: Date, default: null },
+    // 🎁 هدية الإطلاق: مرة لكل حساب. launchGiftBlocked = الجهاز استلمها من حساب آخر (لا تُعرض مجدداً)
+    launchGiftAt: { type: Date, default: null },
+    launchGiftBlocked: { type: Boolean, default: false },
     // مكافأة مشاهدة إعلان: عدّاد اليوم (UTC) ورمز الإعلان الجاري (يُستعمل مرة)
     adDay: { type: String, default: null },
     adCount: { type: Number, default: 0 },
