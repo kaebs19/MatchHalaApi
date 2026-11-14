@@ -956,6 +956,7 @@ server.listen(PORT, () => {
             require('./utils/ludo/service').startLudoTicker();
             require('./utils/ludo/lobby').startLudoLobbySweeper();
             require('./utils/ludo/economy').startSeasonSweeper();
+            require('./routes/mobile/games').startLudoInviteSweeper();
         } catch (e) {
             console.error('تعذّر بدء مؤقّت هلا لودو:', e.message);
         }

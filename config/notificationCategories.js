@@ -80,6 +80,8 @@ const NOTIFICATION_TYPES = {
     'ludo_invite':          { category: 'social', groupable: false, adminOnly: false },
     'ludo_accepted':        { category: 'social', groupable: false, adminOnly: false },
     'ludo_declined':        { category: 'social', groupable: false, adminOnly: false },
+    'ludo_missed':          { category: 'social', groupable: false, adminOnly: false },   // فاتني تحدٍّ (انتهى بلا ردّ)
+    'ludo_expired':         { category: 'social', groupable: false, adminOnly: false },   // انتهت دعوتي بلا ردّ (يُحفظ بلا push)
     // 🧾 الملخّص الدوري — push فقط (لا يُحفظ: كل حدث فيه له صفّه أصلاً)
     'notification_digest':  { category: 'channel', groupable: false, adminOnly: false },
 
@@ -143,6 +145,8 @@ const PREFERENCE_KEY_BY_TYPE = {
     'ludo_invite':           'invitations',
     'ludo_accepted':         'invitations',
     'ludo_declined':         'invitations',
+    'ludo_missed':           'invitations',
+    'ludo_expired':          'invitations',
     // طلبات الصداقة
     'friend_request':        'invitations',
     'friend_accepted':       'invitations',
@@ -171,7 +175,7 @@ function getPreferenceKey(type) {
 const STORY_NOTIFICATION_TYPES = ['story_reaction', 'story_screenshot', 'friend_story', 'story_expiring'];
 
 /** 🎲 أنواع تبويب «الألعاب» (مع طلبات المحادثة التي جاءت بتحدٍّ من الاكتشاف — data.ludoInvite) */
-const GAME_NOTIFICATION_TYPES = ['ludo_invite', 'ludo_accepted', 'ludo_declined'];
+const GAME_NOTIFICATION_TYPES = ['ludo_invite', 'ludo_accepted', 'ludo_declined', 'ludo_missed', 'ludo_expired'];
 
 /**
  * أنواع تُستخدم للـ filter tabs في iOS

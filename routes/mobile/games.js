@@ -13,6 +13,7 @@ const mongoose = require('mongoose');
 
 const { protect } = require('../../middleware/auth');
 const Message = require('../../models/Message');
+const User = require('../../models/User');
 const Conversation = require('../../models/Conversation');
 const GameConfig = require('../../models/GameConfig');
 const UserGameQuestion = require('../../models/UserGameQuestion');
@@ -850,18 +851,24 @@ const LUDO_COPY = {
     again:    (n, f) => ({ title: `🎲 ${n} ${f ? 'تعيد' : 'يعيد'} التحدّي`, body: 'فرصة ثانية في «هلا لودو» — هل تقبل هذه المرة؟' }),
     back:     (n, f) => ({ title: `🔥 ${n} ${f ? 'تردّ' : 'يردّ'} على تحدّيك`, body: `جاء ${f ? 'دورها لتتحدّاك' : 'دوره ليتحدّاك'} في «هلا لودو» — الدعوة بانتظارك` }),
     accepted: (n, f) => ({ title: `✅ ${n} ${f ? 'قبلت' : 'قبل'} تحدّيك`, body: 'المباراة بدأت الآن — ادخل والعب دورك' }),
-    declined: (n, f) => ({ title: `${n} ${f ? 'اعتذرت' : 'اعتذر'} عن التحدّي`, body: `ربما في وقت آخر — تقدر ${f ? 'تتحدّاها' : 'تتحدّاه'} لاحقاً من المحادثة` })
+    declined: (n, f) => ({ title: `${n} ${f ? 'اعتذرت' : 'اعتذر'} عن التحدّي`, body: `ربما في وقت آخر — تقدر ${f ? 'تتحدّاها' : 'تتحدّاه'} لاحقاً من المحادثة` }),
+    // ⏳ انتهت الدعوة بلا ردّ: المستلم «فاتك» (push)، والمرسل «لم يردّ» (يُحفظ فقط) — n هنا الطرف الآخر
+    missed:   (n) => ({ title: `⏳ فاتك تحدّي ${n}`, body: 'انتهت الدعوة قبل أن تردّ — اضغط وردّ التحدّي' }),
+    expired:  (n, f) => ({ title: `انتهت دعوتك لـ${n}`, body: `لم ${f ? 'تردّ' : 'يردّ'} خلال 10 دقائق — تقدر تعيد التحدّي من المحادثة` })
 };
-const LUDO_TYPE = { invite: 'ludo_invite', again: 'ludo_invite', back: 'ludo_invite', accepted: 'ludo_accepted', declined: 'ludo_declined' };
+const LUDO_TYPE = {
+    invite: 'ludo_invite', again: 'ludo_invite', back: 'ludo_invite', accepted: 'ludo_accepted', declined: 'ludo_declined',
+    missed: 'ludo_missed', expired: 'ludo_expired'
+};
 
-async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind) {
+async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind, { push = true } = {}) {
     try {
         const copy = LUDO_COPY[kind](senderUser.name || 'لاعب', senderUser.gender === 'female');
-        const online = await isUserSocketConnected(recipientId);
+        const online = !push || await isUserSocketConnected(recipientId);
         const img = getBestUserImage(senderUser);
         await pushNotificationService.sendNotificationToUser(recipientId, copy, {
             type: LUDO_TYPE[kind],
-            gameEvent: kind === 'accepted' ? 'ludo_accept' : (kind === 'declined' ? 'ludo_decline' : 'ludo_invite'),
+            gameEvent: { accepted: 'ludo_accept', declined: 'ludo_decline', missed: 'ludo_missed', expired: 'ludo_expired' }[kind] || 'ludo_invite',
             conversationId: String(conversationId),
             messageId: String(messageId),
             senderId: String(senderUser._id),
@@ -917,7 +924,55 @@ async function createLudoInviteMessage(conversationId, user, opponentId, { mode 
     if (global.io) {
         global.io.to([`user:${user._id}`, `user:${opponentId}`]).emit('new-message', { message: populated });
     }
+    scheduleInviteExpiry(message._id, Date.parse(game.expiresAt));
     return populated;
+}
+
+// ─────────────────────────────────────────────────────────────
+// ⏳ انتهاء الدعوات بلا ردّ: zset بموعد الانتهاء ← كنس كل 30ث (instance 0) يعلّمها expired ويُبلغ الطرفين.
+//    (البطاقة نفسها تعرض «انتهت» محلياً بالموعد — الكنس للإشعار وحده، والانتقال الذرّي pending→expired يمنع التكرار.)
+// ─────────────────────────────────────────────────────────────
+const INVITE_DUE_KEY = 'ludo:invite-due';
+async function scheduleInviteExpiry(messageId, at) {
+    try {
+        const { getClient } = require('../../utils/redisClient');
+        const redis = await getClient();
+        if (redis && Number.isFinite(at)) await redis.zAdd(INVITE_DUE_KEY, { score: at, value: String(messageId) });
+    } catch (e) { /* بلا Redis: لا إشعار انتهاء — البطاقة تعرضه */ }
+}
+
+async function sweepExpiredInvites(now = Date.now()) {
+    const { getClient } = require('../../utils/redisClient');
+    const redis = await getClient();
+    if (!redis) return 0;
+    const due = await redis.zRangeByScore(INVITE_DUE_KEY, '-inf', now, { LIMIT: { offset: 0, count: 50 } });
+    let done = 0;
+    for (const id of due) {
+        if (!(await redis.zRem(INVITE_DUE_KEY, id))) continue;           // نسخة أخرى أخذته
+        if (!mongoose.isValidObjectId(id)) continue;
+        const msg = await Message.findById(id).select('game conversation').lean();
+        if (!msg || msg.game?.kind !== 'ludo' || msg.game.status !== 'pending') continue;
+        const saved = await setLudoState(id, 'pending', { status: 'expired' });
+        if (!saved) continue;
+        const [inviterId, inviteeId] = msg.game.players;
+        const users = await User.find({ _id: { $in: [inviterId, inviteeId] } })
+            .select('name gender profileImage profileImages').lean();
+        const inviter = users.find(u => String(u._id) === inviterId);
+        const invitee = users.find(u => String(u._id) === inviteeId);
+        if (inviter) await notifyLudo(inviteeId, inviter, msg.conversation, id, 'missed');
+        if (invitee) await notifyLudo(inviterId, invitee, msg.conversation, id, 'expired', { push: false });
+        done++;
+    }
+    return done;
+}
+
+let inviteSweeper = null;
+function startLudoInviteSweeper() {
+    if (inviteSweeper) return;
+    inviteSweeper = setInterval(() => {
+        sweepExpiredInvites().catch(e => console.error('🎲 invite sweep:', e.message));
+    }, 30 * 1000);
+    inviteSweeper.unref?.();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1085,3 +1140,5 @@ module.exports.createLudoInviteMessage = createLudoInviteMessage;
 module.exports.LUDO_FALLBACK = LUDO_FALLBACK;
 module.exports.LUDO_COPY = LUDO_COPY;
 module.exports.notifyLudo = notifyLudo;
+module.exports.startLudoInviteSweeper = startLudoInviteSweeper;
+module.exports.sweepExpiredInvites = sweepExpiredInvites;
