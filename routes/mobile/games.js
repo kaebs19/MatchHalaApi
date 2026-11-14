@@ -840,6 +840,48 @@ ludoService.onAway(async ({ gameId, userId, graceMs }) => {
     }, { type: 'ludo_turn', gameId: String(gameId) }, false);
 });
 
+/**
+ * رسالة دعوة لودو (pending) في محادثة ثنائية + بثّها للطرفين. لا إشعار push (المُنادي يرسله).
+ * يستعملها مسار الدعوة في المحادثة، وطلب المحادثة من الاكتشاف (conversations/request + ludoInvite)
+ * حيث المحادثة ما زالت «طلباً» — قبولها يسبق قبول الدعوة (guardConversation يشترط accepted).
+ */
+async function createLudoInviteMessage(conversationId, user, opponentId, { mode = 'quick', ttlMs = LUDO_INVITE_TTL_MS } = {}) {
+    const now = new Date();
+    const game = {
+        kind: 'ludo',
+        status: 'pending',
+        players: [String(user._id), String(opponentId)],
+        mode,
+        gameId: null,
+        winner: null,
+        expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+        updatedAt: now.toISOString()
+    };
+    const message = await Message.create({
+        conversation: conversationId,
+        sender: user._id,
+        type: 'game',
+        content: LUDO_FALLBACK,
+        status: 'sent',
+        game
+    });
+    await Conversation.updateOne(
+        { _id: conversationId },
+        {
+            $set: { lastMessage: message._id },
+            $inc: { 'metadata.totalMessages': 1 },
+            $pull: { hiddenFor: { user: { $ne: user._id }, reason: { $ne: 'block' } } }
+        }
+    );
+    const populated = await Message.findById(message._id)
+        .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
+        .lean();
+    if (global.io) {
+        global.io.to([`user:${user._id}`, `user:${opponentId}`]).emit('new-message', { message: populated });
+    }
+    return populated;
+}
+
 // ─────────────────────────────────────────────────────────────
 // POST /games/ludo/invite { conversationId, mode }
 // ─────────────────────────────────────────────────────────────
@@ -900,41 +942,9 @@ router.post('/games/ludo/invite', protect, async (req, res) => {
             return res.status(429).json({ success: false, message: 'انتظر قليلاً قبل دعوة جديدة', code: 'GAME_COOLDOWN' });
         }
 
-        const now = new Date();
-        const game = {
-            kind: 'ludo',
-            status: 'pending',
-            players: [userId, String(opponent._id)],
-            mode,
-            gameId: null,
-            winner: null,
-            expiresAt: new Date(now.getTime() + LUDO_INVITE_TTL_MS).toISOString(),
-            updatedAt: now.toISOString()
-        };
-        const message = await Message.create({
-            conversation: conversation._id,
-            sender: req.user._id,
-            type: 'game',
-            content: LUDO_FALLBACK,
-            status: 'sent',
-            game
-        });
-        await Conversation.updateOne(
-            { _id: conversation._id },
-            {
-                $set: { lastMessage: message._id },
-                $inc: { 'metadata.totalMessages': 1 },
-                $pull: { hiddenFor: { user: { $ne: req.user._id }, reason: { $ne: 'block' } } }
-            }
-        );
-        const populated = await Message.findById(message._id)
-            .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
-            .lean();
-        if (global.io) {
-            global.io.to(conversation.participants.map(p => `user:${p._id}`)).emit('new-message', { message: populated });
-        }
+        const populated = await createLudoInviteMessage(conversation._id, req.user, opponent._id, { mode });
 
-        pushGame(opponent._id, req.user, conversation._id, message._id, {
+        pushGame(opponent._id, req.user, conversation._id, populated._id, {
             title: '🎲 دعوة للعب',
             body: `${req.user.name || 'صديقك'} يدعوك للعب «هلا لودو» — اضغط للقبول`
         }, 'ludo_invite', { apnsCategory: 'LUDO_INVITE_CATEGORY' });
@@ -1018,3 +1028,5 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.createLudoInviteMessage = createLudoInviteMessage;
+module.exports.LUDO_FALLBACK = LUDO_FALLBACK;

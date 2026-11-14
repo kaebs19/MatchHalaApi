@@ -13,6 +13,9 @@ const { buildStoryRef, STORY_UNAVAILABLE } = require('../../utils/storyReply');
 const { getFullUrl, getBestUserImage, maskBannedUser, isUserFullyBanned, getBlockState } = require('./helpers');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion, recordExternalPromoViolation, looksLikeExternalHandle } = require('../../utils/externalPromotionDetector');
+// دعوة لودو مرفقة بطلب محادثة (من الاكتشاف): أطول من دعوة المحادثة (10د) لأن الطرف الآخر يقبل الطلب أولاً،
+// وأقصر من ساعات كي لا تبدأ مباراة والداعي غائب منذ زمن (يتولّاه البوت بعد 3 أدوار ويستعيد مقعده بالعودة)
+const LUDO_REQUEST_INVITE_TTL_MS = 60 * 60 * 1000;
 
 /**
  * الرسالة الأولى في طلب المحادثة — نفس فلاتر /messages/send: الترويج الخارجي يُطمس
@@ -125,6 +128,9 @@ async function createSystemMessage(conversationId, senderId, action, textAr, tex
 router.post('/conversations/request', protect, spamCheckMiddleware, conversationLimitMiddleware, async (req, res) => {
     try {
         const { targetUserId, initialMessage, isSuperLike, storyId } = req.body;
+        // 🎲 «طلب لعبة» من الاكتشاف: طلب محادثة عادي (حدوده وفلاتره) مرفق بدعوة هلا لودو.
+        //    المحادثة القائمة المقبولة لا تمرّ هنا — التطبيق يرسل لها /games/ludo/invite مباشرة.
+        const wantsLudo = req.body.ludoInvite === true || req.body.ludoInvite === 'true';
 
         // ✅ فحص تقييد المراسلة — محادثات جديدة محظورة لـ new_only و all
         if (req.user.restrictions?.messagingRestricted) {
@@ -214,6 +220,29 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             return res.status(410).json(STORY_UNAVAILABLE);
         }
 
+        if (wantsLudo) {
+            if (isSuperLike || storyId) {
+                return res.status(400).json({ success: false, message: 'طلب غير صالح' });
+            }
+            const ludoLobby = require('../../utils/ludo/lobby');
+            try {
+                await ludoLobby.loadEligible(String(req.user._id));
+            } catch (err) {
+                return res.status(err.status || 403).json({ success: false, message: err.message, code: err.code || 'GAMES_UNAVAILABLE' });
+            }
+            try {
+                await ludoLobby.loadEligible(String(targetUserId));
+            } catch (err) {
+                return res.status(403).json({ success: false, message: 'الألعاب غير متاحة لهذا المستخدم حالياً', code: 'OPPONENT_UNAVAILABLE' });
+            }
+        }
+        const attachLudoInvite = async (conversationId) => {
+            if (!wantsLudo) return;
+            const games = require('./games');
+            await games.createLudoInviteMessage(conversationId, req.user, targetUserId, { ttlMs: LUDO_REQUEST_INVITE_TTL_MS });
+        };
+        const origin = isStoryReply ? 'story_reply' : (wantsLudo ? 'ludo_invite' : null);
+
         // التحقق من عدم وجود محادثة سابقة
         const existingConversation = await Conversation.findOne({
             type: 'private',
@@ -253,7 +282,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                         requestedAt: now,             // بداية نافذة "رسالة واحدة فقط"
                         reminderSent: false,          // تذكير الـ 24 ساعة يخصّ هذه الدعوة لا سابقتها
                         withdrawn: false,             // دعوة جديدة تمسح أثر سحب سابق
-                        origin: isStoryReply ? 'story_reply' : null,
+                        origin,
                         // أعد إظهارها للطرفين (نبدأ من سجل نظيف للإخفاء)
                         hiddenFor: []
                     },
@@ -263,6 +292,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
 
                 // ✅ رسالة نظام في المسار: تم إرسال دعوة جديدة
                 await createSystemMessage(existingConversation._id, req.user._id, 'conversation_reinvited', 'تم إرسال دعوة جديدة', 'New invite sent');
+                await attachLudoInvite(existingConversation._id);
 
                 const safeInitial = await filterInitialMessage(req.user, initialMessage, existingConversation._id);
                 if (safeInitial) {
@@ -279,7 +309,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
                     global.io.to(`user:${targetUserId}`).emit('conversation:request', {
                         conversationId: existingConversation._id,
                         isSuperLike: false,
-                        origin: isStoryReply ? 'story_reply' : null,
+                        origin,
                         from: {
                             _id: req.user._id,
                             name: req.user.name,
@@ -364,7 +394,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             status: 'pending',
             isActive: true,
             requestedAt: new Date(),
-            origin: isStoryReply ? 'story_reply' : null,
+            origin,
             title: `محادثة بين ${req.user.name} و ${targetUser.name}`
         });
         // مسح كاش شركاء المحادثات
@@ -374,6 +404,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         }
 
         // إرسال الرسالة الأولى إذا وجدت
+        await attachLudoInvite(conversation._id);
         const safeInitial = await filterInitialMessage(req.user, initialMessage, conversation._id);
         if (safeInitial) {
             await Message.create({
@@ -390,7 +421,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
             global.io.to(`user:${targetUserId}`).emit('conversation:request', {
                 conversationId: conversation._id,
                 isSuperLike: superLikeCreated,
-                origin: isStoryReply ? 'story_reply' : null,
+                origin,
                 from: {
                     _id: req.user._id,
                     name: req.user.name,
@@ -402,10 +433,12 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         // ٢. Push Notification عبر FCM
         // ↩️ الردّ على القصة: نصّ الردّ يصل بعده في إشعار الرسالة (نفس apns-collapse-id
         //    = المحادثة، فيستبدل هذا ولا يتكرّر)
-        const notifTitle = superLikeCreated ? '💎 إعجاب مميز!' : (isStoryReply ? '↩️ ردّ على قصتك' : 'طلب محادثة جديد');
+        const notifTitle = superLikeCreated ? '💎 إعجاب مميز!'
+            : (isStoryReply ? '↩️ ردّ على قصتك' : (wantsLudo ? '🎲 دعوة للعب' : 'طلب محادثة جديد'));
         const notifBody = superLikeCreated
             ? `${req.user.name} أرسل لك Super Like ويريد التحدث معك`
-            : (isStoryReply ? `${req.user.name} ردّ على قصتك` : `${req.user.name} يريد التحدث معك`);
+            : (isStoryReply ? `${req.user.name} ردّ على قصتك`
+                : (wantsLudo ? `${req.user.name} يدعوك للعب «هلا لودو» — اقبل الطلب لتبدأ` : `${req.user.name} يريد التحدث معك`));
 
         try {
             await pushNotificationService.sendNotificationToUser(
