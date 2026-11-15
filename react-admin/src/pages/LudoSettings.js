@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../components/Toast';
 import config from '../config';
+import './LudoSettings.css';
 
 const API = `${config.API_URL}/admin/games/ludo`;
 const call = async (path, options = {}) => {
