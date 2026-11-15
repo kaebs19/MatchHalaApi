@@ -7,8 +7,10 @@ import config from '../config';
 
 const API = `${config.API_URL}/admin/games/ludo`;
 const call = async (path, options = {}) => {
+    // no-store: إعادة فتح الصفحة كانت تُرجع 304 بلا جسم (ETag) فيقرؤه الكود فشلاً ← «فشل الطلب»
     const res = await fetch(`${API}${path}`, {
         ...options,
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
     const data = await res.json().catch(() => ({}));
