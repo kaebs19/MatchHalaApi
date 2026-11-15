@@ -1,0 +1,129 @@
+/* 🎲 قسم هلا لودو — الألوان من رموز اللوحة (var(--…)) لتعمل في الفاتح والداكن */
+.lx-page { display: flex; flex-direction: column; gap: 16px; max-width: 1200px; margin: 0 auto; min-width: 0; }
+.lx-header h1 { margin: 0 0 4px; font-size: 26px; color: var(--text-heading); }
+.lx-header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
+.lx-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.lx-tabs button {
+    border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);
+    padding: 9px 16px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.lx-tabs button.active { background: linear-gradient(135deg, #7446EE, #2F7BEA); color: #fff; border-color: transparent; }
+
+.lx-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 16px; min-width: 0; }
+.lx-card.warn { border-color: var(--color-danger, #e5484d); }
+.lx-card h3 { margin: 0 0 12px; font-size: 16px; color: var(--text-heading); }
+.lx-card h4 { margin: 16px 0 8px; font-size: 14px; color: var(--text-heading); }
+.lx-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.lx-card-head h3 { margin: 0; }
+.lx-note { margin: 10px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+.lx-empty { padding: 30px; text-align: center; color: var(--text-secondary); }
+.lx-overview { display: flex; flex-direction: column; gap: 14px; }
+.lx-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+
+/* الشريط العلوي: الحيّ الآن + المدة */
+.lx-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lx-live { display: flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border-color);
+    padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--text-primary); }
+.lx-dot { width: 9px; height: 9px; border-radius: 50%; background: #2fbf71; box-shadow: 0 0 0 0 rgba(47,191,113,.6); animation: lx-pulse 1.6s infinite; }
+@keyframes lx-pulse { 70% { box-shadow: 0 0 0 8px rgba(47,191,113,0); } 100% { box-shadow: 0 0 0 0 rgba(47,191,113,0); } }
+.lx-range { display: flex; gap: 6px; }
+.lx-range button { border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);
+    padding: 6px 12px; border-radius: 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.lx-range button.active { background: var(--color-primary, #7446EE); color: #fff; border-color: transparent; }
+
+/* بطاقات الأرقام */
+.lx-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.lx-kpi { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 2px; }
+.lx-kpi > span { font-size: 20px; }
+.lx-kpi b { font-size: 24px; color: var(--text-heading); }
+.lx-kpi b em { font-style: normal; font-size: 13px; color: var(--text-secondary); }
+.lx-kpi small { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.lx-kpi.warn { border-color: var(--color-danger, #e5484d); }
+.lx-kpi.warn b { color: var(--color-danger, #e5484d); }
+
+/* الرسم اليومي المكدّس */
+.lx-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
+.lx-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lx-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.lx-bars { display: flex; align-items: flex-end; gap: 4px; height: 180px; padding-top: 18px; overflow-x: auto; }
+.lx-bar { flex: 1 0 18px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+.lx-bar em { font-style: normal; font-size: 10px; color: var(--text-secondary); min-height: 14px; }
+.lx-stack { width: 100%; max-width: 30px; min-height: 2px; display: flex; flex-direction: column; border-radius: 6px 6px 2px 2px; overflow: hidden;
+    background: var(--bg-subtle, rgba(128,128,128,.12)); }
+.lx-stack i { display: block; width: 100%; }
+.lx-bar small { font-size: 9px; color: var(--text-muted, var(--text-secondary)); margin-top: 4px; white-space: nowrap; }
+
+/* الدوريات */
+.lx-leagues { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.lx-league { border: 1px solid; border-inline-start-width: 4px; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.lx-league span { font-size: 13px; color: var(--text-primary); }
+.lx-league b { font-size: 22px; color: var(--text-heading); }
+.lx-league small, .lx-league em { font-size: 11px; color: var(--text-secondary); font-style: normal; }
+
+/* المصادر والبوت */
+.lx-source, .lx-bot { display: grid; grid-template-columns: 150px 1fr 70px; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; color: var(--text-primary); }
+.lx-source > div, .lx-meter { height: 8px; background: var(--bg-subtle, rgba(128,128,128,.12)); border-radius: 999px; overflow: hidden; position: relative; }
+.lx-source > div i { display: block; height: 100%; background: linear-gradient(90deg, #7446EE, #2F7BEA); border-radius: 999px; }
+.lx-meter i { display: block; height: 100%; background: #2fbf71; border-radius: 999px; }
+.lx-meter b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-secondary); }
+.lx-source b { text-align: end; }
+.lx-bot em { font-style: normal; font-size: 12px; color: var(--text-secondary); text-align: end; }
+
+/* أشخاص وقوائم */
+.lx-avatar { border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--bg-subtle); }
+.lx-person { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 7px 4px; cursor: pointer;
+    color: var(--text-primary); font: inherit; text-align: start; border-radius: 10px; }
+.lx-person:hover { background: var(--bg-subtle); }
+.lx-person.inline { padding: 0; width: auto; }
+.lx-person .rank { width: 28px; text-align: center; }
+.lx-person .name { font-weight: 600; }
+.lx-person .meta { margin-inline-start: auto; font-size: 12px; color: var(--text-secondary); }
+.lx-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lx-modes button { border: 1px solid var(--border-color); background: var(--bg-subtle); color: var(--text-primary); border-radius: 12px;
+    padding: 10px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; text-align: start; }
+.lx-modes button span { font-size: 11px; color: var(--text-secondary); }
+.lx-modes button.active { border-color: var(--color-primary, #7446EE); box-shadow: 0 0 0 2px rgba(116,70,238,.25); }
+
+/* الفلاتر والجداول */
+.lx-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.lx-search { flex: 1 1 220px; }
+.lx-filters input, .lx-filters select { border: 1px solid var(--border-color); background: var(--bg-subtle); color: var(--text-primary);
+    border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; }
+.lx-count { margin-inline-start: auto; font-size: 12px; color: var(--text-secondary); }
+.lx-tag { border: 1px solid var(--color-primary, #7446EE); background: transparent; color: var(--text-primary); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+.lx-table-wrap { overflow-x: auto; }
+.lx-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--text-primary); }
+.lx-table th { text-align: start; font-weight: 600; color: var(--text-secondary); font-size: 12px; padding: 8px; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+.lx-table td { padding: 8px; border-bottom: 1px solid var(--border-color); vertical-align: middle; white-space: nowrap; }
+.lx-table.compact td, .lx-table.compact th { padding: 6px; }
+.lx-table tr.clickable { cursor: pointer; }
+.lx-table tr.clickable:hover td { background: var(--bg-subtle); }
+.lx-table tr.inactive td { opacity: .55; }
+.lx-link { background: none; border: 0; color: var(--color-primary, #7446EE); cursor: pointer; font: inherit; font-size: 12px; }
+.lx-pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 12px; color: var(--text-secondary); font-size: 13px; }
+.lx-pager button { border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); border-radius: 10px; padding: 6px 14px; cursor: pointer; font: inherit; }
+.lx-pager button:disabled { opacity: .4; cursor: default; }
+.lx-players { display: flex; gap: 6px; flex-wrap: wrap; }
+.lx-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-color); background: var(--bg-subtle);
+    color: var(--text-primary); border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 12px; }
+.lx-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.lx-chip.win { border-color: #E0A800; font-weight: 700; }
+button.lx-chip { cursor: pointer; }
+
+/* تفاصيل المباراة */
+.lx-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.lx-modal-body { background: var(--bg-card); border-radius: 18px; padding: 20px; width: min(640px, 100%); max-height: 85vh; overflow-y: auto; position: relative; }
+.lx-modal-body h3 { margin: 0 0 6px; color: var(--text-heading); font-size: 17px; word-break: break-all; }
+.lx-close { position: absolute; top: 12px; inset-inline-end: 12px; border: 0; background: var(--bg-subtle); color: var(--text-primary);
+    width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+.lx-chat { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.lx-chat div { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; font-size: 13px; padding: 6px 10px;
+    background: var(--bg-subtle); border-radius: 10px; color: var(--text-primary); }
+.lx-chat small { color: var(--text-secondary); font-size: 11px; }
+
+@media (max-width: 640px) {
+    .lx-leagues, .lx-modes { grid-template-columns: 1fr; }
+    .lx-source, .lx-bot { grid-template-columns: 110px 1fr 56px; }
+    .lx-header h1 { font-size: 22px; }
+}

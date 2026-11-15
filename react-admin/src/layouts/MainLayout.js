@@ -13,6 +13,7 @@ const ConversationMessages = lazy(() => import('../pages/ConversationMessages'))
 const Stats = lazy(() => import('../pages/Stats'));
 const Settings = lazy(() => import('../pages/Settings'));
 const GamesManagement = lazy(() => import('../pages/GamesManagement'));
+const Ludo = lazy(() => import('../pages/Ludo'));
 const StickersManagement = lazy(() => import('../pages/StickersManagement'));
 const RemovalRequests = lazy(() => import('../pages/RemovalRequests'));
 const Profile = lazy(() => import('../pages/Profile'));
@@ -494,6 +495,9 @@ function MainLayout({ onLogout, user: initialUser }) {
                 return <SensitiveContent onViewUserDetail={handleViewUserDetail} />;
             case 'games':
                 return <GamesManagement />;
+            case 'ludo':
+                return <Ludo initialTab={routeQuery?.tab} onViewUserDetail={handleViewUserDetail}
+                    onTabChange={(tab) => replace('ludo', null, tab && tab !== 'overview' ? { tab } : null, { silent: true })} />;
             case 'stickers':
                 return <StickersManagement />;
             case 'removal-requests':

@@ -16,7 +16,9 @@ export const PAGES = {
     analytics: { title: 'التحليلات', icon: '🔍', nav: true, group: 'insights', adminOnly: true },
     stats: { title: 'الإحصائيات', icon: '📈', nav: true, group: 'insights', adminOnly: true },
     'banned-words': { title: 'الكلمات المحظورة', icon: '🚫', nav: true, group: 'moderation', adminOnly: true },
-    games: { title: 'الألعاب', icon: '🎮', nav: true, group: 'content', adminOnly: true },
+    // 🎲 هلا لودو قسم مستقل (pages/Ludo.js) — «الألعاب» صار لألعاب المحادثة وحدها
+    ludo: { title: 'هلا لودو', icon: '🎲', nav: true, group: 'games', adminOnly: true },
+    games: { title: 'ألعاب المحادثة', icon: '🎮', nav: true, group: 'games', adminOnly: true },
     stickers: { title: 'الملصقات', icon: '🏷️', nav: true, group: 'content', adminOnly: true },
     'sensitive-content': { title: 'المحتوى الحساس', icon: '🔞', nav: true, group: 'moderation', adminOnly: true },
     settings: { title: 'الإعدادات', icon: '⚙️', nav: true, group: 'system', adminOnly: true },
@@ -40,6 +42,7 @@ export const NAV_GROUPS = [
     { id: 'main', title: null },
     { id: 'people', title: 'المستخدمون' },
     { id: 'moderation', title: 'الإشراف' },
+    { id: 'games', title: 'الألعاب' },
     { id: 'content', title: 'المحتوى' },
     { id: 'insights', title: 'التحليل' },
     { id: 'system', title: 'النظام' }

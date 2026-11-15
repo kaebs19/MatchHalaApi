@@ -187,3 +187,4 @@
 .ludo-bar i { display: block; width: 100%; max-width: 28px; min-height: 2px; background: linear-gradient(#9c70ff, #5a2fd8); border-radius: 6px 6px 2px 2px; }
 .ludo-bar em { font-style: normal; font-size: 11px; margin-top: 2px; }
 .ludo-bar small { font-size: 10px; color: var(--text-secondary); }
+.games-note-moved { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--bg-subtle); color: var(--text-secondary); font-size: 13px; }

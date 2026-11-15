@@ -401,6 +401,233 @@ router.get('/ludo/metrics', async (req, res) => {
     }
 });
 
+// ═══════════ 🎲 قسم «هلا لودو» المستقل في اللوحة (react-admin/src/pages/Ludo.js) ═══════════
+
+// 📊 نظرة عامة: الحيّ الآن، المباريات واللاعبون، الدوريات، البوت، الاقتصاد، المشتريات، البلاغات — آخر N يوماً
+router.get('/ludo/overview', async (req, res) => {
+    try {
+        const LudoMatch = require('../models/LudoMatch');
+        const LudoWallet = require('../models/LudoWallet');
+        const LudoPurchase = require('../models/LudoPurchase');
+        const Report = require('../models/Report');
+        const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14));
+        const since = new Date(Date.now() - days * 86400000);
+        const TZ = 'Asia/Riyadh';
+        const inRange = { endedAt: { $gte: since } };
+
+        // الحيّ الآن من Redis: المباريات الجارية (لكل منها موعد دور) ومن في الطوابير
+        const live = { games: 0, queue: 0 };
+        try {
+            const { getClient } = require('../utils/redisClient');
+            const redis = await getClient();
+            if (redis) {
+                live.games = await redis.zCard('ludo:deadlines');
+                const keys = await require('../utils/ludo/store').activeQueueKeys();
+                for (const k of keys) live.queue += await redis.zCard(`ludo:queue:${k}`);
+            }
+        } catch (e) { /* Redis غير متاح — الحيّ صفر */ }
+
+        const [
+            matchesAll, matchesRange, perDay, byLeague, bySource, duration, botRows, playersRange,
+            walletsAll, walletsNew, economy, giftClaimed, giftBlocked, purchases, chatReports, topWinners, invites
+        ] = await Promise.all([
+            LudoMatch.estimatedDocumentCount(),
+            LudoMatch.countDocuments(inRange),
+            LudoMatch.aggregate([
+                { $match: inRange },
+                { $group: {
+                    _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$endedAt', timezone: TZ } }, league: { $ifNull: ['$league', 'friendly'] } },
+                    n: { $sum: 1 }
+                } }
+            ]),
+            LudoMatch.aggregate([
+                { $match: { ...inRange, league: { $exists: true, $ne: null } } },
+                { $group: { _id: '$league', n: { $sum: 1 }, fees: { $sum: { $multiply: [{ $ifNull: ['$fee', 0] }, { $size: '$players' }] } } } }
+            ]),
+            LudoMatch.aggregate([{ $match: inRange }, { $group: { _id: '$source', n: { $sum: 1 } } }]),
+            LudoMatch.aggregate([
+                { $match: { ...inRange, startedAt: { $ne: null } } },
+                { $group: { _id: null, avgMs: { $avg: { $subtract: ['$endedAt', '$startedAt'] } }, rolls: { $avg: '$rolls' } } }
+            ]),
+            LudoMatch.aggregate([
+                { $match: { ...inRange, 'players.isBot': true } },
+                { $match: { players: { $elemMatch: { isBot: false } } } },
+                { $group: {
+                    _id: { $cond: [{ $ifNull: ['$league', false] }, 'league', 'friendly'] },
+                    total: { $sum: 1 },
+                    humanWins: { $sum: { $cond: [{ $gt: [{ $size: { $ifNull: ['$winners', []] } }, 0] }, 1, 0] } }
+                } }
+            ]),
+            LudoMatch.distinct('players.user', inRange),
+            LudoWallet.estimatedDocumentCount(),
+            LudoWallet.countDocuments({ createdAt: { $gte: since } }),
+            LudoWallet.aggregate([{ $group: { _id: null, coins: { $sum: '$coins' }, gems: { $sum: '$gems' }, points: { $sum: '$points' } } }]),
+            LudoWallet.countDocuments({ launchGiftAt: { $ne: null }, launchGiftBlocked: { $ne: true } }),
+            LudoWallet.countDocuments({ launchGiftBlocked: true }),
+            LudoPurchase.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $group: { _id: '$productId', n: { $sum: 1 }, refunded: { $sum: { $cond: [{ $ifNull: ['$refundedAt', false] }, 1, 0] } },
+                    gems: { $sum: '$gems' }, coins: { $sum: '$coins' } } },
+                { $sort: { n: -1 } }
+            ]),
+            Report.countDocuments({ createdAt: { $gte: since }, description: /^🎲 بلاغ من دردشة/ }),
+            LudoWallet.find({ wins: { $gt: 0 } }).sort({ wins: -1, points: -1 }).limit(5)
+                .select('user wins played points coins').populate('user', 'name profileImage').lean(),
+            ludoNumbers()
+        ]);
+
+        // كل أيام المدى (حتى بلا مباريات) — الرسم متصل لا أعمدة متباعدة
+        const fmtDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        const daysMap = {};
+        for (let i = days - 1; i >= 0; i--) {
+            const key = fmtDay(new Date(Date.now() - i * 86400000));
+            daysMap[key] = { day: key, total: 0, bronze: 0, silver: 0, gold: 0, friendly: 0 };
+        }
+        for (const r of perDay) {
+            const d = daysMap[r._id.day] || (daysMap[r._id.day] = { day: r._id.day, total: 0, bronze: 0, silver: 0, gold: 0, friendly: 0 });
+            d[r._id.league] = r.n;
+            d.total += r.n;
+        }
+        const rate = (k) => {
+            const r = botRows.find(x => x._id === k);
+            return r ? { total: r.total, humanWins: r.humanWins, humanWinRate: Math.round((r.humanWins / r.total) * 100) } : null;
+        };
+        res.json({
+            success: true,
+            data: {
+                days,
+                live,
+                matches: { all: matchesAll, range: matchesRange, avgMinutes: duration[0] ? Math.round(duration[0].avgMs / 60000) : null,
+                    avgRolls: duration[0] ? Math.round(duration[0].rolls || 0) : null },
+                players: { range: playersRange.filter(Boolean).length, all: walletsAll, newInRange: walletsNew },
+                perDay: Object.values(daysMap).sort((a, b) => a.day.localeCompare(b.day)),
+                leagues: Object.fromEntries(byLeague.map(r => [r._id, { n: r.n, fees: r.fees }])),
+                sources: Object.fromEntries(bySource.map(r => [r._id || 'other', r.n])),
+                bot: { league: rate('league'), friendly: rate('friendly') },
+                economy: { coins: economy[0]?.coins || 0, gems: economy[0]?.gems || 0, giftClaimed, giftBlocked },
+                purchases: purchases.map(p => ({ productId: p._id, n: p.n, refunded: p.refunded, gems: p.gems, coins: p.coins })),
+                chatReports,
+                invites: invites.invites,
+                topWinners: topWinners.map(w => ({ id: w.user?._id ? String(w.user._id) : null, name: w.user?.name || '—', photo: w.user?.profileImage || null,
+                    wins: w.wins, played: w.played, points: w.points, coins: w.coins }))
+            }
+        });
+    } catch (error) {
+        console.error('❌ admin ludo overview:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// 👥 اللاعبون: المحافظ مع الاسم — بحث بالاسم، وترتيب بالرصيد/النجوم/الانتصارات/المباريات/الأحدث
+const PLAYER_SORTS = { coins: { coins: -1 }, gems: { gems: -1 }, points: { points: -1 }, wins: { wins: -1 },
+    played: { played: -1 }, week: { weekPoints: -1 }, newest: { createdAt: -1 } };
+router.get('/ludo/players', async (req, res) => {
+    try {
+        const LudoWallet = require('../models/LudoWallet');
+        const User = require('../models/User');
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = 25;
+        const sort = PLAYER_SORTS[req.query.sort] || PLAYER_SORTS.points;
+        const filter = {};
+        const q = String(req.query.q || '').trim();
+        if (q) {
+            const ids = mongoose.isValidObjectId(q)
+                ? [q]
+                : (await User.find({ name: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }).select('_id').limit(200).lean()).map(u => u._id);
+            filter.user = { $in: ids };
+        }
+        const economy = require('../utils/ludo/economy');
+        const [rows, total] = await Promise.all([
+            LudoWallet.find(filter).sort({ ...sort, _id: -1 }).skip((page - 1) * limit).limit(limit)
+                .populate('user', 'name profileImage country isActive suspension').lean(),
+            LudoWallet.countDocuments(filter)
+        ]);
+        const wk = economy.weekKeyOf(Date.now());
+        res.json({
+            success: true,
+            data: {
+                page, pages: Math.max(1, Math.ceil(total / limit)), total,
+                rows: rows.map(w => ({
+                    id: w.user?._id ? String(w.user._id) : null,
+                    name: w.user?.name || '—', photo: w.user?.profileImage || null, country: w.user?.country || null,
+                    inactive: !w.user || !w.user.isActive || !!w.user.suspension?.isSuspended,
+                    coins: w.coins, gems: w.gems || 0, points: w.points || 0, tier: economy.tierOf(w.points || 0).id,
+                    weekPoints: w.weekKey === wk ? (w.weekPoints || 0) : 0,
+                    played: w.played || 0, wins: w.wins || 0, losses: w.losses || 0, bestStreak: w.bestStreak || 0,
+                    friendlyPlayed: w.friendlyPlayed || 0, coinsWon: w.coinsWon || 0,
+                    launchGift: w.launchGiftBlocked ? 'blocked' : (w.launchGiftAt ? 'claimed' : null),
+                    since: w.createdAt
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('❌ admin ludo players:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+// 🎮 المباريات: الأحدث أولاً، بفلتر الدوري/المصدر/لاعب — مع أسماء اللاعبين والفائز
+function matchRow(m, names) {
+    const name = (id) => (id ? names.get(String(id))?.name || '—' : '🤖 كمبيوتر');
+    return {
+        gameId: m.gameId, mode: m.mode, source: m.source, league: m.league || null, fee: m.fee || 0, prize: m.prize || 0,
+        startedAt: m.startedAt, endedAt: m.endedAt,
+        minutes: m.startedAt && m.endedAt ? Math.max(1, Math.round((new Date(m.endedAt) - new Date(m.startedAt)) / 60000)) : null,
+        rolls: m.rolls || 0, chat: (m.chat || []).length, linkedPlayers: !!m.linkedPlayers,
+        players: (m.players || []).map(p => ({
+            id: p.user ? String(p.user) : null, name: name(p.user), photo: p.user ? names.get(String(p.user))?.profileImage || null : null,
+            color: p.color, place: p.place, isBot: !!p.isBot, left: !!p.left, takenOver: !!p.takenOver,
+            winner: !!p.user && (m.winners || []).some(w => String(w) === String(p.user))
+        }))
+    };
+}
+async function namesFor(matches) {
+    const User = require('../models/User');
+    const ids = [...new Set(matches.flatMap(m => (m.players || []).map(p => p.user).filter(Boolean).map(String)))];
+    const users = await User.find({ _id: { $in: ids } }).select('name profileImage').lean();
+    return new Map(users.map(u => [String(u._id), u]));
+}
+router.get('/ludo/matches', async (req, res) => {
+    try {
+        const LudoMatch = require('../models/LudoMatch');
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const limit = 25;
+        const filter = {};
+        if (['bronze', 'silver', 'gold'].includes(req.query.league)) filter.league = req.query.league;
+        if (req.query.league === 'friendly') filter.league = { $in: [null] };
+        if (['queue', 'room', 'solo', 'invite', 'challenge'].includes(req.query.source)) filter.source = req.query.source;
+        if (mongoose.isValidObjectId(req.query.user)) filter['players.user'] = new mongoose.Types.ObjectId(String(req.query.user));
+        const [rows, total] = await Promise.all([
+            LudoMatch.find(filter).sort({ endedAt: -1 }).skip((page - 1) * limit).limit(limit).select('-chat.text').lean(),
+            LudoMatch.countDocuments(filter)
+        ]);
+        const names = await namesFor(rows);
+        res.json({ success: true, data: { page, pages: Math.max(1, Math.ceil(total / limit)), total, rows: rows.map(m => matchRow(m, names)) } });
+    } catch (error) {
+        console.error('❌ admin ludo matches:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
+router.get('/ludo/matches/:gameId', async (req, res) => {
+    try {
+        const LudoMatch = require('../models/LudoMatch');
+        const m = await LudoMatch.findOne({ gameId: String(req.params.gameId) }).lean();
+        if (!m) return res.status(404).json({ success: false, message: 'المباراة غير موجودة' });
+        const names = await namesFor([m]);
+        res.json({
+            success: true,
+            data: {
+                ...matchRow(m, names),
+                chatLines: (m.chat || []).map(l => ({ id: l.user ? String(l.user) : null, name: l.user ? names.get(String(l.user))?.name || '—' : '—', text: l.text, at: l.at }))
+            }
+        });
+    } catch (error) {
+        console.error('❌ admin ludo match:', error);
+        res.status(500).json({ success: false, message: 'خطأ في السيرفر' });
+    }
+});
+
 // ترتيب الأسبوع الحالي (أو weekKey) وما سيأخذه أعلى 10 — للمراجعة قبل التوزيع
 router.get('/ludo/standings', async (req, res) => {
     try {

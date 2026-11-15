@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/Toast';
 import config from '../config';
 import './GamesManagement.css';
-import LudoSettings from './LudoSettings';
 
 const API = `${config.API_URL}/admin/games`;
 
@@ -12,7 +11,7 @@ const authHeaders = () => ({
 });
 
 const call = async (path, options = {}) => {
-    const res = await fetch(`${API}${path}`, { ...options, headers: authHeaders() });
+    const res = await fetch(`${API}${path}`, { ...options, cache: 'no-store', headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) throw new Error(data.message || 'فشل الطلب');
     return data.data;
@@ -65,7 +64,6 @@ function GamesManagement() {
     const [cfg, setCfg] = useState(null);
     const [stats, setStats] = useState(null);
     // 🎲 تبويب الألعاب في التطبيق (هلا لودو)
-    const [gamesTab, setGamesTab] = useState(null);
 
     const loadQuestions = useCallback(async () => {
         setLoading(true);
@@ -83,10 +81,9 @@ function GamesManagement() {
 
     const loadOverview = useCallback(async () => {
         try {
-            const [c, s, t] = await Promise.all([call('/config'), call('/stats'), call('/tab')]);
+            const [c, s] = await Promise.all([call('/config'), call('/stats')]);
             setCfg(c);
             setStats(s.kinds);
-            setGamesTab(t);
         } catch (e) {
             showToast(e.message, 'error');
         }
@@ -188,21 +185,6 @@ function GamesManagement() {
         } catch (e) { showToast(e.message, 'error'); }
     };
 
-    const GAMES_TAB_LABELS = {
-        off: { title: 'مخفي', hint: 'لا يظهر التبويب لأحد' },
-        admins: { title: 'المشرفون فقط', hint: 'للتجربة على الإنتاج' },
-        all: { title: 'الجميع', hint: 'يظهر لكل المستخدمين (النسخ التي تدعمه)' }
-    };
-
-    const changeGamesTab = async (mode) => {
-        if (!gamesTab || mode === gamesTab.gamesTab) return;
-        if (mode === 'all' && !window.confirm('إظهار قسم الألعاب لكل المستخدمين؟ يصلهم خلال دقيقة.')) return;
-        try {
-            const r = await call('/tab', { method: 'PUT', body: JSON.stringify({ gamesTab: mode }) });
-            setGamesTab({ ...gamesTab, gamesTab: r.gamesTab });
-            showToast('تم الحفظ — يسري على التطبيق خلال دقيقة', 'success');
-        } catch (e) { showToast(e.message, 'error'); }
-    };
 
     const isWyr = bank === 'wyr';
     const canSave = isWyr ? form.aAr.trim() && form.bAr.trim() : form.ar.trim();
@@ -221,41 +203,9 @@ function GamesManagement() {
                     {(uq.pending.pending_review + uq.pending.reported) > 0 && <span className="tab-badge">{uq.pending.pending_review + uq.pending.reported}</span>}
                 </button>
                 <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>⚙️ الألعاب والإحصائيات</button>
-                <button className={tab === 'ludo' ? 'active' : ''} onClick={() => setTab('ludo')}>🎲 هلا لودو: الإعدادات والجوائز</button>
             </div>
 
-            {tab === 'ludo' && <LudoSettings />}
-
-            {tab === 'overview' && gamesTab && (
-                <div className="games-tab-card">
-                    <div className="games-tab-head">
-                        <span className="game-card-icon">🎲</span>
-                        <div>
-                            <h3>قسم الألعاب في التطبيق (هلا لودو)</h3>
-                            <p>من يرى تبويب «الألعاب» وبطاقة الدعوة في المحادثة</p>
-                        </div>
-                    </div>
-                    <div className="games-tab-modes">
-                        {gamesTab.modes.map(mode => (
-                            <button
-                                key={mode}
-                                className={gamesTab.gamesTab === mode ? `active mode-${mode}` : ''}
-                                onClick={() => changeGamesTab(mode)}
-                            >
-                                <b>{GAMES_TAB_LABELS[mode]?.title || mode}</b>
-                                <span>{GAMES_TAB_LABELS[mode]?.hint}</span>
-                            </button>
-                        ))}
-                    </div>
-                    <div className="game-stats">
-                        <div><b>{gamesTab.ludo.total}</b><span>مباريات منتهية</span></div>
-                        <div><b>{gamesTab.ludo.last7}</b><span>آخر ٧ أيام</span></div>
-                        <div><b>{gamesTab.ludo.bySource.invite || 0}</b><span>من دعوات المحادثة (٧ أيام)</span></div>
-                        <div><b>{Object.values(gamesTab.ludo.invites).reduce((a, b) => a + b, 0)}</b><span>دعوات (٧ أيام)</span></div>
-                        <div><b>{gamesTab.ludo.invites.declined || 0}</b><span>اعتُذر عنها</span></div>
-                    </div>
-                </div>
-            )}
+            <p className="games-note-moved">🎲 هلا لودو صار قسماً مستقلاً في القائمة الجانبية (الألعاب ← هلا لودو): الأرقام، اللاعبون، المباريات، الإعدادات والجوائز، ومن يرى تبويب الألعاب.</p>
 
             {tab === 'overview' && (
                 <div className="games-grid">
