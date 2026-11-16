@@ -54,11 +54,31 @@ const findOrCreateMatch = async (swiperId, targetId) => {
         return { match: previous, conversationId: previous.conversation, revived: true };
     }
 
-    const conversation = await Conversation.create({
+    // ⚠️ محادثة قائمة بينهما (طلب محادثة سابق، مقبول أو معلّق أو منتهٍ) تُعاد لا تُنشأ ثانية: كان الإعجاب المتبادل
+    //    بعد محادثة عادية يفتح محادثة جديدة كلياً بجانب القديمة (١٤٠٦ زوجاً بمحادثتين، ٤٩٩ خلال ٣٠ يوماً — ١٧ نوفمبر ٢٠٢٦).
+    //    الإعجاب المتبادل موافقة من الطرفين ← تُقبل المحادثة وتُعاد نشطة ظاهرة لهما (الحظر يُفحص قبل الوصول هنا).
+    let conversation = await Conversation.findOne({
         type: 'private',
-        participants: [swiperId, targetId],
-        status: 'accepted'
-    });
+        participants: { $all: [swiperId, targetId], $size: 2 }
+    }).sort({ updatedAt: -1 });
+    if (conversation) {
+        if (conversation.status !== 'accepted' || conversation.isActive === false) {
+            conversation.status = 'accepted';
+            conversation.isActive = true;
+            conversation.cancelledBy = null;
+            conversation.cancelledAt = null;
+            conversation.reinviteAllowedAt = null;
+            conversation.requestedAt = null;
+        }
+        conversation.hiddenFor = (conversation.hiddenFor || []).filter(h => h.reason === 'block');
+        await conversation.save();
+    } else {
+        conversation = await Conversation.create({
+            type: 'private',
+            participants: [swiperId, targetId],
+            status: 'accepted'
+        });
+    }
     const match = await Match.create({
         users: [swiperId, targetId],
         conversation: conversation._id
