@@ -1,5 +1,6 @@
 // اختبار تكامل هلا لودو: Redis حقيقي (قاعدة 9 محلياً) + مستخدمون وهميون بلا Mongo
 // node --test tests/ludoLobby.integration.test.js   (يُتخطّى إن لم يتوفر Redis)
+process.env.LUDO_START_COUNTDOWN_MS = '0';
 process.env.REDIS_URL = process.env.LUDO_TEST_REDIS || 'redis://127.0.0.1:6379/9';
 process.env.LUDO_TURN_MS = '300';
 process.env.LUDO_OFFLINE_TURN_MS = '60';

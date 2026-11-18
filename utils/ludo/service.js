@@ -350,7 +350,7 @@ async function settleStake(record, stake, linked = new Set()) {
 // fn(record) يُرجع { state, events } أو null (لا شيء يُفعل)
 // زمن عرض أحداث هذا التحديث على الجهاز (رمية 650ms، قفزة 240ms للمربع، أكل 500ms) — بسقف
 const ANIMATION_CAP_MS = 5000;
-const START_COUNTDOWN_MS = 3500;
+const START_COUNTDOWN_MS = process.env.LUDO_START_COUNTDOWN_MS !== undefined ? Number(process.env.LUDO_START_COUNTDOWN_MS) : 3500;
 function animationAllowance(events) {
     let ms = 0;
     for (const e of events || []) {
