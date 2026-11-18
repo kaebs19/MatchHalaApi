@@ -25,7 +25,9 @@ const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
 const OFFLINE_TURN_MS = Number(process.env.LUDO_OFFLINE_TURN_MS) || 5000;
 // مباراة دوري: مهلة عودة المنقطع قبل أن تُحسب عليه انسحاباً (البوت يلعب عنه خلالها)
 const RETURN_GRACE_MS = Number(process.env.LUDO_RETURN_GRACE_MS) || 60000;
-const BOT_DELAY_MS = 1200;
+// البوت: الرمي ثم الحركة — كانت 1200 لكل خطوة (طلب المالك ١٩ نوفمبر: أسرع)
+const BOT_DELAY_MS = 900;
+const BOT_MOVE_DELAY_MS = 650;
 const AUTO_MOVE_MS = 700;
 // قرار إعادة الرمي: لا حركة ممكنة ← مهلة قصيرة ثم تخطٍّ تلقائي (لا يُحسب دوراً فائتاً)
 const REROLL_DECIDE_MS = 6000;
@@ -113,7 +115,7 @@ function scheduleNext(record, now = Date.now()) {
     delete record.meta.fullDeadlineAt;
     if (s.phase === 'ended') { record.deadlineAt = null; return; }
     const seat = s.seats[s.turn];
-    if (seat.isBot) record.deadlineAt = now + BOT_DELAY_MS;
+    if (seat.isBot) record.deadlineAt = now + (s.phase === 'move' ? BOT_MOVE_DELAY_MS : BOT_DELAY_MS);
     else if (s.phase === 'move' && s.legalMoves.length === 0) record.deadlineAt = now + REROLL_DECIDE_MS;
     // حركة وحيدة: تلقائية سريعاً — إلا إن كان يستطيع إعادة الرمي (نعطيه وقتاً ليقرّر)
     else if (s.phase === 'move' && s.legalMoves.length === 1) {
