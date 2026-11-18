@@ -360,6 +360,8 @@ async function mutate(gameId, fn) {
         // keepDeadline: تغيّر لا يمسّ الدور (حضور لاعب) — لا يُعاد ضبط مؤقّت صاحب الدور
         if (!result.keepDeadline) scheduleNext(record);
         await store.saveGame(record);
+        // أحداث هذا الفعل — تُرفق بردّ صاحبه أيضاً (actionView): قد يصله الردّ قبل البثّ فيفوته أنيميشن الرمية/الحركة
+        Object.defineProperty(record, 'events', { value: result.events, enumerable: false, configurable: true });
         emitToPlayers(record, 'ludo:state', { ...view(record), events: result.events });
         // 🎯 مهام اليوم: أكل قطع الخصم (بلا انتظار — لا يؤخّر القفل)
         for (const e of result.events) {
@@ -389,12 +391,15 @@ function assertPlayer(record, userId) {
     }
 }
 
+// ردّ فعل اللاعب: الحالة + أحداثها (مثل البثّ تماماً)
+const actionView = (r) => ({ ...view(r), ...(r.events ? { events: r.events } : {}) });
+
 async function playerRoll(userId, gameId, version) {
     const r = await mutate(gameId, (record) => {
         assertPlayer(record, userId);
         return engine.roll(record.state, { playerId: userId, rollDie: dieFor(record), expectVersion: version });
     });
-    return view(r);
+    return actionView(r);
 }
 
 async function playerMove(userId, gameId, token, version, die) {
@@ -402,7 +407,34 @@ async function playerMove(userId, gameId, token, version, die) {
         assertPlayer(record, userId);
         return engine.move(record.state, { playerId: userId, token, die, expectVersion: version });
     });
-    return view(r);
+    return actionView(r);
+}
+
+// عدة حركات دفعة واحدة (تجميع النرد): steps [{token, die}] بالترتيب — كلها أو لا شيء.
+// تختصر ذهاباً وإياباً لكل رمية، ويُرسَل بها «حرّك هذه القطعة بمجموع الرميات».
+async function playerMoves(userId, gameId, steps, version) {
+    if (!Array.isArray(steps) || steps.length === 0 || steps.length > 4) {
+        throw new engine.LudoError('BAD_STEPS', 'حركات غير صالحة');
+    }
+    const r = await mutate(gameId, (record) => {
+        assertPlayer(record, userId);
+        let state = record.state;
+        const events = [];
+        steps.forEach((step, i) => {
+            if (i > 0 && (state.phase !== 'move' || state.seats[state.turn]?.id !== String(userId))) {
+                throw new engine.LudoError('STEPS_INTERRUPTED', 'انتهى دورك قبل إكمال الحركات', 409);
+            }
+            const out = engine.move(state, {
+                playerId: userId, token: Number(step.token),
+                die: step.die == null ? undefined : Number(step.die),
+                expectVersion: i === 0 ? version : undefined
+            });
+            state = out.state;
+            events.push(...out.events);
+        });
+        return { state, events };
+    });
+    return actionView(r);
 }
 
 // المجانية أولاً؛ بعدها بالجواهر بسعر يتصاعد (engine.rerollCost) — الخصم قبل الرمية، ويُردّ إن رُفضت
@@ -431,7 +463,7 @@ async function playerReroll(userId, gameId, version) {
         }
         return result;
     });
-    return view(r);
+    return actionView(r);
 }
 
 // 💎 نرد الحظ: مرة لكل مباراة لكل لاعب، في أي وقت قبل النهاية
@@ -446,7 +478,7 @@ async function playerBoost(userId, gameId) {
         // نسخة جديدة ليقبلها التطبيق (يتجاهل ما لا يتقدّم رقم نسخته)
         return { state: { ...record.state, version: record.state.version + 1 }, events: [{ type: 'boost', playerId: id }] };
     });
-    return view(r);
+    return actionView(r);
 }
 
 async function playerPass(userId, gameId, version) {
@@ -454,7 +486,7 @@ async function playerPass(userId, gameId, version) {
         assertPlayer(record, userId);
         return engine.pass(record.state, { playerId: userId, expectVersion: version });
     });
-    return view(r);
+    return actionView(r);
 }
 
 async function playerLeave(userId, gameId) {
@@ -465,7 +497,7 @@ async function playerLeave(userId, gameId) {
     await store.clearUserGame([String(userId)], gameId);
     await store.removeForfeit(gameId, String(userId)).catch(() => {});
     await countLeagueQuit(r, userId);
-    return view(r);
+    return actionView(r);
 }
 
 // «أنهِ المباراة فائزاً»: غاب كل خصومي البشر — الجائزة والترتيب كأي فوز
@@ -474,7 +506,7 @@ async function playerClaim(userId, gameId) {
         assertPlayer(record, userId);
         return engine.claimWin(record.state, { playerId: userId });
     });
-    return view(r);
+    return actionView(r);
 }
 
 // انتهت مهلة عودة منقطع في مباراة دوري: يُحسب منسحباً (في لاعبَين تُحسم للخصم فوراً)
@@ -669,6 +701,7 @@ module.exports = {
     createMatch,
     playerRoll,
     playerMove,
+    playerMoves,
     playerReroll,
     playerBoost,
     playerPass,

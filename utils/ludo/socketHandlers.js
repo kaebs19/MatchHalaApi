@@ -99,6 +99,8 @@ function registerLudoHandlers(io, socket) {
         ({ game: await service.playerRoll(userId, gameId, version) }));
     on('ludo:move', async ({ gameId, token, die, version }) =>
         ({ game: await service.playerMove(userId, gameId, Number(token), version, die == null ? undefined : Number(die)) }));
+    on('ludo:moves', async ({ gameId, steps, version }) =>
+        ({ game: await service.playerMoves(userId, gameId, steps, version) }));
     on('ludo:reroll', async ({ gameId, version }) =>
         ({ game: await service.playerReroll(userId, gameId, version) }));
     on('ludo:boost', async ({ gameId }) => ({ game: await service.playerBoost(userId, gameId) }));

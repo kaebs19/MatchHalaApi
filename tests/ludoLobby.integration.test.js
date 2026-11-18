@@ -1217,3 +1217,30 @@ test('🎁 هدية الإطلاق: مرة لكل حساب، ومرة لكل ج�
         Object.assign(g, saved);
     }
 });
+
+const engineForStack = require("../utils/ludoEngine");
+maybe('تجميع النرد: proto 2 للطرفين يفعّله، ludo:moves يحرّك بمجموع الرميات، والردّ يحمل الأحداث', async () => {
+    const a = addUser(); const b = addUser(); const old = addUser();
+    await store.setProto(a, 2); await store.setProto(b, 2);
+    const mixed = await service.createMatch({ players: [{ id: a, name: 'a' }, { id: old, name: 'o' }], mode: 'quick', source: 'room' });
+    assert.equal(mixed.state.options.diceStack, false, 'عميل قديم ← القاعدة القديمة');
+    await service.playerLeave(old, mixed.id);
+
+    const rec = await service.createMatch({ players: [{ id: a, name: 'a' }, { id: b, name: 'b' }], mode: 'quick', source: 'room' });
+    assert.equal(rec.state.options.diceStack, true);
+    assert.equal(rec.state.options.blocks, true);
+    // حالة مضبوطة: دور a، رميات [6, 3]، القطعتان في القاعدة
+    const g = await store.getGame(rec.id);
+    const me = g.state.seats.findIndex(s => s.id === a);
+    g.state.turn = me;
+    g.state.pool = [6, 3];
+    g.state.phase = 'move';
+    g.state.legalMoves = engineForStack.legalMovesFor(g.state, me, 6).map(m => ({ ...m, die: 6 }));
+    await store.saveGame(g);
+    const view = await service.playerMoves(a, rec.id, [{ token: 0, die: 6 }, { token: 0, die: 3 }], g.state.version);
+    assert.deepEqual(view.seats[me].tokens, [3, -1]);
+    assert.equal(view.events.filter(e => e.type === 'move').length, 2, 'الأحداث في الردّ');
+    assert.notEqual(view.currentPlayerId, a);
+    await assert.rejects(service.playerMoves(a, rec.id, [], view.version), { code: 'BAD_STEPS' });
+    await service.playerLeave(b, rec.id);
+});
