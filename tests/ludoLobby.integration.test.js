@@ -1245,3 +1245,24 @@ maybe('تجميع النرد: proto 2 للطرفين يفعّله، ludo:moves �
     await assert.rejects(service.playerMoves(a, rec.id, [], view.version), { code: 'BAD_STEPS' });
     await service.playerLeave(b, rec.id);
 });
+
+maybe('الحركة الإجبارية: قطعتان متطابقتان في القاعدة مع ستّ ← تخرج إحداهما تلقائياً بلا دور فائت', async () => {
+    const a = addUser(); const b = addUser();
+    const rec = await service.createMatch({ players: [{ id: a, name: 'a' }, { id: b, name: 'b' }], mode: 'quick', source: 'room' });
+    const g = await store.getGame(rec.id);
+    const me = g.state.seats.findIndex(s => s.id === a);
+    g.state.turn = me;
+    g.state.seats[me].rerolls = 0;
+    g.state.dice = 6;
+    g.state.phase = 'move';
+    g.state.canReroll = false;
+    g.state.legalMoves = engineForStack.legalMovesFor(g.state, me, 6);
+    assert.equal(g.state.legalMoves.length, 2, 'حركتان متطابقتان');
+    g.deadlineAt = Date.now() - 1;
+    await store.saveGame(g);
+    await service.tick();
+    const after = await store.getGame(rec.id);
+    assert.deepEqual([...after.state.seats[me].tokens].sort(), [-1, 0]);
+    assert.equal(after.state.seats[me].missed, 0);
+    await service.playerLeave(b, rec.id);
+});

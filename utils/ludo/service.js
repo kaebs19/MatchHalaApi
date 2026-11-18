@@ -20,7 +20,8 @@ const economy = require('./economy');
 const penalties = require('./penalties');
 const missions = require('./missions');
 
-const TURN_MS = Number(process.env.LUDO_TURN_MS) || 15000;
+// 10ث (كانت 15 — طلب المالك ١٩ نوفمبر): العدّ يبدأ بعد عرض حركة الخصم (animationAllowance) فلا تُظلم الشبكة البطيئة
+const TURN_MS = Number(process.env.LUDO_TURN_MS) || 10000;
 // المنقطع (لا سوكت له): لا ننتظره المهلة كاملة — الخصم لا يُعاقَب بانقطاع غيره
 const OFFLINE_TURN_MS = Number(process.env.LUDO_OFFLINE_TURN_MS) || 5000;
 // مباراة دوري: مهلة عودة المنقطع قبل أن تُحسب عليه انسحاباً (البوت يلعب عنه خلالها)
@@ -28,9 +29,9 @@ const RETURN_GRACE_MS = Number(process.env.LUDO_RETURN_GRACE_MS) || 60000;
 // البوت: الرمي ثم الحركة — كانت 1200 لكل خطوة (طلب المالك ١٩ نوفمبر: أسرع)
 const BOT_DELAY_MS = 900;
 const BOT_MOVE_DELAY_MS = 650;
-const AUTO_MOVE_MS = 700;
+const AUTO_MOVE_MS = 350;
 // قرار إعادة الرمي: لا حركة ممكنة ← مهلة قصيرة ثم تخطٍّ تلقائي (لا يُحسب دوراً فائتاً)
-const REROLL_DECIDE_MS = 6000;
+const REROLL_DECIDE_MS = 3000;
 const TICK_MS = 400;
 
 const BOT_NAMES = ['سهم', 'نجمة', 'برق', 'موج', 'غيمة', 'صقر'];
@@ -109,6 +110,15 @@ function forfeitTimes(record) {
     return out;
 }
 
+// حركة لا خيار فيها: كل الحركات الممكنة تنقل من المربع نفسه إلى المربع نفسه بالرمية نفسها
+// (حركة وحيدة، أو قطع متطابقة: قطعتان في القاعدة تخرج إحداهما، أو كومة على مربع واحد) ← تُلعب تلقائياً.
+function forcedMove(s) {
+    const moves = s.legalMoves || [];
+    if (!moves.length) return null;
+    const m = moves[0];
+    return moves.every(x => x.from === m.from && x.to === m.to && x.die === m.die) ? m : null;
+}
+
 // موعد الخطوة التالية بحسب صاحب الدور
 function scheduleNext(record, now = Date.now()) {
     const s = record.state;
@@ -118,7 +128,7 @@ function scheduleNext(record, now = Date.now()) {
     if (seat.isBot) record.deadlineAt = now + (s.phase === 'move' ? BOT_MOVE_DELAY_MS : BOT_DELAY_MS);
     else if (s.phase === 'move' && s.legalMoves.length === 0) record.deadlineAt = now + REROLL_DECIDE_MS;
     // حركة وحيدة: تلقائية سريعاً — إلا إن كان يستطيع إعادة الرمي (نعطيه وقتاً ليقرّر)
-    else if (s.phase === 'move' && s.legalMoves.length === 1) {
+    else if (s.phase === 'move' && forcedMove(s)) {
         record.deadlineAt = now + (s.canReroll ? REROLL_DECIDE_MS : AUTO_MOVE_MS);
     }
     else record.deadlineAt = now + TURN_MS;
@@ -354,7 +364,7 @@ const START_COUNTDOWN_MS = process.env.LUDO_START_COUNTDOWN_MS !== undefined ? N
 function animationAllowance(events) {
     let ms = 0;
     for (const e of events || []) {
-        if (e.type === 'roll') ms += 650;
+        if (e.type === 'roll') ms += 400;
         else if (e.type === 'move') {
             ms += (e.from < 0 ? 2 : Math.max(1, e.to - e.from)) * 240 + (e.captured?.length ? 500 : 0);
         }
@@ -659,9 +669,8 @@ async function processDue(gameId, now = Date.now()) {
             return engine.pass(s, { playerId: seat.id });
         }
         // حركة وحيدة للاعب: تُنفَّذ بلا احتساب دور فائت
-        if (!seat.isBot && s.phase === 'move' && s.legalMoves.length === 1) {
-            return engine.move(s, { playerId: seat.id, token: s.legalMoves[0].token, die: s.legalMoves[0].die });
-        }
+        const forced = !seat.isBot && s.phase === 'move' ? forcedMove(s) : null;
+        if (forced) return engine.move(s, { playerId: seat.id, token: forced.token, die: forced.die });
         // بوت: خطوة واحدة (رمي أو حركة) — تبدو طبيعية للآخرين
         if (seat.isBot) return engine.autoStep(s, { rollDie: dieFor(record) });
         // انتهت مهلة لاعب — الكمبيوتر أكمل دوره (لا يُحسب له في المهام)
