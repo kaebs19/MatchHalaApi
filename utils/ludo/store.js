@@ -327,7 +327,22 @@ async function clearUserRoom(userId) {
     await (await redis()).del(k.userRoom(userId));
 }
 
+// بروتوكول اللعب الذي يفهمه آخر عميل استعمله اللاعب (1 قديم، 2 تجميع النرد) — 30 يوماً
+async function setProto(userId, proto) {
+    const c = await redis();
+    await c.set(`ludo:proto:${userId}`, String(proto), { EX: 30 * 24 * 60 * 60 });
+}
+
+async function getProtos(userIds) {
+    if (!userIds.length) return [];
+    const c = await redis();
+    const vals = await c.mGet(userIds.map(id => `ludo:proto:${id}`));
+    return vals.map(v => Number(v) || 1);
+}
+
 module.exports = {
+    setProto,
+    getProtos,
     withLock,
     getGame, saveGame, deleteGame, dueGames,
     setUserGame, getUserGame, clearUserGame,

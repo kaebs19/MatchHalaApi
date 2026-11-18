@@ -12,6 +12,9 @@
 // - المربعات الآمنة: مربعات البداية الأربعة ومربعات النجمة — لا أكل فيها.
 // - الوصول للبيت بالعدد المضبوط فقط، ويمنح رمية إضافية.
 // - لا حواجز (قطعتان من لون واحد لا تسدّان الطريق).
+// - تجميع النرد (diceStack، للعملاء الجدد فقط — service.createMatch): الـ 6 يرمي مرة أخرى فوراً
+//   وتتجمّع الرميات [6, 6, 3] ثم يصرفها اللاعب واحدة واحدة على أي قطعة (قطعتان تخرجان بستّين).
+//   الأكل/الوصول للبيت يمنح رمية بعد صرف ما تبقّى.
 // - فرق 2 ضدّ 2: الشريكان في لونين متقابلين، لا يأكل أحدهما الآخر، ويفوز الفريق
 //   حين تصل قطع الاثنين.
 //
@@ -52,7 +55,8 @@ const DEFAULT_OPTIONS = {
     rerollsPerPlayer: 1,
     // إعادة رمي مدفوعة بالجواهر بعد نفاد المجانية — السعر يتصاعد مع كل مرة في المباراة.
     // المحرّك لا يعرف الأرصدة: الخدمة تضبط seat.paidOk (يقدر على السعر التالي) وتخصم قبل النداء بـ paid:true.
-    paidRerollCosts: [2, 4, 8]
+    paidRerollCosts: [2, 4, 8],
+    diceStack: false
 };
 
 class LudoError extends Error {
@@ -102,6 +106,9 @@ function createGame({ players, mode = 'classic', options = {}, now = Date.now() 
         turn: 0,                 // فهرس المقعد صاحب الدور
         phase: 'roll',           // roll | move | ended
         dice: null,
+        pool: [],                // diceStack: رميات بانتظار الصرف
+        bonus: 0,                // diceStack: رميات مستحقّة بعد صرف الحالية (أكل/وصول)
+        spent: 0,                // diceStack: ما صُرف من الرميات الحالية (لا إعادة رمي بعده)
         sixes: 0,                // ستات متتالية في الدور الحالي
         legalMoves: [],
         canReroll: false,
@@ -144,6 +151,31 @@ function legalMovesFor(state, seatIndex, dice) {
     return moves;
 }
 
+const stacking = (state) => !!state.options.diceStack;
+
+// diceStack: حركات كل رمية في المجموعة (قيمة مكرّرة تُحسب مرة) — كل حركة تحمل die
+function poolMovesFor(state, seatIndex) {
+    const moves = [];
+    for (const die of [...new Set(state.pool || [])]) {
+        legalMovesFor(state, seatIndex, die).forEach(m => moves.push({ ...m, die }));
+    }
+    return moves;
+}
+
+// diceStack: انتهى صرف الرميات (أو لا حركة لما بقي) ← رمية مستحقّة أو انتقال الدور
+function finishPool(state, seat, now, action) {
+    state.pool = [];
+    state.spent = 0;
+    if (seat.status === 'active' && (state.bonus || 0) > 0) {
+        state.bonus -= 1;
+        state.sixes = 0;
+        keepTurn(state, now);
+        if (action) action.extraTurn = true;
+    } else {
+        passTurn(state, now);
+    }
+}
+
 // ───────────────────────── التحقّق ─────────────────────────
 
 function assertTurn(state, playerId, expectVersion, auto = false) {
@@ -174,6 +206,9 @@ function passTurn(state, now) {
     state.turn = nextActiveSeat(state, state.turn);
     state.phase = 'roll';
     state.dice = null;
+    state.pool = [];
+    state.bonus = 0;
+    state.spent = 0;
     state.sixes = 0;
     state.legalMoves = [];
     state.canReroll = false;
@@ -183,6 +218,8 @@ function passTurn(state, now) {
 function keepTurn(state, now) {
     state.phase = 'roll';
     state.dice = null;
+    state.pool = [];
+    state.spent = 0;
     state.legalMoves = [];
     state.canReroll = false;
     state.turnStartedAt = now;
@@ -283,6 +320,33 @@ function applyRoll(state, seat, dice, action, now) {
         passTurn(state, now);
         return;
     }
+    if (stacking(state)) {
+        state.pool = [...(state.pool || []), dice];
+        if (dice === 6) {
+            // ارمِ مرة أخرى قبل التحريك — الستات تتجمّع
+            action.again = true;
+            state.phase = 'roll';
+            state.legalMoves = [];
+            state.turnStartedAt = now;
+            return;
+        }
+        const pm = poolMovesFor(state, state.turn);
+        if (pm.length === 0) {
+            action.noMoves = true;
+            if (hasReroll(state, seat) && !state.spent) {
+                state.phase = 'move';
+                state.legalMoves = [];
+                state.canReroll = true;
+                return;
+            }
+            finishPool(state, seat, now);
+            return;
+        }
+        state.phase = 'move';
+        state.legalMoves = pm;
+        state.canReroll = canRerollNow(state, seat) && !state.spent;
+        return;
+    }
     const moves = legalMovesFor(state, state.turn, dice);
     if (moves.length === 0) {
         action.noMoves = true;
@@ -338,6 +402,8 @@ function reroll(input, { playerId, rollDie, expectVersion, now = Date.now(), pai
     else seat.paidRerolls = (seat.paidRerolls || 0) + 1;
     seat.missed = 0;
     if (state.dice === 6) state.sixes = Math.max(0, state.sixes - 1);
+    // diceStack: الإعادة تستبدل آخر رمية في المجموعة (لا ستّ — الستّ يُرمى بعده تلقائياً)
+    if (stacking(state)) state.pool = (state.pool || []).slice(0, -1);
     const previous = state.dice;
     const dice = rollValue(rollDie, state);
     state.version++;
@@ -360,15 +426,18 @@ function pass(input, { playerId, expectVersion, now = Date.now(), auto = false }
     state.version++;
     state.canReroll = false;
     const action = { type: 'pass', playerId: seat.id };
-    if (state.dice === 6) keepTurn(state, now); else passTurn(state, now);
+    if (stacking(state)) finishPool(state, seat, now);
+    else if (state.dice === 6) keepTurn(state, now); else passTurn(state, now);
     state.lastAction = action;
     return { state, events: [action] };
 }
 
-function move(input, { playerId, token, expectVersion, now = Date.now(), auto = false }) {
+// die (diceStack): أيّ رمية تُصرف — بلا تحديد تُؤخذ أول رمية تصلح للقطعة (العملاء القدامى)
+function move(input, { playerId, token, die, expectVersion, now = Date.now(), auto = false }) {
     assertTurn(input, playerId, expectVersion, auto);
     if (input.phase !== 'move') throw new LudoError('NOT_MOVE_PHASE', 'ارمِ النرد أولاً', 409);
-    const chosen = input.legalMoves.find(m => m.token === token);
+    const chosen = input.legalMoves.find(m => m.token === token &&
+        (die === undefined || die === null || m.die === undefined || m.die === die));
     if (!chosen) throw new LudoError('ILLEGAL_MOVE', 'حركة غير مسموحة');
 
     const state = clone(input);
@@ -381,7 +450,7 @@ function move(input, { playerId, token, expectVersion, now = Date.now(), auto = 
     const action = {
         type: 'move',
         playerId: seat.id,
-        dice: state.dice,
+        dice: chosen.die ?? state.dice,
         token,
         from: chosen.from,
         to: chosen.to,
@@ -411,7 +480,23 @@ function move(input, { playerId, token, expectVersion, now = Date.now(), auto = 
     }
 
     const ended = checkEnd(state);
-    if (!ended) {
+    if (!ended && stacking(state)) {
+        const pool = [...(state.pool || [])];
+        pool.splice(pool.indexOf(chosen.die), 1);
+        state.pool = pool;
+        state.spent = (state.spent || 0) + 1;
+        if (action.captured.length > 0 || chosen.to === HOME) state.bonus = (state.bonus || 0) + 1;
+        const next = seat.status === 'active' && pool.length ? poolMovesFor(state, state.turn) : [];
+        if (next.length) {
+            // ما زالت رميات — يكمل صرفها (مهلة جديدة لكل حركة)
+            state.dice = pool[pool.length - 1];
+            state.legalMoves = next;
+            state.turnStartedAt = now;
+            action.remaining = pool;
+        } else {
+            finishPool(state, seat, now, action);
+        }
+    } else if (!ended) {
         action.extraTurn = seat.status === 'active' &&
             (state.dice === 6 || action.captured.length > 0 || chosen.to === HOME);
         if (action.extraTurn) {
@@ -421,6 +506,7 @@ function move(input, { playerId, token, expectVersion, now = Date.now(), auto = 
         }
     } else {
         state.dice = null;
+        state.pool = [];
         state.legalMoves = [];
     }
 
@@ -526,7 +612,7 @@ function autoStep(state, { rollDie, now }) {
     // لا حركة ممكنة وكان بانتظار قرار إعادة الرمي ← تخطٍّ
     if (state.legalMoves.length === 0) return pass(state, { playerId, now, auto: true });
     const m = chooseBotMove(state);
-    return move(state, { playerId, token: m.token, now, auto: true });
+    return move(state, { playerId, token: m.token, die: m.die, now, auto: true });
 }
 
 // انتهت مهلة الدور: البوت يكمل الدور كاملاً (رمي + حركة)، ويُعدّ دوراً فائتاً.
@@ -638,6 +724,9 @@ function publicState(state) {
         currentPlayerId: state.seats[state.turn]?.id || null,
         phase: state.phase,
         dice: state.dice,
+        // diceStack: الرميات بانتظار الصرف (العملاء القدامى لا يرون هذا — لا تُفعَّل لهم)
+        diceStack: !!state.options.diceStack,
+        pool: state.pool || [],
         legalMoves: state.legalMoves,
         canReroll: !!state.canReroll,
         rerollCost: rerollCost(state),

@@ -147,9 +147,13 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
     });
     const all = [...players.map(p => ({ ...p, isBot: false })), ...botPlayers];
 
+    // تجميع النرد فقط حين يفهمه كل اللاعبين البشر (النسخ القديمة تلعب القاعدة السابقة)
+    const protos = await store.getProtos(players.map(p => String(p.id))).catch(() => []);
+    const diceStack = protos.length === players.length && protos.every(v => v >= 2);
     const state = engine.createGame({
         players: all.map(p => ({ id: p.id, isBot: p.isBot })),
-        mode
+        mode,
+        options: { diceStack }
     });
     // إعادة الرمي المدفوعة: متاحة لمن تكفي جواهره السعر الأول (تُحدَّث بعد كل شراء)
     const firstCost = state.options.paidRerollCosts?.[0];
@@ -390,10 +394,10 @@ async function playerRoll(userId, gameId, version) {
     return view(r);
 }
 
-async function playerMove(userId, gameId, token, version) {
+async function playerMove(userId, gameId, token, version, die) {
     const r = await mutate(gameId, (record) => {
         assertPlayer(record, userId);
-        return engine.move(record.state, { playerId: userId, token, expectVersion: version });
+        return engine.move(record.state, { playerId: userId, token, die, expectVersion: version });
     });
     return view(r);
 }
@@ -598,7 +602,7 @@ async function processDue(gameId, now = Date.now()) {
         }
         // حركة وحيدة للاعب: تُنفَّذ بلا احتساب دور فائت
         if (!seat.isBot && s.phase === 'move' && s.legalMoves.length === 1) {
-            return engine.move(s, { playerId: seat.id, token: s.legalMoves[0].token });
+            return engine.move(s, { playerId: seat.id, token: s.legalMoves[0].token, die: s.legalMoves[0].die });
         }
         // بوت: خطوة واحدة (رمي أو حركة) — تبدو طبيعية للآخرين
         if (seat.isBot) return engine.autoStep(s, { rollDie: dieFor(record) });
