@@ -173,6 +173,8 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
         deadlineAt: null
     };
     scheduleNext(record);
+    // الجهاز يعرض عدّاً تنازلياً 3ث قبل أول دور — لا تُحسب من مهلة أول لاعب
+    if (!state.seats[state.turn].isBot) record.deadlineAt += START_COUNTDOWN_MS;
     await store.saveGame(record);
     await store.setUserGame(humans(record), record.id);
     emitToPlayers(record, 'ludo:match-found', view(record));
@@ -348,6 +350,7 @@ async function settleStake(record, stake, linked = new Set()) {
 // fn(record) يُرجع { state, events } أو null (لا شيء يُفعل)
 // زمن عرض أحداث هذا التحديث على الجهاز (رمية 650ms، قفزة 240ms للمربع، أكل 500ms) — بسقف
 const ANIMATION_CAP_MS = 5000;
+const START_COUNTDOWN_MS = 3500;
 function animationAllowance(events) {
     let ms = 0;
     for (const e of events || []) {
