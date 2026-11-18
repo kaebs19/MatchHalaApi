@@ -346,6 +346,19 @@ async function settleStake(record, stake, linked = new Set()) {
 }
 
 // fn(record) يُرجع { state, events } أو null (لا شيء يُفعل)
+// زمن عرض أحداث هذا التحديث على الجهاز (رمية 650ms، قفزة 240ms للمربع، أكل 500ms) — بسقف
+const ANIMATION_CAP_MS = 5000;
+function animationAllowance(events) {
+    let ms = 0;
+    for (const e of events || []) {
+        if (e.type === 'roll') ms += 650;
+        else if (e.type === 'move') {
+            ms += (e.from < 0 ? 2 : Math.max(1, e.to - e.from)) * 240 + (e.captured?.length ? 500 : 0);
+        }
+    }
+    return Math.min(ANIMATION_CAP_MS, ms);
+}
+
 async function mutate(gameId, fn) {
     return store.withLock(`game:${gameId}`, async () => {
         const record = await store.getGame(gameId);
@@ -358,7 +371,14 @@ async function mutate(gameId, fn) {
         record.state = result.state;
         record.meta.rolls += result.events.filter(e => e.type === 'roll').length;
         // keepDeadline: تغيّر لا يمسّ الدور (حضور لاعب) — لا يُعاد ضبط مؤقّت صاحب الدور
-        if (!result.keepDeadline) scheduleNext(record);
+        if (!result.keepDeadline) {
+            scheduleNext(record);
+            // مهلة اللاعب تبدأ بعد أن يرى ما حدث: الجهاز يعرض الرميات والقفزات قبل أن يتاح له اللعب
+            const next = record.state.seats[record.state.turn];
+            if (record.deadlineAt && next && !next.isBot && !record.meta.fullDeadlineAt) {
+                record.deadlineAt += animationAllowance(result.events);
+            }
+        }
         await store.saveGame(record);
         // أحداث هذا الفعل — تُرفق بردّ صاحبه أيضاً (actionView): قد يصله الردّ قبل البثّ فيفوته أنيميشن الرمية/الحركة
         Object.defineProperty(record, 'events', { value: result.events, enumerable: false, configurable: true });
