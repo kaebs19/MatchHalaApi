@@ -161,3 +161,54 @@ test('publicState يعرض المجموعة والعلم', () => {
     assert.deepEqual(p.pool, [6]);
     assert.deepEqual(L.publicState(L.createGame({ players: [{ id: 'a' }, { id: 'b' }] })).diceStack, false);
 });
+
+// ───── الحاجز ─────
+const blockGame = (mode = 'classic') => L.createGame({
+    players: [{ id: 'a' }, { id: 'b' }], mode, now: 0,
+    options: { diceStack: true, blocks: true, rerollsPerPlayer: 0 }
+});
+
+test('الحاجز: لا يتجاوزه الخصم ولا يقف عليه', () => {
+    let s = blockGame();
+    // b (أصفر) قطعتان على موضع 30 = مربع عام 4 (غير آمن)؛ a (أحمر) على 1
+    s.seats[1].tokens = [30, 30, BASE, BASE];
+    s.seats[0].tokens = [1, BASE, BASE, BASE];
+    assert.equal(L.globalSquare('yellow', 30), 4);
+    assert.deepEqual(L.legalMovesFor(s, 0, 2), [{ token: 0, from: 1, to: 3 }], 'قبل الحاجز مسموح');
+    assert.deepEqual(L.legalMovesFor(s, 0, 3), [], 'الوقوف على الحاجز ممنوع');
+    assert.deepEqual(L.legalMovesFor(s, 0, 5), [], 'التجاوز ممنوع');
+});
+
+test('الحاجز: صاحبه يمرّ، والمربع الآمن لا حاجز فيه، وبلا الخيار لا حواجز', () => {
+    let s = blockGame();
+    s.seats[0].tokens = [4, 4, 1, BASE];
+    assert.ok(L.legalMovesFor(s, 0, 5).some(m => m.token === 2), 'قطعتي تمرّ بحاجزي');
+    s.seats[1].tokens = [34, 34, BASE, BASE];          // الأصفر 34 = مربع 8 (نجمة آمنة)
+    s.seats[0].tokens = [5, BASE, BASE, BASE];
+    assert.equal(L.legalMovesFor(s, 0, 4).length, 1);
+    let old = L.createGame({ players: [{ id: 'a' }, { id: 'b' }], options: { diceStack: true } });
+    old.seats[1].tokens = [30, 30, BASE, BASE];
+    old.seats[0].tokens = [1, BASE, BASE, BASE];
+    assert.equal(L.legalMovesFor(old, 0, 5).length, 1);
+});
+
+test('الحاجز: البوت يكوّنه، ومحاكاة كاملة بلا أخطاء', () => {
+    let s = blockGame();
+    s.seats[0].isBot = true;
+    s.seats[0].tokens = [12, 9, BASE, BASE];   // 9+3 = 12 ← حاجز مع القطعة الأولى؛ 12+3 = 15 تقدّم فقط
+    s.seats[1].tokens = [BASE, BASE, BASE, BASE];
+    s = L.roll(s, { playerId: 'a', rollDie: dice(3), auto: true }).state;
+    assert.equal(L.chooseBotMove(s).token, 1, 'يلحق بقطعته ليكوّن حاجزاً');
+    for (let seed = 1; seed <= 30; seed++) {
+        const rollDie = seeded(seed * 7);
+        let g = L.createGame({
+            players: [{ id: 'a', isBot: true }, { id: 'b', isBot: true }, { id: 'c', isBot: true }, { id: 'd', isBot: true }],
+            mode: seed % 2 ? 'quick' : 'classic', options: { diceStack: true, blocks: true }
+        });
+        let steps = 0;
+        while (g.phase !== 'ended') {
+            g = L.autoStep(g, { rollDie, now: steps }).state;
+            assert.ok(++steps < 30000, 'حلقة لا تنتهي');
+        }
+    }
+});

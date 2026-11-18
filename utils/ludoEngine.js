@@ -15,6 +15,8 @@
 // - تجميع النرد (diceStack، للعملاء الجدد فقط — service.createMatch): الـ 6 يرمي مرة أخرى فوراً
 //   وتتجمّع الرميات [6, 6, 3] ثم يصرفها اللاعب واحدة واحدة على أي قطعة (قطعتان تخرجان بستّين).
 //   الأكل/الوصول للبيت يمنح رمية بعد صرف ما تبقّى.
+// - الحاجز (blocks، مع diceStack): قطعتان فأكثر لنفس اللاعب على مربع مسار غير آمن — لا يقف عليه الخصم
+//   ولا يتجاوزه (ولا يؤكل). الشريك في الفرق يمرّ.
 // - فرق 2 ضدّ 2: الشريكان في لونين متقابلين، لا يأكل أحدهما الآخر، ويفوز الفريق
 //   حين تصل قطع الاثنين.
 //
@@ -56,7 +58,8 @@ const DEFAULT_OPTIONS = {
     // إعادة رمي مدفوعة بالجواهر بعد نفاد المجانية — السعر يتصاعد مع كل مرة في المباراة.
     // المحرّك لا يعرف الأرصدة: الخدمة تضبط seat.paidOk (يقدر على السعر التالي) وتخصم قبل النداء بـ paid:true.
     paidRerollCosts: [2, 4, 8],
-    diceStack: false
+    diceStack: false,
+    blocks: false
 };
 
 class LudoError extends Error {
@@ -140,13 +143,39 @@ function targetOf(pos, dice) {
 
 const sameSide = (a, b) => a.team === b.team;
 
+// مربعات الحواجز التي تمنع هذا المقعد: قطعتان فأكثر لخصم على مربع مسار غير آمن
+function enemyBlocks(state, seat) {
+    const out = new Set();
+    if (!state.options.blocks) return out;
+    state.seats.forEach(o => {
+        if (o === seat || sameSide(o, seat) || o.status !== 'active') return;
+        const count = new Map();
+        o.tokens.forEach(p => {
+            const sq = globalSquare(o.color, p);
+            if (sq !== null && !isSafeSquare(sq)) count.set(sq, (count.get(sq) || 0) + 1);
+        });
+        count.forEach((n, sq) => { if (n >= 2) out.add(sq); });
+    });
+    return out;
+}
+
+// هل يعترض حاجزٌ الطريقَ من pos إلى to (المربع الأخير ضمناً)؟ — ممرّ البيت لا حواجز فيه
+function pathBlocked(color, pos, to, blocks) {
+    if (!blocks.size || pos === BASE) return false;
+    for (let p = pos + 1; p <= Math.min(to, LAST_TRACK_STEP); p++) {
+        if (blocks.has(globalSquare(color, p))) return true;
+    }
+    return false;
+}
+
 function legalMovesFor(state, seatIndex, dice) {
     const seat = state.seats[seatIndex];
     if (seat.status !== 'active') return [];
+    const blocks = enemyBlocks(state, seat);
     const moves = [];
     seat.tokens.forEach((pos, token) => {
         const to = targetOf(pos, dice);
-        if (to !== null) moves.push({ token, from: pos, to });
+        if (to !== null && !pathBlocked(seat.color, pos, to, blocks)) moves.push({ token, from: pos, to });
     });
     return moves;
 }
@@ -576,14 +605,21 @@ function chooseBotMove(state) {
         return d >= 1 && d <= 6 && !isSafeSquare(e);
     });
 
+    const blocksOn = !!state.options.blocks;
     let best = null;
     let bestScore = -Infinity;
     for (const m of moves) {
         const toSq = globalSquare(seat.color, m.to);
         const fromSq = globalSquare(seat.color, m.from);
-        const riskFrom = attackers(fromSq);
-        const riskTo = attackers(toSq);
+        // الحاجز: قطعتي الأخرى على الوجهة (غير آمنة) ← لا تؤكل؛ وتفكيك حاجز قائم يكشف القطعتين
+        const mine = (sq) => sq === null ? 0 : seat.tokens.filter(p => globalSquare(seat.color, p) === sq).length;
+        const formsBlock = blocksOn && toSq !== null && !isSafeSquare(toSq) && mine(toSq) >= 1;
+        const breaksBlock = blocksOn && fromSq !== null && !isSafeSquare(fromSq) && mine(fromSq) === 2;
+        const riskFrom = breaksBlock ? 0 : attackers(fromSq);
+        const riskTo = formsBlock ? 0 : attackers(toSq);
         let score = m.to;                                   // التقدّم
+        if (formsBlock) score += 120;
+        if (breaksBlock) score -= 100 + attackers(fromSq) * 60;
         // الأكل: يعيد الخصم لقاعدته — أثمن كلما كان أبعد تقدّماً
         if (toSq !== null && !isSafeSquare(toSq) && enemyProgress.has(toSq)) score += 1000 + enemyProgress.get(toSq) * 6;
         if (m.to === HOME) score += 800;
@@ -726,6 +762,7 @@ function publicState(state) {
         dice: state.dice,
         // diceStack: الرميات بانتظار الصرف (العملاء القدامى لا يرون هذا — لا تُفعَّل لهم)
         diceStack: !!state.options.diceStack,
+        blocks: !!state.options.blocks,
         pool: state.pool || [],
         legalMoves: state.legalMoves,
         canReroll: !!state.canReroll,

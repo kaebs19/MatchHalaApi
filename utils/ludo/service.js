@@ -153,7 +153,8 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
     const state = engine.createGame({
         players: all.map(p => ({ id: p.id, isBot: p.isBot })),
         mode,
-        options: { diceStack }
+        // الحاجز يرافق تجميع النرد (العميل الجديد يرسمه)
+        options: { diceStack, blocks: diceStack }
     });
     // إعادة الرمي المدفوعة: متاحة لمن تكفي جواهره السعر الأول (تُحدَّث بعد كل شراء)
     const firstCost = state.options.paidRerollCosts?.[0];
