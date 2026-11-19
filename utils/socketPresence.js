@@ -66,7 +66,11 @@ async function isUserSocketConnected(userId, { anySocket = false } = {}) {
         console.error('⚠️ فحص الحضور عبر العمليات تعذّر، الرجوع للخريطة المحلية:', e.message);
     }
 
-    // ③ ارتداد: دقيق فقط في وضع العملية الواحدة
+    // ③ ارتداد عند تعذّر الفحص عبر العمليات:
+    //    - الحضور (anySocket): الخريطة المحلية كالسابق.
+    //    - حجب الإشعار (الواجهة): «لا» — connectedUsers لا تميّز الخلفية، فكانت تحجب الإشعار عمّن خرج من التطبيق.
+    //      إشعار قد يتكرّر مع التنبيه داخل التطبيق أهون من رسالة لا يعلم بها صاحبها.
+    if (!anySocket) return false;
     return Boolean(global.connectedUsers && global.connectedUsers.has(id));
 }
 
