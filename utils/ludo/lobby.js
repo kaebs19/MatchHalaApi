@@ -473,7 +473,7 @@ function roomView(room) {
 
 // 🎴 بطاقات الغرفة في المحادثات (shares: [{ m: messageId, c: conversationId, u: [الطرفان] }]) تتبع حالتها:
 //    open ← started (بدأت المباراة) أو closed (أغلقها المضيف). الانتهاء بالمدة تعرضه البطاقة وحدها من expiresAt.
-function updateRoomCards(room, status) {
+function updateRoomCards(room, status = null) {
     const shares = room.shares || [];
     if (!shares.length) return;
     const Message = require('../../models/Message');
@@ -481,7 +481,8 @@ function updateRoomCards(room, status) {
     Promise.all(shares.map(async (s) => {
         const saved = await Message.findOneAndUpdate(
             { _id: s.m, type: 'game', 'game.kind': 'ludo_room', 'game.status': 'open' },
-            { $set: { 'game.status': status, 'game.joined': room.players.length, 'game.updatedAt': updatedAt } },
+            // status null: الغرفة ما زالت مفتوحة — العدد وحده («2 من 4») عند انضمام/مغادرة ضيف
+            { $set: { ...(status ? { 'game.status': status } : {}), 'game.joined': room.players.length, 'game.updatedAt': updatedAt } },
             { new: true }
         ).select('game').lean();
         if (saved && global.io) {
@@ -566,6 +567,7 @@ async function joinRoom(userId, code) {
         }
         await store.saveRoom(room);
         emitRoom(room, { room: roomView(room) });
+        updateRoomCards(room);
         return { room: roomView(room) };
     });
 }
@@ -603,6 +605,7 @@ async function leaveRoom(userId) {
         delete room.blocked[id];
         await store.saveRoom(room);
         emitRoom(room, { room: roomView(room) });
+        updateRoomCards(room);
         return { left: true };
     });
 }
