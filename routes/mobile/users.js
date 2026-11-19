@@ -227,6 +227,11 @@ router.put('/users/location', protect, async (req, res) => {
 // نظام البحث عن المستخدمين
 // ==========================================
 
+const { cachedCount } = require('../../utils/countCache');
+// البحث بالاسم: الفهرس المفروض، وحدّ عدد النتائج الذي يبقى الجلب به أسرع من خطة الترتيب
+const NAME_SEARCH_INDEX = 'search_active_name';
+const NAME_SEARCH_HINT_MAX = 500;
+
 // @route   GET /api/mobile/users/search
 // @desc    البحث عن مستخدمين مع فلاتر متقدمة
 // @access  Private
@@ -380,6 +385,10 @@ router.get('/users/search', protect, async (req, res) => {
             return exposeAdminRole(obj);
         };
 
+        // مفتاح كاش العدّ: المستخدم + كل معاملات الطلب عدا الصفحة
+        const { page: _p, ...countParams } = req.query;
+        const countKey = `search:${req.user._id}:${JSON.stringify(countParams)}`;
+
         // ✅ عيّنة عشوائية (لاقتراحات صفحة البحث) — مستخدمون مختلفون كل مرة
         //
         // ⚠️ كان { $match } ثم { $sample }: عند وجود $match قبله لا يستطيع
@@ -416,7 +425,8 @@ router.get('/users/search', protect, async (req, res) => {
             //    وإرجاع طول العيّنة بدله يقلب العدّاد من ٥٤ ألفاً إلى ٢٠.
             //    وهو عدٌّ بالفهرس (~٣٠٠ms) لا جلب مستندات — أرخص بكثير من
             //    الـ $sample الذي حلّ محلّه.
-            totalUsers = await User.countDocuments(filter);
+            // الرقم نفسه لكل فتحة لصفحة البحث — يُحفظ 10 دقائق لكل مستخدم وفلاتره
+            totalUsers = await cachedCount(countKey, () => User.countDocuments(filter));
 
             return res.status(200).json({
                 success: true,
@@ -495,14 +505,29 @@ router.get('/users/search', protect, async (req, res) => {
 
         } else {
             // بدون موقع — البحث العادي
-            users = await User.find(filter)
+            //
+            // ⚠️ البحث بالاسم (regex غير مثبّت) كان يجلب **كل** المستخدمين النشطين (~78 ألف مستند) للعدّ
+            //    ثم مرة أخرى للجلب: 1.2–1.6ث لاسم مثل «غزل» (23 نتيجة). الفهرس search_active_name
+            //    {isActive, name} يفحص الأسماء داخله ويجلب المطابقين فقط (76ms) — لكن المخطِّط لا يختاره
+            //    وحده، فيُفرض بـ hint. القياس على الإنتاج (١٩ نوفمبر): النتائج نفسها 20/20.
+            //    للأسماء الشائعة جداً (آلاف النتائج) خطة الترتيب الافتراضية أسرع في الجلب — تُترك.
+            const nameSearch = !!filter.name;
+            const countOnce = async () => {
+                if (!nameSearch) return User.countDocuments(filter);
+                try { return await User.countDocuments(filter).hint(NAME_SEARCH_INDEX); }
+                catch (_) { return User.countDocuments(filter); }      // قاعدة بلا الفهرس (تطوير)
+            };
+            // الصفحات التالية للبحث نفسه تعيد العدّ ذاته — يُحفظ دقيقتين
+            totalUsers = await cachedCount(countKey, countOnce, nameSearch ? 120 : 600);
+
+            const findQuery = User.find(filter)
                 .select('name email profileImage birthDate gender country bio isOnline isActive lastLogin verification.isVerified isPremium stealthMode showAge showCountry role')
                 .sort({ isOnline: -1, lastLogin: -1 })
                 .limit(limitNum)
                 .skip(skipNum)
                 .lean();
-
-            totalUsers = await User.countDocuments(filter);
+            if (nameSearch && totalUsers <= NAME_SEARCH_HINT_MAX) findQuery.hint(NAME_SEARCH_INDEX);
+            users = await findQuery;
 
             // إخفاء lastLogin للمتخفين + إخفاء العمر/الدولة حسب الإعداد + distance: null
             users = users.map(u => {

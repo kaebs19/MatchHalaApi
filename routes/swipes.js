@@ -16,6 +16,7 @@ const { getBlockState } = require('./mobile/helpers');
 const NodeCache = require('node-cache');
 // ✅ cache لـ /cards endpoint — 60 ثانية لكل user (يقلل CPU)
 const cardsCache = new NodeCache({ stdTTL: 60, checkperiod: 90 });
+const { cachedCount } = require('../utils/countCache');
 
 // ✅ خريطة كود الدولة (ISO2) → الاسم الإنجليزي الكامل
 // تُستخدم في فلتر الدولة لمطابقة السجلات القديمة المخزّنة كاسم كامل
@@ -883,7 +884,11 @@ router.get('/cards', protect, async (req, res) => {
             // ✅ ترتيب طبقي بالنقاط (النشاط أولاً)
             users.sort((a, b) => b._score - a._score);
 
-            totalUsers = await User.countDocuments(filter);
+            // عدّ مرشّحي الاكتشاف (~13 ألف مستند مفحوص، ألف مرة/ساعة) لا يتغيّر في دقائق — 10 دقائق لكل مستخدم وفلاتره
+            totalUsers = await cachedCount(
+                `cards:${userId}:${gender || ''}:${country || ''}:${minAge || ''}:${maxAge || ''}:${lastActiveWithin || ''}`,
+                () => User.countDocuments(filter)
+            );
             const startIdx = (pageNum - 1) * limitNum;
             users = users.slice(startIdx, startIdx + limitNum);
             users = users.map(u => { delete u._score; return u; });

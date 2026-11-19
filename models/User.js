@@ -725,6 +725,8 @@ userSchema.index({ createdAt: -1 });
 userSchema.index({ 'newcomer.status': 1, createdAt: -1 });
 userSchema.index({ 'suspension.isSuspended': 1, 'suspension.suspendedUntil': 1 });
 userSchema.index({ 'hidden.isHidden': 1, 'hidden.hiddenUntil': 1 });
+// البحث بالاسم (routes/mobile/users.js يفرضه بـ hint): regex يُفحص داخل الفهرس بدل جلب كل النشطين
+userSchema.index({ isActive: 1, name: 1 }, { name: 'search_active_name' });
 // 🔗 ربط الحسابات (الحسابات المرتبطة + شارات قائمة المستخدمين) — جزئية: من له القيمة فقط
 userSchema.index({ keychainToken: 1 }, { name: 'link_keychainToken', partialFilterExpression: { keychainToken: { $type: 'string' } } });
 userSchema.index({ deviceFingerprint: 1 }, { name: 'link_deviceFingerprint', partialFilterExpression: { deviceFingerprint: { $type: 'string' } } });
