@@ -16,7 +16,8 @@ const crypto = require('crypto');
 const { getClient } = require('../redisClient');
 
 const GAME_TTL_S = 3 * 60 * 60;
-const ROOM_TTL_S = 15 * 60;
+// مدة الغرفة ثابتة من إنشائها (تُعرض عدّاً تنازلياً) — الخروج من التطبيق لا يغلقها
+const ROOM_TTL_S = Number(process.env.LUDO_ROOM_TTL_S) || 30 * 60;
 const LOCK_TTL_MS = 4000;
 const DEADLINES = 'ludo:deadlines';
 // مهلة عودة المنقطع في مباراة دوري: العضو `<gameId>|<userId>` والدرجة موعد الحسم
@@ -291,10 +292,11 @@ async function createRoom(room) {
     // رمز من 4 أرقام غير مستعمل
     for (let i = 0; i < 20; i++) {
         const code = String(crypto.randomInt(1000, 10000));
-        const ok = await c.set(k.room(code), JSON.stringify({ ...room, code }), { NX: true, EX: ROOM_TTL_S });
+        const expiresAt = Date.now() + ROOM_TTL_S * 1000;
+        const ok = await c.set(k.room(code), JSON.stringify({ ...room, code, expiresAt }), { NX: true, EX: ROOM_TTL_S });
         if (ok) {
             await c.set(k.userRoom(room.hostId), code, { EX: ROOM_TTL_S });
-            return { ...room, code };
+            return { ...room, code, expiresAt };
         }
     }
     throw new StoreUnavailable();
@@ -305,10 +307,16 @@ async function getRoom(code) {
     return raw ? JSON.parse(raw) : null;
 }
 
+// ⚠️ الحفظ لا يمدّد الغرفة: ما بقي من مدّتها الأصلية (البطاقات في المحادثات تعرض الموعد نفسه)
+const roomSecondsLeft = (room) => (room.expiresAt
+    ? Math.max(1, Math.ceil((room.expiresAt - Date.now()) / 1000))
+    : ROOM_TTL_S);
+
 async function saveRoom(room) {
     const c = await redis();
-    const multi = c.multi().set(k.room(room.code), JSON.stringify(room), { EX: ROOM_TTL_S });
-    room.players.forEach(u => multi.set(k.userRoom(u), room.code, { EX: ROOM_TTL_S }));
+    const ttl = roomSecondsLeft(room);
+    const multi = c.multi().set(k.room(room.code), JSON.stringify(room), { EX: ttl });
+    room.players.forEach(u => multi.set(k.userRoom(u), room.code, { EX: ttl }));
     await multi.exec();
 }
 
@@ -352,6 +360,6 @@ module.exports = {
     missionIncr, missionGet, missionClaim, missionUnclaim,
     markRivals, areRivals, challengeCooldown, setChallenge, takeChallenge,
     enqueue, dequeue, getQueueEntry, queueEntries, activeQueueKeys,
-    createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom,
+    createRoom, getRoom, saveRoom, deleteRoom, getUserRoom, clearUserRoom, ROOM_TTL_S,
     StoreUnavailable
 };

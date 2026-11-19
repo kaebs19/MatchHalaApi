@@ -50,7 +50,7 @@ function validateSetup(mode, size) {
 // يُعاد التحميل من القاعدة: socket.user يُقرأ عند الاتصال وقد يكون قديماً
 async function loadEligible(userId) {
     const user = await User.findById(userId)
-        .select('name profileImage role isActive suspension bannedWords blockedUsers keychainToken vendorId')
+        .select('name gender profileImage role isActive suspension bannedWords blockedUsers keychainToken vendorId')
         .lean();
     if (!user || !user.isActive) throw new LudoError('NOT_ALLOWED', 'الحساب غير متاح', 403);
     const suspended = user.suspension?.isSuspended &&
@@ -465,8 +465,31 @@ function roomView(room) {
         mode: room.mode,
         size: room.size,
         players: room.players.map(id => room.info[id]),
-        createdAt: room.createdAt
+        createdAt: room.createdAt,
+        expiresAt: room.expiresAt || null,
+        now: Date.now()
     };
+}
+
+// 🎴 بطاقات الغرفة في المحادثات (shares: [{ m: messageId, c: conversationId, u: [الطرفان] }]) تتبع حالتها:
+//    open ← started (بدأت المباراة) أو closed (أغلقها المضيف). الانتهاء بالمدة تعرضه البطاقة وحدها من expiresAt.
+function updateRoomCards(room, status) {
+    const shares = room.shares || [];
+    if (!shares.length) return;
+    const Message = require('../../models/Message');
+    const updatedAt = new Date().toISOString();
+    Promise.all(shares.map(async (s) => {
+        const saved = await Message.findOneAndUpdate(
+            { _id: s.m, type: 'game', 'game.kind': 'ludo_room', 'game.status': 'open' },
+            { $set: { 'game.status': status, 'game.joined': room.players.length, 'game.updatedAt': updatedAt } },
+            { new: true }
+        ).select('game').lean();
+        if (saved && global.io) {
+            global.io.to((s.u || []).map(u => `user:${u}`)).emit('game-updated', {
+                messageId: String(s.m), conversationId: String(s.c), game: saved.game
+            });
+        }
+    })).catch(e => console.error('🎲 room cards:', e.message));
 }
 
 function emitRoom(room, payload) {
@@ -477,6 +500,7 @@ function emitRoom(room, payload) {
 
 async function startRoomMatch(room) {
     await store.deleteRoom(room);
+    updateRoomCards(room, 'started');
     const record = await service.createMatch({
         players: room.players.map(id => room.info[id]),
         bots: room.size - room.players.length,
@@ -512,7 +536,14 @@ async function joinRoom(userId, code) {
     await store.dequeue([id]);
     if (await store.getUserGame(id)) throw new LudoError('IN_GAME', 'عندك مباراة جارية — ارجع لها أولاً', 409);
     const current = await store.getUserRoom(id);
-    if (current && current !== code) throw new LudoError('IN_ROOM', 'أنت في غرفة انتظار أخرى', 409);
+    if (current && current !== code) {
+        // ضيف في غرفة أخرى (رمز وصله من صديق آخر) ← يغادرها وينضمّ. المضيف لا: مغادرته تغلق غرفته على من فيها
+        const other = await store.getRoom(current);
+        if (other && other.hostId === id) {
+            throw new LudoError('IN_ROOM', 'عندك غرفة مفتوحة — أغلقها أولاً لتنضمّ لغيرها', 409);
+        }
+        await leaveRoom(id);
+    }
 
     return store.withLock(`room:${code}`, async () => {
         const room = await store.getRoom(code);
@@ -563,6 +594,7 @@ async function leaveRoom(userId) {
         if (room.hostId === id) {
             // خروج المضيف يغلق الغرفة
             await store.deleteRoom(room);
+            updateRoomCards(room, 'closed');
             emitRoom({ ...room, players: room.players.filter(p => p !== id) }, { code, closed: true });
             return { left: true };
         }
@@ -575,7 +607,106 @@ async function leaveRoom(userId) {
     });
 }
 
+// غرفتي الحالية (العودة للتطبيق بعد نسخ الرمز وإرساله) — null إن انتهت أو بدأت
+async function myRoom(userId) {
+    const id = String(userId);
+    const code = await store.getUserRoom(id);
+    if (!code) return { room: null };
+    const room = await store.getRoom(code);
+    if (!room || !room.players.includes(id)) {
+        await store.clearUserRoom(id);
+        return { room: null };
+    }
+    return { room: roomView(room) };
+}
+
+// بطاقة الغرفة في محادثة: واحدة لكل محادثة في الغرفة نفسها (إعادة الإرسال تعيد البطاقة القائمة)
+async function postRoomCard(user, code, conversationId, otherId) {
+    const id = String(user._id);
+    const games = require('../../routes/mobile/games');
+    const result = await store.withLock(`room:${code}`, async () => {
+        const room = await store.getRoom(code);
+        if (!room || !room.players.includes(id)) throw new LudoError('ROOM_NOT_FOUND', 'الغرفة غير موجودة أو انتهت', 404);
+        if (room.players.length >= room.size) throw new LudoError('ROOM_FULL', 'الغرفة مكتملة', 409);
+        room.shares = room.shares || [];
+        const existing = room.shares.find(s => s.c === String(conversationId));
+        if (existing) return { messageId: existing.m, already: true };
+        const message = await games.createLudoRoomMessage(conversationId, user, otherId, roomView(room));
+        room.shares.push({ m: String(message._id), c: String(conversationId), u: [id, String(otherId)] });
+        if (room.shares.length > 30) room.shares = room.shares.slice(-30);
+        await store.saveRoom(room);
+        return { messageId: String(message._id), already: false };
+    });
+    if (!result.already) games.notifyLudo(otherId, user, conversationId, result.messageId, 'room', { code });
+    return result;
+}
+
+// «أرسل الرمز لهذه المحادثة» — الحارس نفسه لدعوات المحادثة (مقبولة، بلا حظر، الطرف سليم)
+async function shareRoom(userId, conversationId) {
+    const user = await loadEligible(userId);
+    const id = String(user._id);
+    const code = await store.getUserRoom(id);
+    if (!code) throw new LudoError('ROOM_NOT_FOUND', 'أنشئ غرفة أولاً', 404);
+    const games = require('../../routes/mobile/games');
+    const { conversation, error } = await games.guardConversation(conversationId, user);
+    if (error) throw new LudoError(error.body.code || 'SHARE_FAILED', error.body.message, error.status);
+    const other = conversation.participants.find(p => String(p._id) !== id);
+    return postRoomCard(user, code, conversation._id, other._id);
+}
+
+// 👥 دعوة صديق (أو من أحادثه) لغرفتي من داخل التطبيق: تنبيه فوري إن كان متصلاً، وبطاقة في محادثتنا إن وُجدت
+// (تصله ولو كان غائباً)، وإلا إشعار بالرمز. ⚠️ لا لغريب — مثل التحدّي.
+const ROOM_INVITE_CD_MS = 20 * 1000;
+async function inviteToRoom(userId, targetId) {
+    const from = await loadEligible(userId);
+    const fromId = String(from._id);
+    const toId = String(targetId || '');
+    const unavailable = () => new LudoError('PLAYER_UNAVAILABLE', 'هذا اللاعب غير متاح الآن', 404);
+    if (!/^[a-f0-9]{24}$/i.test(toId) || toId === fromId) throw unavailable();
+    let to;
+    try { to = await loadEligible(toId); } catch (e) { throw unavailable(); }
+    if (blockedList(from).includes(toId) || blockedList(to).includes(fromId)) throw unavailable();
+
+    const code = await store.getUserRoom(fromId);
+    const room = code && await store.getRoom(code);
+    if (!room) throw new LudoError('ROOM_NOT_FOUND', 'أنشئ غرفة أولاً', 404);
+    if (room.players.includes(toId)) throw new LudoError('ALREADY_IN_ROOM', 'هو في الغرفة معك', 409);
+    if (room.players.length >= room.size) throw new LudoError('ROOM_FULL', 'الغرفة مكتملة', 409);
+
+    const Conversation = require('../../models/Conversation');
+    const conv = await Conversation.findOne({
+        participants: { $all: [fromId, toId], $size: 2 }, status: 'accepted', isActive: true
+    }).select('_id').lean();
+    if (!conv && !(await mayChallenge(fromId, toId))) {
+        throw new LudoError('ROOM_INVITE_NOT_ALLOWED', 'الدعوة لأصدقائك ومن تحادثهم', 403);
+    }
+    if (await store.getUserGame(toId)) throw new LudoError('PLAYER_BUSY', 'اللاعب في مباراة أخرى الآن', 409);
+    if (!(await store.challengeCooldown(`room:${fromId}`, toId, ROOM_INVITE_CD_MS))) {
+        throw new LudoError('ROOM_INVITE_PENDING', 'دعوته للتوّ — انتظر قليلاً', 429);
+    }
+
+    let viaChat = false;
+    if (conv) {
+        try { await postRoomCard(from, code, conv._id, toId); viaChat = true; } catch (e) { /* الحارس رفض — التنبيه يكفي */ }
+    }
+    global.io?.to(`user:${toId}`).emit('ludo:room-invite', {
+        from: playerInfo(from), code, size: room.size, joined: room.players.length,
+        expiresAt: room.expiresAt || null, now: Date.now()
+    });
+    if (!viaChat) {
+        const pushNotificationService = require('../../services/pushNotificationService');
+        pushNotificationService.sendNotificationToUser(toId, {
+            title: `🎲 ${from.name || 'صديقك'} ${from.gender === 'female' ? 'تدعوك' : 'يدعوك'} لغرفة «هلا لودو»`,
+            body: `الرمز ${code} — افتح الألعاب وانضم قبل أن تنتهي الغرفة`
+        }, { type: 'ludo_turn', roomCode: code }, false).catch(() => {});
+    }
+    return { sent: true, viaChat };
+}
+
 module.exports = {
+    myRoom,
+    shareRoom,
+    inviteToRoom,
     joinQueue,
     leaveQueue,
     tryMatch,

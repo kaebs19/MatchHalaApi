@@ -1266,3 +1266,52 @@ maybe('الحركة الإجبارية: قطعتان متطابقتان في ا�
     assert.equal(after.state.seats[me].missed, 0);
     await service.playerLeave(b, rec.id);
 });
+
+maybe('🚪 الغرفة: مدة ثابتة، غرفتي بعد العودة، الضيف ينتقل لغرفة أخرى، ودعوة صديق', async () => {
+    const Conversation = require('../models/Conversation');
+    const origFind = Conversation.findOne;
+    Conversation.findOne = () => ({ select: () => ({ lean: async () => null }) });
+    const push = require('../services/pushNotificationService');
+    const origSend = push.sendNotificationToUser;
+    const pushes = [];
+    push.sendNotificationToUser = async (to, copy, data) => { pushes.push({ to, copy, data }); };
+    try {
+        const h = addUser(); const g = addUser(); const h2 = addUser(); const stranger = addUser();
+        const room = await lobby.createRoom(h, { mode: 'quick', size: 4 });
+        assert.ok(room.expiresAt > Date.now() + 60 * 1000, 'مدة ظاهرة');
+        await lobby.joinRoom(g, room.code);
+        const saved = await store.getRoom(room.code);
+        assert.equal(saved.expiresAt, room.expiresAt, 'الحفظ لا يمدّد الغرفة');
+
+        // العودة للتطبيق (لا شيء يغلقها عند الانقطاع)
+        const mine = await lobby.myRoom(h);
+        assert.equal(mine.room.code, room.code);
+        assert.equal((await lobby.myRoom(stranger)).room, null);
+
+        // الضيف يقبل رمز غرفة أخرى ← يغادر الأولى؛ المضيف لا يستطيع
+        const other = await lobby.createRoom(h2, { mode: 'quick', size: 4 });
+        await lobby.joinRoom(g, other.code);
+        assert.equal((await store.getRoom(room.code)).players.includes(g), false);
+        await assert.rejects(lobby.joinRoom(h, other.code), { code: 'IN_ROOM' });
+
+        // الدعوة: لا لغريب؛ للصديق تنبيه فوري + إشعار بالرمز (لا محادثة بيننا)
+        await assert.rejects(lobby.inviteToRoom(h, stranger), { code: 'ROOM_INVITE_NOT_ALLOWED' });
+        const friend = addUser();
+        friendships.add(`${h}|${friend}`);
+        const res = await lobby.inviteToRoom(h, friend);
+        assert.deepEqual(res, { sent: true, viaChat: false });
+        const alert = eventsFor(friend, 'ludo:room-invite').pop();
+        assert.equal(alert.code, room.code);
+        assert.equal(alert.from.id, h);
+        await new Promise(r => setImmediate(r));
+        assert.ok(pushes.some(p => p.to === friend && p.data.roomCode === room.code));
+        await assert.rejects(lobby.inviteToRoom(h, friend), { code: 'ROOM_INVITE_PENDING' });
+
+        await lobby.leaveRoom(h);
+        await lobby.leaveRoom(h2);
+        assert.equal((await lobby.myRoom(g)).room, null);
+    } finally {
+        Conversation.findOne = origFind;
+        push.sendNotificationToUser = origSend;
+    }
+});

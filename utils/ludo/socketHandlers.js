@@ -69,6 +69,9 @@ function registerLudoHandlers(io, socket) {
     on('ludo:room:join', ({ code }) => lobby.joinRoom(userId, code));
     on('ludo:room:start', ({ code }) => lobby.startRoom(userId, code));
     on('ludo:room:leave', () => lobby.leaveRoom(userId));
+    on('ludo:room:mine', () => lobby.myRoom(userId));
+    on('ludo:room:share', ({ conversationId }) => lobby.shareRoom(userId, conversationId));
+    on('ludo:room:invite', ({ to }) => lobby.inviteToRoom(userId, to));
 
     // ── الرصيد والدوريات ──
     on('ludo:wallet', () => lobby.walletInfo(userId));
@@ -153,7 +156,7 @@ function registerLudoHandlers(io, socket) {
         .catch(() => {});
 
     // انقطاع: المؤقّت يكمل الأدوار (بمهلة أقصر للمنقطع)، والعودة بـ ludo:resume.
-    // والطابور وغرفة الانتظار لا يبقيان لمن خرج.
+    // والطابور لا يبقى لمن خرج (الغرفة تبقى حتى مدّتها).
     socket.on('disconnect', async () => {
         try {
             // ⚠️ كل انقطاع لكل مستخدم يمرّ هنا — لا نسأل الـ cluster (fetchSockets) إلا لمن
@@ -165,7 +168,8 @@ function registerLudoHandlers(io, socket) {
             const connected = async () => (await io.in(`user:${userId}`).fetchSockets()).length > 0;
             if (await connected()) return;           // ما زال متصلاً من جهاز/نسخة أخرى
             if (entry) await lobby.leaveQueue(userId);
-            if (room) await lobby.leaveRoom(userId);
+            // ⚠️ غرفة الانتظار تبقى: صاحبها يخرج لينسخ الرمز ويرسله لصديق ثم يعود (ludo:room:mine).
+            //    تنتهي بمدّتها (store.ROOM_TTL_S) أو بخروج صريح (ludo:room:leave).
             if (gameId) {
                 const timer = setTimeout(async () => {
                     try {

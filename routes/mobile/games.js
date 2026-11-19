@@ -907,16 +907,18 @@ const LUDO_COPY = {
     declined: (n, f) => ({ title: `${n} ${f ? 'اعتذرت' : 'اعتذر'} عن التحدّي`, body: `ربما في وقت آخر — تقدر ${f ? 'تتحدّاها' : 'تتحدّاه'} لاحقاً من المحادثة` }),
     // ⏳ انتهت الدعوة بلا ردّ: المستلم «فاتك» (push)، والمرسل «لم يردّ» (يُحفظ فقط) — n هنا الطرف الآخر
     missed:   (n) => ({ title: `⏳ فاتك تحدّي ${n}`, body: 'انتهت الدعوة قبل أن تردّ — اضغط وردّ التحدّي' }),
-    expired:  (n, f) => ({ title: `انتهت دعوتك لـ${n}`, body: `لم ${f ? 'تردّ' : 'يردّ'} خلال 10 دقائق — تقدر تعيد التحدّي من المحادثة` })
+    expired:  (n, f) => ({ title: `انتهت دعوتك لـ${n}`, body: `لم ${f ? 'تردّ' : 'يردّ'} خلال 10 دقائق — تقدر تعيد التحدّي من المحادثة` }),
+    // 🚪 رمز غرفة أُرسل في المحادثة (حتى 4 لاعبين)
+    room:     (n, f, code) => ({ title: `🎲 ${n} ${f ? 'تدعوك' : 'يدعوك'} لغرفة «هلا لودو»`, body: `الرمز ${code || ''} — اضغط «انضم» في المحادثة قبل أن تنتهي الغرفة` })
 };
 const LUDO_TYPE = {
     invite: 'ludo_invite', again: 'ludo_invite', back: 'ludo_invite', accepted: 'ludo_accepted', declined: 'ludo_declined',
-    missed: 'ludo_missed', expired: 'ludo_expired'
+    missed: 'ludo_missed', expired: 'ludo_expired', room: 'ludo_invite'
 };
 
-async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind, { push = true } = {}) {
+async function notifyLudo(recipientId, senderUser, conversationId, messageId, kind, { push = true, code } = {}) {
     try {
-        const copy = LUDO_COPY[kind](senderUser.name || 'لاعب', senderUser.gender === 'female');
+        const copy = LUDO_COPY[kind](senderUser.name || 'لاعب', senderUser.gender === 'female', code);
         const online = !push || await isUserSocketConnected(recipientId);
         const img = getBestUserImage(senderUser);
         await pushNotificationService.sendNotificationToUser(recipientId, copy, {
@@ -927,7 +929,9 @@ async function notifyLudo(recipientId, senderUser, conversationId, messageId, ki
             senderId: String(senderUser._id),
             senderName: senderUser.name || '',
             senderImage: img ? (img.startsWith('http') ? img : (process.env.BASE_URL || 'https://matchhala.chathala.com') + img) : '',
-            ...(LUDO_TYPE[kind] === 'ludo_invite' ? { apnsCategory: 'LUDO_INVITE_CATEGORY' } : {})
+            ...(code ? { roomCode: String(code) } : {}),
+            // أزرار الإشعار (قبول/اعتذار) تنادي respond — للدعوة الثنائية وحدها، لا لبطاقة الغرفة
+            ...(LUDO_TYPE[kind] === 'ludo_invite' && kind !== 'room' ? { apnsCategory: 'LUDO_INVITE_CATEGORY' } : {})
         }, true, { push: !online });
     } catch (err) {
         console.error('🎲 notify error:', err.message);
@@ -978,6 +982,48 @@ async function createLudoInviteMessage(conversationId, user, opponentId, { mode 
         global.io.to([`user:${user._id}`, `user:${opponentId}`]).emit('new-message', { message: populated });
     }
     scheduleInviteExpiry(message._id, Date.parse(game.expiresAt));
+    return populated;
+}
+
+/**
+ * 🚪 بطاقة غرفة لودو بالرمز في محادثة ثنائية (utils/ludo/lobby.postRoomCard يحرسها ويتتبّعها).
+ * ⚠️ بلا players ولا round عمداً: النسخ القديمة يفشل عندها فكّ البطاقة فتعرض النصّ الاحتياطي (وفيه الرمز).
+ */
+const LUDO_ROOM_FALLBACK = '🎲 انضم لغرفتي في «هلا لودو» — الرمز';
+async function createLudoRoomMessage(conversationId, user, otherId, room) {
+    const now = new Date();
+    const game = {
+        kind: 'ludo_room',
+        status: 'open',
+        code: room.code,
+        host: room.hostId,
+        size: room.size,
+        joined: room.players.length,
+        expiresAt: room.expiresAt ? new Date(room.expiresAt).toISOString() : null,
+        updatedAt: now.toISOString()
+    };
+    const message = await Message.create({
+        conversation: conversationId,
+        sender: user._id,
+        type: 'game',
+        content: `${LUDO_ROOM_FALLBACK} ${room.code}`,
+        status: 'sent',
+        game
+    });
+    await Conversation.updateOne(
+        { _id: conversationId },
+        {
+            $set: { lastMessage: message._id },
+            $inc: { 'metadata.totalMessages': 1 },
+            $pull: { hiddenFor: { user: { $ne: user._id }, reason: { $ne: 'block' } } }
+        }
+    );
+    const populated = await Message.findById(message._id)
+        .populate('sender', 'name email profileImage isPremium isActive verification.isVerified')
+        .lean();
+    if (global.io) {
+        global.io.to([`user:${user._id}`, `user:${otherId}`]).emit('new-message', { message: populated });
+    }
     return populated;
 }
 
@@ -1190,6 +1236,8 @@ router.post('/games/ludo/:messageId/respond', protect, async (req, res) => {
 
 module.exports = router;
 module.exports.createLudoInviteMessage = createLudoInviteMessage;
+module.exports.createLudoRoomMessage = createLudoRoomMessage;
+module.exports.guardConversation = guardConversation;
 module.exports.LUDO_FALLBACK = LUDO_FALLBACK;
 module.exports.LUDO_COPY = LUDO_COPY;
 module.exports.notifyLudo = notifyLudo;
