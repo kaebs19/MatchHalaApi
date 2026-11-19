@@ -153,8 +153,11 @@ const protect = async (req, res, next) => {
                     res.set('X-Restriction-Level', req.user.restrictions.messagingRestrictedLevel || 'none');
                     res.set('X-Restriction-Until', req.user.restrictions.messagingRestrictedUntil?.toISOString() || '');
                     // السبب (ASCII) — بدونه يعرض التطبيق «تقييد جزئي» عامّاً لإيقاف الحسابات الخارجية
-                    if (req.user.restrictions.restrictionReason) {
-                        res.set('X-Restriction-Reason', String(req.user.restrictions.restrictionReason));
+                    // ⚠️ ASCII فقط: سبب يكتبه المشرف بالعربية («مخالفة سياسة المراسلة») كان يرمي
+                    //    «Invalid character in header content» فيفشل **كل** طلب لصاحبه بـ 500 (10 حسابات، ~1400 طلب/يوم).
+                    const reason = String(req.user.restrictions.restrictionReason || '');
+                    if (reason && /^[\x20-\x7E]+$/.test(reason)) {
+                        res.set('X-Restriction-Reason', reason);
                     }
                 }
             }
