@@ -681,6 +681,14 @@ io.on('connection', async (socket) => {
 
     // انضم لغرفته الخاصة (للرسائل الخاصة)
     socket.join(`user:${socket.userId}`);
+    // 🔔 «في الواجهة»: سوكت التطبيق المفتوح أمام المستخدم. الإشعارات تُحجب عمّن له سوكت هنا فقط
+    //    (utils/socketPresence). التطبيق يغادرها عند الخلفية (app:state) — كان السوكت يبقى «متصلاً» حتى ~45ث
+    //    بعد الخروج والتطبيق مجمَّد، فتضيع الرسائل وإشعارات اللودو. النسخ القديمة لا ترسل الحدث ← تبقى فيها كالسابق.
+    socket.join(`fg:${socket.userId}`);
+    socket.on('app:state', (payload) => {
+        const active = !(payload && payload.active === false);
+        if (active) socket.join(`fg:${socket.userId}`); else socket.leave(`fg:${socket.userId}`);
+    });
 
     // 📬 الرسائل التي وصلت وهو خارج التطبيق → «مُسلَّمة» الآن (بدون تعطيل الاتصال)
     setImmediate(() => markPendingMessagesDelivered(socket.userId));
@@ -890,7 +898,7 @@ io.on('connection', async (socket) => {
                 // ✅ فحص عبر كل عمليات الـ cluster (Redis adapter): هل للمستخدم أي سوكِت متصل؟
                 // أدقّ من connectedUsers المحلي الذي لا يرى الاتصالات على عمليات أخرى.
                 const { isUserSocketConnected } = require('./utils/socketPresence');
-                if (await isUserSocketConnected(socket.userId)) return; // ما زال متصلاً على عملية ما
+                if (await isUserSocketConnected(socket.userId, { anySocket: true })) return; // ما زال متصلاً على عملية ما
 
                 await User.findByIdAndUpdate(socket.userId, {
                     isOnline: false,

@@ -188,6 +188,12 @@ async function createMatch({ players, bots = 0, mode = 'classic', source, link =
     await store.saveGame(record);
     await store.setUserGame(humans(record), record.id);
     emitToPlayers(record, 'ludo:match-found', view(record));
+    // 🔔 «بدأت مباراتك» لمن خرج من التطبيق (البحث في الطابور، دعوة قُبلت، غرفة بدأت) — routes/mobile/games.js
+    for (const userId of humans(record)) {
+        for (const fn of startHooks) {
+            Promise.resolve().then(() => fn({ gameId: record.id, userId, source })).catch(e => console.error('ludo start hook:', e.message));
+        }
+    }
     return record;
 }
 
@@ -202,6 +208,9 @@ const turnHooks = [];
 function onTurn(fn) { turnHooks.push(fn); }
 
 // انقطع لاعب في مباراة دوري وبدأت مهلة عودته — مستمعو إشعار «ارجع قبل أن تُحسب خسارة»
+const startHooks = [];
+function onStart(fn) { startHooks.push(fn); }
+
 const awayHooks = [];
 function onAway(fn) { awayHooks.push(fn); }
 
@@ -751,6 +760,7 @@ module.exports = {
     rollDie,
     onFinalize,
     onTurn,
+    onStart,
     onAway,
     constants: { TURN_MS, OFFLINE_TURN_MS, RETURN_GRACE_MS, BOT_DELAY_MS, AUTO_MOVE_MS, REROLL_DECIDE_MS, SIX_WEIGHT, SIX_WEIGHT_ALL_BASE, PITY_SIX_AFTER }
 };
