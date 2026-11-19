@@ -70,6 +70,8 @@ function registerLudoHandlers(io, socket) {
     on('ludo:room:start', ({ code }) => lobby.startRoom(userId, code));
     on('ludo:room:leave', () => lobby.leaveRoom(userId));
     on('ludo:room:mine', () => lobby.myRoom(userId));
+    // 🔁 إعادة المباراة بنفس اللاعبين (utils/ludo/rematch.js): accept=false اعتذار
+    on('ludo:rematch', ({ gameId, accept }) => require('./rematch').respond(userId, gameId, accept !== false));
     on('ludo:room:share', ({ conversationId }) => lobby.shareRoom(userId, conversationId));
     on('ludo:room:invite', ({ to }) => lobby.inviteToRoom(userId, to));
 

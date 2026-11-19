@@ -6,6 +6,7 @@ process.env.LUDO_TURN_MS = '300';
 process.env.LUDO_OFFLINE_TURN_MS = '60';
 process.env.LUDO_RETURN_GRACE_MS = '5000';
 process.env.LUDO_BOT_FILL_MS = '200';
+process.env.LUDO_REMATCH_TTL_MS = '400';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -1314,4 +1315,51 @@ maybe('🚪 الغرفة: مدة ثابتة، غرفتي بعد العودة، �
         Conversation.findOne = origFind;
         push.sendNotificationToUser = origSend;
     }
+});
+
+maybe('🔁 إعادة المباراة: الكل يوافق ← تبدأ فوراً؛ اعتذار أحدهم ← تبدأ بالموافقين والكمبيوتر مكانه؛ وحيد ← تُلغى بالمهلة', async () => {
+    const rematch = require('../utils/ludo/rematch');
+    const endGame = async (rec) => {
+        const g = await store.getGame(rec.id);
+        g.state.phase = 'ended';
+        g.deadlineAt = null;
+        await store.saveGame(g);
+        await store.clearUserGame(g.meta.players.filter(p => !p.isBot).map(p => p.id), g.id);
+        return g.id;
+    };
+    const info = (id) => ({ id, name: users.get(id).name });
+
+    // لاعبان: الاقتراح ثم الموافقة ← مباراة جديدة للاثنين
+    const a = addUser(); const b = addUser();
+    const g1 = await endGame(await service.createMatch({ players: [info(a), info(b)], mode: 'quick', source: 'invite' }));
+    const p1 = await rematch.respond(a, g1, true);
+    assert.equal(p1.status, 'pending');
+    assert.deepEqual(p1.accepted, [a]);
+    assert.ok(eventsFor(b, 'ludo:rematch').some(e => e.gameId === g1 && e.status === 'pending'));
+    const s1 = await rematch.respond(b, g1, true);
+    assert.equal(s1.status, 'started');
+    const n1 = await store.getGame(s1.newGameId);
+    assert.deepEqual(n1.meta.players.map(p => p.id).sort(), [a, b].sort());
+    assert.equal(n1.meta.stake, undefined, 'ودّية');
+    await service.playerLeave(a, n1.id).catch(() => {}); await service.playerLeave(b, n1.id).catch(() => {});
+
+    // ثلاثة بشر + بوت: اعتذار الثالث ← تبدأ بالاثنين وبوتين
+    const c = addUser(); const d = addUser(); const e = addUser();
+    const g2 = await endGame(await service.createMatch({ players: [info(c), info(d), info(e)], bots: 1, mode: 'quick', source: 'room' }));
+    await rematch.respond(c, g2, true);
+    await rematch.respond(e, g2, false);
+    const s2 = await rematch.respond(d, g2, true);
+    assert.equal(s2.status, 'started');
+    const n2 = await store.getGame(s2.newGameId);
+    assert.equal(n2.meta.players.length, 4);
+    assert.deepEqual(n2.meta.players.filter(p => !p.isBot).map(p => p.id).sort(), [c, d].sort());
+    await service.playerLeave(c, n2.id).catch(() => {}); await service.playerLeave(d, n2.id).catch(() => {});
+
+    // لا أحد يوافق غير المقترح ← تُلغى بانتهاء المهلة
+    const f = addUser(); const h = addUser();
+    const g3 = await endGame(await service.createMatch({ players: [info(f), info(h)], mode: 'quick', source: 'challenge' }));
+    await rematch.respond(f, g3, true);
+    await sleep(700);
+    assert.ok(eventsFor(h, 'ludo:rematch').some(x => x.gameId === g3 && x.status === 'cancelled'));
+    await assert.rejects(rematch.respond(addUser(), g3, true), { code: 'NOT_IN_GAME' });
 });
