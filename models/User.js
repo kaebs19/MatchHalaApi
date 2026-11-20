@@ -434,6 +434,14 @@ const userSchema = new mongoose.Schema({
     // 📸 مستخدمون أخفيتُ قصصهم (كتم): لا حلقة لهم في القوائم وشريط الأصدقاء. قصصهم تبقى من بروفايلهم
     storyMutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
+    // 🙈 «لست مهتماً» من البحث (الضغط المطوّل): لا يظهرون في نتائجي ومقترحيّ — يتراجع من الإعدادات.
+    //    ليس حظراً: الطرف الآخر لا يعلم، والمحادثة والقصص والاكتشاف كما هي. السقف 1000 (الأقدم يسقط).
+    searchHiddenUsers: [{
+        _id: false,
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        at: { type: Date, default: Date.now }
+    }],
+
     // ✅ تعليق العضوية (إيقاف مؤقت) — نظام تدريجي
     // المستويات: 0=لا تعليق, 1=24h, 2=48h, 3=3d, 4=7d, 5=دائم
     suspension: {

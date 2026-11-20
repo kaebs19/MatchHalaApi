@@ -236,6 +236,72 @@ const NAME_SEARCH_HINT_MAX = 500;
 // @route   GET /api/mobile/users/search
 // @desc    البحث عن مستخدمين مع فلاتر متقدمة
 // @access  Private
+// ═══ 🙈 «لست مهتماً» في البحث — دائم حتى يتراجع المستخدم من الإعدادات ═══
+const SEARCH_HIDDEN_MAX = 1000;
+
+// @route   POST /api/mobile/search/hidden/:userId
+router.post('/search/hidden/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!mongoose.isValidObjectId(userId) || String(userId) === String(req.user._id)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        // يُزال إن وُجد ثم يُضاف آخراً بوقت جديد — والأقدم يسقط بعد السقف
+        await User.updateOne({ _id: req.user._id }, { $pull: { searchHiddenUsers: { user: userId } } });
+        await User.updateOne({ _id: req.user._id }, {
+            $push: { searchHiddenUsers: { $each: [{ user: userId, at: new Date() }], $slice: -SEARCH_HIDDEN_MAX } }
+        });
+        res.json({ success: true, data: { hidden: true } });
+    } catch (error) {
+        console.error('خطأ في «لست مهتماً»:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الحفظ' });
+    }
+});
+
+// @route   DELETE /api/mobile/search/hidden/:userId
+router.delete('/search/hidden/:userId', protect, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!mongoose.isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
+        }
+        await User.updateOne({ _id: req.user._id }, { $pull: { searchHiddenUsers: { user: userId } } });
+        res.json({ success: true, data: { hidden: false } });
+    } catch (error) {
+        console.error('خطأ في التراجع عن «لست مهتماً»:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الحفظ' });
+    }
+});
+
+// @route   GET /api/mobile/search/hidden  — قائمتي للتراجع (الأحدث أولاً)
+router.get('/search/hidden', protect, async (req, res) => {
+    try {
+        const me = await User.findById(req.user._id).select('searchHiddenUsers').lean();
+        const entries = (me?.searchHiddenUsers || []).filter(h => h.user).reverse();
+        const users = await User.find({ _id: { $in: entries.map(h => h.user) } })
+            .select('name profileImage country isActive').lean();
+        const byId = new Map(users.map(u => [String(u._id), u]));
+        res.json({
+            success: true,
+            data: {
+                users: entries
+                    .map(h => ({ h, u: byId.get(String(h.user)) }))
+                    .filter(x => x.u)
+                    .map(({ h, u }) => ({
+                        _id: u._id,
+                        name: u.isActive === false ? 'مستخدم غير متاح' : u.name,
+                        profileImage: u.isActive === false ? null : getFullUrl(u.profileImage),
+                        country: u.country,
+                        hiddenAt: h.at
+                    }))
+            }
+        });
+    } catch (error) {
+        console.error('خطأ في قائمة «لست مهتماً»:', error);
+        res.status(500).json({ success: false, message: 'تعذّر الجلب' });
+    }
+});
+
 router.get('/users/search', protect, async (req, res) => {
     try {
         const {
@@ -290,7 +356,9 @@ router.get('/users/search', protect, async (req, res) => {
         const blockedByOthers = await User.distinct('_id', { blockedUsers: req.user._id });
         const excludedIds = [
             ...(req.user.blockedUsers || []),
-            ...blockedByOthers
+            ...blockedByOthers,
+            // 🙈 «لست مهتماً»
+            ...(req.user.searchHiddenUsers || []).map(h => h.user).filter(Boolean)
         ];
 
         // ملاحظة: يُطبَّق عبر $and حتى لا يدهسه البحث بالمعرّف (filter._id = q)
