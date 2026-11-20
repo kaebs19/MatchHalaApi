@@ -18,6 +18,7 @@ const { renderCodeEmail } = require('../services/emailService');
 const { protect } = require('../middleware/auth');
 const { validate } = require('../middleware/validation');
 const upload = require('../config/multer');
+const { redactSecrets } = require('../utils/redact');
 const { optimizeImage } = require('../middleware/imageOptimizer');
 const { processImage } = require('../utils/imageProcessor');
 const {
@@ -2080,7 +2081,7 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
                 payload = ticket.getPayload();
             }
         } catch (error) {
-            console.error('خطأ في التحقق من Google Token:', error);
+            console.error('خطأ في التحقق من Google Token:', redactSecrets(error));
             // ✅ Web flow (access_token لا ID token): ⚠️ لا نثق بـ googleUserInfo من العميل —
             //    كان يُقبل كما هو، فيكفي إرسال { sub, email } لأي بريد لدخول حسابه.
             //    الهوية تُؤخذ من Google نفسه (tokeninfo)، والتوكن يجب أن يكون صادراً لعميل الويب.
@@ -2098,7 +2099,7 @@ router.post('/google', bannedDeviceCheck, async (req, res) => {
                         };
                     }
                 } catch (infoErr) {
-                    console.error('خطأ في التحقق من Google access token:', infoErr.message);
+                    console.error('خطأ في التحقق من Google access token:', redactSecrets(infoErr));
                 }
             }
             if (verified) {
@@ -2295,7 +2296,7 @@ router.post('/facebook', bannedDeviceCheck, async (req, res) => {
                 });
             }
         } catch (error) {
-            console.error('خطأ في التحقق من Facebook Token:', error);
+            console.error('خطأ في التحقق من Facebook Token:', redactSecrets(error));
             return res.status(401).json({
                 success: false,
                 message: 'Facebook Token غير صالح'
@@ -2468,7 +2469,7 @@ router.post('/apple', bannedDeviceCheck, async (req, res) => {
                     ignoreExpiration: false
                 });
             } catch (err2) {
-                console.error('خطأ في التحقق من Apple Token:', error);
+                console.error('خطأ في التحقق من Apple Token:', redactSecrets(error));
                 return res.status(401).json({
                     success: false,
                     message: 'Apple Token غير صالح'
