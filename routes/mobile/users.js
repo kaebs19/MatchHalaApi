@@ -111,7 +111,8 @@ router.get('/home', protect, async (req, res) => {
                         $match: {
                             conversation: { $in: convIds },
                             sender: { $ne: new mongoose.Types.ObjectId(userId) },
-                            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
+                            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) },
+                            type: { $ne: 'system' }   // رسائل النظام لا تُعدّ غير مقروءة
                         }
                     },
                     {

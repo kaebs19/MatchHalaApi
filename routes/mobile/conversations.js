@@ -1687,7 +1687,9 @@ router.get('/conversations', protect, async (req, res) => {
                 $match: {
                     conversation: { $in: convIds },
                     sender: { $ne: new mongoose.Types.ObjectId(userId) },
-                    'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
+                    'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) },
+                    // رسائل النظام («تمت الموافقة على المحادثة»…) ليست رسائل تُقرأ — كانت شارة «1» على «قل مرحباً» لا تختفي
+                    type: { $ne: 'system' }
                 }
             },
             {
@@ -1934,7 +1936,8 @@ router.get('/conversations/:id', protect, async (req, res) => {
         const unreadCount = await Message.countDocuments({
             conversation: conv._id,
             sender: { $ne: new mongoose.Types.ObjectId(userId) },
-            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) }
+            'readBy.user': { $ne: new mongoose.Types.ObjectId(userId) },
+            type: { $ne: 'system' }
         });
 
         // initialMessage للطلبات المعلقة
