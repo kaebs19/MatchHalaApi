@@ -227,7 +227,7 @@ router.post('/conversations/request', protect, spamCheckMiddleware, conversation
         // ↩️ طلب يبدأ بردّ على قصة الطرف الآخر — القصة يجب أن تكون له وما زالت ظاهرة.
         //    النصّ نفسه يُرسَل بعدها عبر /messages/send مع storyId (يمرّ على الفلاتر).
         const isStoryReply = !!storyId;
-        if (isStoryReply && !(await buildStoryRef(storyId, targetUserId))) {
+        if (isStoryReply && !(await buildStoryRef(storyId, targetUserId, req.user._id))) {
             return res.status(410).json(STORY_UNAVAILABLE);
         }
 

@@ -7,12 +7,13 @@
 const mongoose = require('mongoose');
 const Story = require('../models/Story');
 const { getFullUrl } = require('../routes/mobile/helpers');
+const { canSeeAudience } = require('./storyAudience');
 
 /**
  * قصة صالحة للرد: نشطة، غير منتهية، غير محجوبة بالبلاغات، وصاحبها ownerId.
  * يُرجع null إن لم تكن — المتصل يردّ بـ 410 STORY_UNAVAILABLE.
  */
-async function buildStoryRef(storyId, ownerId) {
+async function buildStoryRef(storyId, ownerId, viewerId = null) {
     if (!storyId || !mongoose.isValidObjectId(storyId) || !ownerId) return null;
     const story = await Story.findOne({
         _id: storyId,
@@ -20,8 +21,10 @@ async function buildStoryRef(storyId, ownerId) {
         status: 'active',
         expiresAt: { $gt: new Date() },
         heldAt: null
-    }).select('user kind text background imageUrl expiresAt').lean();
+    }).select('user kind text background imageUrl expiresAt audience').lean();
     if (!story) return null;
+    // 👥 قصة «الأصدقاء فقط»: لا يردّ عليها غيرهم
+    if (viewerId && !(await canSeeAudience(story, viewerId))) return null;
 
     const isText = story.kind === 'text';
     return {

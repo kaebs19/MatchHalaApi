@@ -314,7 +314,7 @@ router.post('/messages/send', protect, spamCheckMiddleware, async (req, res) => 
         let storyRef = null;
         if (storyId) {
             const other = conversation.participants.find(p => p._id.toString() !== req.user._id.toString());
-            storyRef = type === 'text' ? await buildStoryRef(storyId, other?._id) : null;
+            storyRef = type === 'text' ? await buildStoryRef(storyId, other?._id, req.user._id) : null;
             if (!storyRef) return res.status(410).json(STORY_UNAVAILABLE);
         }
 
@@ -1219,7 +1219,7 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
         let storyRef = null;
         if (storyId) {
             const other = conversation.participants.find(p => p._id.toString() !== senderId.toString());
-            storyRef = await buildStoryRef(storyId, other?._id);
+            storyRef = await buildStoryRef(storyId, other?._id, req.user._id);
             if (!storyRef) return res.status(410).json(STORY_UNAVAILABLE);
         }
 

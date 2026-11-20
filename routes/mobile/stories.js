@@ -17,6 +17,7 @@ const { getFullUrl, getBlockState, isUserFullyBanned } = require('./helpers');
 const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 const { notifyStoryScreenshot, notifyFriendsOfStory } = require('../../utils/storyNotifications');
+const { audienceClause, canSeeAudience, areFriends, parseAudience } = require('../../utils/storyAudience');
 
 // القصص النشطة: 3 مجاناً، 10 لمشترك هلا+ (مثل حدّ الفيديو اليومي)
 const STORY_MAX_ACTIVE = { free: 3, premium: 10 };
@@ -63,7 +64,21 @@ const activeFilter = (extra = {}) => ({ status: 'active', expiresAt: { $gt: new 
 // ما يراه غير صاحبها: النشطة غير المحجوبة (heldAt: null يطابق الحقل الغائب أيضاً)
 const visibleFilter = (extra = {}) => activeFilter({ heldAt: null, ...extra });
 
-const serialize = (story, { owner = false, viewed = false, myReaction = null } = {}) => ({
+/** 📊 الاستطلاع: الأعداد لصاحبها دائماً، ولغيره بعد أن يصوّت (كي لا يتأثر تصويته بالنتيجة) */
+const serializePoll = (poll, { owner, myVote }) => {
+    if (!poll?.question || !Array.isArray(poll.options) || poll.options.length !== 2) return undefined;
+    const counts = [poll.counts?.[0] || 0, poll.counts?.[1] || 0];
+    const showCounts = owner || myVote === 0 || myVote === 1;
+    return {
+        question: poll.question,
+        options: poll.options,
+        x: poll.x, y: poll.y, size: poll.size,
+        ...(showCounts ? { counts } : {}),
+        ...(owner ? {} : { myVote: myVote ?? null })
+    };
+};
+
+const serialize = (story, { owner = false, viewed = false, myReaction = null, myVote = null } = {}) => ({
     _id: story._id,
     kind: story.kind || 'image',
     text: story.kind === 'text' ? story.text : undefined,
@@ -74,6 +89,9 @@ const serialize = (story, { owner = false, viewed = false, myReaction = null } =
     createdAt: story.createdAt,
     expiresAt: story.expiresAt,
     locationTag: story.locationTag?.place ? story.locationTag : undefined,
+    poll: serializePoll(story.poll, { owner, myVote }),
+    askBox: story.askBox?.prompt ? story.askBox : undefined,
+    audience: story.audience || 'everyone',
     ...(owner
         ? { viewCount: story.viewCount || 0, screenshotCount: story.screenshotCount || 0, reactionCount: story.reactionCount || 0, held: !!story.heldAt }
         : { viewed, myReaction })
@@ -118,6 +136,13 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
         // 📍 ملصق المدينة (اختياري): اسم + موضع نسبي. خطأ فيه يُسقطه ولا يرفض القصة
         const locationTag = await parseLocationTag(req.body?.locationTag);
 
+        // 📊/❓ استطلاع و«اسألني» — نصّ كتبه المستخدم: المحظور يرفض القصة (لا يُسقط بصمت)
+        const interactive = await parseInteractive(req.body);
+        if (interactive.error) {
+            unlinkQuiet(uploaded);
+            return res.status(interactive.error.status).json({ success: false, message: interactive.error.message, code: interactive.error.code });
+        }
+
         // إعادة ترميز: تطبيق اتجاه EXIF، تصغير، وإسقاط كل البيانات الوصفية (الموقع GPS)
         const sharp = require('sharp');
         const fileName = `story-${Date.now()}-${crypto.randomBytes(12).toString('hex')}.jpg`;
@@ -141,6 +166,9 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
             imageUrl: `/uploads/ephemeral/${fileName}`,
             text: caption || null,
             ...(locationTag ? { locationTag } : {}),
+            ...(interactive.poll ? { poll: interactive.poll } : {}),
+            ...(interactive.askBox ? { askBox: interactive.askBox } : {}),
+            audience: parseAudience(req.body?.audience),
             width: info.width,
             height: info.height,
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
@@ -170,6 +198,46 @@ async function parseLocationTag(raw) {
     if (!place || place.length > 60 || x == null || y == null || size == null) return null;
     if (detectExternalPromotion(place).detected || (await checkBannedWords(place)).hasBannedWords) return null;
     return { place, x, y, size };
+}
+
+const POLL_QUESTION_MAX = 80;
+const POLL_OPTION_MAX = 25;
+const ASK_PROMPT_MAX = 80;
+const BLOCKED_TEXT = { status: 422, message: 'النص يحتوي محتوى غير مسموح (حسابات خارجية أو كلمات محظورة) — عدّله وأعد المحاولة', code: 'STORY_TEXT_BLOCKED' };
+const textBlocked = async (t) => detectExternalPromotion(t).detected || (await checkBannedWords(t)).hasBannedWords;
+const unitNum = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null);
+
+/** poll / askBox من multipart (JSON نصّي). يُرجع { poll, askBox } أو { error } */
+async function parseInteractive(body = {}) {
+    const out = {};
+    const parse = (raw) => { if (typeof raw !== 'string' || !raw) return null; try { return JSON.parse(raw); } catch { return undefined; } };
+
+    const poll = parse(body.poll);
+    if (poll === undefined) return { error: { status: 400, message: 'استطلاع غير صالح', code: 'STORY_INVALID' } };
+    if (poll) {
+        const question = typeof poll.question === 'string' ? poll.question.trim() : '';
+        const options = Array.isArray(poll.options) ? poll.options.map(o => (typeof o === 'string' ? o.trim() : '')) : [];
+        const x = unitNum(poll.x), y = unitNum(poll.y), size = unitNum(poll.size);
+        if (!question || question.length > POLL_QUESTION_MAX || options.length !== 2 || options.some(o => !o || o.length > POLL_OPTION_MAX)
+            || x == null || y == null || size == null) {
+            return { error: { status: 400, message: `الاستطلاع: سؤال حتى ${POLL_QUESTION_MAX} حرفاً وخياران حتى ${POLL_OPTION_MAX} حرفاً`, code: 'STORY_INVALID' } };
+        }
+        for (const t of [question, ...options]) if (await textBlocked(t)) return { error: BLOCKED_TEXT };
+        out.poll = { question, options, counts: [0, 0], x, y, size };
+    }
+
+    const ask = parse(body.askBox);
+    if (ask === undefined) return { error: { status: 400, message: 'صندوق السؤال غير صالح', code: 'STORY_INVALID' } };
+    if (ask) {
+        const prompt = typeof ask.prompt === 'string' ? ask.prompt.trim() : '';
+        const x = unitNum(ask.x), y = unitNum(ask.y), size = unitNum(ask.size);
+        if (!prompt || prompt.length > ASK_PROMPT_MAX || x == null || y == null || size == null) {
+            return { error: { status: 400, message: `«اسألني»: حتى ${ASK_PROMPT_MAX} حرفاً`, code: 'STORY_INVALID' } };
+        }
+        if (await textBlocked(prompt)) return { error: BLOCKED_TEXT };
+        out.askBox = { prompt, x, y, size };
+    }
+    return out;
 }
 
 // قبل أي نشر: ممنوع/محظور + الحدّ. يُرجع ردّ الرفض أو null
@@ -241,6 +309,7 @@ router.post('/stories/text', protect, async (req, res) => {
             kind: 'text',
             text,
             background: bg,
+            audience: parseAudience(req.body?.audience),
             expiresAt: new Date(Date.now() + STORY_TTL_MS)
         });
         notifyFriendsOfStory(story, req.user).catch(e => console.error('friend-story notify:', e.message));
@@ -290,15 +359,20 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
             }
         }
 
-        // صاحبها يرى المحجوبة (مع held)، وغيره لا
-        const stories = await Story.find((isOwner ? activeFilter : visibleFilter)({ user: userId })).sort({ createdAt: 1 }).lean();
+        // صاحبها يرى المحجوبة (مع held)، وغيره لا — و«الأصدقاء فقط» لأصدقائه وحدهم
+        const audience = isOwner || (await areFriends(userId, req.user._id)) ? {} : { audience: { $ne: 'friends' } };
+        const stories = await Story.find((isOwner ? activeFilter : visibleFilter)({ user: userId, ...audience })).sort({ createdAt: 1 }).lean();
         let viewedSet = new Set();
         const reactionMap = new Map();
+        const voteMap = new Map();
         if (!isOwner && stories.length) {
             const seen = await StoryView.find({ viewer: req.user._id, story: { $in: stories.map(s => s._id) } })
-                .select('story reaction').lean();
+                .select('story reaction pollVote').lean();
             viewedSet = new Set(seen.map(v => String(v.story)));
-            seen.forEach(v => { if (v.reaction) reactionMap.set(String(v.story), v.reaction); });
+            seen.forEach(v => {
+                if (v.reaction) reactionMap.set(String(v.story), v.reaction);
+                if (v.pollVote === 0 || v.pollVote === 1) voteMap.set(String(v.story), v.pollVote);
+            });
         }
 
         const muted = !isOwner && (req.user.storyMutedUsers || []).some(id => String(id) === String(userId));
@@ -308,7 +382,8 @@ router.get('/users/:userId/stories', protect, async (req, res) => {
                 stories: stories.map(s => serialize(s, {
                     owner: isOwner,
                     viewed: viewedSet.has(String(s._id)),
-                    myReaction: reactionMap.get(String(s._id)) || null
+                    myReaction: reactionMap.get(String(s._id)) || null,
+                    myVote: voteMap.has(String(s._id)) ? voteMap.get(String(s._id)) : null
                 })),
                 muted
             }
@@ -334,7 +409,7 @@ router.get('/stories/feed', protect, async (req, res) => {
         const me = String(req.user._id);
 
         const groups = await Story.aggregate([
-            { $match: visibleFilter() },
+            { $match: visibleFilter(await audienceClause(req.user._id)) },
             { $group: {
                 _id: '$user',
                 storyIds: { $push: '$_id' },
@@ -429,7 +504,7 @@ router.post('/stories/status', protect, async (req, res) => {
 
         const objectIds = ids.map(id => new mongoose.Types.ObjectId(id));
         const grouped = await Story.aggregate([
-            { $match: visibleFilter({ user: { $in: objectIds } }) },
+            { $match: visibleFilter({ user: { $in: objectIds }, ...(await audienceClause(req.user._id)) }) },
             { $group: { _id: '$user', storyIds: { $push: '$_id' } } }
         ]);
         if (!grouped.length) return res.json({ success: true, data: { statuses: {} } });
@@ -476,8 +551,8 @@ router.post('/stories/:storyId/view', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
-        if (!story) {
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl audience').lean();
+        if (!story || !(await canSeeAudience(story, req.user._id))) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
         const ownerId = String(story.user);
@@ -524,8 +599,8 @@ router.post('/stories/:storyId/screenshot', protect, async (req, res) => {
         if (!mongoose.isValidObjectId(storyId)) {
             return res.status(400).json({ success: false, message: 'معرّف غير صالح' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
-        if (!story) {
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl audience').lean();
+        if (!story || !(await canSeeAudience(story, req.user._id))) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
         const ownerId = String(story.user);
@@ -580,8 +655,8 @@ router.post('/stories/:storyId/react', protect, async (req, res) => {
         if (emoji && !STORY_REACTIONS.includes(emoji)) {
             return res.status(400).json({ success: false, message: 'تفاعل غير مدعوم', code: 'STORY_INVALID' });
         }
-        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl').lean();
-        if (!story) {
+        const story = await Story.findOne(visibleFilter({ _id: storyId })).select('user kind imageUrl audience').lean();
+        if (!story || !(await canSeeAudience(story, req.user._id))) {
             return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
         }
         const ownerId = String(story.user);
@@ -679,6 +754,63 @@ router.post('/stories/:storyId/react', protect, async (req, res) => {
 // @route   DELETE /api/mobile/stories/mute/:userId  — إظهارها
 // @desc    لا حلقة له في القوائم/شريط الأصدقاء (/stories/status). قصصه تبقى من بروفايله ولا يُعلَم بالكتم.
 // @access  Private
+// @route   POST /api/mobile/stories/:storyId/poll   { option: 0 | 1 }
+// @desc    📊 التصويت في استطلاع القصة — مرة لكل مشاهد لا يُغيَّر؛ يُرجع الأعداد بعده
+//          (التخفي/المشرف يُعدّ صوته رقماً ولا يظهر اسمه — مثل المشاهدة المخفية)
+// @access  Private
+router.post('/stories/:storyId/poll', protect, async (req, res) => {
+    try {
+        const { storyId } = req.params;
+        const option = req.body?.option;
+        if (!mongoose.isValidObjectId(storyId) || (option !== 0 && option !== 1)) {
+            return res.status(400).json({ success: false, message: 'طلب غير صالح' });
+        }
+        const story = await Story.findOne(visibleFilter({ _id: storyId, 'poll.question': { $exists: true } }))
+            .select('user audience poll').lean();
+        if (!story || !(await canSeeAudience(story, req.user._id))) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+        const ownerId = String(story.user);
+        if (ownerId === String(req.user._id)) {
+            return res.status(400).json({ success: false, message: 'لا تصوّت في استطلاعك', code: 'STORY_OWN_POLL' });
+        }
+        const block = await getBlockState(req.user._id, ownerId);
+        if (block.blocked) {
+            return res.status(404).json({ success: false, message: 'القصة غير موجودة أو انتهت', code: 'STORY_NOT_FOUND' });
+        }
+
+        const isHidden = !!req.user.stealthMode || req.user.role === 'admin';
+        // المشاهدة أولاً (التطبيق يسجّلها عند الفتح عادةً) ثم الصوت ذرّياً: pollVote: null شرط
+        await StoryView.updateOne(
+            { story: story._id, viewer: req.user._id },
+            { $setOnInsert: { owner: story.user, isHidden, viewedAt: new Date() } },
+            { upsert: true }
+        );
+        const claimed = await StoryView.updateOne(
+            { story: story._id, viewer: req.user._id, pollVote: null },
+            { $set: { pollVote: option } }
+        );
+        let counts = [story.poll.counts?.[0] || 0, story.poll.counts?.[1] || 0];
+        let myVote = option;
+        if (claimed.modifiedCount > 0) {
+            const updated = await Story.findOneAndUpdate(
+                { _id: story._id },
+                { $inc: { [`poll.counts.${option}`]: 1 } },
+                { returnDocument: 'after', projection: { 'poll.counts': 1 } }
+            ).lean();
+            counts = [updated?.poll?.counts?.[0] || 0, updated?.poll?.counts?.[1] || 0];
+            if (global.io) global.io.to(`user:${ownerId}`).emit('story:poll', { storyId: String(story._id), counts });
+        } else {
+            const mine = await StoryView.findOne({ story: story._id, viewer: req.user._id }).select('pollVote').lean();
+            myVote = mine?.pollVote ?? option;
+        }
+        res.json({ success: true, data: { counts, myVote } });
+    } catch (error) {
+        console.error('خطأ في التصويت:', error);
+        res.status(500).json({ success: false, message: 'فشل التصويت' });
+    }
+});
+
 router.post('/stories/mute/:userId', protect, async (req, res) => {
     try {
         const { userId } = req.params;
@@ -787,7 +919,9 @@ router.get('/stories/:storyId/viewers', protect, async (req, res) => {
                         screenshotAt: v.screenshotAt || null,
                         // ❤️ تفاعل المشاهد — اسمه لهلا+ فقط مثل المشاهدة
                         reaction: v.reaction || null,
-                        reactedAt: v.reactedAt || null
+                        reactedAt: v.reactedAt || null,
+                        // 📊 صوته في الاستطلاع (0/1) — اسمه لهلا+ مثل المشاهدة
+                        pollVote: v.pollVote ?? null
                     })),
                 isPremiumRequired: false
             }

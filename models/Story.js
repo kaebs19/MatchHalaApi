@@ -25,6 +25,26 @@ const storySchema = new mongoose.Schema({
         }, { _id: false }),
         default: undefined
     },
+    // 📊 استطلاع بخيارين — يُرسم في العارض حيّاً (ليس في الصورة)؛ النصوص تمرّ على الفلاتر
+    poll: {
+        type: new mongoose.Schema({
+            question: { type: String, maxlength: 80 },
+            options: [{ type: String, maxlength: 25 }],
+            counts: { type: [Number], default: [0, 0] },
+            x: Number, y: Number, size: Number
+        }, { _id: false }),
+        default: undefined
+    },
+    // ❓ «اسألني» — الجواب يصل صاحبها ردّاً على القصة (مسار الرد نفسه وفلاتره)
+    askBox: {
+        type: new mongoose.Schema({
+            prompt: { type: String, maxlength: 80 },
+            x: Number, y: Number, size: Number
+        }, { _id: false }),
+        default: undefined
+    },
+    // 👥 من يراها: everyone أو friends (utils/storyAudience.js)
+    audience: { type: String, enum: ['everyone', 'friends'], default: 'everyone' },
     width: { type: Number, default: null },
     height: { type: Number, default: null },
     status: {

@@ -14,7 +14,9 @@ const storyViewSchema = new mongoose.Schema({
     screenshotAt: { type: Date, default: null },
     // تفاعل المشاهد (إيموجي من قائمة ثابتة) — واحد لكل مشاهد، يُستبدل أو يُزال
     reaction: { type: String, default: null },
-    reactedAt: { type: Date, default: null }
+    reactedAt: { type: Date, default: null },
+    // 📊 تصويت المشاهد في الاستطلاع (0/1) — مرة واحدة لا يُغيَّر
+    pollVote: { type: Number, default: null }
 }, { timestamps: false });
 
 storyViewSchema.index({ story: 1, viewer: 1 }, { unique: true });
