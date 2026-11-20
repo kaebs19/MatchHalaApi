@@ -270,6 +270,8 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
     const [violationsFilter, setViolationsFilter] = useState('');
     const [violationsTotal, setViolationsTotal] = useState(null);   // العدد الكلي من السيرفر (القائمة سقفها 200)
     const [relatedAccounts, setRelatedAccounts] = useState(null);
+    // ⛔ تعليق كل الحسابات المرتبطة دفعة واحدة
+    const [bulkSuspend, setBulkSuspend] = useState({ duration: '7d', includeSelf: true, running: false, done: 0 });
     const [relatedLoading, setRelatedLoading] = useState(false);
     const [warningTemplates, setWarningTemplates] = useState([]);
     const [warningsList, setWarningsList] = useState([]);
@@ -756,6 +758,39 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
         } catch (e) {
             showToast(e.response?.data?.message || 'فشل في التعليق', 'error');
         }
+    };
+
+    // ⛔ تعليق الكل: الحسابات المرتبطة (+ هذا الحساب) بالمدة المختارة، واحداً واحداً (كل نداء يُسجَّل في سجلّ الإشراف).
+    //    المعلَّق أو المحظور أصلاً يُتخطّى كي لا يُقصَّر تعليقه الأطول.
+    const BULK_DURATIONS = { '3d': '3 أيام', '7d': '7 أيام', '30d': '30 يوماً', permanent: 'نهائي + حظر الجهاز' };
+    const handleSuspendAllRelated = async () => {
+        const related = relatedAccounts?.uniqueRelated || [];
+        const targets = [
+            ...(bulkSuspend.includeSelf && user && !user.suspension?.isSuspended ? [{ _id: userId, name: user.name }] : []),
+            ...related.filter(u => !u.suspension?.isSuspended && !u.bannedWords?.isBanned)
+        ];
+        if (!targets.length) {
+            showToast('كل الحسابات معلّقة أو محظورة أصلاً', 'info');
+            return;
+        }
+        const label = BULK_DURATIONS[bulkSuspend.duration];
+        if (!window.confirm(`⛔ تعليق ${targets.length} حساب (${label})؟\n\n${targets.map(t => '• ' + (t.name || t._id)).join('\n')}${bulkSuspend.duration === 'permanent' ? '\n\nالنهائي يحظر الأجهزة ولا يمكن التراجع عنه بسهولة.' : ''}`)) return;
+        setBulkSuspend(b => ({ ...b, running: true, done: 0 }));
+        let ok = 0;
+        const failed = [];
+        for (const t of targets) {
+            try {
+                const res = await suspendUser(t._id, bulkSuspend.duration, 'حسابات مرتبطة بنفس الجهاز — تعليق جماعي');
+                if (res.success) ok++; else failed.push(t.name);
+            } catch (e) {
+                failed.push(t.name);
+            }
+            setBulkSuspend(b => ({ ...b, done: b.done + 1 }));
+        }
+        setBulkSuspend(b => ({ ...b, running: false }));
+        showToast(failed.length ? `عُلّق ${ok} — فشل: ${failed.join('، ')}` : `✅ عُلّقت ${ok} حسابات (${label})`, failed.length ? 'error' : 'success');
+        fetchRelatedAccounts();
+        if (bulkSuspend.includeSelf) fetchUserActivity();
     };
 
     const handleQuickBanRelated = async (uid, uname) => {
@@ -2707,7 +2742,25 @@ function UserDetail({ userId, onBack, onNavigateToUser, onViewConversation, init
                                 {/* حسابات مرتبطة (فريدة - دمج بصمة + keychain) */}
                                 {relatedAccounts.uniqueRelated?.length > 0 && (
                                     <div style={{marginTop:20}}>
-                                        <h4 style={{marginBottom:12}}>🔗 حسابات مرتبطة بنفس الجهاز ({relatedAccounts.uniqueRelated.length})</h4>
+                                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:12}}>
+                                            <h4 style={{margin:0}}>🔗 حسابات مرتبطة بنفس الجهاز ({relatedAccounts.uniqueRelated.length})</h4>
+                                            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                                <label style={{display:'flex',alignItems:'center',gap:4,fontSize:13,color:'var(--text-secondary)'}}>
+                                                    <input type="checkbox" checked={bulkSuspend.includeSelf} disabled={bulkSuspend.running}
+                                                        onChange={e => setBulkSuspend(b => ({ ...b, includeSelf: e.target.checked }))} />
+                                                    وهذا الحساب
+                                                </label>
+                                                <select value={bulkSuspend.duration} disabled={bulkSuspend.running}
+                                                    onChange={e => setBulkSuspend(b => ({ ...b, duration: e.target.value }))}
+                                                    style={{padding:'6px 8px',borderRadius:8,border:'1px solid var(--border-color)',background:'var(--bg-card)',color:'var(--text-primary)'}}>
+                                                    {Object.entries(BULK_DURATIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                                                </select>
+                                                <button onClick={handleSuspendAllRelated} disabled={bulkSuspend.running}
+                                                    style={{padding:'7px 14px',borderRadius:8,border:'1px solid #f59e0b',background:'var(--tint-warning)',color:'#b45309',fontWeight:700,cursor:'pointer'}}>
+                                                    {bulkSuspend.running ? `⏳ ${bulkSuspend.done}…` : '⛔ تعليق الجميع'}
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div style={{display:'flex',flexDirection:'column',gap:10}}>
                                             {relatedAccounts.uniqueRelated.map(u => {
                                                 const isBanned = u.bannedWords?.isBanned;
