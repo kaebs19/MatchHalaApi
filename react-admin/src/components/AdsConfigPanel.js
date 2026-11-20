@@ -41,12 +41,22 @@ export default function AdsConfigPanel() {
     const [meta, setMeta] = useState(null);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
+    /// آخر نسخة محفوظة — «تراجع» يعيدها
+    const [savedConfig, setSavedConfig] = useState(null);
+
+    // ⚠️ تعديل بلا حفظ كان يضيع بصمت عند الخروج (زرّ الحفظ في آخر الصفحة) — تنبيه المتصفح قبل المغادرة
+    useEffect(() => {
+        if (!dirty) return undefined;
+        const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [dirty]);
 
     useEffect(() => {
         (async () => {
             try {
                 const res = await getAdsConfig();
-                if (res.success) { setConfig(res.data.config); setMeta(res.data.meta); }
+                if (res.success) { setConfig(res.data.config); setSavedConfig(res.data.config); setMeta(res.data.meta); }
             } catch (e) {
                 showToast('تعذّر جلب إعدادات الإعلانات', 'error');
             }
@@ -61,6 +71,7 @@ export default function AdsConfigPanel() {
             const res = await updateAdsConfig(config);
             if (res.success) {
                 setConfig(res.data.config);
+                setSavedConfig(res.data.config);
                 setDirty(false);
                 showToast('تم حفظ إعدادات الإعلانات ✅ — تصل التطبيق خلال دقيقة', 'success');
             } else {
@@ -115,7 +126,7 @@ export default function AdsConfigPanel() {
                         <label key={k} className="ads-config__field">
                             <span>{RULE_LABELS[k]?.[0] || k}</span>
                             <div className="ads-config__input">
-                                <input type="number" min={min} max={max} value={config.rules[k]} disabled={!config.enabled}
+                                <input type="number" onWheel={e => e.currentTarget.blur()} min={min} max={max} value={config.rules[k]} disabled={!config.enabled}
                                     onChange={e => update(c => { c.rules[k] = e.target.value === '' ? '' : Number(e.target.value); return c; })} />
                                 <em>{RULE_LABELS[k]?.[1]}</em>
                             </div>
@@ -131,7 +142,7 @@ export default function AdsConfigPanel() {
                     <label className="ads-config__field">
                         <span>إعفاء الحسابات الجديدة أول</span>
                         <div className="ads-config__input">
-                            <input type="number" min={0} max={90} value={config.audience.exemptNewAccountDays} disabled={!config.enabled}
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min={0} max={90} value={config.audience.exemptNewAccountDays} disabled={!config.enabled}
                                 onChange={e => update(c => { c.audience.exemptNewAccountDays = e.target.value === '' ? '' : Number(e.target.value); return c; })} />
                             <em>يوم</em>
                         </div>
@@ -160,11 +171,15 @@ export default function AdsConfigPanel() {
                 </div>
             </section>
 
-            <div className="ads-config__actions">
-                <button className="btn-save" onClick={save} disabled={saving || !dirty}>
-                    {saving ? '⏳ جاري الحفظ…' : '💾 حفظ إعدادات الإعلانات'}
-                </button>
-                {dirty && <span className="ads-config__muted">تغييرات غير محفوظة</span>}
+            {/* شريط حفظ ثابت أسفل الشاشة ما دامت هناك تغييرات — كان الزرّ في آخر الصفحة فيُنسى */}
+            <div className={`ads-config__savebar ${dirty ? 'is-visible' : ''}`}>
+                <span>⚠️ لديك تغييرات غير محفوظة في إعدادات الإعلانات</span>
+                <div>
+                    <button className="ads-config__undo" onClick={() => { setConfig(savedConfig); setDirty(false); }} disabled={saving}>تراجع</button>
+                    <button className="btn-save" onClick={save} disabled={saving}>
+                        {saving ? '⏳ جاري الحفظ…' : '💾 حفظ'}
+                    </button>
+                </div>
             </div>
         </div>
     );
