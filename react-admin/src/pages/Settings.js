@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import MaintenancePage from './MaintenancePage';
+import AdsConfigPanel from '../components/AdsConfigPanel';
 import './Settings.css';
 
 function Settings() {
@@ -1114,7 +1115,8 @@ function Settings() {
                 {/* ✅ تبويب الإعلانات */}
                 {activeTab === 'ads' && (
                     <div className="settings-section">
-                        <h2>📺 إعدادات الإعلانات المكافئة</h2>
+                        <AdsConfigPanel />
+                        <h2>🎁 الإعلانات المكافئة (عجلة الحظ)</h2>
                         <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                             التحكم في الإعلانات المكافئة (عجلة الحظ) — يقرأها التطبيق تلقائياً عبر الـ API.
                         </p>

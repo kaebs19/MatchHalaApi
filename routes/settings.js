@@ -133,6 +133,47 @@ router.put('/', protect, adminOnly, async (req, res) => {
     }
 });
 
+// 📺 إعلانات التطبيق — GET/PUT /api/settings/ads-config (المشرف). الحفظ يمرّ بـ sanitize (حدود لكل قيمة)
+router.get('/ads-config', protect, adminOnly, async (req, res) => {
+    try {
+        const { sanitize, PLACEMENTS, RULES } = require('../utils/adsConfig');
+        const settings = await Settings.getSettings();
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            success: true,
+            data: {
+                config: sanitize(settings.adsConfig || {}).config,
+                meta: { placements: PLACEMENTS, rules: RULES },
+                updatedAt: settings.adsConfigUpdatedAt || null
+            }
+        });
+    } catch (error) {
+        console.error('ads-config get:', error);
+        res.status(500).json({ success: false, message: 'خطأ في جلب إعدادات الإعلانات' });
+    }
+});
+
+router.put('/ads-config', protect, adminOnly, async (req, res) => {
+    try {
+        const { sanitize } = require('../utils/adsConfig');
+        const { config, errors } = sanitize(req.body || {});
+        if (errors.length) return res.status(400).json({ success: false, message: errors.join(' · ') });
+        const settings = await Settings.getSettings();
+        settings.adsConfig = config;
+        settings.adsConfigUpdatedAt = new Date();
+        settings.markModified('adsConfig');
+        settings.lastUpdated = Date.now();
+        settings.updatedBy = req.user._id;
+        await settings.save();
+        invalidateSettings();
+        require('../utils/adsConfig').invalidate();
+        res.json({ success: true, message: 'تم حفظ إعدادات الإعلانات', data: { config } });
+    } catch (error) {
+        console.error('ads-config put:', error);
+        res.status(500).json({ success: false, message: 'خطأ في حفظ إعدادات الإعلانات' });
+    }
+});
+
 // @route   GET /api/settings/privacy-policy
 // @desc    الحصول على سياسة الخصوصية
 // @access  Public

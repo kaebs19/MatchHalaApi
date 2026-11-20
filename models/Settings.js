@@ -181,6 +181,10 @@ const settingsSchema = new mongoose.Schema({
         minClientVersion: { type: String, default: '6.3' }
     },
 
+    // 📺 إعلانات التطبيق (المواضع، التكرار، الإعفاءات، معرّفات الوحدات) — utils/adsConfig.js يتحقق منها ويملأ الافتراضي
+    adsConfig: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    adsConfigUpdatedAt: { type: Date, default: null },
+
     // ✅ إعلانات مكافئة (Rewarded Ads) — يتحكّم بها الأدمن، يقرأها التطبيق عبر /api/mobile/config/ads
     ads: {
         // kill switch عام: false = التطبيق يخفي أزرار "شاهد إعلان"

@@ -420,6 +420,17 @@ export const updateChildSafety = async (content) => {
     return response.data;
 };
 
+// 📺 إعلانات التطبيق (المواضع، التكرار، الإعفاءات، الوحدات) — utils/adsConfig.js في الخادم
+export const getAdsConfig = async () => {
+    const response = await api.get('/settings/ads-config');
+    return response.data;
+};
+
+export const updateAdsConfig = async (config) => {
+    const response = await api.put('/settings/ads-config', config);
+    return response.data;
+};
+
 // الحصول على سياسة الخصوصية
 export const getPrivacyPolicy = async () => {
     const response = await api.get('/settings/privacy-policy');
