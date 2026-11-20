@@ -431,6 +431,12 @@ export const updateAdsConfig = async (config) => {
     return response.data;
 };
 
+// 📊 أداء الإعلانات من AdMob (routes/adminAdmob.js)
+export const getAdmobStatus = async () => (await api.get('/admin/admob/status')).data;
+export const connectAdmob = async () => (await api.post('/admin/admob/connect')).data;
+export const disconnectAdmob = async () => (await api.post('/admin/admob/disconnect')).data;
+export const getAdmobReport = async (days) => (await api.get('/admin/admob/report', { params: { days } })).data;
+
 // الحصول على سياسة الخصوصية
 export const getPrivacyPolicy = async () => {
     const response = await api.get('/settings/privacy-policy');

@@ -393,6 +393,7 @@ app.use('/api/admin/stories', require('./routes/adminStories'));
 app.use('/api/admin/stickers', require('./routes/adminStickers'));
 app.use('/api/admin/removal-requests', require('./routes/adminRemovalRequests'));
 app.use('/api/admin/audit', require('./routes/adminAudit'));
+app.use('/api/admin/admob', require('./routes/adminAdmob'));
 // نموذج «طلب إزالة محتوى» العام في chathala.com/report-content (بلا تسجيل دخول)
 app.use('/api/public/removal-requests', require('./routes/removalRequests'));
 // نموذج «اتصل بنا» في chathala.com/contact — بريد لفريق الدعم

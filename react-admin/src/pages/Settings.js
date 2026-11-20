@@ -8,12 +8,17 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import MaintenancePage from './MaintenancePage';
 import AdsConfigPanel from '../components/AdsConfigPanel';
+import AdsPerformancePanel from '../components/AdsPerformancePanel';
 import './Settings.css';
 
 function Settings() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('profile'); // profile, password, pages, app, version, banned-names, maintenance
+    // ?tab= في الرابط (#/settings?tab=ads — العودة من ربط AdMob)
+    const [activeTab, setActiveTab] = useState(() => {
+        const m = window.location.hash.match(/[?&]tab=([\w-]+)/);
+        return m ? m[1] : 'profile';
+    }); // profile, password, pages, app, version, banned-names, maintenance
     const { showToast } = useToast();
 
     // بيانات المستخدم
@@ -1115,6 +1120,7 @@ function Settings() {
                 {/* ✅ تبويب الإعلانات */}
                 {activeTab === 'ads' && (
                     <div className="settings-section">
+                        <AdsPerformancePanel />
                         <AdsConfigPanel />
                         <h2>🎁 الإعلانات المكافئة (عجلة الحظ)</h2>
                         <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
