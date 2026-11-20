@@ -684,8 +684,13 @@ io.on('connection', async (socket) => {
     // 🔔 «في الواجهة»: سوكت التطبيق المفتوح أمام المستخدم. الإشعارات تُحجب عمّن له سوكت هنا فقط
     //    (utils/socketPresence). التطبيق يغادرها عند الخلفية (app:state) — كان السوكت يبقى «متصلاً» حتى ~45ث
     //    بعد الخروج والتطبيق مجمَّد، فتضيع الرسائل وإشعارات اللودو. النسخ القديمة لا ترسل الحدث ← تبقى فيها كالسابق.
-    socket.join(`fg:${socket.userId}`);
+    // ⚠️ المتصفح (chathala.com) لا يُحسب «في الواجهة»: تبويب مفتوح على الكمبيوتر — ولو في الخلفية — كان يحجب
+    //    كل إشعارات الجوال لصاحبه (شُخِّص ٢٠ نوفمبر: سوكت Mac في fg وسوكت iOS خارجها والإشعار محجوب).
+    const ua = String(socket.handshake?.headers?.['user-agent'] || '');
+    const isBrowser = Boolean(socket.handshake?.headers?.origin) || ua.startsWith('Mozilla/');
+    if (!isBrowser) socket.join(`fg:${socket.userId}`);
     socket.on('app:state', (payload) => {
+        if (isBrowser) return;
         const active = !(payload && payload.active === false);
         if (active) socket.join(`fg:${socket.userId}`); else socket.leave(`fg:${socket.userId}`);
     });
