@@ -687,7 +687,8 @@ io.on('connection', async (socket) => {
     // ⚠️ المتصفح (chathala.com) لا يُحسب «في الواجهة»: تبويب مفتوح على الكمبيوتر — ولو في الخلفية — كان يحجب
     //    كل إشعارات الجوال لصاحبه (شُخِّص ٢٠ نوفمبر: سوكت Mac في fg وسوكت iOS خارجها والإشعار محجوب).
     const ua = String(socket.handshake?.headers?.['user-agent'] || '');
-    const isBrowser = Boolean(socket.handshake?.headers?.origin) || ua.startsWith('Mozilla/');
+    // ⚠️ بالـ UA وحده: مكتبة WebSocket في iOS (Starscream) ترسل Origin أيضاً — كان يُصنَّف التطبيق متصفحاً
+    const isBrowser = ua.startsWith('Mozilla/');
     if (!isBrowser) socket.join(`fg:${socket.userId}`);
     socket.on('app:state', (payload) => {
         if (isBrowser) return;
