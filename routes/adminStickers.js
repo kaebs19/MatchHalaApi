@@ -63,6 +63,28 @@ router.post('/categories', async (req, res) => {
     } catch (error) { fail(res, error); }
 });
 
+// ↕️ ترتيب الفئات: { ids: [...] } بالترتيب الجديد (يُحفظ order = الموضع). ⚠️ قبل /categories/:id
+router.put('/categories/order', async (req, res) => {
+    try {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(id => mongoose.isValidObjectId(id)) : [];
+        if (!ids.length) return res.status(400).json({ success: false, message: 'ids مطلوبة' });
+        await StickerCategory.bulkWrite(ids.map((id, order) => ({ updateOne: { filter: { _id: id }, update: { $set: { order } } } })));
+        res.json({ success: true, message: 'حُفظ ترتيب الفئات' });
+    } catch (error) { fail(res, error); }
+});
+
+// ↕️ ترتيب ملصقات فئة: { ids: [...] } — ما ليس من الفئة يُتجاهل
+router.put('/categories/:id/order', validId, async (req, res) => {
+    try {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(id => mongoose.isValidObjectId(id)) : [];
+        if (!ids.length) return res.status(400).json({ success: false, message: 'ids مطلوبة' });
+        await Sticker.bulkWrite(ids.map((id, order) => ({
+            updateOne: { filter: { _id: id, category: req.params.id }, update: { $set: { order } } }
+        })));
+        res.json({ success: true, message: 'حُفظ ترتيب الملصقات' });
+    } catch (error) { fail(res, error); }
+});
+
 router.put('/categories/:id', validId, async (req, res) => {
     try {
         const { name, active, premium, order } = req.body || {};

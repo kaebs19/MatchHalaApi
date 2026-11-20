@@ -58,6 +58,52 @@ function StickersManagement() {
 
     const selected = categories.find(c => c._id === selectedId);
 
+    // ↕️ الترتيب: تحديث فوري في الصفحة ثم حفظ (وعند الفشل إعادة التحميل)
+    const [drag, setDrag] = useState(null); // { kind: 'cat'|'sticker', id }
+    const moveInArray = (arr, from, to) => {
+        const copy = [...arr];
+        const [item] = copy.splice(from, 1);
+        copy.splice(to, 0, item);
+        return copy;
+    };
+    const saveCategoryOrder = async (list) => {
+        setCategories(list);
+        try {
+            await call('/categories/order', { method: 'PUT', body: JSON.stringify({ ids: list.map(c => c._id) }) });
+        } catch (e) { showToast(e.message, 'error'); load(); }
+    };
+    const saveStickerOrder = async (list) => {
+        setCategories(prev => prev.map(c => (c._id === selected._id ? { ...c, stickers: list } : c)));
+        try {
+            await call(`/categories/${selected._id}/order`, { method: 'PUT', body: JSON.stringify({ ids: list.map(s => s._id) }) });
+        } catch (e) { showToast(e.message, 'error'); load(); }
+    };
+    const moveCategory = (delta) => {
+        const from = categories.findIndex(c => c._id === selectedId);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= categories.length) return;
+        saveCategoryOrder(moveInArray(categories, from, to));
+    };
+    const moveSticker = (index, delta) => {
+        const to = index + delta;
+        if (to < 0 || to >= selected.stickers.length) return;
+        saveStickerOrder(moveInArray(selected.stickers, index, to));
+    };
+    const dropOn = (kind, targetId) => {
+        if (!drag || drag.kind !== kind || drag.id === targetId) return setDrag(null);
+        if (kind === 'cat') {
+            const from = categories.findIndex(c => c._id === drag.id);
+            const to = categories.findIndex(c => c._id === targetId);
+            if (from >= 0 && to >= 0) saveCategoryOrder(moveInArray(categories, from, to));
+        } else {
+            const list = selected.stickers;
+            const from = list.findIndex(s => s._id === drag.id);
+            const to = list.findIndex(s => s._id === targetId);
+            if (from >= 0 && to >= 0) saveStickerOrder(moveInArray(list, from, to));
+        }
+        setDrag(null);
+    };
+
     const addCategory = () => {
         const name = newName.trim();
         if (!name) return;
@@ -102,14 +148,20 @@ function StickersManagement() {
         <div className="stickers-page">
             <p className="stickers-hint">
                 التعطيل أو الحذف يخفي الملصق من التطبيق فوراً. ما نُشر به في قصة يبقى حتى انتهائها، لأنه مرسوم داخل الصورة.
+                <br />↕️ الترتيب: اسحب الفئات والملصقات وأفلتها، أو استعمل أزرار التقديم والتأخير — يُحفظ فوراً ويصل التطبيق خلال 5 دقائق.
             </p>
 
             <div className="stickers-categories">
                 {categories.map(c => (
                     <button
                         key={c._id}
-                        className={`stickers-chip ${c._id === selectedId ? 'selected' : ''} ${c.active ? '' : 'off'}`}
+                        className={`stickers-chip ${c._id === selectedId ? 'selected' : ''} ${c.active ? '' : 'off'} ${drag?.kind === 'cat' && drag.id === c._id ? 'dragging' : ''}`}
                         onClick={() => setSelectedId(c._id)}
+                        draggable={!busy}
+                        onDragStart={() => setDrag({ kind: 'cat', id: c._id })}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => dropOn('cat', c._id)}
+                        onDragEnd={() => setDrag(null)}
                     >
                         {c.premium ? '👑 ' : ''}{c.name} ({c.stickers.length})
                     </button>
@@ -124,6 +176,10 @@ function StickersManagement() {
                 <>
                     <div className="stickers-toolbar">
                         <strong>{selected.name}</strong>
+                        <span className="stickers-order">
+                            <button disabled={busy || categories[0]?._id === selected._id} onClick={() => moveCategory(-1)} title="تقديم الفئة">→ تقديم</button>
+                            <button disabled={busy || categories[categories.length - 1]?._id === selected._id} onClick={() => moveCategory(1)} title="تأخير الفئة">تأخير ←</button>
+                        </span>
                         <label>
                             <input type="checkbox" checked={selected.active} disabled={busy}
                                 onChange={e => updateCategory({ active: e.target.checked })} /> مفعّلة
@@ -138,9 +194,22 @@ function StickersManagement() {
                     </div>
 
                     <div className="stickers-grid">
-                        {selected.stickers.map(sticker => (
-                            <div key={sticker._id} className={`sticker-card ${sticker.active ? '' : 'off'}`}>
-                                <img src={getImageUrl(sticker.imageUrl)} alt="" loading="lazy" />
+                        {selected.stickers.map((sticker, index) => (
+                            <div key={sticker._id}
+                                className={`sticker-card ${sticker.active ? '' : 'off'} ${drag?.kind === 'sticker' && drag.id === sticker._id ? 'dragging' : ''}`}
+                                draggable={!busy}
+                                onDragStart={() => setDrag({ kind: 'sticker', id: sticker._id })}
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={() => dropOn('sticker', sticker._id)}
+                                onDragEnd={() => setDrag(null)}
+                            >
+                                <img src={getImageUrl(sticker.imageUrl)} alt={sticker.name || ''} title={sticker.name || ''} loading="lazy" draggable={false} />
+                                {sticker.name && <span className="sticker-name">{sticker.name}</span>}
+                                <div className="sticker-actions sticker-move">
+                                    <button disabled={busy || index === 0} onClick={() => moveSticker(index, -1)} aria-label="تقديم">→</button>
+                                    <span>{index + 1}</span>
+                                    <button disabled={busy || index === selected.stickers.length - 1} onClick={() => moveSticker(index, 1)} aria-label="تأخير">←</button>
+                                </div>
                                 <div className="sticker-actions">
                                     <button disabled={busy} onClick={() => toggleSticker(sticker)}>
                                         {sticker.active ? 'تعطيل' : 'تفعيل'}

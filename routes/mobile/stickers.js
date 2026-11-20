@@ -15,7 +15,7 @@ router.get('/stickers', protect, async (req, res) => {
     try {
         const categories = await StickerCategory.find({ active: true }).sort({ order: 1, createdAt: 1 }).lean();
         const stickers = await Sticker.find({ active: true, category: { $in: categories.map(c => c._id) } })
-            .sort({ order: 1, createdAt: 1 }).select('category imageUrl').lean();
+            .sort({ order: 1, createdAt: 1 }).select('category imageUrl name').lean();
         res.json({
             success: true,
             data: {
@@ -26,7 +26,7 @@ router.get('/stickers', protect, async (req, res) => {
                         premium: c.premium,
                         stickers: stickers
                             .filter(s => String(s.category) === String(c._id))
-                            .map(s => ({ _id: s._id, imageUrl: getFullUrl(s.imageUrl) }))
+                            .map(s => ({ _id: s._id, imageUrl: getFullUrl(s.imageUrl), ...(s.name ? { name: s.name } : {}) }))
                     }))
                     .filter(c => c.stickers.length > 0)
             }

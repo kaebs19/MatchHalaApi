@@ -1184,7 +1184,8 @@ router.post('/messages/send-image', protect, uploadMessageImage.single('image'),
 // @access  Private
 router.post('/messages/send-sticker', protect, async (req, res) => {
     try {
-        const { conversationId, stickerId } = req.body;
+        // replyTo: ردّ على رسالة بملصق · storyId: ردّ على قصة الطرف الآخر بملصق (كالردّ النصّي)
+        const { conversationId, stickerId, replyTo, storyId } = req.body;
         const senderId = req.user._id;
         if (!mongoose.isValidObjectId(conversationId) || !mongoose.isValidObjectId(stickerId)) {
             return res.status(400).json({ success: false, message: 'بيانات غير صالحة' });
@@ -1215,6 +1216,13 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
         const gate = await checkConversationSendGate(conversation, req.user);
         if (gate) return res.status(gate.status).json(gate.body);
 
+        let storyRef = null;
+        if (storyId) {
+            const other = conversation.participants.find(p => p._id.toString() !== senderId.toString());
+            storyRef = await buildStoryRef(storyId, other?._id);
+            if (!storyRef) return res.status(410).json(STORY_UNAVAILABLE);
+        }
+
         const message = await Message.create({
             conversation: conversationId,
             sender: senderId,
@@ -1224,7 +1232,10 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
             status: 'sent',
             imageSource: 'sticker',
             mediaWidth: 512,
-            mediaHeight: 512
+            mediaHeight: 512,
+            // معرّف مؤقت (temp-…) من التطبيق يُتجاهل كما في /messages/send
+            ...(replyTo && mongoose.isValidObjectId(replyTo) ? { replyTo } : {}),
+            ...(storyRef ? { storyRef } : {})
         });
 
         await unhideConversationForRecipients(conversation._id, req.user._id);
@@ -1232,7 +1243,9 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
         await conversation.save();
 
         const populatedMessage = await Message.findById(message._id)
-            .populate('sender', 'name profileImage isPremium verification.isVerified').lean();
+            .populate('sender', 'name profileImage isPremium verification.isVerified')
+            .populate({ path: 'replyTo', select: 'content type sender mediaUrl imageSource', populate: { path: 'sender', select: 'name' } })
+            .lean();
 
         if (global.io) {
             global.io.to(`conversation-${conversationId}`).emit('new-message', { message: populatedMessage });
@@ -1244,8 +1257,9 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
             const isOnline = await isUserSocketConnected(recipient._id.toString());
             if (!isOnline && recipient.deviceToken) {
                 pushNotificationService.sendNewMessageNotification(
-                    recipient._id, req.user.name || req.user, '🏷️ ملصق', conversationId,
-                    getBestUserImage(req.user), req.user._id, message._id
+                    recipient._id, req.user.name || req.user, storyRef ? '↩️ ردّ على قصتك: 🏷️ ملصق' : '🏷️ ملصق', conversationId,
+                    getBestUserImage(req.user), req.user._id, message._id,
+                    storyRef ? { data: { storyReply: '1', ...(storyRef.imageUrl ? { storyImage: storyRef.imageUrl } : {}) } } : {}
                 ).catch(e => console.error('Push error:', e.message));
             } else if (isOnline) {
                 deliveredNow = await markMessageDelivered(message._id, conversationId, req.user._id) || deliveredNow;
@@ -1266,6 +1280,8 @@ router.post('/messages/send-sticker', protect, async (req, res) => {
                     mediaWidth: populatedMessage.mediaWidth,
                     mediaHeight: populatedMessage.mediaHeight,
                     imageSource: populatedMessage.imageSource,
+                    replyTo: populatedMessage.replyTo,
+                    storyRef: populatedMessage.storyRef,
                     isDelivered: deliveredNow,
                     isRead: false,
                     createdAt: populatedMessage.createdAt,

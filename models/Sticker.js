@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const stickerSchema = new mongoose.Schema({
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'StickerCategory', required: true },
     imageUrl: { type: String, required: true },
+    // اسم/عبارة الملصق (من اسم الملف عند الاستيراد: 01_وقت_القهوة ← «وقت القهوة») — للوحة والوصولية
+    name: { type: String, default: '', trim: true, maxlength: 60 },
     order: { type: Number, default: 0 },
     active: { type: Boolean, default: true }
 }, { timestamps: true });

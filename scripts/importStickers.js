@@ -28,7 +28,8 @@ const { saveStickerFile } = require('../utils/stickerFiles');
         const files = fs.readdirSync(path.join(root, folder)).filter(f => /\.(webp|png)$/i.test(f)).sort();
         for (const [index, file] of files.entries()) {
             const imageUrl = await saveStickerFile(path.join(root, folder, file));
-            await Sticker.create({ category: category._id, imageUrl, order: index });
+            const stickerName = path.parse(file).name.replace(/^\d+_/, '').replace(/_/g, ' ').slice(0, 60);
+            await Sticker.create({ category: category._id, imageUrl, order: index, name: stickerName });
         }
         console.log(`«${name}»: ${files.length}`);
     }

@@ -16,3 +16,11 @@
 .sticker-card img { width: 100%; aspect-ratio: 1; object-fit: contain; }
 .sticker-actions { display: flex; gap: 6px; }
 .sticker-actions button { flex: 1; font-size: 12px; }
+
+/* ↕️ الترتيب */
+.stickers-chip[draggable="true"], .sticker-card[draggable="true"] { cursor: grab; }
+.stickers-chip.dragging, .sticker-card.dragging { opacity: 0.4; }
+.stickers-order { display: inline-flex; gap: 6px; }
+.sticker-name { display: block; text-align: center; font-size: 12px; color: var(--text-secondary); margin: 4px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticker-move { align-items: center; justify-content: space-between; }
+.sticker-move span { font-size: 12px; color: var(--text-muted); }
