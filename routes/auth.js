@@ -818,7 +818,17 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
         // فحص الاسم ضد الكلمات المحظورة
         if (name && name !== user.name) {
+            // 🔤 قواعد الاسم (utils/nameRules): الزخرفة والإيموجي مسموحة بحدود — الرسالة تصل المستخدم كما هي
+            const { nameProblem, normalizeForChecks } = require('../utils/nameRules');
+            const problem = nameProblem(name);
+            if (problem) {
+                return res.status(400).json({ success: false, message: problem, code: 'INVALID_NAME' });
+            }
+            // ⚠️ الزخرفة (𝓢𝓷𝓪𝓹، ｓｎａｐ، ن‌ـــورة) قد تتهرّب من الفلاتر — الفحوص على الاسم وعلى نسخته المطبَّعة
+            const nameNorm = normalizeForChecks(name);
             const nameCheck = await checkBannedWords(name);
+            const nameNormCheck = nameNorm && nameNorm !== name ? await checkBannedWords(nameNorm) : { hasBannedWords: false };
+            if (nameNormCheck.hasBannedWords) nameCheck.hasBannedWords = true;
             if (nameCheck.hasBannedWords) {
                 return res.status(400).json({
                     success: false,
@@ -829,7 +839,8 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
 
             // ✅ فحص الاسم ضد ترويج خارجي (Snap: bob, زنجي 050..., إلخ)
             // الاسم يُرفض كلياً (لا redact) لأنه field قصير وكل كلمة فيه ذات معنى
-            const namePromo = detectExternalPromotion(name);
+            let namePromo = detectExternalPromotion(name);
+            if (!namePromo.detected && nameNorm && nameNorm !== name) namePromo = detectExternalPromotion(nameNorm);
             if (namePromo.detected) {
                 await recordExternalPromoViolation(user, {
                     source: 'name',
@@ -850,7 +861,7 @@ router.put('/update-profile', protect, updateProfileValidation, validate, async 
             const appSettings = await Settings.getSettings();
             const nameLower = name.trim().toLowerCase();
             const isBannedName = appSettings.bannedNames?.some(bn =>
-                nameLower === bn.name || nameLower.includes(bn.name)
+                nameLower === bn.name || nameLower.includes(bn.name) || (nameNorm && nameNorm.includes(bn.name))
             );
             if (isBannedName) {
                 return res.status(400).json({

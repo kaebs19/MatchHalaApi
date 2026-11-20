@@ -20,7 +20,8 @@ const validate = (req, res, next) => {
 
         return res.status(400).json({
             success: false,
-            message: 'خطأ في البيانات المُدخلة',
+            // السبب الفعلي (أول خطأ) بدل رسالة عامة لا تقول للمستخدم ماذا يصحّح — التطبيق يعرض message
+            message: formattedErrors[0]?.message || 'خطأ في البيانات المُدخلة',
             errors: formattedErrors
         });
     }

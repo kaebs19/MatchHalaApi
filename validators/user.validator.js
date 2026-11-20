@@ -28,9 +28,11 @@ function normalizeDigits(value) {
 const registerValidation = [
     body('name')
         .trim()
-        .notEmpty().withMessage('الاسم مطلوب')
-        .isLength({ min: 2, max: 50 }).withMessage('الاسم يجب أن يكون بين 2-50 حرف')
-        .matches(/^[\u0600-\u06FFa-zA-Z\s]+$/).withMessage('الاسم يجب أن يحتوي على أحرف فقط'),
+        .custom((value) => {
+            const problem = require('../utils/nameRules').nameProblem(value);
+            if (problem) throw new Error(problem);
+            return true;
+        }),
 
     body('email')
         .trim()
@@ -66,11 +68,12 @@ const loginValidation = [
  * قواعد التحقق لتحديث ملف المستخدم
  */
 const updateProfileValidation = [
+    // ⚠️ قواعد الاسم (الزخرفة والإيموجي مسموحة) في utils/nameRules — تُطبَّق في المسار عند تغيير الاسم فقط،
+    //    فالاسم القديم المرسَل مع كل حفظ لا يمنع حفظ النبذة/الصورة
     body('name')
         .optional()
         .trim()
-        .isLength({ min: 2, max: 50 }).withMessage('الاسم يجب أن يكون بين 2-50 حرف')
-        .matches(/^[\u0600-\u06FFa-zA-Z\s]+$/).withMessage('الاسم يجب أن يحتوي على أحرف فقط'),
+        .isLength({ max: 200 }).withMessage('الاسم طويل جداً'),
 
     body('email')
         .optional()
