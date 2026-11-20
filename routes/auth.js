@@ -1462,6 +1462,10 @@ router.put('/upload-profile-image', protect, upload.single('profileImage'), asyn
             }
         }
 
+        // 🛡️ كشف العُري على خادمنا (utils/nudity) — المكشوف يُمنع ويُحفظ للمراجعة
+        const nudity = await require('../utils/nudity').blockIfNude({ filePath: req.file.path, userId: user._id, source: 'profile' });
+        if (nudity) return res.status(nudity.status).json(nudity.body);
+
         // معالجة الصورة بأحجام متعددة (thumb, medium, original)
         const processed = await processImage(req.file.path, { prefix: 'profile' });
 
@@ -1625,6 +1629,10 @@ router.post('/upload-gallery-photo', protect, upload.single('galleryPhoto'), asy
                 return res.status(403).json({ success: false, message: 'تم منعك من رفع الصور', code: 'PHOTO_BLOCKED' });
             }
         }
+
+        // 🛡️ كشف العُري على خادمنا (utils/nudity)
+        const nudity = await require('../utils/nudity').blockIfNude({ filePath: req.file.path, userId: user._id, source: 'gallery' });
+        if (nudity) return res.status(nudity.status).json(nudity.body);
 
         // معالجة الصورة
         const processed = await processImage(req.file.path, { prefix: 'gallery' });

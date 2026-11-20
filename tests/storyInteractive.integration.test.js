@@ -166,7 +166,7 @@ test('القصص التفاعلية والجمهور', { skip: !hasMongod && 'mo
 test.after(async () => {
     server?.close();
     await mongoose.disconnect().catch(() => {});
-    mongod?.kill();
+    if (mongod) { const exited = new Promise(r => mongod.once('exit', r)); mongod.kill(); await exited; }
     // ملفات القصص المرفوعة أثناء الاختبار
     const dir = path.join(__dirname, '..', 'uploads', 'ephemeral');
     for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {

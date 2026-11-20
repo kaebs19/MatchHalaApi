@@ -18,6 +18,7 @@ const { checkBannedWords } = require('../bannedWords');
 const { detectExternalPromotion } = require('../../utils/externalPromotionDetector');
 const { notifyStoryScreenshot, notifyFriendsOfStory } = require('../../utils/storyNotifications');
 const { audienceClause, canSeeAudience, areFriends, parseAudience } = require('../../utils/storyAudience');
+const { blockIfNude } = require('../../utils/nudity');
 
 // القصص النشطة: 3 مجاناً، 10 لمشترك هلا+ (مثل حدّ الفيديو اليومي)
 const STORY_MAX_ACTIVE = { free: 3, premium: 10 };
@@ -142,6 +143,10 @@ router.post('/stories', protect, receiveStoryImage, async (req, res) => {
             unlinkQuiet(uploaded);
             return res.status(interactive.error.status).json({ success: false, message: interactive.error.message, code: interactive.error.code });
         }
+
+        // 🛡️ كشف العُري على خادمنا (utils/nudity) — المكشوف يُمنع ويُحفظ للمراجعة
+        const nudity = await blockIfNude({ filePath: uploaded, userId: req.user._id, source: 'story' });
+        if (nudity) return res.status(nudity.status).json(nudity.body);
 
         // إعادة ترميز: تطبيق اتجاه EXIF، تصغير، وإسقاط كل البيانات الوصفية (الموقع GPS)
         const sharp = require('sharp');

@@ -392,6 +392,7 @@ app.use('/api/admob', require('./routes/rewardCallbacks').admob);
 app.use('/api/admin/stories', require('./routes/adminStories'));
 app.use('/api/admin/stickers', require('./routes/adminStickers'));
 app.use('/api/admin/removal-requests', require('./routes/adminRemovalRequests'));
+app.use('/api/admin/blocked-images', require('./routes/adminBlockedImages'));
 app.use('/api/admin/audit', require('./routes/adminAudit'));
 app.use('/api/admin/admob', require('./routes/adminAdmob'));
 // نموذج «طلب إزالة محتوى» العام في chathala.com/report-content (بلا تسجيل دخول)
@@ -935,6 +936,12 @@ server.listen(PORT, () => {
 
     // ✅ مراقب فك تقييد المراسلة — على instance 0 فقط لتجنّب التكرار في الـ cluster
     if (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0') {
+        // 🛡️ خدمة كشف العُري — عملية واحدة لكل الخادم (utils/nudity)
+        try {
+            require('./utils/nudity').startService();
+        } catch (e) {
+            console.error('تعذّر بدء خدمة كشف العُري:', e.message);
+        }
         try {
             require('./services/messagingRestrictionWatcher').startMessagingRestrictionWatcher();
         } catch (e) {

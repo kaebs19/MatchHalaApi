@@ -962,3 +962,21 @@ export const revokePremiumGrant = async (userId) => {
     const response = await api.delete(`/users/${userId}/premium-grant`);
     return response.data;
 };
+
+// 🛡️ الصور الممنوعة (كشف العُري على الخادم)
+export const getBlockedImagesStats = async () => {
+    const response = await api.get('/admin/blocked-images/stats');
+    return response.data;
+};
+export const getBlockedImages = async (params = {}) => {
+    const response = await api.get('/admin/blocked-images', { params });
+    return response.data;
+};
+export const getBlockedImageBlob = async (id) => {
+    const response = await api.get(`/admin/blocked-images/${id}/image`, { responseType: 'blob' });
+    return response.data;
+};
+export const reviewBlockedImage = async (id, status) => {
+    const response = await api.patch(`/admin/blocked-images/${id}`, { status });
+    return response.data;
+};

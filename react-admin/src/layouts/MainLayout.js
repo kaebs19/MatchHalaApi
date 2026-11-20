@@ -16,6 +16,7 @@ const GamesManagement = lazy(() => import('../pages/GamesManagement'));
 const Ludo = lazy(() => import('../pages/Ludo'));
 const StickersManagement = lazy(() => import('../pages/StickersManagement'));
 const RemovalRequests = lazy(() => import('../pages/RemovalRequests'));
+const BlockedImages = lazy(() => import('../pages/BlockedImages'));
 const Profile = lazy(() => import('../pages/Profile'));
 const VerificationRequests = lazy(() => import('../pages/VerificationRequests'));
 const SuperLikes = lazy(() => import('../pages/SuperLikes'));
@@ -29,7 +30,7 @@ const MaintenancePage = lazy(() => import('../pages/MaintenancePage'));
 const SensitiveContent = lazy(() => import('../pages/SensitiveContent'));
 const AuditLog = lazy(() => import('../pages/AuditLog'));
 
-import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats, getRemovalRequestsStats } from '../services/api';
+import { getReportsStats, getAppealsStats, searchUsers, getNewcomersStats, getRemovalRequestsStats, getBlockedImagesStats } from '../services/api';
 import { useToast } from '../components/Toast';
 import socketService from '../services/socket';
 import config, { getImageUrl, getDefaultAvatar } from '../config';
@@ -50,6 +51,7 @@ function MainLayout({ onLogout, user: initialUser }) {
     const [appealsStats, setAppealsStats] = useState({ pending: 0, underReview: 0, awaitingReply: 0, total: 0 });
     const [newcomersCount, setNewcomersCount] = useState(0);
     const [removalCount, setRemovalCount] = useState(0);
+    const [blockedImagesCount, setBlockedImagesCount] = useState(0);
     const [user, setUser] = useState(initialUser);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     // بحث الجوال: مطويّ خلف 🔍 حتى لا يشغل صفاً كاملاً من رأسٍ لاصق
@@ -162,6 +164,7 @@ function MainLayout({ onLogout, user: initialUser }) {
             fetchAppealsCount();
             fetchNewcomersCount();
             fetchRemovalCount();
+            fetchBlockedImagesCount();
             // لا فائدة من استطلاع أربعة مسارات كل دقيقة والتبويب مخفي —
             // نوقفه عند الإخفاء ونحدّث مرة واحدة عند العودة.
             const refreshAll = () => {
@@ -169,6 +172,7 @@ function MainLayout({ onLogout, user: initialUser }) {
                 fetchAppealsCount();
                     fetchNewcomersCount();
                 fetchRemovalCount();
+                fetchBlockedImagesCount();
             };
             let interval = setInterval(refreshAll, 60000);
             const onVisibility = () => {
@@ -427,6 +431,16 @@ function MainLayout({ onLogout, user: initialUser }) {
         }
     };
 
+    // 🛡️ صور منعها كشف العُري ولم تُراجَع
+    const fetchBlockedImagesCount = async () => {
+        try {
+            const response = await getBlockedImagesStats();
+            if (response.success) setBlockedImagesCount(response.data.pending || 0);
+        } catch (error) {
+            console.error('خطأ في جلب عدد الصور الممنوعة:', error);
+        }
+    };
+
     const fetchNewcomersCount = async () => {
         try {
             const response = await getNewcomersStats();
@@ -500,6 +514,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                     onTabChange={(tab) => replace('ludo', null, tab && tab !== 'overview' ? { tab } : null, { silent: true })} />;
             case 'stickers':
                 return <StickersManagement />;
+            case 'blocked-images':
+                return <BlockedImages onViewUserDetail={handleViewUserDetail} onCountChange={fetchBlockedImagesCount} />;
             case 'removal-requests':
                 return <RemovalRequests onViewUserDetail={handleViewUserDetail} onCountChange={fetchRemovalCount} />;
             case 'maintenance':
@@ -531,7 +547,8 @@ function MainLayout({ onLogout, user: initialUser }) {
                     reports: pendingReportsCount,
                     appeals: appealsStats.total + appealsStats.awaitingReply,
                     newcomers: newcomersCount,
-                    'removal-requests': removalCount
+                    'removal-requests': removalCount,
+                    'blocked-images': blockedImagesCount
                 }}
             />
 
